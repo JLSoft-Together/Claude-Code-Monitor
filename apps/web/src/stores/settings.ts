@@ -62,6 +62,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const sound = ref(read('ccm.sound') === '1')
   const stuckMinutes = ref(STUCK_CHOICES.includes(Number(read('ccm.stuckMin'))) ? Number(read('ccm.stuckMin')) : 10)
   const hideTools = ref(read('ccm.hideTools') === '1')
+  const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
@@ -79,6 +80,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(sound, (value) => persist('ccm.sound', value ? '1' : '0'))
   watch(stuckMinutes, (value) => persist('ccm.stuckMin', String(value)))
   watch(hideTools, (value) => persist('ccm.hideTools', value ? '1' : '0'))
+  watch(breakReminder, (value) => persist('ccm.breakReminder', value ? '1' : '0'))
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
   watch(dailyBudget, (value) => persist('ccm.budget', String(value)))
@@ -173,6 +175,7 @@ export const useSettingsStore = defineStore('settings', () => {
     notifyPermission,
     sound,
     stuckMinutes,
+    breakReminder,
     hideTools,
     pinned,
     activityPageSize,

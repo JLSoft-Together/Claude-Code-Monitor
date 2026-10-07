@@ -68,12 +68,15 @@ const LEVEL = {
 
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLButtonElement | null>(null)
 
 function onOutside(e: PointerEvent): void {
   if (!root.value?.contains(e.target as Node)) open.value = false
 }
 function onKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape') open.value = false
+  if (e.key !== 'Escape') return
+  open.value = false
+  trigger.value?.focus()
 }
 watch(open, (value) => {
   const method = value ? 'addEventListener' : 'removeEventListener'
@@ -89,6 +92,7 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="windows.length" ref="root" class="relative">
     <button
+      ref="trigger"
       type="button"
       class="flex cursor-pointer items-stretch gap-1 rounded-xl border border-line bg-surface p-1 text-left transition-colors hover:border-ink-faint"
       :class="stale ? 'opacity-60' : ''"
@@ -100,7 +104,7 @@ onBeforeUnmount(() => {
       <span
         v-for="(w, i) in windows"
         :key="w.key"
-        class="flex w-[124px] flex-col gap-1 px-2 py-1 sm:w-[156px]"
+        class="flex w-[88px] flex-col gap-1 px-1.5 py-1 sm:w-[156px] sm:px-2"
         :class="i > 0 ? 'border-l border-line' : ''"
       >
         <span class="flex items-baseline justify-between gap-2">
@@ -116,10 +120,10 @@ onBeforeUnmount(() => {
             :style="{ transform: `scaleX(${Math.min(100, w.pct) / 100})` }"
           />
         </span>
-        <span v-if="w.risk" class="inline-flex items-center gap-1 truncate text-2xs font-medium text-st-waiting tabular">
+        <span v-if="w.risk" class="hidden items-center gap-1 truncate sm:inline-flex text-2xs font-medium text-st-waiting tabular">
           <TrendingUp :size="12" class="shrink-0" aria-hidden="true" />{{ t('limits.forecastShort', { at: w.fullAt }) }}
         </span>
-        <span v-else-if="w.left" class="truncate text-2xs text-ink-faint tabular">{{ t('limits.resetsIn', { in: w.left }) }}</span>
+        <span v-else-if="w.left" class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ t('limits.resetsIn', { in: w.left }) }}</span>
       </span>
       <ChevronDown :size="14" class="self-center text-ink-faint transition-transform" :class="open ? 'rotate-180' : ''" aria-hidden="true" />
     </button>
@@ -128,7 +132,7 @@ onBeforeUnmount(() => {
       v-if="open"
       role="dialog"
       :aria-label="t('limits.title')"
-      class="ccm-pop absolute right-0 top-full z-40 mt-2 w-[min(340px,calc(100vw-32px))] rounded-xl border border-line bg-surface p-4 shadow-lg"
+      class="ccm-pop fixed inset-x-4 top-20 z-40 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] rounded-xl border border-line bg-surface p-4 shadow-lg"
     >
       <p class="text-sm font-semibold text-ink">{{ t('limits.title') }}</p>
       <section v-for="w in windows" :key="w.key" class="mt-4 first-of-type:mt-3">

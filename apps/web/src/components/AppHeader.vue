@@ -2,11 +2,12 @@
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, History, Languages, Moon, Search, Sun } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, Sun } from 'lucide-vue-next'
 import { now, relativeTime } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type View } from '../stores/ui'
+import FlipClock from './FlipClock.vue'
 import PlanLimits from './PlanLimits.vue'
 import SettingsMenu from './SettingsMenu.vue'
 
@@ -20,6 +21,10 @@ const tabs = computed(() => [
   { id: 'usage' as View, label: t('nav.usage'), icon: ChartColumnBig },
   { id: 'history' as View, label: t('nav.history'), icon: History },
 ])
+const titleChars = computed(() => [...t('app.title')])
+// Brand words ("Claude Code") take the accent; the last word stays in ink.
+const accentUntil = computed(() => t('app.title').lastIndexOf(' '))
+
 const activeIndex = computed(() => tabs.value.findIndex((x) => x.id === ui.view))
 
 const connectionView = computed(() => {
@@ -58,13 +63,29 @@ function onTabKey(e: KeyboardEvent): void {
 
 <template>
   <header class="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur-sm">
-    <div class="mx-auto flex max-w-[1800px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
-      <div class="flex min-w-0 items-center gap-3">
+    <div class="mx-auto flex max-w-[1800px] flex-wrap items-center gap-x-6 gap-y-3 xl:flex-nowrap px-4 py-3 sm:px-6">
+      <div class="flex min-w-0 shrink-0 items-center gap-3">
         <ArtImage name="logo" class="size-9 shrink-0" />
-        <h1 class="truncate text-base font-semibold tracking-tight sm:text-lg">{{ t('app.title') }}</h1>
+        <div class="flex min-w-0 flex-col">
+          <h1 class="ccm-title min-w-0 truncate text-base leading-tight font-semibold tracking-tight sm:text-lg" :aria-label="t('app.title')">
+            <span aria-hidden="true"
+              ><span
+                v-for="(c, i) in titleChars"
+                :key="i"
+                class="ccm-title-char"
+                :class="i < accentUntil ? 'text-accent' : 'text-ink'"
+                :style="{ '--i': i }"
+                >{{ c }}</span
+              ><span class="ccm-caret ml-0.5 inline-block h-[0.9em] w-[0.42em] translate-y-[0.1em] rounded-[1px] bg-accent"
+            /></span>
+          </h1>
+          <FlipClock class="mt-0.5 hidden sm:flex" />
+        </div>
       </div>
 
       <div
+        v-if="!ui.compact"
+        data-tour="tabs"
         role="tablist"
         :aria-label="t('nav.label')"
         class="relative order-3 grid w-full grid-cols-3 rounded-xl border border-line bg-surface p-1 sm:order-none sm:w-auto"
@@ -91,10 +112,10 @@ function onTabKey(e: KeyboardEvent): void {
         </button>
       </div>
 
-      <div class="ml-auto flex items-center gap-1.5">
-        <PlanLimits class="mr-1 sm:mr-3" />
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5 xl:flex-nowrap">
+        <PlanLimits class="mr-1 sm:mr-3" data-tour="limits" />
         <div
-          class="mr-2 flex items-center gap-2 text-xs"
+          class="mr-2 flex shrink-0 items-center gap-2 text-xs whitespace-nowrap"
           role="status"
           aria-live="polite"
           :title="connection.state !== 'connected' && connection.hasData ? t('connection.stale') : undefined"
@@ -110,12 +131,27 @@ function onTabKey(e: KeyboardEvent): void {
             </svg>
             {{ connectionView.label }}
           </span>
-          <span class="hidden text-ink-faint tabular md:inline">{{ lastUpdate }}</span>
+          <span class="hidden whitespace-nowrap text-ink-faint tabular 2xl:inline">{{ lastUpdate }}</span>
         </div>
 
         <button
           type="button"
+          class="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-raised hover:text-ink"
+          :class="ui.compact ? 'text-accent' : 'text-ink-muted'"
+          :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
+          :title="ui.compact ? t('compact.exitTitle') : t('compact.enterTitle')"
+          :aria-pressed="ui.compact"
+          data-tour="compact"
+          @click="ui.toggleCompact()"
+        >
+          <Maximize2 v-if="ui.compact" :size="17" aria-hidden="true" />
+          <Minimize2 v-else :size="17" aria-hidden="true" />
+          <span v-if="ui.compact" class="hidden sm:inline">{{ t('compact.exit') }}</span>
+        </button>
+        <button
+          type="button"
           class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+          data-tour="palette"
           :aria-label="t('palette.open')"
           :title="t('palette.open')"
           aria-keyshortcuts="Control+K"

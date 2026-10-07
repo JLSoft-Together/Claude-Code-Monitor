@@ -70,19 +70,19 @@ const gridStyle = computed(() => {
     :class="connection.state !== 'connected' && connection.hasData ? 'opacity-90' : ''"
   >
     <AwaySummary />
-    <WaitingQueue />
-    <MetricsStrip />
+    <WaitingQueue data-tour="waiting" />
+    <MetricsStrip data-tour="metrics" />
     <div
       ref="grid"
       class="relative grid flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:min-h-0 xl:grid-rows-1"
       :class="dragging ? 'select-none' : 'transition-[grid-template-columns,grid-template-rows] duration-200 ease-out motion-reduce:transition-none'"
       :style="gridStyle"
     >
-      <div class="min-w-0 lg:row-span-2 lg:min-h-0 xl:row-span-1" :class="sessionsOpen ? 'lg:overflow-y-auto lg:pr-1' : ''">
+      <div data-tour="sessions" class="min-w-0 lg:row-span-2 lg:min-h-0 xl:row-span-1" :class="sessionsOpen ? 'lg:overflow-y-auto lg:pr-1' : ''">
         <SessionList />
       </div>
-      <AgentMap class="min-h-[480px] min-w-0 lg:min-h-0" />
-      <ActivityFeed class="min-w-0 lg:col-start-2 lg:max-h-none lg:min-h-0 xl:col-start-3" :class="activityOpen ? 'max-h-[440px]' : ''" />
+      <AgentMap data-tour="map" class="min-h-[480px] min-w-0 lg:min-h-0" />
+      <ActivityFeed data-tour="activity" class="min-w-0 lg:col-start-2 lg:max-h-none lg:min-h-0 xl:col-start-3" :class="activityOpen ? 'max-h-[440px]' : ''" />
 
       <template v-if="bp !== 'sm'">
         <PanelSplitter

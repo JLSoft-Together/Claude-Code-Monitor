@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AppWindow, Check, Cpu, FoldVertical, GitBranch, GitMerge, Hourglass, LoaderCircle, Pencil, Pin, Repeat, RotateCcw, Snowflake, Star, Trash2, TriangleAlert, X } from 'lucide-vue-next'
-import type { TerminalSession } from '@ccm/shared'
+import { AppWindow, BellOff, Check, Code, Cpu, FileDiff, FolderOpen, FoldVertical, GitBranch, GitMerge, Hourglass, LoaderCircle, Pencil, Pin, Repeat, RotateCcw, Snowflake, Star, Trash2, TriangleAlert, X } from 'lucide-vue-next'
+import type { OpenApp, TerminalSession } from '@ccm/shared'
 import { cacheState, formatUsd, quietFor } from '../lib/attention'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
 import { modeMeta } from '../lib/mode'
@@ -16,6 +16,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
+import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
@@ -32,6 +33,7 @@ const extras = useExtrasStore()
 const settings = useSettingsStore()
 const attention = useAttentionStore()
 const terminals = useTerminalsStore()
+const snooze = useSnoozeStore()
 
 const meta = computed(() => statusMeta(props.terminal.status))
 const ended = computed(() => props.terminal.status === 'stale')
@@ -158,6 +160,27 @@ function jump(): void {
   if (!connection.focusWindow(props.terminal.id)) ui.reportWindowResult(props.terminal.id, 'offline')
 }
 const cost = computed(() => (props.terminal.costUsd === undefined ? null : formatUsd(props.terminal.costUsd)))
+
+const diff = computed(() => {
+  const d = props.terminal.diff
+  if (!d || (!d.files && !d.untracked)) return null
+  const checked = relativeTime(d.at, locale.value, now.value) ?? ''
+  return { ...d, title: t('terminal.diffTitle', { files: d.files, untracked: d.untracked, checked }) }
+})
+
+const snoozedUntil = computed(() => {
+  const until = snooze.until(props.terminal, now.value)
+  return until === null ? null : new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }).format(until)
+})
+
+const openApps: { app: OpenApp; icon: typeof FolderOpen }[] = [
+  { app: 'explorer', icon: FolderOpen },
+  { app: 'vscode', icon: Code },
+]
+const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))
+function open(app: OpenApp): void {
+  if (!connection.openFolder(props.terminal.id, app)) ui.reportOpenResult(props.terminal.id, app, 'offline')
+}
 const pinBump = useBump(() => pinned.value)
 const starBump = useBump(() => starred.value)
 const effortBump = useBump(() => model.value?.effort)
@@ -332,6 +355,9 @@ function clearAlias(): void {
     <p v-if="jumpError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
       {{ t(`terminal.jumpError.${jumpError.result}`) }}
     </p>
+    <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
+      {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openError.app}`) }) }}
+    </p>
     <p v-if="!editing && terminal.alias" class="mt-0.5 truncate text-2xs text-ink-faint" :title="terminal.title">
       {{ t('terminal.originalName', { title: terminal.title }) }}
     </p>
@@ -342,6 +368,25 @@ function clearAlias(): void {
     <div class="mt-2 flex min-w-0 items-center gap-2">
       <StatusBadge :status="terminal.status" />
       <span v-if="detail" class="min-w-0 truncate text-xs text-ink-muted" :title="detail">{{ detail }}</span>
+    </div>
+    <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+      <template v-if="snoozedUntil">
+        <span class="inline-flex items-center gap-1 text-ink-muted"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.until', { at: snoozedUntil }) }}</span>
+        <button type="button" class="cursor-pointer rounded px-1 font-medium text-accent hover:underline" @click="snooze.clear(terminal.id)">{{ t('snooze.undo') }}</button>
+      </template>
+      <template v-else>
+        <span class="inline-flex items-center gap-1 text-ink-faint"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.label') }}</span>
+        <button
+          v-for="n in SNOOZE_CHOICES"
+          :key="n"
+          type="button"
+          class="inline-flex h-7 cursor-pointer items-center rounded-md border border-line px-2 text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
+          :aria-label="t('snooze.action', { title, n })"
+          @click="snooze.snooze(terminal, n)"
+        >
+          {{ t('snooze.minutes', { n }) }}
+        </button>
+      </template>
     </div>
     <p v-if="quiet" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-st-waiting" :title="t('terminal.quietTitle')">
       <Hourglass :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ quiet }}</span>
@@ -390,12 +435,35 @@ function clearAlias(): void {
       </span>
     </div>
 
+    <p v-if="diff" class="mt-2 flex min-w-0 items-center gap-1.5 text-xs tabular" :title="diff.title">
+      <FileDiff :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+      <span class="sr-only">{{ t('terminal.diffLabel') }}</span>
+      <span class="font-medium text-st-done">+{{ fullNumber(diff.insertions, locale) }}</span>
+      <span class="font-medium text-st-error">−{{ fullNumber(diff.deletions, locale) }}</span>
+      <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
+    </p>
+
     <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" />
 
     <dl class="mt-3 space-y-1 text-xs text-ink-muted">
-      <div v-if="terminal.cwd" class="flex min-w-0 gap-2">
+      <div v-if="terminal.cwd" class="flex min-w-0 items-center gap-2">
         <dt class="sr-only">{{ t('terminal.directory') }}</dt>
-        <dd class="min-w-0 truncate font-mono text-2xs" :title="terminal.cwd">{{ shortPath(terminal.cwd) }}</dd>
+        <dd class="min-w-0 flex-1 truncate font-mono text-2xs" :title="terminal.cwd">{{ shortPath(terminal.cwd) }}</dd>
+        <dd class="relative z-10 -my-1 flex shrink-0 items-center">
+          <button
+            v-for="o in openApps"
+            :key="o.app"
+            type="button"
+            class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink disabled:cursor-wait"
+            :aria-label="t('open.action', { app: t(`open.app.${o.app}`), title })"
+            :title="t('open.title', { app: t(`open.app.${o.app}`) })"
+            :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"
+            @click="open(o.app)"
+          >
+            <LoaderCircle v-if="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app" :size="14" class="animate-spin" aria-hidden="true" />
+            <component :is="o.icon" v-else :size="14" aria-hidden="true" />
+          </button>
+        </dd>
       </div>
       <div class="flex flex-wrap gap-x-3 gap-y-0.5 tabular">
         <dd v-if="terminal.processId">{{ t('terminal.process', { pid: terminal.processId }) }}</dd>

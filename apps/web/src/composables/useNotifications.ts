@@ -10,6 +10,7 @@ import { useAttentionStore } from '../stores/attention'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
+import { useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUsageStore } from '../stores/usage'
 import { useUiStore } from '../stores/ui'
@@ -45,9 +46,12 @@ export function useNotifications(): void {
   const extras = useExtrasStore()
   const attention = useAttentionStore()
   const usage = useUsageStore()
+  const snooze = useSnoozeStore()
   const baseTitle = document.title
 
-  const waiting = computed(() => terminals.list.filter((x) => x.status === 'waiting').length + extras.blockedJobs.length)
+  const waiting = computed(
+    () => terminals.list.filter((x) => x.status === 'waiting' && !snooze.isSnoozed(x, now.value)).length + extras.blockedJobs.length,
+  )
   watch(
     waiting,
     (n) => {
@@ -82,7 +86,9 @@ export function useNotifications(): void {
     const tag = `${key}|${kind}`
     const at = Date.now()
     if (at - (lastSent.get(tag) ?? 0) < THROTTLE_MS) return
+    if (terminal && snooze.isSnoozed(terminal, at)) return
     lastSent.set(tag, at)
+    if (lastSent.size > 200) for (const [k, v] of lastSent) if (at - v >= THROTTLE_MS) lastSent.delete(k)
     chime(kind)
     if (!enabled(kind)) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
@@ -148,12 +154,14 @@ export function useNotifications(): void {
       stuckSent.add(episode)
       notify(x, 'stuck', t('notify.stuckTitle', { title: nameOf(x) }), t('notify.stuckBody', { quiet: duration(x.lastActivityAt, nowMs) ?? '' }))
     }
-    if (stuckSent.size > 200) stuckSent.clear()
+    // Keep only episodes that can still recur; an episode key never comes back once its session moves on.
+    const liveEpisodes = new Set(terminals.live.map((x) => `${x.id}|${x.lastActivityAt}`))
+    for (const e of stuckSent) if (!liveEpisodes.has(e)) stuckSent.delete(e)
     for (const x of terminals.live) {
       if (x.status !== 'waiting' || !x.statusSince) continue
       const episode = `${x.id}|${x.statusSince}`
       const due = remindersDue(x.statusSince, nowMs)
-      if (due <= (reminded.get(episode) ?? 0)) continue
+      if (due <= (reminded.get(episode) ?? 0) || snooze.isSnoozed(x, nowMs)) continue
       reminded.set(episode, due)
       notify(
         x,
@@ -162,7 +170,8 @@ export function useNotifications(): void {
         waitingBody(x),
       )
     }
-    if (reminded.size > 200) reminded.clear()
+    const waitingEpisodes = new Set(terminals.live.filter((x) => x.status === 'waiting').map((x) => `${x.id}|${x.statusSince}`))
+    for (const e of reminded.keys()) if (!waitingEpisodes.has(e)) reminded.delete(e)
   })
 
   const loopSent = new Set<string>()
@@ -177,7 +186,8 @@ export function useNotifications(): void {
         const l = attention.loops.get(id)
         if (x && l) notify(x, 'loop', t('notify.loopTitle', { title: nameOf(x) }), t('notify.loopBody', { n: l.failures, tool: l.tool ?? t('activity.unknownTool') }))
       }
-      if (loopSent.size > 200) loopSent.clear()
+      const current = new Set(episodes)
+      for (const e of loopSent) if (!current.has(e)) loopSent.delete(e)
     },
   )
 

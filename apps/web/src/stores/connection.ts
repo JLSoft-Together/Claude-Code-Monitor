@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ClientMessage, FolderPickResult, LaunchMode, MonitorEvent, MonitorSnapshot, ServerMessage } from '@ccm/shared'
+import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, ServerMessage } from '@ccm/shared'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
 import { useExtrasStore } from './extras'
@@ -136,6 +136,12 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'timeline.data':
           history.setTimeline(event.payload)
           break
+        case 'terminal.openResult':
+          ui.reportOpenResult(event.payload.terminalId, event.payload.app, event.payload.result)
+          break
+        case 'diagnostics.data':
+          extras.setDiagnostics(event.payload)
+          break
         case 'terminal.focusResult':
           ui.reportWindowResult(event.payload.terminalId, event.payload.result)
           break
@@ -157,11 +163,18 @@ export const useConnectionStore = defineStore('connection', () => {
       return
     }
     if (!isServerMessage(message)) return
+    if (message.direct) {
+      apply(message.events)
+      return
+    }
     const isSnapshot = message.events[0]?.type === 'snapshot'
     if (!isSnapshot && lastSeq >= 0 && message.seq !== lastSeq + 1) {
       if (message.seq > lastSeq + 1 && !awaitingResync) {
         awaitingResync = true
         send({ type: 'resync' })
+        // A dropped folder.picked is never replayed by the snapshot.
+        for (const done of folderPicks.values()) done({ result: 'failed' })
+        folderPicks.clear()
       }
       return
     }
@@ -245,8 +258,24 @@ export const useConnectionStore = defineStore('connection', () => {
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
     const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
     if (!request({ type: 'folder.pick', requestId })) return Promise.resolve({ result: 'offline' })
-    return new Promise((resolve) => folderPicks.set(requestId, resolve))
+    return new Promise((resolve) => {
+      // The collector reaps a forgotten dialog after 10 min; never leave the button spinning past that.
+      const timer = window.setTimeout(() => folderPicks.get(requestId)?.({ result: 'failed' }), 10 * 60_000 + 5_000)
+      folderPicks.set(requestId, (r) => {
+        window.clearTimeout(timer)
+        folderPicks.delete(requestId)
+        resolve(r)
+      })
+    })
   }
+
+  function openFolder(terminalId: string, app: OpenApp): boolean {
+    if (!request({ type: 'terminal.open', terminalId, app })) return false
+    ui.startOpen(terminalId, app)
+    return true
+  }
+
+  const loadDiagnostics = (): boolean => request({ type: 'diagnostics.get' })
 
   function focusWindow(terminalId: string): boolean {
     if (!request({ type: 'terminal.focusWindow', terminalId })) return false
@@ -271,6 +300,8 @@ export const useConnectionStore = defineStore('connection', () => {
     dismissEnded,
     focusWindow,
     pickFolder,
+    openFolder,
+    loadDiagnostics,
     loadHistory,
     loadTimeline,
   }

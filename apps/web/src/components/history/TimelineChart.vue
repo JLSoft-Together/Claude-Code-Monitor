@@ -70,7 +70,13 @@ const pos = (s: Seg) => ({ left: `${pct(s.from)}%`, width: `max(3px, ${pct(s.to)
 const nowPct = computed(() => pct(now.value))
 
 const hover = ref<{ lane: string; seg: Seg } | null>(null)
-const tipLeft = (s: Seg) => `${Math.min(88, Math.max(12, (pct(s.from) + pct(s.to)) / 2))}%`
+// Near the lane ends the tooltip hangs off the matching edge so it never leaves the lane.
+const tipStyle = (s: Seg) => {
+  const mid = (pct(s.from) + pct(s.to)) / 2
+  if (mid < 25) return { left: '0' }
+  if (mid > 75) return { right: '0' }
+  return { left: `${mid}%`, transform: 'translateX(-50%)' }
+}
 const showHours = ref(false)
 
 const short = (msVal: number) => {
@@ -206,14 +212,18 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
               class="ccm-grow-x absolute inset-y-1 origin-left rounded-[3px] ring-1 ring-surface transition-[filter]"
               :class="[FILL[s.status], hover?.lane === lane.id && hover.seg === s ? 'brightness-110 ring-ink/40' : '']"
               :style="pos(s)"
+              tabindex="0"
+              :aria-label="`${t(`status.${s.status}`)} ${range(s)}, ${dur(s.to - s.from)}`"
               @pointerenter="hover = { lane: lane.id, seg: s }"
+              @focus="hover = { lane: lane.id, seg: s }"
+              @blur="hover = null"
               @click="hover = { lane: lane.id, seg: s }"
             />
             <span class="absolute -inset-y-1 w-0.5 rounded-full bg-accent" :style="{ left: `${nowPct}%` }" aria-hidden="true" />
             <div
               v-if="hover?.lane === lane.id"
-              class="pointer-events-none absolute bottom-full z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-lg"
-              :style="{ left: tipLeft(hover.seg) }"
+              class="pointer-events-none absolute bottom-full z-10 mb-2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-lg"
+              :style="tipStyle(hover.seg)"
               role="tooltip"
             >
               <p class="inline-flex items-center gap-1.5 font-medium" :class="TEXT[hover.seg.status]">

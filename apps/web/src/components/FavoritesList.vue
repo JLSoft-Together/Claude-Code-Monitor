@@ -116,7 +116,7 @@ async function browse(): Promise<void> {
     addDir.value = r.dir
     addInput.value?.focus()
   } else if (r.result !== 'cancelled') {
-    addError.value = t(`favorites.pickError.${r.result}`)
+    addError.value = t(`favorites.pickError.${r.result === 'ok' ? 'failed' : r.result}`)
   }
 }
 

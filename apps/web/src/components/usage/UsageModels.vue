@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { compactNumber, formatCost, fullNumber } from '../../lib/format'
-import { useUsageStore } from '../../stores/usage'
+import { useUsageStore, cacheHitRate } from '../../stores/usage'
 
 const { t, locale } = useI18n()
 const usage = useUsageStore()
@@ -17,6 +17,10 @@ const slotColor = (model: string) => {
 function toggle(model: string): void {
   usage.model = usage.model === model ? null : model
 }
+const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) => {
+  const r = cacheHitRate(row)
+  return r === null ? '—' : `${Math.round(r * 100)}%`
+}
 </script>
 
 <template>
@@ -26,7 +30,7 @@ function toggle(model: string): void {
 
     <p v-if="usage.byModel.length === 0" class="mt-6 text-sm text-ink-muted">{{ t('usage.noRows') }}</p>
     <div v-else class="mt-4 overflow-x-auto">
-      <table class="w-full min-w-[620px] text-left text-sm">
+      <table class="w-full min-w-[680px] text-left text-sm">
         <thead class="text-xs text-ink-muted">
           <tr class="border-b border-line">
             <th scope="col" class="py-2 pr-3 font-medium">{{ t('usage.model') }}</th>
@@ -34,6 +38,7 @@ function toggle(model: string): void {
             <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.output') }}</th>
             <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.cacheWrite') }}</th>
             <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.cacheRead') }}</th>
+            <th scope="col" class="px-2 py-2 text-right font-medium" :title="t('usage.hitTitle')">{{ t('usage.hitShort') }}</th>
             <th scope="col" class="py-2 pl-2 text-right font-medium">{{ t('usage.cost') }}</th>
           </tr>
         </thead>
@@ -64,6 +69,7 @@ function toggle(model: string): void {
             <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.output, locale)">{{ compactNumber(row.output) }}</td>
             <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.cacheWrite, locale)">{{ compactNumber(row.cacheWrite) }}</td>
             <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.cacheRead, locale)">{{ compactNumber(row.cacheRead) }}</td>
+            <td class="px-2 py-2.5 text-right text-ink-muted tabular-nums">{{ hitOf(row) }}</td>
             <td class="py-2.5 pl-2 text-right font-medium tabular-nums">
               {{ row.unpriced > 0 && row.cost === 0 ? '—' : formatCost(row.cost, locale) }}
             </td>

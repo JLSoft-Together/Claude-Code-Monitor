@@ -9,12 +9,19 @@ import {
   CornerDownLeft,
   FileDown,
   FolderOpen,
+  GraduationCap,
+  History,
   Languages,
   ListFilter,
+  Minimize2,
   Moon,
   Search,
+  SearchX,
+  Settings2,
+  Stethoscope,
   Trash2,
   Volume2,
+  X,
 } from 'lucide-vue-next'
 import { shortPath } from '../lib/format'
 import { statusMeta } from '../lib/status'
@@ -26,14 +33,19 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import StatusIcon from './StatusIcon.vue'
 
+type Group = 'sessions' | 'favorites' | 'nav' | 'actions' | 'prefs' | 'help'
+type Scope = 'all' | 'sessions' | 'favorites' | 'commands'
+
 interface Item {
   id: string
-  group: 'sessions' | 'favorites' | 'commands'
+  group: Group
   label: string
   sub?: string
   hay: string
   icon?: Component
   status?: string
+  /** Current state of a preference, shown as an On / Off tag. */
+  on?: boolean
   run: () => void
   /** Shift+Enter. */
   alt?: () => void
@@ -48,6 +60,7 @@ const settings = useSettingsStore()
 const connection = useConnectionStore()
 
 const query = ref('')
+const scope = ref<Scope>('all')
 const active = ref(0)
 const input = ref<HTMLInputElement | null>(null)
 const list = ref<HTMLElement | null>(null)
@@ -56,6 +69,9 @@ let restoreFocus: HTMLElement | null = null
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 const STATUS_RANK: Record<string, number> = { waiting: 0, working: 1, error: 2, idle: 3, unknown: 4, stale: 5 }
+const GROUP_ORDER: Group[] = ['sessions', 'favorites', 'nav', 'actions', 'prefs', 'help']
+const SCOPES: Scope[] = ['all', 'sessions', 'favorites', 'commands']
+const inScope = (g: Group, s: Scope) => s === 'all' || s === g || (s === 'commands' && g !== 'sessions' && g !== 'favorites')
 
 const items = computed<Item[]>(() => {
   const sessions: Item[] = [...terminals.list]
@@ -90,35 +106,59 @@ const items = computed<Item[]>(() => {
     altHint: t('palette.continue'),
   }))
   const ended = terminals.list.filter((x) => x.status === 'stale').length
-  const commands: Item[] = [
-    { id: 'c:monitor', label: t('palette.goMonitor'), icon: Activity, run: () => ui.setView('monitor') },
-    { id: 'c:usage', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
-    { id: 'c:recap', label: t('palette.recap'), icon: FileDown, run: () => ui.openRecap() },
-    { id: 'c:theme', label: settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark'), icon: Moon, run: () => settings.toggleTheme() },
-    { id: 'c:lang', label: `${t('settings.language')}: ${t('settings.switchLanguage')}`, icon: Languages, run: () => settings.toggleLocale() },
-    { id: 'c:notify', label: settings.notifyEnabled ? t('settings.notifyOff') : t('settings.notifyOn'), icon: Bell, run: () => void settings.toggleNotifications() },
-    { id: 'c:sound', label: t(settings.sound ? 'palette.soundOff' : 'palette.soundOn'), icon: Volume2, run: () => (settings.sound = !settings.sound) },
-    { id: 'c:tools', label: t(settings.hideTools ? 'palette.showTools' : 'palette.hideTools'), icon: ListFilter, run: () => (settings.hideTools = !settings.hideTools) },
-    ...(ended ? [{ id: 'c:clear', label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),
-  ].map((c) => ({ ...c, group: 'commands' as const, hay: fold(c.label) }))
-  return [...sessions, ...favs, ...commands]
+  const commands: Omit<Item, 'hay'>[] = [
+    { id: 'c:monitor', group: 'nav', label: t('palette.goMonitor'), icon: Activity, run: () => ui.setView('monitor') },
+    { id: 'c:usage', group: 'nav', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
+    { id: 'c:history', group: 'nav', label: t('palette.goHistory'), icon: History, run: () => ui.setView('history') },
+    { id: 'c:compact', group: 'nav', label: ui.compact ? t('compact.exit') : t('compact.enter'), icon: Minimize2, run: () => ui.toggleCompact() },
+    { id: 'c:recap', group: 'actions', label: t('palette.recap'), icon: FileDown, run: () => ui.openRecap() },
+    ...(ended ? [{ id: 'c:clear', group: 'actions' as const, label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),
+    { id: 'c:notify', group: 'prefs', label: t('settings.notifyEnable'), icon: Bell, on: settings.notifyEnabled, run: () => void settings.toggleNotifications() },
+    { id: 'c:sound', group: 'prefs', label: t('settings.sound'), icon: Volume2, on: settings.sound, run: () => (settings.sound = !settings.sound) },
+    { id: 'c:theme', group: 'prefs', label: t('palette.darkTheme'), icon: Moon, on: settings.theme === 'dark', run: () => settings.toggleTheme() },
+    { id: 'c:tools', group: 'prefs', label: t('palette.toolsPref'), icon: ListFilter, on: !settings.hideTools, run: () => (settings.hideTools = !settings.hideTools) },
+    { id: 'c:lang', group: 'prefs', label: t('palette.language'), sub: settings.locale === 'vi' ? 'Tiếng Việt → English' : 'English → Tiếng Việt', icon: Languages, run: () => settings.toggleLocale() },
+    { id: 'c:settings', group: 'help', label: t('palette.openSettings'), icon: Settings2, run: () => (ui.settingsOpen = true) },
+    { id: 'c:tour', group: 'help', label: t('tour.open'), icon: GraduationCap, run: () => (ui.tourOpen = true) },
+    { id: 'c:diag', group: 'help', label: t('diag.title'), icon: Stethoscope, run: () => (ui.diagnosticsOpen = true) },
+  ]
+  return [...sessions, ...favs, ...commands.map((c) => ({ ...c, hay: fold(`${c.label} ${c.sub ?? ''}`) }))]
 })
 
-const filtered = computed(() => {
-  const tokens = fold(query.value).split(/\s+/).filter(Boolean)
-  if (!tokens.length) return items.value
-  return items.value.filter((x) => tokens.every((tk) => x.hay.includes(tk)))
-})
+const tokens = computed(() => fold(query.value).split(/\s+/).filter(Boolean))
+const matched = computed(() => items.value.filter((x) => tokens.value.every((tk) => x.hay.includes(tk))))
+const filtered = computed(() => matched.value.filter((x) => inScope(x.group, scope.value)))
+const scopeCounts = computed(() => Object.fromEntries(SCOPES.map((s) => [s, matched.value.filter((x) => inScope(x.group, s)).length])) as Record<Scope, number>)
 
 const groups = computed(() => {
-  const order = ['sessions', 'favorites', 'commands'] as const
   let index = 0
-  return order
-    .map((g) => ({ key: g, label: t(`palette.group.${g}`), items: filtered.value.filter((x) => x.group === g).map((x) => ({ ...x, index: index++ })) }))
-    .filter((g) => g.items.length)
+  return GROUP_ORDER.map((g) => ({ key: g, label: t(`palette.group.${g}`), items: filtered.value.filter((x) => x.group === g).map((x) => ({ ...x, index: index++ })) })).filter(
+    (g) => g.items.length,
+  )
 })
 
-watch(query, () => (active.value = 0))
+/** Splits a label into matched / unmatched runs; folding keeps precomposed text the same length. */
+function parts(label: string): { text: string; hit: boolean }[] {
+  const folded = fold(label)
+  if (!tokens.value.length || folded.length !== label.length) return [{ text: label, hit: false }]
+  const mark = new Array<boolean>(label.length).fill(false)
+  for (const tk of tokens.value) {
+    let from = folded.indexOf(tk)
+    while (from >= 0) {
+      for (let i = from; i < from + tk.length; i++) mark[i] = true
+      from = folded.indexOf(tk, from + tk.length)
+    }
+  }
+  const out: { text: string; hit: boolean }[] = []
+  for (let i = 0; i < label.length; i++) {
+    const last = out[out.length - 1]
+    if (last && last.hit === mark[i]) last.text += label[i]
+    else out.push({ text: label[i]!, hit: mark[i]! })
+  }
+  return out
+}
+
+watch([query, scope], () => (active.value = 0))
 watch(
   () => filtered.value.length,
   (n) => {
@@ -133,8 +173,8 @@ function close(): void {
 function choose(item: Item | undefined, alt: boolean): void {
   if (!item) return
   close()
-  if (alt && item.alt) item.alt()
-  else item.run()
+  // After the close watcher has put focus back, so a navigating action keeps the focus it sets.
+  void nextTick(() => (alt && item.alt ? item.alt() : item.run()))
 }
 
 function move(delta: number): void {
@@ -142,6 +182,15 @@ function move(delta: number): void {
   if (!n) return
   active.value = (active.value + delta + n) % n
   void nextTick(() => list.value?.querySelector(`[data-index="${active.value}"]`)?.scrollIntoView({ block: 'nearest' }))
+}
+
+function cycleScope(delta: number): void {
+  scope.value = SCOPES[(SCOPES.indexOf(scope.value) + delta + SCOPES.length) % SCOPES.length]!
+}
+
+function clearQuery(): void {
+  query.value = ''
+  input.value?.focus()
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -156,9 +205,11 @@ function onKey(e: KeyboardEvent): void {
     choose(filtered.value[active.value], e.shiftKey)
   } else if (e.key === 'Escape') {
     e.preventDefault()
-    close()
+    if (query.value) query.value = ''
+    else close()
   } else if (e.key === 'Tab') {
     e.preventDefault()
+    cycleScope(e.shiftKey ? -1 : 1)
   }
 }
 
@@ -175,11 +226,12 @@ watch(
     if (open) {
       restoreFocus = document.activeElement as HTMLElement | null
       query.value = ''
+      scope.value = 'all'
       active.value = 0
       await nextTick()
       input.value?.focus()
     } else {
-      restoreFocus?.focus?.()
+      if (restoreFocus?.isConnected) restoreFocus.focus()
       restoreFocus = null
     }
   },
@@ -192,7 +244,7 @@ const activeId = computed(() => (filtered.value[active.value] ? `palette-opt-${a
 const HINTS = [
   { key: 'move', keys: '↑ ↓' },
   { key: 'open', keys: 'Enter' },
-  { key: 'alt', keys: 'Shift Enter' },
+  { key: 'scope', keys: 'Tab' },
   { key: 'close', keys: 'Esc' },
 ] as const
 </script>
@@ -205,15 +257,15 @@ const HINTS = [
       leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.paletteOpen" class="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 px-4 pt-[12vh]" @mousedown.self="close">
+      <div v-if="ui.paletteOpen" class="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 px-3 pt-[8vh] sm:px-4 sm:pt-[12vh]" @mousedown.self="close">
         <div
           role="dialog"
           aria-modal="true"
           :aria-label="t('palette.title')"
-          class="ccm-pop flex max-h-[min(70vh,560px)] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg"
+          class="ccm-pop flex max-h-[min(78vh,620px)] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg"
         >
-          <div class="flex items-center gap-3 border-b border-line px-4">
-            <Search :size="18" class="shrink-0 text-ink-muted" aria-hidden="true" />
+          <div class="flex items-center gap-3 px-5 pt-2">
+            <Search :size="19" class="shrink-0 text-ink-muted" aria-hidden="true" />
             <input
               ref="input"
               v-model="query"
@@ -225,45 +277,106 @@ const HINTS = [
               :aria-activedescendant="activeId"
               :aria-label="t('palette.title')"
               :placeholder="t('palette.placeholder')"
-              class="h-14 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-faint focus-visible:outline-none"
+              class="ccm-bare-input h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
               autocomplete="off"
               spellcheck="false"
               @keydown="onKey"
             />
-            <kbd class="hidden shrink-0 rounded-md border border-line bg-raised px-1.5 py-0.5 text-2xs text-ink-muted sm:inline">Esc</kbd>
+            <button
+              v-if="query"
+              type="button"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+              :aria-label="t('palette.clear')"
+              :title="t('palette.clear')"
+              @mousedown.prevent
+              @click="clearQuery"
+            >
+              <X :size="16" aria-hidden="true" />
+            </button>
+            <kbd v-else class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 font-sans text-2xs text-ink-faint sm:inline">Esc</kbd>
           </div>
-          <div id="palette-list" ref="list" role="listbox" :aria-label="t('palette.title')" class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
-            <p v-if="!filtered.length" class="px-4 py-6 text-center text-sm text-ink-muted">{{ t('palette.empty') }}</p>
-            <div v-for="(g, gi) in groups" :key="g.key" role="group" :aria-label="g.label" :class="gi > 0 ? 'mt-1 border-t border-line pt-1' : ''">
-              <p class="px-4 pt-2 pb-1.5 text-2xs font-medium text-ink-faint">{{ g.label }}</p>
-              <div
-                v-for="item in g.items"
-                :id="`palette-opt-${item.index}`"
-                :key="item.id"
-                role="option"
-                :data-index="item.index"
-                :aria-selected="item.index === active"
-                class="relative mx-2 flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-100"
-                :class="item.index === active ? 'bg-accent-soft text-ink' : 'text-ink-muted hover:text-ink'"
-                @mousemove="active = item.index"
-                @click="choose(item, $event.shiftKey)"
+
+          <div class="flex gap-5 border-b border-line px-5" role="radiogroup" :aria-label="t('palette.scopeLabel')">
+            <button
+              v-for="s in SCOPES"
+              :key="s"
+              type="button"
+              role="radio"
+              :aria-checked="scope === s"
+              tabindex="-1"
+              class="-mb-px inline-flex h-10 cursor-pointer items-center gap-1.5 border-b-2 text-[13px] font-medium transition-colors"
+              :class="scope === s ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'"
+              @mousedown.prevent
+              @click="scope = s"
+            >
+              {{ t(`palette.scope.${s}`) }}
+              <span class="tabular text-2xs" :class="scope === s ? 'text-accent' : 'text-ink-faint'">{{ scopeCounts[s] }}</span>
+            </button>
+          </div>
+
+          <div id="palette-list" ref="list" role="listbox" :aria-label="t('palette.title')" class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3">
+            <div v-if="!filtered.length" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+              <SearchX :size="28" class="text-ink-faint" aria-hidden="true" />
+              <p class="text-sm font-medium">{{ query ? t('palette.emptyFor', { q: query }) : t('palette.empty') }}</p>
+              <p class="max-w-[36ch] text-xs text-ink-faint">{{ t('palette.emptyHint') }}</p>
+              <button
+                v-if="scope !== 'all' && scopeCounts.all"
+                type="button"
+                class="mt-2 inline-flex h-8 cursor-pointer items-center rounded-lg border border-line px-3 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-ink"
+                @mousedown.prevent
+                @click="scope = 'all'"
               >
-                <StatusIcon v-if="item.status" :status="item.status" :size="15" :animate="false" class="shrink-0" />
-                <component :is="item.icon" v-else-if="item.icon" :size="16" class="shrink-0 text-ink-muted" aria-hidden="true" />
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate" :class="item.sub ? 'font-medium text-ink' : ''">{{ item.label }}</span>
-                  <span v-if="item.sub" class="block truncate text-2xs text-ink-faint">{{ item.sub }}</span>
-                </span>
-                <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-ink-faint sm:inline-flex">
-                  <span v-if="item.alt" class="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5"><AppWindow v-if="item.group === 'sessions'" :size="12" aria-hidden="true" />Shift ↵ {{ item.altHint }}</span>
-                  <span class="inline-flex items-center rounded-md border border-line px-1.5 py-0.5"><CornerDownLeft :size="12" aria-hidden="true" /></span>
-                </span>
+                {{ t('palette.showAll', { n: scopeCounts.all }) }}
+              </button>
+            </div>
+            <div v-for="g in groups" :key="g.key" role="group" :aria-label="g.label" class="pt-3">
+              <p class="px-3 pb-1.5 text-2xs font-medium text-ink-faint">{{ g.label }}</p>
+              <div class="flex flex-col gap-0.5">
+                <div
+                  v-for="item in g.items"
+                  :id="`palette-opt-${item.index}`"
+                  :key="item.id"
+                  role="option"
+                  :data-index="item.index"
+                  :aria-selected="item.index === active"
+                  class="relative flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors duration-100"
+                  :class="item.index === active ? 'bg-raised' : ''"
+                  @mousemove="active = item.index"
+                  @click="choose(item, $event.shiftKey)"
+                >
+                  <span v-if="item.index === active" class="absolute inset-y-3 left-0 w-0.5 rounded-full bg-accent" aria-hidden="true" />
+                  <span class="inline-flex size-8 shrink-0 items-center justify-center" aria-hidden="true">
+                    <StatusIcon v-if="item.status" :status="item.status" :size="16" :animate="false" />
+                    <component :is="item.icon" v-else-if="item.icon" :size="17" :class="item.index === active ? 'text-accent' : 'text-ink-faint'" />
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-ink"
+                      ><template v-for="(p, pi) in parts(item.label)" :key="pi"
+                        ><mark v-if="p.hit" class="bg-transparent font-semibold text-accent">{{ p.text }}</mark
+                        ><template v-else>{{ p.text }}</template></template
+                      ></span
+                    >
+                    <span v-if="item.sub" class="mt-0.5 block truncate text-xs text-ink-faint">{{ item.sub }}</span>
+                  </span>
+                  <span v-if="item.on !== undefined" class="inline-flex shrink-0 items-center gap-1.5 text-xs" :class="item.on ? 'text-st-done' : 'text-ink-faint'">
+                    <span class="size-1.5 rounded-full" :class="item.on ? 'bg-st-done' : 'border border-current'" aria-hidden="true" />
+                    {{ item.on ? t('palette.on') : t('palette.off') }}
+                  </span>
+                  <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-ink-faint sm:inline-flex">
+                    <span v-if="item.alt" class="inline-flex items-center gap-1"
+                      ><AppWindow v-if="item.group === 'sessions'" :size="12" aria-hidden="true" />{{ item.altHint }}
+                      <kbd class="rounded border border-line bg-surface px-1 font-sans">⇧↵</kbd></span
+                    >
+                    <kbd class="inline-flex items-center rounded border border-line bg-surface px-1 py-px"><CornerDownLeft :size="12" aria-hidden="true" /></kbd>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-raised/40 px-4 py-2.5 text-2xs text-ink-faint">
+
+          <div class="hidden items-center gap-x-5 border-t border-line px-5 py-3 text-2xs text-ink-faint sm:flex">
             <span v-for="h in HINTS" :key="h.key" class="inline-flex items-center gap-1.5">
-              <kbd class="rounded border border-line bg-surface px-1.5 py-px text-ink-muted">{{ h.keys }}</kbd>{{ t(`palette.hints.${h.key}`) }}
+              <kbd class="rounded border border-line px-1.5 py-px font-sans text-ink-muted">{{ h.keys }}</kbd>{{ t(`palette.hints.${h.key}`) }}
             </span>
           </div>
         </div>

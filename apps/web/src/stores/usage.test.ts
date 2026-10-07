@@ -25,6 +25,32 @@ const bucket = (day: string, model: string, project: string, over: Partial<Usage
 
 const msg = (seq: number, events: unknown[]) => JSON.stringify({ seq, events })
 
+describe('period comparison', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('compares today with yesterday under the same filters', () => {
+    const usage = useUsageStore()
+    usage.range = 'today'
+    usage.reset({ buckets: [bucket(today, 'm1', 'p'), bucket(yesterday, 'm1', 'p', { input: 30, key: 'y1' }), bucket(yesterday, 'm2', 'p', { key: 'y2' })], scan: { state: 'ready', filesDone: 0, filesTotal: 0 } })
+    expect(usage.previous?.totals.input).toBe(40)
+    usage.model = 'm1'
+    expect(usage.previous?.totals.input).toBe(30)
+    usage.range = 'all'
+    expect(usage.previous).toBeNull()
+  })
+
+  it('computes cache hit rate and change', async () => {
+    const { cacheHitRate, change } = await import('./usage')
+    expect(cacheHitRate({ input: 10, cacheWrite: 90, cacheRead: 900 })).toBeCloseTo(0.9)
+    expect(cacheHitRate({ input: 0, cacheWrite: 0, cacheRead: 0 })).toBeNull()
+    expect(change(150, 100)).toBeCloseTo(0.5)
+    expect(change(5, 0)).toBeNull()
+  })
+})
+
 describe('usage store', () => {
   beforeEach(() => {
     localStorage.clear()

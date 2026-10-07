@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { BackgroundJob, MonitorSnapshot, PlanLimits, ResponseStats } from '@ccm/shared'
+import type { BackgroundJob, Diagnostics, MonitorSnapshot, PlanLimits, ResponseStats } from '@ccm/shared'
 
 /** Collector side-channels: background jobs, plan limits (status line bridge), reply times, model names. */
 export const useExtrasStore = defineStore('extras', () => {
@@ -9,6 +9,8 @@ export const useExtrasStore = defineStore('extras', () => {
   const response = ref<ResponseStats | null>(null)
   const modelNames = shallowRef<Record<string, string>>({})
   const statusLineCommand = ref<string | null>(null)
+  const diagnostics = ref<Diagnostics | null>(null)
+  const dayStartedAt = ref<string | null>(null)
 
   const blockedJobs = computed(() =>
     jobs.value.filter((j) => j.state === 'blocked').sort((a, b) => (a.stateSince ?? '').localeCompare(b.stateSince ?? '')),
@@ -21,12 +23,14 @@ export const useExtrasStore = defineStore('extras', () => {
     response.value = snapshot.response ?? null
     modelNames.value = snapshot.modelNames ?? {}
     statusLineCommand.value = snapshot.statusLineCommand ?? null
+    dayStartedAt.value = snapshot.dayStartedAt ?? null
   }
 
   const setJobs = (next: BackgroundJob[]) => (jobs.value = next)
   const setLimits = (next: PlanLimits) => (limits.value = next)
   const setResponse = (next: ResponseStats) => (response.value = next)
   const setModelNames = (next: Record<string, string>) => (modelNames.value = next)
+  const setDiagnostics = (next: Diagnostics) => (diagnostics.value = next)
 
-  return { jobs, limits, response, modelNames, statusLineCommand, blockedJobs, activeJobs, hydrate, setJobs, setLimits, setResponse, setModelNames }
+  return { jobs, limits, response, modelNames, statusLineCommand, dayStartedAt, blockedJobs, activeJobs, hydrate, setJobs, setLimits, setResponse, setModelNames, diagnostics, setDiagnostics }
 })

@@ -20,7 +20,7 @@ const ui = useUiStore()
 const settings = useSettingsStore()
 
 const FLOW_ID = 'agent-map'
-const { addNodes, removeNodes, getNodes, fitView, zoomIn, zoomOut, updateNode, onNodeClick, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
+const { addNodes, removeNodes, getNodes, fitView, zoomIn, zoomOut, updateNode, onNodeClick, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
 
 const canvas = ref<HTMLElement | null>(null)
 const hasNodes = ref(false)
@@ -70,7 +70,7 @@ function syncNodes(fit = false): void {
 
   const fresh: Node[] = []
   for (const id of wanted) {
-    const position = placed.get(id)
+    const position = ui.nodePos[id] ?? placed.get(id)
     if (!position) continue
     const node = current.get(id)
     if (!node) {
@@ -153,6 +153,9 @@ watch(
 
 onNodeClick(({ node }) => ui.selectAgent(ui.selectedAgentId === node.id ? null : node.id))
 onPaneClick(() => ui.selectAgent(null))
+onNodeDragStop(({ nodes }) => {
+  for (const n of nodes) ui.setNodePos(n.id, n.position)
+})
 
 const controls = computed(() => [
   { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },

@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlarmClock, AppWindow, Hand, LoaderCircle } from 'lucide-vue-next'
+import { AlarmClock, AppWindow, BellOff, BellRing, Hand, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
+import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import { LONG_WAIT_MS } from '../composables/useNotifications'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const snooze = useSnoozeStore()
+const clock = computed(() => new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }))
+
+function toggleSnooze(id: string): void {
+  const x = terminals.byId[id]
+  if (!x) return
+  if (snooze.isSnoozed(x, now.value)) snooze.clear(id)
+  else snooze.snooze(x, SNOOZE_CHOICES[0])
+}
 const terminals = useTerminalsStore()
 const ui = useUiStore()
 const extras = useExtrasStore()
@@ -26,7 +36,9 @@ const queue = computed(() =>
     .map((x) => {
       const since = x.statusSince ? Date.parse(x.statusSince) : NaN
       const waitedMs = Number.isFinite(since) ? now.value - since : null
+      const until = snooze.until(x, now.value)
       return {
+        snoozedUntil: until === null ? null : clock.value.format(until),
         id: x.id,
         title: displayTitle(x),
         reason: x.waitingFor,
@@ -42,6 +54,7 @@ const queue = computed(() =>
         const since = j.stateSince ? Date.parse(j.stateSince) : NaN
         const waitedMs = Number.isFinite(since) ? now.value - since : null
         return {
+          snoozedUntil: null as string | null,
           id: `job:${j.id}`,
           title: j.name ?? j.id,
           reason: t('jobs.blockedReason'),
@@ -53,8 +66,9 @@ const queue = computed(() =>
         }
       }),
     )
-    .sort((a, b) => a.since - b.since || a.title.localeCompare(b.title)),
+    .sort((a, b) => Number(!!a.snoozedUntil) - Number(!!b.snoozedUntil) || a.since - b.since || a.title.localeCompare(b.title)),
 )
+const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
 </script>
 
 <template>
@@ -71,15 +85,15 @@ const queue = computed(() =>
     >
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 id="waiting-title" class="inline-flex items-center gap-1.5 text-sm font-semibold text-st-waiting">
-          <Hand :size="16" aria-hidden="true" />{{ t('waiting.title', { n: queue.length }) }}
+          <Hand :size="16" aria-hidden="true" />{{ t('waiting.title', { n: active }) }}
         </h2>
         <TransitionGroup tag="ul" name="ccm-list" class="relative flex min-w-0 flex-1 flex-wrap gap-2">
-          <li v-for="item in queue" :key="item.id" class="flex min-w-0 items-center">
+          <li v-for="item in queue" :key="item.id" class="flex min-w-0 items-center" :class="item.snoozedUntil ? 'opacity-60' : ''">
             <component
               :is="item.job ? 'span' : 'button'"
               :type="item.job ? undefined : 'button'"
               class="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border bg-surface px-3 text-sm transition-colors hover:border-st-waiting"
-              :class="[item.long ? 'border-st-error/50' : 'border-line', item.job ? 'cursor-default' : 'cursor-pointer', item.canJump ? 'rounded-r-none' : '']"
+              :class="[item.long && !item.snoozedUntil ? 'border-st-error/50' : 'border-line', item.job ? 'cursor-default' : 'cursor-pointer', item.job ? '' : 'rounded-r-none']"
               :title="item.reason ? t('terminal.waitingFor', { reason: item.reason }) : undefined"
               :aria-label="t('waiting.focus', { title: item.title, waited: item.waited ?? '—' })"
               @click="item.job ? undefined : ui.focusTerminal(item.id)"
@@ -87,14 +101,30 @@ const queue = computed(() =>
               <span v-if="item.job" class="shrink-0 rounded-md bg-raised px-1.5 text-2xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
               <span class="min-w-0 truncate font-medium">{{ item.title }}</span>
               <span v-if="item.reason" class="hidden max-w-[16ch] truncate text-xs text-ink-muted sm:inline">{{ item.reason }}</span>
+              <span v-if="item.snoozedUntil" class="inline-flex shrink-0 items-center gap-1 text-xs text-ink-muted tabular">
+                <BellOff :size="13" aria-hidden="true" />{{ item.snoozedUntil }}
+              </span>
               <span
-                v-if="item.waited"
+                v-else-if="item.waited"
                 class="inline-flex shrink-0 items-center gap-1 text-xs tabular"
                 :class="item.long ? 'font-semibold text-st-error' : 'text-st-waiting'"
               >
                 <AlarmClock v-if="item.long" :size="13" aria-hidden="true" />{{ item.waited }}
               </span>
             </component>
+            <button
+              v-if="!item.job"
+              type="button"
+              class="-ml-px inline-flex size-9 shrink-0 cursor-pointer items-center justify-center border border-line bg-surface text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
+              :class="item.canJump ? '' : 'rounded-r-lg'"
+              :aria-label="item.snoozedUntil ? t('snooze.clear', { title: item.title }) : t('snooze.action', { title: item.title, n: SNOOZE_CHOICES[0] })"
+              :title="item.snoozedUntil ? t('snooze.clearTitle', { at: item.snoozedUntil }) : t('snooze.title', { n: SNOOZE_CHOICES[0] })"
+              :aria-pressed="!!item.snoozedUntil"
+              @click="toggleSnooze(item.id)"
+            >
+              <BellRing v-if="item.snoozedUntil" :size="15" aria-hidden="true" />
+              <BellOff v-else :size="15" aria-hidden="true" />
+            </button>
             <button
               v-if="item.canJump"
               type="button"

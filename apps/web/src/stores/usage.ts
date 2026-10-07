@@ -51,6 +51,17 @@ export interface DayRow {
 
 const RANGE_DAYS: Record<UsageRange, number | null> = { today: 1, '7d': 7, '30d': 30, all: null }
 
+/** Share of prompt tokens served from cache: read / (read + fresh input + cache writes). */
+export function cacheHitRate(a: Pick<Aggregate, 'input' | 'cacheWrite' | 'cacheRead'>): number | null {
+  const denom = a.cacheRead + a.input + a.cacheWrite
+  return denom > 0 ? a.cacheRead / denom : null
+}
+
+/** Relative change; null when there is nothing to compare against. */
+export function change(current: number, previous: number): number | null {
+  return previous > 0 ? (current - previous) / previous : null
+}
+
 export const emptyAggregate = (): Aggregate => ({ messages: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, unpriced: 0 })
 
 export function dayKey(d: Date): string {
@@ -194,6 +205,24 @@ export const useUsageStore = defineStore('usage', () => {
     ),
   )
 
+  /** The window of the same length right before the current one (same project / model filter); none for "all". */
+  const previous = computed<{ from: string; to: string; totals: Aggregate } | null>(() => {
+    const days = RANGE_DAYS[range.value]
+    if (days === null) return null
+    const to = shiftDay(startDay.value, -1)
+    const from = shiftDay(startDay.value, -days)
+    const agg = emptyAggregate()
+    let any = false
+    for (const b of all.value) {
+      if (b.day < from || b.day > to) continue
+      if (project.value !== null && projectOf(b.project) !== project.value) continue
+      if (model.value !== null && b.model !== model.value) continue
+      addBucket(agg, b)
+      any = true
+    }
+    return any ? { from, to, totals: agg } : null
+  })
+
   const visibleSeries = computed(() => SERIES.filter((k) => !hidden.value.includes(k)))
 
   const totals = computed(() => {
@@ -304,6 +333,7 @@ export const useUsageStore = defineStore('usage', () => {
     filtered,
     visibleSeries,
     totals,
+    previous,
     daily,
     byModel,
     byProject,

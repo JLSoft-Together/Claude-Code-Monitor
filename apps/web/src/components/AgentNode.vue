@@ -107,8 +107,14 @@ function startResize(e: PointerEvent, dir: Dir): void {
   const el = box.value
   const node = findNode(props.id)
   if (!el || !node || e.button !== 0) return
+  stop?.()
   const w0 = el.offsetWidth
   const h0 = el.offsetHeight
+  // Height is a min-height, so the box can never be shorter than its content.
+  const prevMin = el.style.minHeight
+  el.style.minHeight = ''
+  const natural = el.offsetHeight
+  el.style.minHeight = prevMin
   const p0 = { ...node.position }
   const zoom = viewport.value.zoom || 1
   const sx = e.clientX
@@ -125,17 +131,20 @@ function startResize(e: PointerEvent, dir: Dir): void {
       next.w = clamp(w0 - dx, minW, 720)
       pos.x = p0.x + w0 - next.w
     }
-    if (dir.includes('s')) next.h = clamp(h0 + dy, 72, 640)
+    if (dir.includes('s')) next.h = clamp(h0 + dy, natural, 640)
     if (dir.includes('n')) {
-      next.h = clamp(h0 - dy, 72, 640)
+      next.h = clamp(h0 - dy, natural, 640)
       pos.y = p0.y + h0 - next.h
     }
     ui.setNodeSize(props.id, next)
     if (pos.x !== p0.x || pos.y !== p0.y) updateNode(props.id, { position: pos })
+    moved = pos.x !== p0.x || pos.y !== p0.y ? pos : null
   }
+  let moved: { x: number; y: number } | null = null
   const up = () => {
     stop?.()
     resizing.value = false
+    if (moved) ui.setNodePos(props.id, moved)
     ui.nodeResized++
   }
   window.addEventListener('pointermove', move)
