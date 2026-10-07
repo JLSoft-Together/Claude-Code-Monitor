@@ -38,3 +38,15 @@ Invariants: grid children `min-w-0` + `grid-cols-[minmax(0,1fr)]` (no horizontal
 - Sprint H web: `stores/attention.ts` (loops 10 s tick, conflicts), `stores/away.ts` (installed in App; blur/hidden ≥ 2 min → summary), `stores/history.ts`; ui `paletteOpen/recapOpen/focusingWindow/windowResult`; views monitor | usage | history (3-tab header). Components: `AwaySummary`, `CommandPalette` (sessions/favorites/commands, Shift+Enter alt action), `RecapDialog`, `history/HistoryView` + `TimelineChart`; MetricsStrip 8 tiles (cost today + budget bar). Notifications: kinds `limit` (forecast < 1 h, budget 80/100 %) and `loop`; taskbar badge. SW registered in `main.ts` only in PROD. Tests `lib/features.test.ts`.
 
 - Agent Map node resize: `ui.nodeSizes` (in-memory), layout tính slot = max(default, h+20), column width = max(316, right+52).
+
+- Snooze: `stores/snooze.ts` (`until(terminal, now)` valid only for same statusSince) → WaitingQueue (bell button, sorted last, dimmed), SessionCard (15 / 60 min), useNotifications (skip + badge excludes).
+- Diagnostics: `DiagnosticsDialog.vue` (ui.diagnosticsOpen; polls diagnostics.get every 5 s) from Settings + Ctrl+K.
+- SessionCard: open buttons (Explorer / VS Code) on cwd row, `ui.opening/openResult`; diff line (+/−, files, new).
+- Usage: `usage.previous` (same-length window before, same filters), `cacheHitRate`, `change`; UsageKpis trend + cache read rate; UsageModels cache column.
+- Agent Map layout persisted in localStorage `ccm.mapLayout` (≤300 entries each, debounced 400 ms).
+- Compact view (D7): `ui.compact` from URL `?mode=compact` only (not localStorage, so side window and main window differ); `ui.toggleCompact`, `setView` exits it. `CompactView.vue` replaces the views in App.vue: waiting (large rows, snooze + jump), working, other live. Header hides tabs, toggle button Minimize2/Maximize2; Ctrl+K command `c:compact`.
+- Onboarding tour: `components/OnboardingTour.vue` + `lib/tour.ts` (TOUR_STEPS, localStorage `ccm.tourDone`). Auto-opens once (800 ms after mount), reopened via `ui.tourOpen` from Settings ("Xem hướng dẫn") and Ctrl+K `c:tour`. Highlights `[data-tour=…]` (tabs, waiting, metrics, sessions, map, activity, limits, palette, compact, settings); missing / hidden target → centered card + `tour.steps.<id>.absent` hint. Opening switches to Monitor (exits compact).
+- CommandPalette: scope chips (all/sessions/favorites/commands, Tab cycles), `parts()` highlights matches, command groups nav/actions/prefs/help, prefs carry `on` tag. Opens settings via `ui.settingsOpen`.
+- SettingsMenu: bell + gear buttons; gear opens right sheet (Teleport, focus trap, Esc). Sections appearance / notifications (ToggleSwitch) / reminders + budget / status line / help.
+- Break reminder: `extras.dayStartedAt` → `lib/breaks.ts` (anchor, slot, next) → `composables/useBreakReminder` (localStorage `ccm.breakSeen` dedupes tabs, no replay on open) → `ui.breakDue` → `BreakToast.vue`; desktop notification tag `ccm-break`.
+- Header: `FlipClock.vue` (1 s tick aligned to second, `FlipChar` per digit, one xs line under the title, hidden < sm), title letters `ccm-title-char` stagger + accent caret.

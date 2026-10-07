@@ -27,3 +27,11 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5s → Monitor → Sess
 
 ## Folder picker
 - `folder-pick.ts`: PowerShell -STA, C# IFileOpenDialog (FOS_PICKFOLDERS), owner = form TopMost vô hình + Raise (AttachThreadInput/Alt tap). Path ra base64 UTF-8. Không input client nào vào script.
+
+## Local actions + git (Sprint I/J)
+- `opener.ts`: `openFolder(dir, app)` — explorer.exe / Code.exe (findVsCode: PATH bin → ../Code.exe, LOCALAPPDATA, ProgramFiles). Only the tracker's cwd.
+- `gitstat.ts`: `readDiffStat(cwd)` git diff --shortstat HEAD + ls-files --others; GIT_OPTIONAL_LOCKS=0, timeout 5 s.
+- `Monitor.scheduleDiff` on first sight + every status change away from busy; `diffs` map → publish `diff`.
+- `server.ts` `ClientContext { reply, clients }`: reply = direct message to asking socket.
+- `Monitor.diagnostics()` + index adds `usage.scanInfo()`, client count.
+- `daystart.ts` `firstStartToday(file)` → `store.dayStartedAt` (snapshot), file `<dataDir>/day-start.json`.

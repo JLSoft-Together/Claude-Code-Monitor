@@ -1,151 +1,103 @@
 # Claude Code Monitor
 
-Dashboard local, realtime, theo dõi mọi session Claude Code CLI đang chạy trên máy Windows: session nào đang `working` / `waiting` / `idle`, main agent đang chạy tool gì, subagent nào đang chạy, token đã dùng.
+Dashboard local, realtime cho mọi session Claude Code CLI đang chạy trên Windows: session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí.
 
-- Chỉ đọc file local của Claude Code — **không** gọi API, **không** gửi prompt, **không** tốn thêm token.
-- Chỉ bind `127.0.0.1` — máy khác trong mạng không truy cập được.
-- Không lưu và không gửi nội dung prompt, tham số tool, env hay secret ra dashboard.
+- Chỉ đọc file local của Claude Code: không gọi API, không gửi prompt, **không tốn thêm token**.
+- Chỉ bind `127.0.0.1`. Không đưa nội dung prompt, tham số tool, env hay secret ra dashboard.
 
 ## Yêu cầu
 
-| Thứ | Version |
-|---|---|
-| Windows | 10 / 11 |
-| Node.js | `20.19+` hoặc `22.12+` |
-| Claude Code CLI | `2.1.289` (version khác vẫn chạy, dashboard hiện cảnh báo version) |
+- Windows 10 / 11, Node.js `20.19+` hoặc `22.12+`
+- Claude Code CLI `2.1.289` (version khác vẫn chạy, có cảnh báo)
+- Không bắt buộc: Git (đếm thay đổi chưa commit), VS Code (nút mở thư mục)
 
-## Chạy nhanh
+## Chạy
 
-**Cách dễ nhất (Windows):** clone về rồi bấm đúp `Claude-Code-Monitor.bat`. Trình duyệt mở trang cài đặt hiện từng bước: kiểm tra Node.js → `npm install` → build dashboard → khởi động monitor, xong tự chuyển sang dashboard. Lần sau bấm lại chỉ mất vài giây (bước nào đã mới nhất thì bỏ qua). Chưa có Node.js thì `Claude-Code-Monitor.bat` đề nghị cài bằng `winget`. Giữ cửa sổ `Claude-Code-Monitor.bat` mở trong lúc dùng; đóng nó là tắt monitor. Lần chạy đầu tạo `Claude-Code-Monitor.lnk` (có icon) cạnh file bat; trang cài đặt có ô tạo lối tắt ngoài Desktop và chạy cùng Windows. Máy khác Windows: `node scripts/launch.mjs`.
+**Cách dễ nhất:** bấm đúp `Claude-Code-Monitor.bat`. Trang cài đặt tự kiểm Node.js, `npm install`, build rồi mở dashboard. Giữ cửa sổ bat mở trong lúc dùng, đóng là tắt.
 
-Cách thủ công:
+Thủ công:
 
 ```powershell
-git clone git@github.com:JLSoft-Together/Claude-Code-Monitor.git
-cd Claude-Code-Monitor
 npm install
 npm start
 ```
 
-Mở **http://127.0.0.1:4317**.
+Mở **http://127.0.0.1:4317**, rồi chạy `claude` ở terminal khác: session hiện lên trong khoảng 1 giây.
 
-Mở Claude Code ở terminal khác (`claude`) — session hiện lên dashboard trong khoảng 1 giây. Không cần cài hook hay cấu hình gì thêm.
+Lần đầu mở, dashboard tự hiện **hướng dẫn từng bước**. Xem lại: `Ctrl K` → "Xem hướng dẫn".
 
-- Tab **Thống kê**: token theo ngày / model / project, tách input · output · cache write · cache read, kèm chi phí ước tính theo giá API. Lần chạy đầu collector đọc toàn bộ transcript (vài chục giây với ~2 GB), sau đó chỉ đọc phần mới.
-- Đặt tên session: bấm nút bút chì trên thẻ session, hoặc `/rename <tên>` trong Claude, hoặc mở bằng `claude -n "<tên>"`. Tên đổi ở tab Windows Terminal không đọc được.
-- Thông báo: nút chuông trên header → thông báo trên máy khi session chờ hoặc Claude trả lời xong (chỉ khi tab dashboard đang ở nền). Tiêu đề tab hiện `(N)` = số session đang chờ.
-- Thẻ session hiện % context (cảnh báo 60 / 80 / 95 %), chế độ quyền (`bypass` tô đỏ), branch git, số lần compact.
-- Yêu thích: bấm ★ trên thẻ session để lưu thư mục. Trong mục Yêu thích: mở Claude mới hoặc `claude --continue` trong thư mục đó (Windows Terminal tab mới, không có WT thì mở cửa sổ PowerShell).
-- Cài đặt (⚙): bộ màu Cam Claude / Cobalt, bật tắt từng loại thông báo.
+Nên làm thêm:
 
-Dừng: `Ctrl+C` ở terminal đang chạy `npm start`.
+1. Bấm **chuông** trên header để bật thông báo khi session chờ bạn.
+2. Cài **status line bridge** (dưới) để có giới hạn 5 giờ / 7 ngày và chi phí.
+3. Chrome / Edge → "Cài đặt ứng dụng" để chạy trong cửa sổ riêng, có badge số session đang chờ.
 
-## Chạy chế độ dev (sửa code)
+## Tính năng chính
 
-```powershell
-npm run dev
+- **Giám sát**: hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới terminal, hoãn nhắc), Agent Map main → subagent, luồng hoạt động.
+- **Thống kê**: token theo ngày / model / project, chi phí ước tính, tỉ lệ cache.
+- **Lịch sử**: thời gian làm việc / chờ của từng session trong ngày, xuất recap Markdown.
+- **Ctrl K**: tìm session, thư mục yêu thích, chạy lệnh nhanh.
+- **Chế độ gọn**: cửa sổ nhỏ đặt cạnh editor, mở thẳng `http://127.0.0.1:4317/?mode=compact`.
+- **Nhắc nghỉ**: mỗi 45 phút tính từ lần bật collector đầu tiên trong ngày. Tắt trong Cài đặt.
+- **Cài đặt** (bánh răng): giao diện, thông báo, ngân sách ngày, status line, chẩn đoán.
+
+## Status line bridge
+
+Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. Thêm vào `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node \"<repo>/scripts/statusline-bridge.mjs\""
+  }
+}
 ```
 
-| Thành phần | Địa chỉ |
-|---|---|
-| Web (Vite, tự reload khi sửa) | http://127.0.0.1:5173 |
-| Collector (WebSocket `/ws`, `/health`) | http://127.0.0.1:4317 |
-
-Vite proxy `/ws` sang collector, nên chỉ cần mở port `5173`.
-
-## Dùng dashboard
-
-| Khu vực | Có gì |
-|---|---|
-| Header | Số session, subagent đang chạy, số `working` / `waiting` / lỗi; trạng thái kết nối; đổi `EN` / `VI`; đổi dark / light |
-| Sessions | Mỗi terminal Claude Code một card: tên session, `kind` (`interactive`, `bg`, …), status, thư mục, PID, thời gian chạy, số subagent, token. **Bấm card** → Agent Map focus vào session đó |
-| Agent Map | Cây main agent → subagent → subagent lồng nhau. Kéo để pan, cuộn để zoom. **Bấm node** → làm nổi cây cha–con + mở panel chi tiết |
-| Recent Activity | Tool bắt đầu / lỗi, subagent bắt đầu / xong, đổi tên session, session kết thúc |
-
-Toolbar Agent Map:
-
-| Nút | Việc |
-|---|---|
-| 👁 | Ẩn / hiện subagent đã xong (`completed`, `cancelled`). Subagent `error` luôn hiện. Lựa chọn được lưu lại |
-| `+` / `−` | Zoom |
-| ⛶ | Fit toàn bộ map vào khung |
-| ▦ | Xếp lại layout |
-
-Status:
-
-| Icon | Status | Nghĩa |
-|---|---|---|
-| ✳ (xoay) | `working` | Claude đang chạy |
-| ◐ | `waiting` | Chờ bạn: permission prompt, input, dialog |
-| ○ | `idle` | Đang rảnh (có thể kèm "Background shell running") |
-| ✓ | `completed` | Subagent xong |
-| ! | `error` | Subagent lỗi |
-| viền đứt | `stale` / `unknown` | Terminal đã tắt — giữ lại 120 phút rồi tự xoá |
-
-Collector tắt / restart → dashboard giữ data cũ, hiện banner stale, tự kết nối lại.
+Đã có status line riêng thì nối thêm: `... statusline-bridge.mjs\" --chain <lệnh cũ>`. Cài đặt trong dashboard có sẵn đoạn này với đường dẫn đúng, bấm để chép.
 
 ## Cấu hình
-
-Đặt biến môi trường trước khi chạy (PowerShell):
-
-```powershell
-$env:CCM_PORT = "4400"
-npm start
-```
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `CCM_PORT` | `4317` | Port collector |
-| `CCM_STALE_TTL_MIN` | `120` | Số phút giữ session đã tắt trước khi xoá khỏi dashboard |
-| `CLAUDE_CONFIG_DIR` | `~/.claude` | Thư mục data của Claude Code |
-| `CCM_WEB_DIST` | `apps/web/dist` | Thư mục web đã build mà collector serve |
-| `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ bước kiểm PID bằng PowerShell (dùng khi test với data giả) |
-| `CCM_DATA_DIR` | `%LOCALAPPDATA%/ccm` | Nơi collector lưu `usage-index.json` (cache thống kê token), `aliases.json` (tên đặt trên dashboard), `favorites.json` (thư mục yêu thích) |
+| `CCM_STALE_TTL_MIN` | `120` | Phút giữ session đã tắt |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Thư mục data Claude Code |
+| `CCM_DATA_DIR` | `%LOCALAPPDATA%/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
+| `CCM_WEB_DIST` | `apps/web/dist` | Web đã build |
+| `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ kiểm PID (dùng với data giả) |
 
-`CCM_PORT` áp dụng cho cả `npm run dev`: proxy của Vite tự trỏ theo port mới.
-
-## Test và demo
+## Dev và test
 
 ```powershell
-npm test            # Vitest, mọi workspace
-npm run typecheck   # tsc + vue-tsc
+npm run dev         # web http://127.0.0.1:5173 + collector :4317
+npm test            # Vitest
+npm run typecheck
+node scripts/demo-fixture.mjs --sessions=5 --subagents=3   # session giả
 ```
 
-Tạo session giả để xem UI khi nhiều session / subagent (không cần Claude Code thật):
+Với data giả: đặt `CLAUDE_CONFIG_DIR` = thư mục script in ra và `CCM_VERIFY_PROCESSES=0` rồi `npm start`.
 
-```powershell
-node scripts/demo-fixture.mjs --sessions=5 --subagents=3
-```
+## Lỗi thường gặp
 
-Script in ra thư mục data giả. Mở terminal khác, chạy collector trỏ vào đó:
-
-```powershell
-$env:CLAUDE_CONFIG_DIR = "<thư mục script in ra>"
-$env:CCM_VERIFY_PROCESSES = "0"
-npm start
-```
-
-Tham số: `--sessions` (mặc định 4) · `--subagents` (3) · `--tick` ms (1200) · `--duration` giây (0 = chạy tới khi `Ctrl+C`).
-
-## Xử lý lỗi thường gặp
+Mở **Cài đặt → Chẩn đoán** trước.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| `EADDRINUSE` khi chạy | Port `4317` đang bận → tắt collector cũ, hoặc `$env:CCM_PORT = "4400"` |
-| Dashboard trống dù Claude Code đang chạy | Kiểm `~/.claude/sessions/` có file `<pid>.json` không; Claude Code cài thư mục khác thì đặt `CLAUDE_CONFIG_DIR` |
-| Cảnh báo version trên card | Claude Code khác `2.1.289` — vẫn chạy, nhưng format file có thể khác |
-| Header hiện `Reconnecting` | Collector đã tắt → chạy lại `npm start`, web tự kết nối lại |
-| Mở bằng IP LAN / domain khác bị `403` | Chủ ý — chỉ nhận `127.0.0.1` / `localhost` |
+| `EADDRINUSE` | Port bận: tắt collector cũ hoặc đổi `CCM_PORT` |
+| Dashboard trống | Kiểm `~/.claude/sessions/` có file `<pid>.json`; thư mục khác thì đặt `CLAUDE_CONFIG_DIR` |
+| `Reconnecting` | Collector đã tắt, chạy lại `npm start` |
+| Không có giới hạn gói | Chưa cài status line bridge, hoặc Claude chưa trả lời lần nào sau khi cài |
+| Không có thông báo | Chưa bấm chuông, trình duyệt chặn, hoặc session đang hoãn nhắc |
+| `403` khi mở bằng IP LAN | Chủ ý: chỉ nhận `127.0.0.1` / `localhost` |
 
 ## Cấu trúc
 
 ```
-apps/collector     Node.js + TS: đọc registry session + transcript, chuẩn hoá, WebSocket
+apps/collector     Node.js + TS: đọc session + transcript, chuẩn hoá, WebSocket
 apps/web           Vue 3 + Vite + Tailwind + Pinia + vue-i18n + Vue Flow
 packages/shared    Kiểu dữ liệu + protocol dùng chung
-scripts/           demo-fixture.mjs
-docs/              claude-code-integration.md — nguồn data Claude Code đã kiểm
-PLAN.md            Scope + trạng thái từng phase
+scripts/           launch.mjs, statusline-bridge.mjs, demo-fixture.mjs
+docs/              claude-code-integration.md: nguồn data Claude Code đã kiểm
 ```
-
-Chi tiết nguồn data và cách map status: [`docs/claude-code-integration.md`](docs/claude-code-integration.md).

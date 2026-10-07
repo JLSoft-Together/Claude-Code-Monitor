@@ -28,3 +28,9 @@ Tokens: input = input + cache_creation; cacheRead separate; total = input + outp
 - Sprint H: `LimitWindow.forecast` (`LimitForecast`), `SessionRecord`, `DayTimeline`/`TimelineLane`/`TimelineSegment` (`LaneStatus`), `FocusWindowResult`. Client: `terminal.focusWindow {terminalId}`, `history.get`, `timeline.get`. Events: `terminal.focusResult`, `history.data`, `history.added`, `timeline.data` (all broadcast).
 
 - `folder.pick {requestId}` (client) → `folder.picked {requestId,result,dir?}` broadcast; tab khớp requestId mới dùng. Result: ok|cancelled|busy|failed|unsupported.
+
+- Direct replies: `ServerMessage.direct = true`, `seq: -1`; web applies without seq check. Used for history.data, timeline.data, terminal.focusResult, folder.picked, terminal.openResult, diagnostics.data.
+- `terminal.open {terminalId, app: explorer|vscode}` → `terminal.openResult {terminalId, app, result}`.
+- `diagnostics.get` → `diagnostics.data: Diagnostics`.
+- `TerminalSession.diff?: GitDiffStat {files, insertions, deletions, untracked, at}`.
+- `MonitorSnapshot.dayStartedAt?: string` — first collector start of the local day (break reminders).

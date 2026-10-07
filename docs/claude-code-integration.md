@@ -302,6 +302,22 @@ No new Claude Code source; everything below is derived from data already read.
 
 **PWA** — `manifest.webmanifest` + `sw.js` (production build only). The service worker caches the app shell (`/`, icons, hashed `/assets/*`) and never touches `/ws` or `/health`; the collector serves everything outside `/assets/` with `no-cache` so a new build replaces the worker. `navigator.setAppBadge` shows the waiting count on the installed app icon.
 
+## 11g. Sprint I/J — local actions and git state (2026-10-08)
+
+**Folder picker (`folder.pick`)** — `apps/collector/src/folder-pick.ts` shows the Windows folder dialog (IFileOpenDialog, folder mode) owned by an invisible topmost form; the chosen path returns base64 UTF-8. No client text reaches the script.
+
+**Open folder (`terminal.open`)** — the client names a session and an app (`explorer` | `vscode`); the collector takes that tracker's own `cwd` and spawns `explorer.exe <dir>` or `Code.exe <dir>` directly (no shell). `code` on PATH is a `.cmd` shim that Node only runs through a shell, so `Code.exe` is located next to the PATH `bin` folder or in the default install folders; `ELECTRON_RUN_AS_NODE` is stripped so a collector started from a VS Code terminal still opens the editor. Results: `ok | notFound | noApp | failed | unsupported`.
+
+**Uncommitted changes (`TerminalSession.diff`)** — new, read-only data source: `git -C <cwd> diff --shortstat HEAD` plus `git ls-files --others --exclude-standard --directory --no-empty-directory` (untracked folders count once). Runs 2 s after a session leaves `busy` and once when it is first seen, 5 s timeout, `GIT_OPTIONAL_LOCKS=0` so it never takes `index.lock` from the session's own git commands. Only counts leave the collector — no file names, no content. Outside a repo (or without git) the field is absent.
+
+**Per-socket replies** — answers to one tab's request (`history.data`, `timeline.data`, `terminal.focusResult`, `folder.picked`, `terminal.openResult`, `diagnostics.data`) are sent only to that socket as `{ seq: -1, direct: true, events }`, outside the broadcast sequence, so they never trigger a resync in other tabs.
+
+**Diagnostics (`diagnostics.get`)** — collector self-report: start time, Node/platform, Claude root and watcher state, process-check flag, live/ended counts, status line report count and last time, usage scan state, data folder, connected tabs. Paths are the user's own local folders; nothing from session files.
+
+**Snooze** — browser-only (localStorage `ccm.snooze`), bound to the waiting episode (`statusSince`): a new wait is never pre-snoozed.
+
+**Break reminders (`MonitorSnapshot.dayStartedAt`)** — collector-owned, not a Claude Code source: `<dataDir>/day-start.json` keeps the first collector start of the local day (`daystart.ts`); restarts later that day keep the morning time. The web reminds every 45 minutes from it (midnight if the collector has run since yesterday), deduplicated across tabs via localStorage.
+
 ## 12. Open items
 
 | Item | State |
