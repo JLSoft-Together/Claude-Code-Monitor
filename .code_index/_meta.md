@@ -30,3 +30,5 @@
 - Favorites add: nút "Chọn…" mở Windows folder picker qua collector (`apps/collector/src/folder-pick.ts` IFileOpenDialog, `Monitor.pickFolder` 1 dialog/lần → `busy`; msg `folder.pick{requestId}` → `folder.picked`; web `connection.pickFolder()` resolve theo requestId).
 - Agent Map resize 8 hướng: `AgentNode.vue` handles `.nodrag`, `ui.nodeSizes`/`nodeResized`; `computeLayout({sizes})` cột/hàng theo size; nhấp đúp handle = reset; Reset layout xóa sizes.
 - History timeline redesign: 3 ô tổng (làm/chờ/rảnh + %), mỗi lane tiêu đề + tổng ở trên, track h-7 full width, tooltip khi hover/tap — `history/TimelineChart.vue`.
+- Focus: `ConsoleHost(pid)` (AttachConsole → GetConsoleWindow → GetAncestor root owner = WT window của tab) trước, fallback walk cha; bỏ khớp theo tên — `apps/collector/src/focus.ts`.
+- History tab: bảng số làm/chờ/rảnh + thanh tỉ lệ mặc định, timeline theo giờ thu vào nút "Xem theo giờ" — `history/TimelineChart.vue`.

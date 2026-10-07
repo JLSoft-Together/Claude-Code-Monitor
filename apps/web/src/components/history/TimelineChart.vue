@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { ChevronDown } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type { LaneStatus } from '@ccm/shared'
 import { duration, now } from '../../lib/format'
@@ -70,6 +71,25 @@ const nowPct = computed(() => pct(now.value))
 
 const hover = ref<{ lane: string; seg: Seg } | null>(null)
 const tipLeft = (s: Seg) => `${Math.min(88, Math.max(12, (pct(s.from) + pct(s.to)) / 2))}%`
+const showHours = ref(false)
+
+const short = (msVal: number) => {
+  const min = Math.round(msVal / 60_000)
+  if (min <= 0) return msVal > 0 ? t('history.dur.lt1') : '–'
+  const h = Math.floor(min / 60)
+  return h ? t('history.dur.hm', { h, m: min % 60 }) : t('history.dur.m', { m: min })
+}
+
+const rows = computed(() =>
+  [...lanes.value]
+    .map((l) => {
+      const sum = l.totals.working + l.totals.waiting + l.totals.idle
+      const share = (k: LaneStatus) => (sum ? (l.totals[k] / sum) * 100 : 0)
+      return { ...l, sum, share: { working: share('working'), waiting: share('waiting'), idle: share('idle') } }
+    })
+    .sort((a, b) => b.totals.working - a.totals.working),
+)
+
 const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('history.now') : clock.value.format(s.to)}`
 </script>
 
@@ -92,6 +112,54 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
         </div>
       </div>
 
+      <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(3.5rem,auto))] items-center gap-x-3 border-b border-line pb-2 text-xs text-ink-muted sm:gap-x-6">
+        <span>{{ t('history.col.session') }}</span>
+        <span v-for="k in STATUSES" :key="k" class="inline-flex items-center justify-end gap-1.5">
+          <span class="size-2 rounded-full" :class="k === 'idle' ? 'bg-st-idle/50' : FILL[k]" aria-hidden="true" />{{ t(`status.${k}`) }}
+        </span>
+      </div>
+      <ul>
+        <li v-for="r in rows" :key="r.id" class="border-b border-line py-3 last:border-b-0">
+          <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(3.5rem,auto))] items-center gap-x-3 sm:gap-x-6">
+            <button
+              type="button"
+              class="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-sm font-medium hover:underline disabled:cursor-default disabled:no-underline"
+              :class="r.live ? 'text-ink' : 'text-ink-muted'"
+              :title="r.title"
+              :disabled="!r.live"
+              @click="(ui.setView('monitor'), ui.focusTerminal(r.id))"
+            >
+              <StatusIcon v-if="r.current && r.live" :status="r.current" :size="13" :animate="false" class="shrink-0" />
+              <span class="truncate">{{ r.title }}</span>
+            </button>
+            <span class="text-right text-sm font-semibold text-st-working tabular">{{ short(r.totals.working) }}</span>
+            <span class="text-right text-sm tabular" :class="r.totals.waiting ? 'font-semibold text-st-waiting' : 'text-ink-faint'">{{ short(r.totals.waiting) }}</span>
+            <span class="text-right text-sm text-ink-muted tabular">{{ short(r.totals.idle) }}</span>
+          </div>
+          <div class="mt-2 flex items-center gap-3">
+            <div
+              class="flex h-2.5 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-full bg-raised"
+              role="img"
+              :aria-label="t('history.laneLabel', { title: r.title, working: short(r.totals.working), waiting: short(r.totals.waiting) })"
+            >
+              <span v-for="k in STATUSES" v-show="r.share[k] > 0" :key="k" class="h-full" :class="FILL[k]" :style="{ width: `${r.share[k]}%` }" />
+            </div>
+            <span class="w-20 shrink-0 text-right text-xs text-ink-muted tabular">{{ t('history.workShare', { p: Math.round(r.share.working) }) }}</span>
+          </div>
+        </li>
+      </ul>
+
+      <button
+        type="button"
+        class="mt-4 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink-muted transition-colors hover:border-ink-faint hover:text-ink"
+        :aria-expanded="showHours"
+        @click="showHours = !showHours"
+      >
+        <ChevronDown :size="14" class="transition-transform" :class="showHours ? 'rotate-180' : ''" aria-hidden="true" />{{ showHours ? t('history.hideHours') : t('history.showHours') }}
+      </button>
+
+      <div v-if="showHours" class="mt-4">
+      <p class="mb-3 text-xs text-ink-muted">{{ t('history.hoursHint') }}</p>
       <div class="relative mb-1 h-5 text-2xs text-ink-faint tabular" aria-hidden="true">
         <span
           v-for="(tk, i) in span.ticks"
@@ -157,6 +225,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
           </div>
         </li>
       </ul>
+      </div>
     </template>
   </div>
 </template>

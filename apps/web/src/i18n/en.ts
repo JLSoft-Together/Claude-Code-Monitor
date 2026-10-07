@@ -446,6 +446,11 @@ export default {
     group: { sessions: 'Sessions', favorites: 'Favorites', commands: 'Commands' },
   },
   history: {
+    workShare: '{p}% working',
+    showHours: 'Show by hour',
+    hideHours: 'Hide by hour',
+    hoursHint: 'Each bar is one session across the day. Hover a block for details.',
+    dur: { hm: '{h}h {m}m', m: '{m}m', lt1: '<1m' },
     title: 'History',
     subtitle: 'What your sessions did today and the sessions that already ended. Kept on this machine by the collector.',
     timeline: 'Today',

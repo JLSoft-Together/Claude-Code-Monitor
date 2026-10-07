@@ -448,6 +448,11 @@ const vi: typeof en = {
     group: { sessions: 'Session', favorites: 'Yêu thích', commands: 'Lệnh' },
   },
   history: {
+    workShare: '{p}% làm',
+    showHours: 'Xem theo giờ',
+    hideHours: 'Ẩn theo giờ',
+    hoursHint: 'Mỗi thanh là một session theo giờ trong ngày. Rê chuột lên một đoạn để xem chi tiết.',
+    dur: { hm: '{h}g {m}p', m: '{m}p', lt1: '<1p' },
     title: 'Lịch sử',
     subtitle: 'Các session đã làm gì hôm nay và những session đã kết thúc. Collector lưu trên máy này.',
     timeline: 'Hôm nay',
