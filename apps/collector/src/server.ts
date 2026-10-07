@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
-import type { ClientMessage, ServerMessage } from '@ccm/shared'
+import type { ClientMessage, MonitorEvent, ServerMessage } from '@ccm/shared'
 import type { MonitorStore } from './store'
 
 const MIME: Record<string, string> = {
@@ -93,6 +93,12 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
   stream.pipe(res)
 }
 
+/** Per-request answer channel: `reply` goes to the asking socket only. */
+export interface ClientContext {
+  reply: (event: MonitorEvent) => void
+  clients: number
+}
+
 export function startServer(options: {
   host: string
   port: number
@@ -101,7 +107,7 @@ export function startServer(options: {
   /** Extra origin ports allowed to connect (Vite dev server). */
   devOriginPorts?: readonly number[]
   heartbeatMs?: number
-  onClientMessage?: (message: ClientMessage) => void
+  onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
 }): Promise<Server> {
   const { store } = options
   const ports = [options.port, ...(options.devOriginPorts ?? [])]
@@ -161,33 +167,36 @@ export function startServer(options: {
     alive.set(ws, true)
     ws.on('pong', () => alive.set(ws, true))
     send(ws, store.snapshotMessage())
+    const ctx = (): ClientContext => ({ reply: (event) => send(ws, { seq: -1, direct: true, events: [event] }), clients: clients.size })
     ws.on('message', (data) => {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; label?: unknown }
+        const m = msg as { type?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; label?: unknown; app?: unknown; requestId?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'terminal.alias' && typeof m.terminalId === 'string' && (typeof m.alias === 'string' || m.alias === null)) {
-          options.onClientMessage?.({ type: 'terminal.alias', terminalId: m.terminalId, alias: m.alias })
+          options.onClientMessage?.({ type: 'terminal.alias', terminalId: m.terminalId, alias: m.alias }, ctx())
         } else if (m.type === 'favorite.toggle' && typeof m.terminalId === 'string') {
-          options.onClientMessage?.({ type: 'favorite.toggle', terminalId: m.terminalId })
+          options.onClientMessage?.({ type: 'favorite.toggle', terminalId: m.terminalId }, ctx())
         } else if (m.type === 'favorite.rename' && typeof m.dir === 'string' && (typeof m.label === 'string' || m.label === null)) {
-          options.onClientMessage?.({ type: 'favorite.rename', dir: m.dir, label: m.label })
+          options.onClientMessage?.({ type: 'favorite.rename', dir: m.dir, label: m.label }, ctx())
         } else if (m.type === 'favorite.remove' && typeof m.dir === 'string') {
-          options.onClientMessage?.({ type: 'favorite.remove', dir: m.dir })
+          options.onClientMessage?.({ type: 'favorite.remove', dir: m.dir }, ctx())
         } else if (m.type === 'favorite.add' && typeof m.dir === 'string' && (m.label === undefined || m.label === null || typeof m.label === 'string')) {
-          options.onClientMessage?.({ type: 'favorite.add', dir: m.dir, label: m.label })
+          options.onClientMessage?.({ type: 'favorite.add', dir: m.dir, label: m.label }, ctx())
         } else if (m.type === 'folder.pick' && typeof m.requestId === 'string' && m.requestId.length <= 64) {
-          options.onClientMessage?.({ type: 'folder.pick', requestId: m.requestId })
-        } else if (m.type === 'history.get' || m.type === 'timeline.get') {
-          options.onClientMessage?.({ type: m.type })
+          options.onClientMessage?.({ type: 'folder.pick', requestId: m.requestId }, ctx())
+        } else if (m.type === 'terminal.open' && typeof m.terminalId === 'string' && (m.app === 'explorer' || m.app === 'vscode')) {
+          options.onClientMessage?.({ type: 'terminal.open', terminalId: m.terminalId, app: m.app }, ctx())
+        } else if (m.type === 'history.get' || m.type === 'timeline.get' || m.type === 'diagnostics.get') {
+          options.onClientMessage?.({ type: m.type }, ctx())
         } else if (m.type === 'terminal.focusWindow' && typeof m.terminalId === 'string') {
-          options.onClientMessage?.({ type: 'terminal.focusWindow', terminalId: m.terminalId })
+          options.onClientMessage?.({ type: 'terminal.focusWindow', terminalId: m.terminalId }, ctx())
         } else if (m.type === 'terminal.dismiss' && (m.terminalId === undefined || typeof m.terminalId === 'string')) {
-          options.onClientMessage?.({ type: 'terminal.dismiss', terminalId: m.terminalId })
+          options.onClientMessage?.({ type: 'terminal.dismiss', terminalId: m.terminalId }, ctx())
         } else if (m.type === 'favorite.open' && typeof m.dir === 'string' && (m.mode === 'new' || m.mode === 'continue')) {
-          options.onClientMessage?.({ type: 'favorite.open', dir: m.dir, mode: m.mode })
+          options.onClientMessage?.({ type: 'favorite.open', dir: m.dir, mode: m.mode }, ctx())
         }
       } catch {
         return

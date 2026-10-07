@@ -179,6 +179,10 @@ export class UsageIndex {
     } = {},
   ) {}
 
+  scanInfo(): UsageScan {
+    return { ...this.scan }
+  }
+
   snapshot(): UsageSnapshot {
     return { buckets: [...this.totals.values()], scan: { ...this.scan } }
   }

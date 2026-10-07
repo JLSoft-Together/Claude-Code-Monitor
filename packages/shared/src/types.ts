@@ -38,6 +38,8 @@ export interface TerminalSession {
   compactions?: number
   /** Session cost as reported by Claude Code's status line (opt-in bridge). */
   costUsd?: number
+  /** Uncommitted changes in the session's git checkout (read-only `git diff --shortstat`, refreshed when a turn ends). */
+  diff?: GitDiffStat
 
   startedAt?: string
   lastActivityAt?: string
@@ -146,6 +148,8 @@ export interface MonitorSnapshot {
   modelNames?: Record<string, string>
   /** Ready-to-paste `statusLine.command` for the opt-in bridge (absolute path on this machine). */
   statusLineCommand?: string
+  /** First collector start today (local day), the anchor for break reminders. */
+  dayStartedAt?: string
 }
 
 export type JobState = 'working' | 'blocked' | 'done' | 'unknown'
@@ -275,6 +279,34 @@ export interface DayTimeline {
   lanes: TimelineLane[]
 }
 
+export interface GitDiffStat {
+  files: number
+  insertions: number
+  deletions: number
+  untracked: number
+  at: string
+}
+
+export type OpenApp = 'explorer' | 'vscode'
+export type OpenResult = 'ok' | 'notFound' | 'noApp' | 'failed' | 'unsupported'
+
+/** Collector self-report for the diagnostics panel; paths are the user's own local folders. */
+export interface Diagnostics {
+  collectorVersion?: string
+  startedAt: string
+  platform: string
+  node: string
+  claudeRoot: string
+  claudeRootFound: boolean
+  dataDir: string
+  watchers: { sessions: boolean; projects: boolean }
+  verifyProcesses: boolean
+  sessions: { live: number; ended: number }
+  statusLine: { reports: number; lastAt?: string }
+  usage?: UsageScan
+  clients: number
+}
+
 /** Outcome of bringing a session's terminal window to the front. */
 export type FocusWindowResult = 'ok' | 'notFound' | 'ambiguous' | 'failed' | 'unsupported'
 export type FolderPickResult = 'ok' | 'cancelled' | 'busy' | 'failed' | 'unsupported'
@@ -303,10 +335,14 @@ export type MonitorEvent =
   | { type: 'history.data'; payload: { sessions: SessionRecord[] } }
   | { type: 'history.added'; payload: SessionRecord }
   | { type: 'timeline.data'; payload: DayTimeline }
+  | { type: 'terminal.openResult'; payload: { terminalId: string; app: OpenApp; result: OpenResult } }
+  | { type: 'diagnostics.data'; payload: Diagnostics }
 
 export interface ServerMessage {
   seq: number
   events: MonitorEvent[]
+  /** Answer to one socket's request; outside the broadcast sequence, so it never triggers a resync. */
+  direct?: true
 }
 
 export type ClientMessage =
@@ -327,3 +363,6 @@ export type ClientMessage =
   /** Ask for the ended-session history / today's status timeline (answered with `history.data` / `timeline.data`). */
   | { type: 'history.get' }
   | { type: 'timeline.get' }
+  /** Open the session's working folder in Explorer or VS Code (path comes from the collector, never the client). */
+  | { type: 'terminal.open'; terminalId: string; app: OpenApp }
+  | { type: 'diagnostics.get' }

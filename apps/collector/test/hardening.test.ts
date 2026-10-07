@@ -120,3 +120,23 @@ describe('parsePickOutput', () => {
     expect(parsePickOutput('ok:')).toEqual({ result: 'failed' })
   })
 })
+
+describe('git diff shortstat', () => {
+  it('parses singular, plural and missing parts', async () => {
+    const { parseShortstat } = await import('../src/gitstat')
+    expect(parseShortstat(' 9 files changed, 340 insertions(+), 12 deletions(-)\n')).toEqual({ files: 9, insertions: 340, deletions: 12 })
+    expect(parseShortstat(' 1 file changed, 1 deletion(-)')).toEqual({ files: 1, insertions: 0, deletions: 1 })
+    expect(parseShortstat('')).toEqual({ files: 0, insertions: 0, deletions: 0 })
+  })
+})
+
+describe('openFolder', () => {
+  it('passes the folder as a plain argument and reports a missing folder', async () => {
+    const { openFolder } = await import('../src/opener')
+    const calls: string[][] = []
+    const spawner = async (cmd: string, args: string[]) => void calls.push([cmd, ...args])
+    expect(await openFolder(process.cwd(), 'explorer', spawner)).toBe('ok')
+    expect(calls[0]?.[0]).toBe('explorer.exe')
+    expect(await openFolder(path.join(process.cwd(), 'no-such-dir-xyz'), 'explorer', spawner)).toBe('notFound')
+  })
+})

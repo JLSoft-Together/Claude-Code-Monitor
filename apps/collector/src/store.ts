@@ -56,6 +56,7 @@ export class MonitorStore implements UsageSink {
   private response: ResponseStats | null = null
   private modelNames: Record<string, string> = {}
   statusLineCommand?: string
+  dayStartedAt?: string
   private readonly usage = new Map<string, UsageBucket>()
   private usageScan: UsageScan = { state: 'idle', filesDone: 0, filesTotal: 0 }
   private favorites: Favorite[] = []
@@ -241,6 +242,7 @@ export class MonitorStore implements UsageSink {
       response: this.response ?? undefined,
       modelNames: { ...this.modelNames },
       statusLineCommand: this.statusLineCommand,
+      dayStartedAt: this.dayStartedAt,
     }
   }
 

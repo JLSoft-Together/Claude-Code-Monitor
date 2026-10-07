@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { AliasStore } from './aliases'
+import { firstStartToday } from './daystart'
 import { loadConfig } from './config'
 import { FavoriteStore } from './favorites'
 import { LimitHistory } from './forecast'
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const config = loadConfig()
   const store = new MonitorStore({ activityLimit: config.activityLimit, batchMs: config.batchMs })
   store.statusLineCommand = `node "${config.statusLineBridge.replaceAll('\\', '/')}"`
+  store.dayStartedAt = await firstStartToday(path.join(config.dataDir, 'day-start.json'))
   const aliases = new AliasStore(path.join(config.dataDir, 'aliases.json'))
   await aliases.load()
   const favorites = new FavoriteStore(path.join(config.dataDir, 'favorites.json'))
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
     webDist: config.webDist,
     devOriginPorts: config.devOriginPorts,
     store,
-    onClientMessage: (message) => {
+    onClientMessage: (message, ctx) => {
       switch (message.type) {
         case 'terminal.alias':
           monitor.setAlias(message.terminalId, message.alias)
@@ -63,16 +65,22 @@ async function main(): Promise<void> {
           void monitor.addFavorite(message.dir, message.label)
           break
         case 'folder.pick':
-          void monitor.pickFolder(message.requestId)
+          void monitor.pickFolder(message.requestId, ctx.reply)
           break
         case 'history.get':
-          monitor.sendHistory()
+          monitor.sendHistory(ctx.reply)
           break
         case 'timeline.get':
-          monitor.sendTimeline()
+          monitor.sendTimeline(ctx.reply)
           break
         case 'terminal.focusWindow':
-          void monitor.focusWindow(message.terminalId)
+          void monitor.focusWindow(message.terminalId, ctx.reply)
+          break
+        case 'terminal.open':
+          void monitor.openFolder(message.terminalId, message.app, ctx.reply)
+          break
+        case 'diagnostics.get':
+          ctx.reply({ type: 'diagnostics.data', payload: { ...monitor.diagnostics(), usage: usage.scanInfo(), clients: ctx.clients } })
           break
         case 'terminal.dismiss':
           monitor.dismissEnded(message.terminalId)

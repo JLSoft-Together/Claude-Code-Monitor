@@ -1,7 +1,7 @@
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectorConfig } from '../src/config'
 import { Monitor, type MonitorDeps } from '../src/monitor'
 import { MonitorStore } from '../src/store'
@@ -197,6 +197,32 @@ describe('Monitor with fixture claude root', () => {
     store.flush()
     expect(pids).toEqual([PID])
     expect(results).toEqual([`${id}|ok`, 'nope|notFound'])
+  })
+
+  it('opens only the tracked cwd and answers the asking socket', async () => {
+    const opened: string[] = []
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, { ...deps(), openFolder: async (dir, app) => (opened.push(`${app}:${dir}`), 'ok') })
+    await monitor.start({ watch: false })
+    const id = store.snapshot().terminals[0]!.id
+    const replies: string[] = []
+    const reply = (e: { type: string; payload: unknown }) => replies.push(`${e.type}:${JSON.stringify(e.payload)}`)
+    await monitor.openFolder(id, 'vscode', reply)
+    await monitor.openFolder('nope', 'explorer', reply)
+    expect(opened).toEqual([`vscode:${CWD}`])
+    expect(replies[0]).toContain('"result":"ok"')
+    expect(replies[1]).toContain('"result":"notFound"')
+    expect(monitor.diagnostics().sessions.live).toBe(1)
+  })
+
+  it('publishes the uncommitted diff once a turn settles', async () => {
+    const calls: string[] = []
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    const stat = { files: 3, insertions: 10, deletions: 2, untracked: 1, at: new Date(0).toISOString() }
+    monitor = new Monitor(config(), store, { ...deps(), diffDelayMs: 1, diffStat: async (cwd) => (calls.push(cwd), stat) })
+    await monitor.start({ watch: false })
+    await vi.waitFor(() => expect(store.snapshot().terminals[0]?.diff?.insertions).toBe(10))
+    expect(calls).toEqual([CWD])
   })
 
   it('adds a favorite by path only for an existing local directory', async () => {

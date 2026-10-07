@@ -3,12 +3,14 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
-import type { BackgroundJob, FocusWindowResult, FolderPickResult, LaunchMode, SessionRecord } from '@ccm/shared'
+import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord } from '@ccm/shared'
 import { AliasStore, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
 import { focusProcessWindow } from './focus'
 import { pickFolder } from './folder-pick'
+import { readDiffStat } from './gitstat'
+import { openFolder } from './opener'
 import { LimitHistory } from './forecast'
 import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
@@ -37,9 +39,17 @@ export interface MonitorDeps {
   launch?: (dir: string, mode: LaunchMode) => Promise<void>
   focusWindow?: (pid: number) => Promise<FocusWindowResult>
   pickFolder?: () => Promise<{ result: FolderPickResult; dir?: string }>
+  openFolder?: (dir: string, app: OpenApp) => Promise<OpenResult>
+  diffStat?: (cwd: string) => Promise<GitDiffStat | null>
+  diffDelayMs?: number
 }
 
-const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: focusProcessWindow, pickFolder }
+/** Sends an answer to the socket that asked; without one (tests, internal calls) it falls back to a broadcast. */
+export type Reply = (event: MonitorEvent) => void
+
+const DIFF_DEBOUNCE_MS = 2_000
+
+const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: focusProcessWindow, pickFolder, openFolder, diffStat: readDiffStat }
 
 export class Monitor {
   private readonly trackers = new Map<string, SessionTracker>()
@@ -64,6 +74,10 @@ export class Monitor {
   private jobsLoaded = false
   private focusing: Promise<void> = Promise.resolve()
   private picking = false
+  private readonly diffs = new Map<string, GitDiffStat>()
+  private readonly diffTimers = new Map<string, NodeJS.Timeout>()
+  private readonly startedAt = new Date().toISOString()
+  private statusReports: { count: number; lastAt?: string } = { count: 0 }
   private readonly limitHistory: LimitHistory
   private readonly history: SessionHistory
   private readonly timeline: StatusTimeline
@@ -112,6 +126,7 @@ export class Monitor {
       const now = this.deps.now()
       await this.pollJobs(now)
       const records = await this.statusLine.read(now)
+      this.statusReports = { count: records.length, lastAt: newest(records.map((r) => r.at)) ?? this.statusReports.lastAt }
       this.store.setLimits(this.limitHistory.apply(latestLimits(records)))
       const changed = new Set<string>()
       const live = new Set<string>()
@@ -122,7 +137,9 @@ export class Monitor {
         this.costs.set(r.sessionId, r.costUsd)
         changed.add(r.sessionId)
       }
-      for (const id of this.costs.keys()) if (!live.has(id)) this.costs.delete(id)
+      // A status line file can expire while its session is still open; keep the last cost until the tracker goes.
+      const tracked = new Set([...this.trackers.values()].map((t) => t.sessionId).filter(Boolean))
+      for (const id of this.costs.keys()) if (!live.has(id) && !tracked.has(id)) this.costs.delete(id)
       if (changed.size) for (const t of this.trackers.values()) if (t.sessionId && changed.has(t.sessionId)) this.publish(t)
       if (this.response.rollDay()) this.store.setResponse(this.response.stats())
     } catch (err) {
@@ -153,6 +170,7 @@ export class Monitor {
     for (const w of this.watchers) w.close()
     for (const t of this.timers) clearInterval(t)
     for (const t of this.syncTimers.values()) clearTimeout(t)
+    for (const t of this.diffTimers.values()) clearTimeout(t)
     if (this.registryTimer) clearTimeout(this.registryTimer)
   }
 
@@ -209,6 +227,7 @@ export class Monitor {
       this.trackers.set(tracker.terminalId, tracker)
       await tracker.sync(true)
       this.publish(tracker)
+      this.scheduleDiff(tracker)
       if (!initial) {
         this.pushActivity([{ kind: 'terminal.started', terminalId: tracker.terminalId, data: { title: tracker.buildTerminal().title } }])
       }
@@ -241,6 +260,7 @@ export class Monitor {
       const repliedAt = entry.statusUpdatedAt ?? this.deps.now()
       if (this.response.record(repliedAt - prev.statusUpdatedAt)) this.store.setResponse(this.response.stats())
     }
+    if (entry.status !== prev.status && entry.status !== 'busy') this.scheduleDiff(tracker)
     if (entry.status !== prev.status && entry.status === 'waiting') {
       drafts.push({ kind: 'terminal.status', terminalId: tracker.terminalId, data: { to: 'waiting', waitingFor: entry.waitingFor } })
     }
@@ -332,6 +352,9 @@ export class Monitor {
 
   private forget(tracker: SessionTracker): void {
     this.trackers.delete(tracker.terminalId)
+    this.diffs.delete(tracker.terminalId)
+    clearTimeout(this.diffTimers.get(tracker.terminalId))
+    this.diffTimers.delete(tracker.terminalId)
     this.store.removeTerminal(tracker.terminalId)
     this.aliases.delete(tracker.terminalId)
   }
@@ -426,30 +449,91 @@ export class Monitor {
     }
   }
 
-  sendHistory(): void {
-    this.store.historyData(this.history.list())
+  sendHistory(reply?: Reply): void {
+    if (reply) reply({ type: 'history.data', payload: { sessions: this.history.list() } })
+    else this.store.historyData(this.history.list())
   }
 
-  sendTimeline(): void {
-    this.store.timelineData(this.timeline.data())
+  sendTimeline(reply?: Reply): void {
+    if (reply) reply({ type: 'timeline.data', payload: this.timeline.data() })
+    else this.store.timelineData(this.timeline.data())
+  }
+
+  /** Opens the tracked session's own cwd; the client only names the session. */
+  async openFolder(terminalId: string, app: OpenApp, reply: Reply): Promise<void> {
+    const cwd = this.trackers.get(terminalId)?.record.cwd
+    const open = this.deps.openFolder
+    let result: OpenResult
+    if (!cwd) result = 'notFound'
+    else if (!open) result = 'unsupported'
+    else result = await open(cwd, app).catch((): OpenResult => 'failed')
+    reply({ type: 'terminal.openResult', payload: { terminalId, app, result } })
+  }
+
+  diagnostics(): Omit<Diagnostics, 'usage' | 'clients'> {
+    let live = 0
+    let ended = 0
+    for (const t of this.trackers.values()) {
+      if (t.ended) ended++
+      else live++
+    }
+    return {
+      startedAt: this.startedAt,
+      platform: `${process.platform} ${process.arch}`,
+      node: process.version,
+      claudeRoot: this.config.claudeRoot,
+      claudeRootFound: this.sessionsWatched || this.projectsWatched,
+      dataDir: this.config.dataDir,
+      watchers: { sessions: this.sessionsWatched, projects: this.projectsWatched },
+      verifyProcesses: this.config.verifyProcesses,
+      sessions: { live, ended },
+      statusLine: { reports: this.statusReports.count, lastAt: this.statusReports.lastAt },
+    }
+  }
+
+  /** Refreshes the uncommitted-change count once a turn settles; debounced per session. */
+  private scheduleDiff(tracker: SessionTracker): void {
+    const read = this.deps.diffStat
+    const cwd = tracker.record.cwd
+    if (!read || !cwd || this.stopped) return
+    clearTimeout(this.diffTimers.get(tracker.terminalId))
+    this.diffTimers.set(
+      tracker.terminalId,
+      setTimeout(() => {
+        this.diffTimers.delete(tracker.terminalId)
+        void read(cwd)
+          .catch(() => null)
+          .then((stat) => {
+            if (this.trackers.get(tracker.terminalId) !== tracker) return
+            const prev = this.diffs.get(tracker.terminalId)
+            if (!stat && !prev) return
+            if (stat && prev && sameDiff(stat, prev)) return
+            if (stat) this.diffs.set(tracker.terminalId, stat)
+            else this.diffs.delete(tracker.terminalId)
+            this.publish(tracker)
+          })
+      }, this.deps.diffDelayMs ?? DIFF_DEBOUNCE_MS),
+    )
   }
 
   /** Opens the native folder dialog; one at a time, a second request while it is open answers busy. */
-  async pickFolder(requestId: string): Promise<void> {
+  async pickFolder(requestId: string, reply?: Reply): Promise<void> {
+    const answer = (result: FolderPickResult, dir?: string) =>
+      reply ? reply({ type: 'folder.picked', payload: { requestId, result, dir } }) : this.store.folderPicked(requestId, result, dir)
     const pick = this.deps.pickFolder
-    if (!pick) return this.store.folderPicked(requestId, 'unsupported')
-    if (this.picking) return this.store.folderPicked(requestId, 'busy')
+    if (!pick) return answer('unsupported')
+    if (this.picking) return answer('busy')
     this.picking = true
     try {
       const r = await pick().catch(() => ({ result: 'failed' as const, dir: undefined }))
-      this.store.folderPicked(requestId, r.result, r.dir)
+      answer(r.result, r.dir)
     } finally {
       this.picking = false
     }
   }
 
   /** Raises the window of a live session; requests run one at a time and every request gets an answer. */
-  focusWindow(terminalId: string): Promise<void> {
+  focusWindow(terminalId: string, reply?: Reply): Promise<void> {
     const run = async () => {
       const tracker = this.trackers.get(terminalId)
       const focus = this.deps.focusWindow
@@ -457,7 +541,8 @@ export class Monitor {
       if (!tracker || tracker.ended) result = 'notFound'
       else if (!focus) result = 'unsupported'
       else result = await focus(tracker.record.pid).catch((): FocusWindowResult => 'failed')
-      this.store.focusResult(terminalId, result)
+      if (reply) reply({ type: 'terminal.focusResult', payload: { terminalId, result } })
+      else this.store.focusResult(terminalId, result)
     }
     this.focusing = this.focusing.then(run, run)
     return this.focusing
@@ -473,6 +558,7 @@ export class Monitor {
       ...tracker.buildTerminal(),
       alias: this.aliases.get(tracker.terminalId),
       costUsd: sessionId ? this.costs.get(sessionId) : undefined,
+      diff: this.diffs.get(tracker.terminalId),
     }
     this.store.upsertTerminal(terminal)
     this.timeline.observe(terminal.id, terminal.alias ?? terminal.title, terminal.status, terminal.statusSince)
@@ -545,3 +631,12 @@ export class Monitor {
     }
   }
 }
+
+function newest(values: (string | undefined)[]): string | undefined {
+  let best: string | undefined
+  for (const v of values) if (v && (!best || v > best)) best = v
+  return best
+}
+
+const sameDiff = (a: GitDiffStat, b: GitDiffStat) =>
+  a.files === b.files && a.insertions === b.insertions && a.deletions === b.deletions && a.untracked === b.untracked
