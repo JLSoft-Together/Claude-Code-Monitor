@@ -1,0 +1,32 @@
+{
+  "name": "@ccm/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ccm/shared": "*",
+    "@vue-flow/background": "^1.3.2",
+    "@vue-flow/core": "^1.45.0",
+    "lucide-vue-next": "^0.544.0",
+    "pinia": "^3.0.3",
+    "vue": "^3.5.22",
+    "vue-i18n": "^11.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.0.0",
+    "tailwindcss": "^4.1.14",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.1.1"
+  }
+}

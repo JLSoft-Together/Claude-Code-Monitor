@@ -228,6 +228,61 @@ docs/claude-code-integration.md
 
 ---
 
+# 6A. Pre-Discovery Findings & Confirmed Decisions (2026-10-07)
+
+Quick inspection of the installed Claude Code `2.1.289` (field names only, no content read) found these sources. Phase 1 must verify and complete them.
+
+## Discovered sources
+
+| Source | Fields / content | Use |
+|---|---|---|
+| `~/.claude/sessions/<pid>.json` | `pid`, `sessionId`, `cwd`, `startedAt`, `procStart`, `version`, `kind`, `entrypoint`, `name`, `nameSource`, `status`, `updatedAt`, `statusUpdatedAt` | Session registry: discovery, title, status. Watch one directory instead of scanning processes |
+| `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl` | Main agent transcript | Current tool, activity, token usage (verify) |
+| `~/.claude/projects/<cwd-slug>/<sessionId>/subagents/agent-<id>.jsonl` | Subagent transcript | Subagent tool/activity/completion |
+| `~/.claude/projects/<cwd-slug>/<sessionId>/subagents/agent-<id>.meta.json` | `agentType`, `description`, `toolUseId`, `spawnDepth`, `requestShape` | Hierarchy: `toolUseId` links to the parent tool call; `spawnDepth` gives nesting |
+| Hooks in `settings.json` | Realtime lifecycle events | Optional, not in MVP (see Decision 4) |
+
+Root directory must honor the `CLAUDE_CONFIG_DIR` env override, defaulting to `~/.claude`.
+
+## Confirmed decisions
+
+1. **Title = Claude session `name`** (from `sessions/<pid>.json`, changed via `/rename`; `nameSource` tells derived vs user-set). Windows Terminal tab title is V2.
+2. **Status mapping table** from raw Claude status to display status, maintained in `packages/shared`. Phase 1 lists every raw value observed.
+
+   | Raw `status` | Display status |
+   |---|---|
+   | `busy` | `working` |
+   | `waiting` | `waiting` (+ `waitingFor` reason) |
+   | `shell` | `idle` + "background shell" label |
+   | `idle` | `idle` |
+   | anything else | `unknown` |
+
+   Verified in Phase 1 — see `docs/claude-code-integration.md` §3.
+
+3. **Ended sessions stay visible as `stale` for 120 minutes** (configurable), then are removed. A session is ended when its PID is no longer alive, or the PID is alive but `procStart` does not match (PID reuse).
+4. **Hooks are not used in MVP.** MVP is file-based only, so it needs zero configuration of the user's Claude Code. Hooks may be added later as an opt-in with explicit install/uninstall commands that back up and merge `settings.json` without touching existing hooks.
+5. **One main agent per session + its subagents** (nested by `spawnDepth`). Summary metrics: Sessions · Subagents (running/total) · Working · Waiting · Error. There is no separate "Agents" count.
+6. **Content exposure policy:** show `agentType`, subagent `description`, and tool **names** only. Never send tool arguments, prompts, or message bodies to the frontend. Never read `sessions/*.key` files and never expose `messagingSocketPath`.
+
+## Collector ingestion rules
+
+- Transcripts can exceed 1 MB: tail incrementally by byte offset per file, never re-read whole files. Tolerate a partial last line.
+- `fs.watch` on Windows can drop events: combine watchers with a low-frequency reconcile scan (~5 s) of `sessions/` and PID liveness.
+- Version drift: Claude Code auto-updates. Read `version` from each session file; on mismatch with the verified version, keep running with defensive parsing and surface a warning in the UI.
+- Token usage: transcripts likely contain `usage` per assistant message. Phase 1 verifies; if reliable, show it in MVP, otherwise hide.
+
+## Run / launch
+
+- Dev: `pnpm dev` runs collector + Vite web concurrently.
+- Build: collector also serves the built web as static files — one process, one port on `127.0.0.1` (port configurable).
+
+## Testing
+
+- Collector tests with Vitest against fixture directories (fake `sessions/` + `projects/` trees, including partial lines, malformed JSON, dead PIDs, unknown statuses). No real Claude session needed.
+- The same fixtures can be replayed to drive the UI during Phase 7.
+
+---
+
 # 7. Terminal Discovery
 
 The collector must discover Claude Code processes currently running on Windows.
@@ -246,25 +301,32 @@ interface TerminalSession {
   cwd?: string
 
   claudeSessionId?: string
+  claudeVersion?: string
+
+  nameSource?: string
+  rawStatus?: string
 
   status:
-    | 'active'
+    | 'working'
     | 'idle'
     | 'waiting'
-    | 'completed'
+    | 'stale'
     | 'error'
     | 'unknown'
 
   startedAt?: string
   lastActivityAt?: string
-
-  agents: Agent[]
+  endedAt?: string
 }
 ```
+
+Agents are not nested in `TerminalSession`; they are stored separately and reference `terminalId` (avoids duplicate state between snapshot and `agent.*` events). `status` is derived from `rawStatus` via the mapping table in §6A.
 
 Do not assume terminal title is the unique identity.
 
 Use a stable internal terminal/session ID based on process/session identity.
+
+Verified: terminal ID = `${pid}:${procStart}`. `claudeSessionId` changes on `/clear` while the PID stays, so it is a tracked field, not the identity.
 
 ---
 
@@ -285,6 +347,8 @@ Android Ads
 Dashboard must update without refresh.
 
 Collector should detect title changes using the most reliable Windows-compatible mechanism available.
+
+MVP: title = Claude session `name` from `sessions/<pid>.json`, detected by file watcher. Windows Terminal tab title is deferred to V2 (Win32 cannot reliably read per-tab titles).
 
 Event:
 
@@ -329,8 +393,12 @@ interface Agent {
   parentId?: string
   terminalId: string
 
+  role: 'main' | 'subagent'
   name?: string
   type?: string
+  description?: string
+  toolUseId?: string
+  spawnDepth?: number
 
   status: AgentStatus
 
@@ -413,6 +481,8 @@ server → snapshot
 
 Then send incremental events only.
 
+Every message carries a monotonically increasing `seq`. The `snapshot` also carries `protocolVersion`. If the client detects a `seq` gap, it requests a fresh snapshot.
+
 This avoids repeatedly transmitting the entire application state.
 
 ---
@@ -479,7 +549,7 @@ Primary view:
 ┌──────────────────────────────────────────────────────────────┐
 │ Claude Agent Monitor                         ● Connected      │
 │                                                              │
-│  3 Sessions   7 Agents   12 Subagents   2 Working   1 Error │
+│  3 Sessions   4/12 Subagents   2 Working   1 Waiting  1 Error│
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
 │  Sessions                         Agent Map                  │
@@ -813,6 +883,8 @@ to the frontend unless explicitly required.
 
 Be careful when displaying command/tool arguments because they may contain sensitive values.
 
+Concrete policy (§6A Decision 6): tool names only, never tool arguments or message bodies. Never read `sessions/*.key`; never expose `messagingSocketPath`.
+
 ---
 
 # 23. Error Handling
@@ -973,6 +1045,8 @@ These can be considered later.
 
 Potential V2:
 
+- Opt-in Claude Code hooks (install/uninstall with `settings.json` backup + merge) for exact tool/subagent lifecycle and `waiting` state.
+- Windows Terminal tab title tracking.
 - Historical sessions.
 - Token/cost charts.
 - Search/filter agents.
@@ -1021,7 +1095,7 @@ The MVP is complete when:
 - [ ] Multiple active terminals are displayed.
 - [ ] Terminal names are displayed correctly.
 - [ ] Renaming a terminal updates the dashboard realtime.
-- [ ] Terminal closing removes/stales the corresponding session correctly.
+- [ ] Terminal closing marks the session `stale`; it is removed after 120 minutes (configurable).
 - [ ] Main agents are displayed.
 - [ ] Subagents are displayed.
 - [ ] Parent-child relationships are visualized.
@@ -1106,3 +1180,27 @@ Render
 ```
 
 The first architecture keeps the dashboard realtime, lightweight, deterministic, private, and at **zero additional Claude token cost**.
+
+---
+
+# 31. Implementation Status (2026-10-07)
+
+| Phase | Status | Notes |
+|---|---|---|
+| 1 Discovery | Done | `docs/claude-code-integration.md` |
+| 2 Collector | Done | `apps/collector` — registry watch + transcript tail, 17 tests |
+| 3 Frontend foundation | Done | `apps/web` — Vue 3, Tailwind v4, Pinia, vue-i18n, theme tokens |
+| 4 Dashboard | Done | Header/metrics, session cards, activity, empty/offline/stale states |
+| 5 Agent Map | Done | Vue Flow, incremental nodes, wrapped grid layout, selection lineage, focus session |
+| 6 Polish | Done | Screenshot review at 375/768/1024/1440, dark/light, EN/VI |
+| 7 Validation | Done (automated + live) | See integration doc §11; open items in §12 |
+
+Tooling deviation: npm workspaces instead of pnpm (pnpm not installed; no global install made).
+
+Follow-up (2026-10-07):
+
+| Item | Status | Notes |
+|---|---|---|
+| Nested subagents (depth ≥ 2) | Done | Verified on real data: flat `subagents/` dir + `meta.parentAgentId`; map shows real tree (indent capped at depth 2) |
+| Hide finished subagents | Done | Agent Map toggle, persisted (`ccm.hideFinished`); hides `completed`/`cancelled`, keeps `error` and ancestors of running agents; shows hidden count |
+| Foreground agent / crash | Covered by tests | Not reproducible safely; see integration doc §12 |

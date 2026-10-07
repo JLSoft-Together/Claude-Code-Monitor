@@ -1,0 +1,159 @@
+@import 'tailwindcss';
+@import '@vue-flow/core/dist/style.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Google Sans', 'Google Sans Text', system-ui, sans-serif;
+  --font-mono: 'Google Sans Code', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  --color-canvas: var(--ccm-canvas);
+  --color-surface: var(--ccm-surface);
+  --color-raised: var(--ccm-raised);
+  --color-line: var(--ccm-line);
+  --color-line-strong: var(--ccm-line-strong);
+  --color-ink: var(--ccm-ink);
+  --color-ink-muted: var(--ccm-ink-muted);
+  --color-ink-faint: var(--ccm-ink-faint);
+  --color-accent: var(--ccm-accent);
+  --color-accent-soft: var(--ccm-accent-soft);
+
+  --color-st-working: var(--ccm-working);
+  --color-st-waiting: var(--ccm-waiting);
+  --color-st-idle: var(--ccm-idle);
+  --color-st-done: var(--ccm-done);
+  --color-st-error: var(--ccm-error);
+  --color-st-stale: var(--ccm-stale);
+  --color-st-working-soft: var(--ccm-working-soft);
+  --color-st-waiting-soft: var(--ccm-waiting-soft);
+  --color-st-error-soft: var(--ccm-error-soft);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+}
+
+:root {
+  --ccm-canvas: #f4f4f2;
+  --ccm-surface: #ffffff;
+  --ccm-raised: #fafaf8;
+  --ccm-line: #e3e2dd;
+  --ccm-line-strong: #cfcdc6;
+  --ccm-ink: #1b1b19;
+  --ccm-ink-muted: #5f5e58;
+  --ccm-ink-faint: #8a8880;
+  --ccm-accent: #b4532f;
+  --ccm-accent-soft: #f6e6de;
+
+  --ccm-working: #b4532f;
+  --ccm-waiting: #8a6408;
+  --ccm-idle: #6f6e68;
+  --ccm-done: #3f7a3b;
+  --ccm-error: #c0322a;
+  --ccm-stale: #9a988f;
+  --ccm-working-soft: #f6e6de;
+  --ccm-waiting-soft: #f6eccf;
+  --ccm-error-soft: #f8dfdc;
+
+  --ccm-flow-dot: #d6d4ce;
+  --ccm-edge: #bdbbb3;
+}
+
+.dark {
+  --ccm-canvas: #121211;
+  --ccm-surface: #1a1a19;
+  --ccm-raised: #222220;
+  --ccm-line: #2e2d2a;
+  --ccm-line-strong: #3d3c38;
+  --ccm-ink: #ecebe6;
+  --ccm-ink-muted: #a7a59d;
+  --ccm-ink-faint: #7a786f;
+  --ccm-accent: #e08a68;
+  --ccm-accent-soft: #3a261d;
+
+  --ccm-working: #e08a68;
+  --ccm-waiting: #e3b552;
+  --ccm-idle: #9c9a92;
+  --ccm-done: #8fbf89;
+  --ccm-error: #f0716a;
+  --ccm-stale: #6d6b64;
+  --ccm-working-soft: #3a261d;
+  --ccm-waiting-soft: #352b14;
+  --ccm-error-soft: #3d1d1b;
+
+  --ccm-flow-dot: #2a2927;
+  --ccm-edge: #4a4944;
+}
+
+html {
+  font-family: var(--font-sans);
+  background: var(--ccm-canvas);
+  color: var(--ccm-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ccm-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes ccm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ccm-spin {
+  animation: ccm-spin 2.4s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes ccm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.ccm-enter {
+  animation: ccm-enter 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-spin,
+  .ccm-enter {
+    animation: none;
+  }
+  * {
+    transition-duration: 0ms !important;
+  }
+}
+
+.vue-flow__edge-path {
+  stroke: var(--ccm-edge);
+  stroke-width: 1.25;
+}
+
+.vue-flow__edge.ccm-edge-hot .vue-flow__edge-path {
+  stroke: var(--ccm-accent);
+  stroke-width: 1.75;
+}
+
+.vue-flow__node {
+  cursor: pointer;
+}
+
+.vue-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
