@@ -227,6 +227,9 @@ Forwarded: name, cwd, pid, status, `waitingFor`, tool **names**, `agentType`, `d
 | Status `shell` TBD | → `idle` + "background shell" label | Verified writer logic |
 | Hooks needed for `waiting` | Not needed | Registry has `waiting` + `waitingFor` |
 | Tokens "only if reliable" | Reliable, dedupe by `message.id` | Verified |
+| No database | JSON cache files in `CCM_DATA_DIR` (`usage-index.json`, `aliases.json`) | Full transcript scan ~12 s for 1.7 GB, and Claude deletes transcripts after `cleanupPeriodDays` (30) — history needs a local aggregate. Stores counts + cwd only |
+| Terminal title from Windows Terminal | Dashboard alias + `/rename` / `claude -n` | WT tab rename lives only in WT's UI; no per-tab API and UIA tabs carry no PID |
+| Observe-only (never start processes) | Favorites launcher: `wt.exe -w 0 nt -d <dir> powershell -NoExit -Command claude [--continue]`, fallback detached `powershell.exe` with `cwd` | User-requested. Only on an explicit click, only for dirs the user starred (server resolves the dir from its own `favorites.json`; the client never sends a free path to launch). Fixed command line, dir passed as `-d`/`cwd` only; paths containing `;` or `"` skip wt (wt sub-command separator). Starting `claude` costs no tokens until the user types |
 
 ## 11. Phase 7 validation results (2026-10-07)
 
@@ -240,6 +243,64 @@ Forwarded: name, cwd, pid, status, `waitingFor`, tool **names**, `agentType`, `d
 | 375 · 768 · 1024 · 1440 px, dark/light, EN/VI | No horizontal scroll (`scrollWidth == clientWidth`) |
 
 Note: the internal tool `SubagentHandback` appears briefly as a subagent's current tool before completion.
+
+## 11b. Usage history (verified 2026-10-07)
+
+- `usage` keys on every assistant record: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`, `speed` (`standard` | `fast`, sometimes absent), `service_tier`, `inference_geo`, `server_tool_use`, `iterations`.
+- Local data: 301 transcripts, 19 160 unique messages, 2026-09-06 → 2026-10-07; models `claude-opus-5`, `claude-opus-5-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001`, `<synthetic>` (ignored).
+- Cache read is > 95 % of all tokens → UI keeps the four types separate and hides cache read by default in token charts.
+- Collector `UsageIndex` (`apps/collector/src/usage.ts`): per-file byte offset + per-file buckets (day × model × cwd × speed), dedupe by `message.id` **globally** — `--resume` / fork copies earlier assistant records (same id) into the new transcript (54 copies found locally). Each file keeps the ids it owns; a deleted transcript keeps its buckets but releases its ids. A shrunk file is recounted. Real data: cold scan 7 s for 300 files, warm start 0.1 s, cache 0.4 MB.
+- Cost = API list prices (`packages/shared/src/pricing.ts`, platform.claude.com pricing page, checked 2026-10-07), fast mode uses fast input/output rates with the same cache multipliers. `inference_geo` / subscription billing are ignored → shown as an estimate.
+
+## 11c. Session signals added in Sprint A (verified 2026-10-07, keys/enums only)
+
+| Record | Used | Not used |
+|---|---|---|
+| `permission-mode` `{permissionMode}` (seen: `auto`; Claude also writes `default`, `plan`, `acceptEdits`, `bypassPermissions`, `dontAsk`) | Latest value → `TerminalSession.permissionMode`; change → `terminal.mode` activity (not for the first record) | — |
+| `system/compact_boundary` `compactMetadata.{trigger, preTokens, postTokens}` | `terminal.compacted` activity, `compactions` count, context reset to `postTokens` | `content`, `preservedSegment`, `preservedMessages`, `logicalParentUuid` |
+| `gitBranch` on message records | Latest → `TerminalSession.gitBranch` (`HEAD` = detached) | — |
+| `message.usage` of the latest assistant record | `Agent.contextTokens` = input + cache write + cache read | — |
+| `cost-state` `{totalCostUSD, modelUsage[model]{inputTokens, outputTokens, thinkingTokens, cacheRead/CreationInputTokens, webSearchRequests, costUSD}, totalLinesAdded/Removed, total*Duration}` | Not yet (F4/F6) | — |
+
+Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsage` keys do), so `contextWindowOf` (`packages/shared/src/context.ts`) uses 1M when the `model` field of `<claudeRoot>/settings.json` contains `[1m]` for the same family, or when the observed context already exceeded 200k; otherwise 200k. Only the `model` field of settings is read. UI levels: 60 / 80 / 95 %.
+
+## 11d. Repo grouping and wait time (2026-10-07)
+
+- Project cwd values are often sub folders (`app/src/main/java/...`) because Claude was started there. `RepoRoots` (`apps/collector/src/repo.ts`) maps each cwd to the nearest ancestor where `.git` exists (dir or worktree file) — `stat` only, nothing inside `.git` is read. It never climbs to the user's home dir or a drive root (a dotfiles repo there would swallow everything); no repo → the cwd itself. Real data: 216 cwds → 45 groups. Roots ship as `UsageSnapshot.roots` + `usage.roots` events; grouping is a UI toggle (default on).
+- `TerminalSession.statusSince` = registry `statusUpdatedAt` → wait time, waiting queue order, reminders every 5 min (max 3 per waiting episode).
+
+## 11e. Sprint E/F/G sources (verified 2026-10-08, keys only)
+
+| Source | Read | Never read / forwarded |
+|---|---|---|
+| `assistant.effort` (fallback `perTurnEffort`) on transcript records | Latest value → `Agent.effort` (validated `[a-z]{2,12}`) | — |
+| `message.usage.cache_creation.ephemeral_{1h,5m}_input_tokens` + record `timestamp` | Tier of the latest write → `Agent.cacheTtl`, time of the latest reply → `Agent.cacheAt`. A read-only reply keeps the previous tier. UI: cache expiry and the extra cost of rewriting `contextTokens` (API list prices, labelled estimate) | — |
+| `<claudeRoot>/cache/model-catalog/*.json` | `catalog.config.models[].{id,name}` → snapshot `modelNames` (refreshed every 60 s) | `notice`, `description`, `catalog.state` |
+| `<claudeRoot>/jobs/<id>/state.json` (`claude agents` / daemon jobs) | `state` (working / blocked / done), `tempo`, `name`, `inFlight.tasks/queued`, `tokens`, file mtime. Polled every 5 s, cached by mtime; done jobs older than 24 h dropped | `intent`, `detail`, `output`, `linkScanPath`, `respawnFlags`, `children` |
+| `<claudeRoot>/jobs/<id>/timeline.jsonl` | Last 4 KB, only `at` + `state` → `stateSince` | `text`, `detail` |
+| `<claudeRoot>/daemon/roster.json` | Not read (holds socket paths and auth tokens) | everything |
+| Status line JSON (opt-in, `scripts/statusline-bridge.mjs`) | The bridge writes only numbers to `<dataDir>/statusline/<session_id>.json`: `rate_limits.five_hour/seven_day.{used_percentage, resets_at (unix s)}`, `cost.total_cost_usd`. Collector: newest limits win (account wide) → `limits`; cost → `TerminalSession.costUsd`. Files older than 7 days deleted | `transcript_path`, `cwd`, `workspace`, `session_name`, everything else |
+| Registry status change waiting → busy | Duration → `ResponseStats` (today, median, waits > 5 min; > 8 h ignored), persisted `<dataDir>/response-stats.json` | — |
+
+`rate_limits` exists only for Pro/Max subscribers (docs: code.claude.com/docs/en/statusline). The bridge is never installed automatically: the settings menu shows the snippet to paste; an existing status line is kept with `--chain "<old command>"`.
+`metrics/costs.jsonl` is written by a third-party plugin, not Claude Code → ignored.
+
+## 11f. Sprint H — derived data and window focus (2026-10-08)
+
+No new Claude Code source; everything below is derived from data already read.
+
+| Feature | Input | Stored | Notes |
+|---|---|---|---|
+| Limit forecast | Status line `used_percentage` samples (`limits`) | `<dataDir>/limit-history.json` (5h: last 2 h, one sample/min; 7d: last 48 h, one sample/10 min) | Least squares over 1 h (5h) / 24 h (7d), needs ≥ 10 min / 2 h of history; samples reset when `resets_at` moves or the % drops. `LimitWindow.forecast {pctPerHour, fullAt, beforeReset}`, labelled estimate |
+| Session history | Terminal + agent counters at the moment a session ends | `<dataDir>/history.json`, newest 1000 | Title, cwd, branch, model, start/end, token counters, subagent count, compactions, status-line cost, working/waiting time. No content. Sent on request (`history.get`), new entries as `history.added` |
+| Status timeline | Registry status + `statusUpdatedAt` | `<dataDir>/timeline.json`, current local day | Segments working / waiting / idle per session; open segments from before a restart are closed at the last save. Sent on request (`timeline.get`) |
+| Error loop | Activity `tool.started` / `tool.failed` (tool names only) | — (web) | ≥ 5 failures in 5 min and ≥ half of the calls |
+| Same-checkout warning | `cwd` → repo root (`usage.roots`) + `gitBranch` | — (web) | Worktrees have their own root, so they never match |
+| Away summary, daily budget, recap/CSV | Existing stores | Budget in `localStorage` (`ccm.budget`) | CSV cells starting with `= + - @` are prefixed with `'` |
+
+**Window focus (`terminal.focusWindow`)** — the client sends only a `terminalId`; the collector looks up the live tracker's registry PID and runs a fixed PowerShell script (`apps/collector/src/focus.ts`, PID passed in an environment variable). It walks the parent chain (claude.exe → shell → host) to the first process with a visible main window: classic consoles resolve on the shell, Windows Terminal and VS Code on the host process. When the shell was handed to Windows Terminal (default-terminal delegation, no parent link) and exactly one WT window exists, that window is used. One WindowsTerminal process owns all its windows and exposes no API to map a tab to a window, so with several WT windows the result is `ambiguous` instead of a guess; only the window is ever raised, never a tab. Foreground-lock rules: the script attaches to the foreground thread's input queue; if that fails it taps Alt (goes to the current foreground app, never to the terminal) and retries. Nothing is ever typed into a terminal. Results: `ok | notFound | ambiguous | failed | unsupported`.
+
+**PWA** — `manifest.webmanifest` + `sw.js` (production build only). The service worker caches the app shell (`/`, icons, hashed `/assets/*`) and never touches `/ws` or `/health`; the collector serves everything outside `/assets/` with `no-cache` so a new build replaces the worker. `navigator.setAppBadge` shows the waiting count on the installed app icon.
 
 ## 12. Open items
 

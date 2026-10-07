@@ -17,7 +17,7 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm run typecheck`
 - `node scripts/demo-fixture.mjs --sessions=5 --subagents=3` — fake Claude root for load/UI testing; run collector with `CLAUDE_CONFIG_DIR=<printed root> CCM_VERIFY_PROCESSES=0`
 
-Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`.
+Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`: usage cache + aliases).
 
 Deviations from `PLAN.md` are allowed only when a discovered Claude Code limitation forces them, and must be documented in `docs/claude-code-integration.md`.
 
