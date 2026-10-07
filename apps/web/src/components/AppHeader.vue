@@ -40,6 +40,9 @@ const connectionView = computed(() => {
   }
 })
 
+// Every label stacks in one grid cell so the status keeps the widest width and nothing beside it shifts.
+const connectionLabels = computed(() => ['connected', 'connecting', 'reconnecting', 'disconnected'].map((k) => t(`connection.${k}`)))
+
 const lastUpdate = computed(() => {
   const ago = relativeTime(connection.lastEventAt, locale.value, now.value)
   return ago ? t('connection.lastUpdate', { ago }) : t('connection.never')
@@ -129,9 +132,11 @@ function onTabKey(e: KeyboardEvent): void {
               <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8" />
               <path v-if="connectionView.glyph === 'half'" d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" />
             </svg>
-            {{ connectionView.label }}
+            <span class="grid">
+              <span v-for="l in connectionLabels" :key="l" class="col-start-1 row-start-1" :class="l === connectionView.label ? '' : 'invisible'" :aria-hidden="l !== connectionView.label">{{ l }}</span>
+            </span>
           </span>
-          <span class="hidden whitespace-nowrap text-ink-faint tabular 2xl:inline">{{ lastUpdate }}</span>
+          <span class="hidden w-40 truncate text-ink-faint tabular 2xl:inline-block" :title="lastUpdate">{{ lastUpdate }}</span>
         </div>
 
         <button

@@ -123,7 +123,7 @@ onBeforeUnmount(() => {
         <span v-if="w.risk" class="hidden items-center gap-1 truncate sm:inline-flex text-2xs font-medium text-st-waiting tabular">
           <TrendingUp :size="12" class="shrink-0" aria-hidden="true" />{{ t('limits.forecastShort', { at: w.fullAt }) }}
         </span>
-        <span v-else-if="w.left" class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ t('limits.resetsIn', { in: w.left }) }}</span>
+        <span v-else class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ w.left ? t('limits.resetsIn', { in: w.left }) : ' ' }}</span>
       </span>
       <ChevronDown :size="14" class="self-center text-ink-faint transition-transform" :class="open ? 'rotate-180' : ''" aria-hidden="true" />
     </button>
