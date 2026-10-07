@@ -13,6 +13,9 @@ export interface CollectorConfig {
   batchMs: number
   verifyProcesses: boolean
   webDist: string
+  dataDir: string
+  devOriginPorts: number[]
+  statusLineBridge: string
 }
 
 function intFromEnv(value: string | undefined, fallback: number): number {
@@ -29,9 +32,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     staleTtlMs: intFromEnv(env.CCM_STALE_TTL_MIN, 120) * 60_000,
     reconcileMs: 5_000,
     processVerifyMs: 60_000,
-    activityLimit: 300,
+    activityLimit: 1000,
     batchMs: 50,
     verifyProcesses: process.platform === 'win32' && env.CCM_VERIFY_PROCESSES !== '0',
     webDist: env.CCM_WEB_DIST || path.resolve(here, '../../web/dist'),
+    statusLineBridge: path.resolve(here, '../../../scripts/statusline-bridge.mjs'),
+    devOriginPorts: [intFromEnv(env.CCM_DEV_ORIGIN_PORT, 5173)],
+    dataDir: env.CCM_DATA_DIR || path.join(env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'ccm'),
   }
 }

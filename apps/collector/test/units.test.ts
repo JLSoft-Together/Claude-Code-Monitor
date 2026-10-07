@@ -135,3 +135,62 @@ describe('MonitorStore', () => {
     expect(store.snapshot().activity).toHaveLength(3)
   })
 })
+
+describe('context window and launcher', () => {
+  it('infers the context window and threshold level', async () => {
+    const { contextWindowOf, contextLevel } = await import('@ccm/shared')
+    expect(contextWindowOf('claude-opus-5-5')).toBe(200_000)
+    expect(contextWindowOf('claude-opus-5-5', { settingsModel: 'opus[1m]' })).toBe(1_000_000)
+    expect(contextWindowOf('claude-haiku-4-5', { settingsModel: 'opus[1m]' })).toBe(200_000)
+    expect(contextWindowOf('claude-sonnet-5', { peak: 300_000 })).toBe(1_000_000)
+    expect(contextWindowOf('gpt-x')).toBeUndefined()
+    expect([59, 60, 80, 95].map(contextLevel)).toEqual(['ok', 'notice', 'warning', 'critical'])
+  })
+
+  it('launches through wt with a fixed command and falls back to a console', async () => {
+    const { launchClaude } = await import('../src/launcher')
+    const calls: string[][] = []
+    const dir = process.cwd()
+    await launchClaude(dir, 'continue', async (cmd, args, cwd) => {
+      calls.push([cmd, ...args, `cwd=${cwd}`])
+      if (cmd === 'wt.exe') throw new Error('ENOENT')
+    })
+    expect(calls[0]).toEqual(['wt.exe', '-w', '0', 'nt', '-d', dir, 'powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
+    expect(calls[1]).toEqual(['powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
+    await expect(launchClaude(`${dir}/does-not-exist`, 'new', async () => {})).rejects.toThrow('directory not found')
+  })
+})
+
+describe('repo roots', () => {
+  it('maps sub folders to the nearest .git ancestor, never above the stop dir', async () => {
+    const { RepoRoots } = await import('../src/repo')
+    const home = path.resolve('/home/me')
+    const repos = new Set([path.resolve('/work/app'), home].map((d) => d.toLowerCase()))
+    const probed: string[] = []
+    const roots = new RepoRoots(async (d) => {
+      probed.push(d)
+      return repos.has(d.toLowerCase())
+    }, [home])
+    expect(await roots.resolve(path.resolve('/work/app/src/main/java'))).toBe(path.resolve('/work/app'))
+    expect(await roots.resolve(path.resolve('/work/app'))).toBe(path.resolve('/work/app'))
+    expect(await roots.resolve(path.resolve('/home/me/notes'))).toBe(path.resolve('/home/me/notes'))
+    expect(await roots.resolve(home)).toBe(home)
+    expect(await roots.resolve('relative/dir')).toBe('relative/dir')
+    const count = probed.length
+    await roots.resolve(path.resolve('/work/app/src/main/java'))
+    expect(probed.length).toBe(count)
+  })
+
+  it('emits only new roots and reports unknown projects once resolved', () => {
+    const store = new MonitorStore({ activityLimit: 10, batchMs: 1 })
+    const asked: string[][] = []
+    store.onNewProjects = (dirs) => asked.push(dirs)
+    const b = { key: 'k', day: '2026-10-07', model: 'm', project: 'D:/a/b', messages: 1, input: 1, output: 1, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 }
+    store.updateUsage([b])
+    expect(asked).toEqual([['D:/a/b']])
+    store.setProjectRoots({ 'D:/a/b': 'D:/a' })
+    store.updateUsage([b])
+    expect(asked).toHaveLength(1)
+    expect(store.usageSnapshot().roots).toEqual({ 'D:/a/b': 'D:/a' })
+  })
+})

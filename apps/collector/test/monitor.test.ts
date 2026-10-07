@@ -52,6 +52,9 @@ describe('Monitor with fixture claude root', () => {
     batchMs: 1,
     verifyProcesses: false,
     webDist: root,
+    dataDir: root,
+    devOriginPorts: [],
+    statusLineBridge: path.join(root, 'statusline-bridge.mjs'),
   })
 
   const deps = (): MonitorDeps => ({ isPidAlive: () => alive, queryProcesses: async () => null, now: () => now })
@@ -101,6 +104,115 @@ describe('Monitor with fixture claude root', () => {
     const json = JSON.stringify(snap)
     expect(json).not.toContain('secret')
     expect(json).not.toContain('pipe')
+  })
+
+  it('applies a dashboard alias and clears it again', () => {
+    const id = store.snapshot().terminals[0]!.id
+    expect(monitor.setAlias(id, '  Ads work  ')).toBe(true)
+    let snap = store.snapshot()
+    expect(snap.terminals[0]).toMatchObject({ title: 'demo-1a', alias: 'Ads work' })
+    expect(snap.activity.at(-1)).toMatchObject({ kind: 'terminal.renamed', data: { from: 'demo-1a', to: 'Ads work' } })
+    expect(monitor.setAlias(id, 'Ads work')).toBe(false)
+    expect(monitor.setAlias('nope', 'x')).toBe(false)
+    expect(monitor.setAlias(id, '   ')).toBe(true)
+    snap = store.snapshot()
+    expect(snap.terminals[0]!.alias).toBeUndefined()
+  })
+
+  it('reports context, permission mode, branch and compaction without content', async () => {
+    let main = store.snapshot().agents.find((a) => a.role === 'main')!
+    expect(main).toMatchObject({ contextTokens: 50, contextWindow: 200_000 })
+    await appendFile(
+      path.join(projectDir, `${SID}.jsonl`),
+      line({ type: 'permission-mode', permissionMode: 'default', sessionId: SID }) +
+        line({ type: 'assistant', gitBranch: 'feat/x', timestamp: '2026-10-07T10:00:01.000Z', message: { id: 'm3', model: 'claude-opus-5-5', usage: { input_tokens: 10, cache_creation_input_tokens: 20, cache_read_input_tokens: 250_000, output_tokens: 1 }, content: [] } }),
+    )
+    await monitor.reconcile()
+    main = store.getAgent(main.id)!
+    expect(main).toMatchObject({ contextTokens: 250_030, contextWindow: 1_000_000 })
+    expect(store.snapshot().terminals[0]).toMatchObject({ permissionMode: 'default', gitBranch: 'feat/x' })
+
+    await appendFile(
+      path.join(projectDir, `${SID}.jsonl`),
+      line({ type: 'permission-mode', permissionMode: 'bypassPermissions', sessionId: SID }) +
+        line({ type: 'system', subtype: 'compact_boundary', content: 'secret summary', timestamp: '2026-10-07T10:00:02.000Z', compactMetadata: { trigger: 'auto', preTokens: 250_030, postTokens: 12_000, preservedSegment: 'secret' } }),
+    )
+    await monitor.reconcile()
+    expect(store.getAgent(main.id)!.contextTokens).toBe(12_000)
+    expect(store.snapshot().terminals[0]).toMatchObject({ permissionMode: 'bypassPermissions', compactions: 1 })
+    const kinds = store.snapshot().activity.map((a) => a.kind)
+    expect(kinds).toContain('terminal.mode')
+    expect(store.snapshot().activity.find((a) => a.kind === 'terminal.compacted')).toMatchObject({ data: { trigger: 'auto', preTokens: 250_030, postTokens: 12_000 } })
+    expect(JSON.stringify(store.snapshot())).not.toContain('secret')
+  })
+
+  it('stars a session dir and launches only starred dirs', async () => {
+    const launched: string[] = []
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, { ...deps(), launch: async (dir, mode) => void launched.push(`${dir}|${mode}`) })
+    await monitor.start({ watch: false })
+    const id = store.snapshot().terminals[0]!.id
+    expect(await monitor.openFavorite(CWD, 'new')).toBe(false)
+    expect(monitor.toggleFavorite(id)).toBe(true)
+    expect(store.snapshot().favorites).toMatchObject([{ dir: path.resolve(CWD), label: 'demo-1a' }])
+    expect(await monitor.openFavorite(CWD.toUpperCase(), 'continue')).toBe(true)
+    expect(launched).toEqual([`${path.resolve(CWD)}|continue`])
+    expect(store.snapshot().activity.at(-1)).toMatchObject({ kind: 'launch.started', data: { title: 'demo-1a', mode: 'continue' } })
+    expect(monitor.renameFavorite(CWD, '  Ads\napp ')).toBe(true)
+    expect(store.snapshot().favorites).toMatchObject([{ label: 'Ads app' }])
+    expect(monitor.renameFavorite(CWD, null)).toBe(true)
+    expect(store.snapshot().favorites).toMatchObject([{ label: path.basename(CWD) }])
+    expect(monitor.renameFavorite('Z:/nope', 'x')).toBe(false)
+    expect(monitor.removeFavorite(CWD)).toBe(true)
+    expect(store.snapshot().favorites).toEqual([])
+  })
+
+  it('records an ended session in history with token totals only', async () => {
+    const sessions: string[] = []
+    store.subscribe((m) => {
+      for (const e of m.events) if (e.type === 'history.added') sessions.push(e.payload.title)
+    })
+    alive = false
+    now += 60_000
+    await monitor.reconcile()
+    store.flush()
+    expect(sessions).toEqual(['demo-1a'])
+    monitor.sendHistory()
+    store.flush()
+    const snapJson = JSON.stringify(store.snapshot())
+    expect(snapJson).not.toContain('secret')
+  })
+
+  it('raises the window of a live session by its own pid only', async () => {
+    const pids: number[] = []
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, { ...deps(), focusWindow: async (pid) => (pids.push(pid), 'ok') })
+    await monitor.start({ watch: false })
+    const results: string[] = []
+    store.subscribe((m) => {
+      for (const e of m.events) if (e.type === 'terminal.focusResult') results.push(`${e.payload.terminalId}|${e.payload.result}`)
+    })
+    const id = store.snapshot().terminals[0]!.id
+    await Promise.all([monitor.focusWindow(id), monitor.focusWindow('nope')])
+    store.flush()
+    expect(pids).toEqual([PID])
+    expect(results).toEqual([`${id}|ok`, 'nope|notFound'])
+  })
+
+  it('adds a favorite by path only for an existing local directory', async () => {
+    const rejected: string[] = []
+    store.subscribe((m) => {
+      for (const e of m.events) if (e.type === 'favorite.rejected') rejected.push(e.payload.reason)
+    })
+    const dir = os.tmpdir()
+    expect(await monitor.addFavorite(`"${dir}"`, ' Temp ')).toBe(true)
+    expect(store.snapshot().favorites).toMatchObject([{ dir: path.resolve(dir), label: 'Temp' }])
+    expect(await monitor.addFavorite(dir, null)).toBe(false)
+    expect(await monitor.addFavorite('relative/dir', null)).toBe(false)
+    expect(await monitor.addFavorite('\\\\server\\share', null)).toBe(false)
+    expect(await monitor.addFavorite(path.join(dir, 'ccm-missing-dir-xyz'), null)).toBe(false)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(rejected).toEqual(['exists', 'invalid', 'invalid', 'notFound'])
   })
 
   it('completes subagent from task-notification and records activity', async () => {
@@ -211,5 +323,17 @@ describe('Monitor with fixture claude root', () => {
     const t = store.snapshot().terminals[0]!
     expect(t.status).toBe('stale')
     expect(store.getAgent('a1')?.status).toBe('unknown')
+  })
+
+  it('dismisses ended sessions on request but never live ones', async () => {
+    const tid = store.snapshot().terminals[0]!.id
+    expect(monitor.dismissEnded(tid)).toBe(0)
+    expect(monitor.dismissEnded()).toBe(0)
+    alive = false
+    await monitor.reconcile()
+    expect(monitor.dismissEnded('other')).toBe(0)
+    expect(monitor.dismissEnded()).toBe(1)
+    expect(store.getTerminal(tid)).toBeUndefined()
+    expect(store.agentsOf(tid)).toHaveLength(0)
   })
 })

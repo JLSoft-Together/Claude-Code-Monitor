@@ -3,11 +3,24 @@ import {
   SUPPORTED_CLAUDE_VERSION,
   type ActivityEvent,
   type Agent,
+  type BackgroundJob,
+  type Favorite,
+  type FavoriteRejectReason,
+  type DayTimeline,
+  type FocusWindowResult,
+  type FolderPickResult,
+  type SessionRecord,
   type MonitorEvent,
   type MonitorSnapshot,
+  type PlanLimits,
+  type ResponseStats,
   type ServerMessage,
   type TerminalSession,
+  type UsageBucket,
+  type UsageScan,
+  type UsageSnapshot,
 } from '@ccm/shared'
+import type { UsageSink } from './usage'
 
 type Listener = (message: ServerMessage) => void
 
@@ -32,10 +45,23 @@ function clean<T extends object>(obj: T): T {
   return out as T
 }
 
-export class MonitorStore {
+export class MonitorStore implements UsageSink {
   private readonly terminals = new Map<string, TerminalSession>()
   private readonly agents = new Map<string, Agent>()
   private readonly activity: ActivityEvent[] = []
+  /** tool.* events get their own ring so a busy session cannot push waits/completions out of history. */
+  private readonly toolActivity: ActivityEvent[] = []
+  private jobs: BackgroundJob[] = []
+  private limits: PlanLimits | null = null
+  private response: ResponseStats | null = null
+  private modelNames: Record<string, string> = {}
+  statusLineCommand?: string
+  private readonly usage = new Map<string, UsageBucket>()
+  private usageScan: UsageScan = { state: 'idle', filesDone: 0, filesTotal: 0 }
+  private favorites: Favorite[] = []
+  private readonly roots = new Map<string, string>()
+  /** Called with project dirs that have no repo root yet; the owner resolves them async. */
+  onNewProjects: ((dirs: string[]) => void) | null = null
   private pending: MonitorEvent[] = []
   private flushTimer: NodeJS.Timeout | null = null
   private listeners = new Set<Listener>()
@@ -101,11 +127,103 @@ export class MonitorStore {
       id: `${Date.now().toString(36)}-${(this.activityCounter++).toString(36)}`,
       at: event.at ?? new Date().toISOString(),
     })
-    this.activity.push(value)
-    if (this.activity.length > this.options.activityLimit) {
-      this.activity.splice(0, this.activity.length - this.options.activityLimit)
-    }
+    const ring = value.kind.startsWith('tool.') ? this.toolActivity : this.activity
+    ring.push(value)
+    if (ring.length > this.options.activityLimit) ring.splice(0, ring.length - this.options.activityLimit)
     this.emit({ type: 'activity', payload: value })
+  }
+
+  resetUsage(snapshot: UsageSnapshot): void {
+    this.usage.clear()
+    for (const b of snapshot.buckets) this.usage.set(b.key, b)
+    this.usageScan = snapshot.scan
+    this.emit({ type: 'usage.reset', payload: this.usageSnapshot() })
+    this.reportNewProjects(snapshot.buckets)
+  }
+
+  setProjectRoots(roots: Record<string, string>): void {
+    const added: Record<string, string> = {}
+    for (const [dir, root] of Object.entries(roots)) {
+      if (this.roots.get(dir) === root) continue
+      this.roots.set(dir, root)
+      added[dir] = root
+    }
+    if (Object.keys(added).length) this.emit({ type: 'usage.roots', payload: { roots: added } })
+  }
+
+  private reportNewProjects(buckets: UsageBucket[]): void {
+    if (!this.onNewProjects) return
+    const dirs = [...new Set(buckets.map((b) => b.project))].filter((d) => !this.roots.has(d))
+    if (dirs.length) this.onNewProjects(dirs)
+  }
+
+  updateUsage(buckets: UsageBucket[]): void {
+    if (buckets.length === 0) return
+    for (const b of buckets) this.usage.set(b.key, b)
+    this.emit({ type: 'usage.updated', payload: { buckets } })
+    this.reportNewProjects(buckets)
+  }
+
+  setUsageScan(scan: UsageScan): void {
+    this.usageScan = scan
+    this.emit({ type: 'usage.scan', payload: scan })
+  }
+
+  setFavorites(favorites: Favorite[]): void {
+    this.favorites = favorites.map((f) => ({ ...f }))
+    this.emit({ type: 'favorites.updated', payload: { favorites: this.favorites } })
+  }
+
+  rejectFavorite(dir: string, reason: FavoriteRejectReason): void {
+    this.emit({ type: 'favorite.rejected', payload: { dir, reason } })
+  }
+
+  historyData(sessions: SessionRecord[]): void {
+    this.emit({ type: 'history.data', payload: { sessions } })
+  }
+
+  historyAdded(record: SessionRecord): void {
+    this.emit({ type: 'history.added', payload: record })
+  }
+
+  timelineData(timeline: DayTimeline): void {
+    this.emit({ type: 'timeline.data', payload: timeline })
+  }
+
+  folderPicked(requestId: string, result: FolderPickResult, dir?: string): void {
+    this.emit({ type: 'folder.picked', payload: { requestId, result, dir } })
+  }
+
+  focusResult(terminalId: string, result: FocusWindowResult): void {
+    this.emit({ type: 'terminal.focusResult', payload: { terminalId, result } })
+  }
+
+  setJobs(jobs: BackgroundJob[]): void {
+    if (JSON.stringify(jobs) === JSON.stringify(this.jobs)) return
+    this.jobs = jobs.map((j) => clean({ ...j }))
+    this.emit({ type: 'jobs.updated', payload: { jobs: this.jobs } })
+  }
+
+  setLimits(limits: PlanLimits | null): void {
+    if (!limits || JSON.stringify(limits) === JSON.stringify(this.limits)) return
+    this.limits = clean({ ...limits })
+    this.emit({ type: 'limits.updated', payload: this.limits })
+  }
+
+  setResponse(stats: ResponseStats): void {
+    if (JSON.stringify(stats) === JSON.stringify(this.response)) return
+    this.response = clean({ ...stats })
+    this.emit({ type: 'response.updated', payload: this.response })
+  }
+
+  setModelNames(names: Record<string, string>): void {
+    if (JSON.stringify(names) === JSON.stringify(this.modelNames)) return
+    this.modelNames = { ...names }
+    this.emit({ type: 'models.updated', payload: { modelNames: this.modelNames } })
+  }
+
+  usageSnapshot(): UsageSnapshot {
+    return { buckets: [...this.usage.values()], scan: { ...this.usageScan }, roots: Object.fromEntries(this.roots) }
   }
 
   snapshot(): MonitorSnapshot {
@@ -115,7 +233,14 @@ export class MonitorStore {
       supportedClaudeVersion: SUPPORTED_CLAUDE_VERSION,
       terminals: [...this.terminals.values()],
       agents: [...this.agents.values()],
-      activity: [...this.activity],
+      activity: [...this.activity, ...this.toolActivity].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)),
+      usage: this.usageSnapshot(),
+      favorites: [...this.favorites],
+      jobs: [...this.jobs],
+      limits: this.limits ?? undefined,
+      response: this.response ?? undefined,
+      modelNames: { ...this.modelNames },
+      statusLineCommand: this.statusLineCommand,
     }
   }
 

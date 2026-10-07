@@ -1,6 +1,7 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  contextWindowOf,
   isAgentFinished,
   mainAgentStatus,
   mapRegistryStatus,
@@ -15,6 +16,10 @@ import { JsonlTailer } from './tailer'
 import { extractSignals, TranscriptState, type Signal } from './transcript'
 
 export type ActivityDraft = Omit<ActivityEvent, 'id' | 'at'> & { at?: string }
+
+export interface ContextHints {
+  settingsModel?: string
+}
 
 interface SubagentMeta {
   agentType?: string
@@ -123,6 +128,7 @@ export class SessionTracker {
     readonly terminalId: string,
     record: RegistryRecord,
     private readonly projectsDir: string,
+    private readonly hints: ContextHints = {},
   ) {
     this.record = record
   }
@@ -211,8 +217,36 @@ export class SessionTracker {
 
   private applyMain(signals: Signal[], catchUp: boolean, activity: ActivityDraft[]): void {
     this.recordLinks(signals)
-    if (!catchUp) this.toolActivity(signals, this.main, this.mainAgentId, activity)
+    if (!catchUp) {
+      this.toolActivity(signals, this.main, this.mainAgentId, activity)
+      this.sessionActivity(signals, activity)
+    }
     this.main.apply(signals)
+  }
+
+  private sessionActivity(signals: Signal[], activity: ActivityDraft[]): void {
+    let mode = this.main.permissionMode
+    for (const s of signals) {
+      if (s.k === 'compact') {
+        activity.push({
+          kind: 'terminal.compacted',
+          terminalId: this.terminalId,
+          at: s.at,
+          data: { trigger: s.trigger, preTokens: s.preTokens, postTokens: s.postTokens },
+        })
+      } else if (s.k === 'permission_mode' && s.mode !== mode) {
+        if (mode !== undefined) activity.push({ kind: 'terminal.mode', terminalId: this.terminalId, data: { mode: s.mode } })
+        mode = s.mode
+      }
+    }
+  }
+
+  private contextOf(state: TranscriptState, model: string | undefined): { contextTokens?: number; contextWindow?: number } {
+    if (state.contextTokens === undefined) return {}
+    return {
+      contextTokens: state.contextTokens,
+      contextWindow: contextWindowOf(model, { settingsModel: this.hints.settingsModel, peak: state.peakContext }),
+    }
   }
 
   private recordLinks(signals: Signal[]): void {
@@ -335,8 +369,12 @@ export class SessionTracker {
       claudeVersion: r.version,
       rawStatus: r.status,
       status: ended ? 'stale' : mapped.status,
+      statusSince: ended ? undefined : toIso(r.statusUpdatedAt),
       waitingFor: !ended && mapped.status === 'waiting' ? r.waitingFor : undefined,
       backgroundShell: !ended && mapped.backgroundShell ? true : undefined,
+      permissionMode: this.main.permissionMode,
+      gitBranch: this.main.gitBranch,
+      compactions: this.main.compactions || undefined,
       startedAt: toIso(r.startedAt),
       lastActivityAt: laterOf(toIso(r.statusUpdatedAt), this.main.lastAt, lastSub),
       endedAt: this.endedAt,
@@ -356,6 +394,7 @@ export class SessionTracker {
         name: terminal.title,
         type: 'main',
         model: this.main.model,
+        effort: this.main.effort,
         status: mainStatus,
         currentTool: showTool ? this.main.currentTool() : undefined,
         startedAt: terminal.startedAt,
@@ -365,6 +404,9 @@ export class SessionTracker {
         outputTokens: mainTokens?.output,
         cacheReadTokens: mainTokens?.cacheRead,
         totalTokens: mainTokens ? mainTokens.input + mainTokens.output : undefined,
+        ...this.contextOf(this.main, this.main.model),
+        cacheTtl: this.main.cacheTtl,
+        cacheAt: this.main.cacheAt,
       },
     ]
     for (const e of this.subagents.values()) {
@@ -383,6 +425,7 @@ export class SessionTracker {
         toolUseId: e.meta.toolUseId,
         spawnDepth: e.meta.spawnDepth,
         model: e.state.model ?? e.meta.model,
+        effort: e.state.effort,
         status,
         currentTool: status === 'working' ? e.state.currentTool() : undefined,
         startedAt: e.startedAt,
@@ -392,6 +435,7 @@ export class SessionTracker {
         outputTokens: tokens?.output,
         cacheReadTokens: tokens?.cacheRead,
         totalTokens: tokens ? tokens.input + tokens.output : undefined,
+        ...this.contextOf(e.state, e.state.model ?? e.meta.model),
       })
     }
     return agents

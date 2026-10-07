@@ -1,20 +1,45 @@
 import { watch, type FSWatcher } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
+import type { BackgroundJob, FocusWindowResult, FolderPickResult, LaunchMode, SessionRecord } from '@ccm/shared'
+import { AliasStore, sanitizeAlias } from './aliases'
+import { readSettingsModel } from './claude-settings'
+import { FavoriteStore } from './favorites'
+import { focusProcessWindow } from './focus'
+import { pickFolder } from './folder-pick'
+import { LimitHistory } from './forecast'
+import { SessionHistory } from './history'
+import { StatusTimeline } from './timeline'
+import { JobReader } from './jobs'
+import { launchClaude } from './launcher'
+import { readModelNames } from './model-catalog'
 import { readRegistry } from './registry'
+import { ResponseTracker } from './response'
+import { latestLimits, StatusLineReader } from './statusline'
 import type { MonitorStore } from './store'
-import { SessionTracker, terminalIdOf, type ActivityDraft } from './tracker'
+import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints } from './tracker'
 
 const SESSION_ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+/** Persisted side stores; tests leave them in memory. */
+export interface MonitorStores {
+  limitHistory?: LimitHistory
+  history?: SessionHistory
+  timeline?: StatusTimeline
+}
 
 export interface MonitorDeps {
   queryProcesses: (pids: number[]) => Promise<Map<number, ProcessInfo> | null>
   isPidAlive: (pid: number) => boolean
   now: () => number
+  launch?: (dir: string, mode: LaunchMode) => Promise<void>
+  focusWindow?: (pid: number) => Promise<FocusWindowResult>
+  pickFolder?: () => Promise<{ result: FolderPickResult; dir?: string }>
 }
 
-const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now() }
+const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: focusProcessWindow, pickFolder }
 
 export class Monitor {
   private readonly trackers = new Map<string, SessionTracker>()
@@ -30,22 +55,97 @@ export class Monitor {
   private sessionsWatched = false
   private projectsWatched = false
   private stopped = false
+  onProjectFile: ((file: string) => void) | null = null
+  readonly contextHints: ContextHints = {}
+  private readonly jobReader: JobReader
+  private readonly statusLine: StatusLineReader
+  private readonly costs = new Map<string, number>()
+  private jobs = new Map<string, BackgroundJob>()
+  private jobsLoaded = false
+  private focusing: Promise<void> = Promise.resolve()
+  private picking = false
+  private readonly limitHistory: LimitHistory
+  private readonly history: SessionHistory
+  private readonly timeline: StatusTimeline
 
   constructor(
     private readonly config: CollectorConfig,
     private readonly store: MonitorStore,
     private readonly deps: MonitorDeps = defaultDeps,
+    private readonly aliases: AliasStore = new AliasStore(),
+    private readonly favorites: FavoriteStore = new FavoriteStore(),
+    private readonly response: ResponseTracker = new ResponseTracker(),
+    stores: MonitorStores = {},
   ) {
+    this.limitHistory = stores.limitHistory ?? new LimitHistory()
+    this.history = stores.history ?? new SessionHistory()
+    this.timeline = stores.timeline ?? new StatusTimeline(null, () => this.deps.now())
     this.sessionsDir = path.join(config.claudeRoot, 'sessions')
     this.projectsDir = path.join(config.claudeRoot, 'projects')
+    this.jobReader = new JobReader(path.join(config.claudeRoot, 'jobs'))
+    this.statusLine = new StatusLineReader(path.join(config.dataDir, 'statusline'))
   }
 
   async start(options: { watch?: boolean } = {}): Promise<void> {
+    await this.refreshHints()
+    this.store.setFavorites(this.favorites.list())
+    this.store.setResponse(this.response.stats())
+    await this.pollExtras()
     await this.reconcile(true)
     if (options.watch === false) return
     this.setupWatchers()
     this.timers.push(setInterval(() => void this.reconcile(false), this.config.reconcileMs))
     this.timers.push(setInterval(() => void this.verifyLive(), this.config.processVerifyMs))
+    this.timers.push(setInterval(() => void this.refreshHints(), this.config.processVerifyMs))
+    this.timers.push(setInterval(() => void this.pollExtras(), this.config.reconcileMs))
+  }
+
+  private async refreshHints(): Promise<void> {
+    this.contextHints.settingsModel = await readSettingsModel(this.config.claudeRoot)
+    this.store.setModelNames(await readModelNames(this.config.claudeRoot))
+  }
+
+  /** Background jobs + status line bridge files; both are small directories, polled with the reconcile cadence. */
+  async pollExtras(): Promise<void> {
+    if (this.stopped) return
+    try {
+      const now = this.deps.now()
+      await this.pollJobs(now)
+      const records = await this.statusLine.read(now)
+      this.store.setLimits(this.limitHistory.apply(latestLimits(records)))
+      const changed = new Set<string>()
+      const live = new Set<string>()
+      for (const r of records) {
+        if (r.costUsd === undefined) continue
+        live.add(r.sessionId)
+        if (this.costs.get(r.sessionId) === r.costUsd) continue
+        this.costs.set(r.sessionId, r.costUsd)
+        changed.add(r.sessionId)
+      }
+      for (const id of this.costs.keys()) if (!live.has(id)) this.costs.delete(id)
+      if (changed.size) for (const t of this.trackers.values()) if (t.sessionId && changed.has(t.sessionId)) this.publish(t)
+      if (this.response.rollDay()) this.store.setResponse(this.response.stats())
+    } catch (err) {
+      console.error('[collector] extras poll failed:', (err as Error).message)
+    }
+  }
+
+  private async pollJobs(now: number): Promise<void> {
+    const list = await this.jobReader.read(now)
+    const drafts: ActivityDraft[] = []
+    const next = new Map(list.map((j) => [j.id, j]))
+    if (this.jobsLoaded) {
+      for (const job of list) {
+        const prev = this.jobs.get(job.id)
+        if (prev?.state === job.state || (!prev && job.state === 'done')) continue
+        if (job.state === 'blocked') drafts.push({ kind: 'job.blocked', data: { title: job.name ?? job.id } })
+        else if (job.state === 'done') drafts.push({ kind: 'job.done', data: { title: job.name ?? job.id } })
+      }
+    }
+    this.jobs = next
+    this.jobsLoaded = true
+    this.store.setJobs(list)
+    this.pushActivity(drafts)
   }
 
   stop(): void {
@@ -94,7 +194,7 @@ export class Monitor {
       if (this.rejected.has(id) || !this.deps.isPidAlive(pid)) continue
       let tracker = this.trackers.get(id)
       if (!tracker) {
-        tracker = new SessionTracker(id, entry, this.projectsDir)
+        tracker = new SessionTracker(id, entry, this.projectsDir, this.contextHints)
         created.push(tracker)
         seen.add(id)
         continue
@@ -124,10 +224,7 @@ export class Monitor {
         continue
       }
       const endedAt = Date.parse(tracker.endedAt ?? '')
-      if (Number.isFinite(endedAt) && now - endedAt >= this.config.staleTtlMs) {
-        this.trackers.delete(tracker.terminalId)
-        this.store.removeTerminal(tracker.terminalId)
-      }
+      if (Number.isFinite(endedAt) && now - endedAt >= this.config.staleTtlMs) this.forget(tracker)
     }
   }
 
@@ -139,6 +236,10 @@ export class Monitor {
     const title = tracker.buildTerminal().title
     if (title !== prevTitle) {
       drafts.push({ kind: 'terminal.renamed', terminalId: tracker.terminalId, data: { from: prevTitle, to: title } })
+    }
+    if (prev.status === 'waiting' && entry.status === 'busy' && prev.statusUpdatedAt !== undefined) {
+      const repliedAt = entry.statusUpdatedAt ?? this.deps.now()
+      if (this.response.record(repliedAt - prev.statusUpdatedAt)) this.store.setResponse(this.response.stats())
     }
     if (entry.status !== prev.status && entry.status === 'waiting') {
       drafts.push({ kind: 'terminal.status', terminalId: tracker.terminalId, data: { to: 'waiting', waitingFor: entry.waitingFor } })
@@ -189,6 +290,11 @@ export class Monitor {
     await this.syncTracker(tracker)
     tracker.markEnded(new Date(now).toISOString())
     this.publish(tracker)
+    const record = this.recordOf(tracker)
+    if (record) {
+      this.history.add(record)
+      this.store.historyAdded(record)
+    }
     this.pushActivity([{ kind: 'terminal.ended', terminalId: tracker.terminalId, data: { title: tracker.buildTerminal().title } }])
   }
 
@@ -202,9 +308,174 @@ export class Monitor {
     }
   }
 
+  setAlias(terminalId: string, value: unknown): boolean {
+    const tracker = this.trackers.get(terminalId)
+    if (!tracker) return false
+    const before = this.titleOf(tracker)
+    if (!this.aliases.set(terminalId, sanitizeAlias(value))) return false
+    this.publish(tracker)
+    const after = this.titleOf(tracker)
+    if (after !== before) this.pushActivity([{ kind: 'terminal.renamed', terminalId, data: { from: before, to: after } }])
+    return true
+  }
+
+  /** Returns how many ended sessions were removed. */
+  dismissEnded(terminalId?: string): number {
+    let removed = 0
+    for (const tracker of [...this.trackers.values()]) {
+      if (!tracker.ended || (terminalId !== undefined && tracker.terminalId !== terminalId)) continue
+      this.forget(tracker)
+      removed++
+    }
+    return removed
+  }
+
+  private forget(tracker: SessionTracker): void {
+    this.trackers.delete(tracker.terminalId)
+    this.store.removeTerminal(tracker.terminalId)
+    this.aliases.delete(tracker.terminalId)
+  }
+
+  toggleFavorite(terminalId: string): boolean {
+    const tracker = this.trackers.get(terminalId)
+    const cwd = tracker?.record.cwd
+    if (!tracker || !cwd) return false
+    this.favorites.toggle(cwd, this.titleOf(tracker))
+    this.store.setFavorites(this.favorites.list())
+    return true
+  }
+
+  renameFavorite(dir: string, label: string | null): boolean {
+    if (!this.favorites.rename(dir, label)) return false
+    this.store.setFavorites(this.favorites.list())
+    return true
+  }
+
+  async addFavorite(dir: string, label: string | null | undefined): Promise<boolean> {
+    const trimmed = dir.trim().replace(/^"(.*)"$/, '$1')
+    // UNC paths would make stat reach out over SMB (and leak NTLM credentials); only local absolute dirs are accepted.
+    if (!trimmed || trimmed.length > 1024 || !path.isAbsolute(trimmed) || /^[\\/]{2}/.test(trimmed)) {
+      this.store.rejectFavorite(dir, 'invalid')
+      return false
+    }
+    const isDir = await stat(trimmed).then((s) => s.isDirectory(), () => false)
+    if (!isDir) {
+      this.store.rejectFavorite(dir, 'notFound')
+      return false
+    }
+    const result = this.favorites.add(trimmed, label)
+    if (result !== 'ok') {
+      this.store.rejectFavorite(dir, result)
+      return false
+    }
+    this.store.setFavorites(this.favorites.list())
+    return true
+  }
+
+  removeFavorite(dir: string): boolean {
+    if (!this.favorites.remove(dir)) return false
+    this.store.setFavorites(this.favorites.list())
+    return true
+  }
+
+  async openFavorite(dir: string, mode: LaunchMode): Promise<boolean> {
+    const favorite = this.favorites.get(dir)
+    const launch = this.deps.launch
+    if (!favorite || !launch) return false
+    try {
+      await launch(favorite.dir, mode)
+      this.pushActivity([{ kind: 'launch.started', data: { title: favorite.label, mode } }])
+      return true
+    } catch (err) {
+      const error = (err as Error).message === 'directory not found' ? 'notFound' : 'failed'
+      this.pushActivity([{ kind: 'launch.failed', data: { title: favorite.label, mode, error } }])
+      return false
+    }
+  }
+
+  private recordOf(tracker: SessionTracker): SessionRecord | null {
+    const terminal = this.store.getTerminal(tracker.terminalId)
+    if (!terminal?.endedAt) return null
+    const agents = this.store.agentsOf(tracker.terminalId)
+    const main = agents.find((a) => a.role === 'main')
+    const totals = this.timeline.totals(tracker.terminalId)
+    let input = 0
+    let output = 0
+    let cacheRead = 0
+    for (const a of agents) {
+      input += a.inputTokens ?? 0
+      output += a.outputTokens ?? 0
+      cacheRead += a.cacheReadTokens ?? 0
+    }
+    return {
+      id: terminal.id,
+      title: terminal.alias ?? terminal.title,
+      cwd: terminal.cwd,
+      gitBranch: terminal.gitBranch,
+      model: main?.model,
+      startedAt: terminal.startedAt,
+      endedAt: terminal.endedAt,
+      inputTokens: input,
+      outputTokens: output,
+      cacheReadTokens: cacheRead,
+      subagents: agents.length - (main ? 1 : 0),
+      compactions: terminal.compactions,
+      costUsd: terminal.costUsd,
+      workingMs: totals.working || undefined,
+      waitingMs: totals.waiting || undefined,
+    }
+  }
+
+  sendHistory(): void {
+    this.store.historyData(this.history.list())
+  }
+
+  sendTimeline(): void {
+    this.store.timelineData(this.timeline.data())
+  }
+
+  /** Opens the native folder dialog; one at a time, a second request while it is open answers busy. */
+  async pickFolder(requestId: string): Promise<void> {
+    const pick = this.deps.pickFolder
+    if (!pick) return this.store.folderPicked(requestId, 'unsupported')
+    if (this.picking) return this.store.folderPicked(requestId, 'busy')
+    this.picking = true
+    try {
+      const r = await pick().catch(() => ({ result: 'failed' as const, dir: undefined }))
+      this.store.folderPicked(requestId, r.result, r.dir)
+    } finally {
+      this.picking = false
+    }
+  }
+
+  /** Raises the window of a live session; requests run one at a time and every request gets an answer. */
+  focusWindow(terminalId: string): Promise<void> {
+    const run = async () => {
+      const tracker = this.trackers.get(terminalId)
+      const focus = this.deps.focusWindow
+      let result: FocusWindowResult
+      if (!tracker || tracker.ended) result = 'notFound'
+      else if (!focus) result = 'unsupported'
+      else result = await focus(tracker.record.pid).catch((): FocusWindowResult => 'failed')
+      this.store.focusResult(terminalId, result)
+    }
+    this.focusing = this.focusing.then(run, run)
+    return this.focusing
+  }
+
+  private titleOf(tracker: SessionTracker): string {
+    return this.aliases.get(tracker.terminalId) ?? tracker.buildTerminal().title
+  }
+
   private publish(tracker: SessionTracker): void {
-    const terminal = tracker.buildTerminal()
+    const sessionId = tracker.sessionId
+    const terminal = {
+      ...tracker.buildTerminal(),
+      alias: this.aliases.get(tracker.terminalId),
+      costUsd: sessionId ? this.costs.get(sessionId) : undefined,
+    }
     this.store.upsertTerminal(terminal)
+    this.timeline.observe(terminal.id, terminal.alias ?? terminal.title, terminal.status, terminal.statusSince)
     const agents = tracker.buildAgents(terminal)
     const ids = new Set(agents.map((a) => a.id))
     for (const agent of this.store.agentsOf(tracker.terminalId)) {
@@ -234,7 +505,9 @@ export class Monitor {
     if (!this.projectsWatched) {
       try {
         const w = watch(this.projectsDir, { recursive: true }, (_event, file) => {
-          if (file) this.routeProjectChange(String(file))
+          if (!file) return
+          this.routeProjectChange(String(file))
+          this.onProjectFile?.(String(file))
         })
         w.on('error', () => {
           this.projectsWatched = false

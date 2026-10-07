@@ -1,18 +1,27 @@
+import type { CacheTtl } from '@ccm/shared'
+
 export type Signal =
   | { k: 'tool_use'; id: string; name: string; at?: string }
   | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string }
   | { k: 'turn_end'; at?: string }
   | { k: 'assistant_end'; at?: string }
-  | { k: 'usage'; messageId: string; input: number; output: number; cacheRead: number }
-  | { k: 'model'; model: string }
+  | { k: 'usage'; messageId: string; input: number; output: number; cacheRead: number; ttl?: CacheTtl; at?: string }
+  | { k: 'model'; model: string; effort?: string }
   | { k: 'task_notification'; toolUseId?: string; taskId?: string; status: string; at?: string }
   | { k: 'seen'; at: string }
+  | { k: 'compact'; trigger?: string; preTokens?: number; postTokens?: number; at?: string }
+  | { k: 'permission_mode'; mode: string }
+  | { k: 'branch'; branch: string }
 
 type Obj = Record<string, unknown>
+
+const EFFORT_RE = /^[a-z]{2,12}$/
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
+
+const MAX_ENUM = 120
 
 const NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/g
 
@@ -46,21 +55,34 @@ export function extractSignals(rec: unknown): Signal[] {
   const type = rec.type
   const at = str(rec.timestamp)
   const out: Signal[] = []
+  const branch = str(rec.gitBranch)
+  if (branch) out.push({ k: 'branch', branch: branch.slice(0, MAX_ENUM) })
+
+  if (type === 'permission-mode' && typeof rec.permissionMode === 'string') {
+    out.push({ k: 'permission_mode', mode: rec.permissionMode.slice(0, MAX_ENUM) })
+    return out
+  }
 
   if (type === 'assistant' && isObj(rec.message)) {
     const msg = rec.message
     if (at) out.push({ k: 'seen', at })
     const model = str(msg.model)
-    if (model && model !== '<synthetic>') out.push({ k: 'model', model })
+    const effort = str(rec.effort) ?? str(rec.perTurnEffort)
+    if (model && model !== '<synthetic>') out.push({ k: 'model', model, effort: effort && EFFORT_RE.test(effort) ? effort : undefined })
     const id = str(msg.id)
     if (id && isObj(msg.usage)) {
       const u = msg.usage
+      const creation = isObj(u.cache_creation) ? u.cache_creation : {}
+      const ttl: CacheTtl | undefined =
+        int(creation.ephemeral_1h_input_tokens) > 0 ? '1h' : int(creation.ephemeral_5m_input_tokens) > 0 ? '5m' : undefined
       out.push({
         k: 'usage',
         messageId: id,
         input: int(u.input_tokens) + int(u.cache_creation_input_tokens),
         output: int(u.output_tokens),
         cacheRead: int(u.cache_read_input_tokens),
+        ttl,
+        at,
       })
     }
     if (Array.isArray(msg.content)) {
@@ -98,6 +120,18 @@ export function extractSignals(rec: unknown): Signal[] {
     return out
   }
 
+  if (type === 'system' && rec.subtype === 'compact_boundary') {
+    const meta = isObj(rec.compactMetadata) ? rec.compactMetadata : {}
+    out.push({
+      k: 'compact',
+      trigger: str(meta.trigger)?.slice(0, MAX_ENUM),
+      preTokens: typeof meta.preTokens === 'number' ? int(meta.preTokens) : undefined,
+      postTokens: typeof meta.postTokens === 'number' ? int(meta.postTokens) : undefined,
+      at,
+    })
+    return out
+  }
+
   return out
 }
 
@@ -111,7 +145,15 @@ export class TranscriptState {
   readonly openTools = new Map<string, string>()
   private readonly usage = new Map<string, UsageTotals>()
   model?: string
+  effort?: string
+  cacheTtl?: CacheTtl
+  cacheAt?: string
   lastAt?: string
+  contextTokens?: number
+  peakContext = 0
+  compactions = 0
+  permissionMode?: string
+  gitBranch?: string
   ended = false
   lastEndAt?: string
 
@@ -123,9 +165,25 @@ export class TranscriptState {
           break
         case 'model':
           this.model = s.model
+          this.effort = s.effort
           break
         case 'usage':
           this.usage.set(s.messageId, { input: s.input, output: s.output, cacheRead: s.cacheRead })
+          this.contextTokens = s.input + s.cacheRead
+          this.peakContext = Math.max(this.peakContext, this.contextTokens)
+          // A read-only reply carries no tier; it still refreshes the cache, so keep the last written tier.
+          if (s.ttl) this.cacheTtl = s.ttl
+          if (s.at) this.cacheAt = s.at
+          break
+        case 'compact':
+          this.compactions++
+          if (s.postTokens !== undefined) this.contextTokens = s.postTokens
+          break
+        case 'permission_mode':
+          this.permissionMode = s.mode
+          break
+        case 'branch':
+          this.gitBranch = s.branch
           break
         case 'tool_use':
           this.openTools.set(s.id, s.name)
