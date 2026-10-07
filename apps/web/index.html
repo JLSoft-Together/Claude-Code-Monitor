@@ -6,6 +6,9 @@
     <meta name="color-scheme" content="dark light" />
     <title>Claude Code Monitor</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="theme-color" content="#b4532f" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,10 +21,13 @@
           var t = localStorage.getItem('ccm.theme')
           if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
           document.documentElement.classList.toggle('dark', t === 'dark')
+          var p = localStorage.getItem('ccm.palette')
+          document.documentElement.dataset.palette = p === 'cobalt' ? 'cobalt' : 'ember'
           var l = localStorage.getItem('ccm.locale')
           if (l === 'vi' || l === 'en') document.documentElement.lang = l
         } catch (e) {
           document.documentElement.classList.add('dark')
+          document.documentElement.dataset.palette = 'ember'
         }
       })()
     </script>
