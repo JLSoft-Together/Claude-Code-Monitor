@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process'
 import type { FocusWindowResult } from '@ccm/shared'
 
-// Walks claude.exe → shell → host (conhost shell / WindowsTerminal / Code) until a process owns a visible top-level
-// window, then raises it. Foreground-lock rules block SetForegroundWindow from a background process, so the script
+// First asks the session's own console: ConPTY's hidden pseudo-console window is owned by the hosting terminal window
+// (Windows Terminal sets it per tab), and a classic console window is the console itself, so this names the exact
+// window even with several WT windows. Hosts without that link (VS Code, old WT) fall back to walking claude.exe →
+// shell → host until a process owns a visible top-level window. Foreground-lock rules block SetForegroundWindow from a background process, so the script
 // first joins the foreground thread's input queue and falls back to a bare Alt tap (it reaches the current
 // foreground app, never the terminal). The pid comes in through the environment, never through the script text.
 const SCRIPT = String.raw`
@@ -22,6 +24,20 @@ public delegate bool EnumProc(IntPtr h, IntPtr l);
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
 [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+[DllImport("kernel32.dll")] public static extern bool FreeConsole();
+[DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
+[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
+public static IntPtr ConsoleHost(uint pid) {
+  FreeConsole();
+  if (!AttachConsole(pid)) return IntPtr.Zero;
+  IntPtr con = GetConsoleWindow();
+  FreeConsole();
+  if (con == IntPtr.Zero) return IntPtr.Zero;
+  IntPtr root = GetAncestor(con, 3);
+  if (root != IntPtr.Zero && root != con && IsWindowVisible(root)) return root;
+  return IsWindowVisible(con) ? con : IntPtr.Zero;
+}
 public static int CountTop(uint pid) {
   int n = 0;
   EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && IsWindowVisible(h) && GetWindow(h, 4) == IntPtr.Zero) n++; return true; }, IntPtr.Zero);
@@ -29,8 +45,8 @@ public static int CountTop(uint pid) {
 }
 '@
 $id = [int]$env:CCM_FOCUS_PID
-$h = [IntPtr]::Zero
-for ($i = 0; $i -lt 8 -and $id -gt 4; $i++) {
+$h = [Ccm.Win]::ConsoleHost([uint32]$id)
+for ($i = 0; $h -eq [IntPtr]::Zero -and $i -lt 8 -and $id -gt 4; $i++) {
   $p = Get-Process -Id $id -ErrorAction SilentlyContinue
   if (-not $p) { break }
   if ($p.MainWindowHandle -ne [IntPtr]::Zero) {

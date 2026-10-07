@@ -56,7 +56,7 @@ export default {
     jumpTitle: 'Go to terminal window',
     jumpError: {
       notFound: 'Terminal window not found.',
-      ambiguous: 'Several Windows Terminal windows are open; the tab cannot be picked. Use the taskbar.',
+      ambiguous: 'Could not tell which Windows Terminal window hosts this session (usually an older Windows Terminal). Use the taskbar.',
       failed: 'Windows blocked the switch. Click the taskbar instead.',
       unsupported: 'Only available on Windows.',
       offline: 'Collector offline — try again when reconnected.',

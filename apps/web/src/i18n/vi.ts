@@ -58,7 +58,7 @@ const vi: typeof en = {
     jumpTitle: 'Tới cửa sổ terminal',
     jumpError: {
       notFound: 'Không tìm thấy cửa sổ terminal.',
-      ambiguous: 'Đang mở nhiều cửa sổ Windows Terminal, không xác định được tab. Hãy chọn trên taskbar.',
+      ambiguous: 'Không xác định được cửa sổ Windows Terminal của session này (thường do Windows Terminal bản cũ). Hãy chọn trên taskbar.',
       failed: 'Windows chặn chuyển cửa sổ. Hãy bấm trên taskbar.',
       unsupported: 'Chỉ dùng được trên Windows.',
       offline: 'Collector đang offline — thử lại khi kết nối lại.',
