@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, provide, ref, watch } from 'vue'
+import ArtImage from './ArtImage.vue'
+import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -59,6 +60,7 @@ function syncNodes(fit = false): void {
     terminals: terminalOrder.value.map((x) => x.id),
     agentsByTerminal: shownByTerminal.value,
     perRow: columnsFor(canvas.value?.clientWidth ?? 900),
+    sizes: ui.nodeSizes,
   })
   const wanted = new Set(shownList.value.map((a) => a.id))
   const current = new Map(getNodes.value.map((n) => [n.id, n]))
@@ -102,14 +104,29 @@ const edges = computed<Edge[]>(() =>
     })),
 )
 
-watch(structureKey, () => syncNodes(false), { immediate: true })
+// First sync waits for <VueFlow> to mount: nodes added during setup are dropped when it initializes (remount after a tab switch).
+onMounted(() => syncNodes(false))
+watch(structureKey, () => syncNodes(false))
 watch(
   () => settings.hideFinished,
   () => void nextTick(() => syncNodes(true)),
 )
 watch(
+  () => ui.nodeResized,
+  () => syncNodes(false),
+)
+watch(
   () => ui.layoutRequest,
   () => syncNodes(true),
+)
+// Collapsing a side panel resizes the canvas after the 200ms grid transition.
+let resizeTimer: number | undefined
+watch(
+  () => ui.collapsed.join(','),
+  () => {
+    window.clearTimeout(resizeTimer)
+    resizeTimer = window.setTimeout(() => syncNodes(true), 240)
+  },
 )
 watch(
   () => ui.focusRequest,
@@ -147,12 +164,12 @@ const controls = computed(() => [
 
 <template>
   <section aria-labelledby="map-title" class="flex min-h-0 flex-col">
-    <div class="mb-2.5 flex items-center justify-between gap-2 px-0.5">
-      <h2 id="map-title" class="text-xs font-semibold tracking-wide text-ink-muted uppercase">{{ t('map.title') }}</h2>
+    <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
+      <h2 id="map-title" class="text-sm font-semibold text-ink">{{ t('map.title') }}</h2>
       <div class="flex items-center gap-0.5" role="toolbar" :aria-label="t('map.title')">
         <button
           type="button"
-          class="mr-1 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           :class="settings.hideFinished ? 'bg-raised text-ink' : 'text-ink-muted'"
           :aria-pressed="settings.hideFinished"
           :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
@@ -160,27 +177,27 @@ const controls = computed(() => [
           :disabled="!hasNodes"
           @click="settings.toggleHideFinished()"
         >
-          <component :is="settings.hideFinished ? EyeOff : Eye" :size="15" aria-hidden="true" />
+          <component :is="settings.hideFinished ? EyeOff : Eye" :size="17" aria-hidden="true" />
           <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
         </button>
         <button
           v-for="c in controls"
           :key="c.key"
           type="button"
-          class="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           :aria-label="c.label"
           :title="c.label"
           :disabled="!hasNodes"
           @click="c.run()"
         >
-          <component :is="c.icon" :size="15" aria-hidden="true" />
+          <component :is="c.icon" :size="17" aria-hidden="true" />
         </button>
       </div>
     </div>
 
     <div
       ref="canvas"
-      class="relative min-h-[420px] flex-1 overflow-hidden lg:min-h-0 rounded-lg border border-line bg-surface"
+      class="relative min-h-[440px] flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:min-h-0"
       role="region"
       :aria-label="t('map.ariaLabel')"
     >
@@ -197,13 +214,14 @@ const controls = computed(() => [
       >
         <Background :gap="18" :size="1" pattern-color="var(--ccm-flow-dot)" />
         <template #node-agent="nodeProps">
-          <AgentNode :data="nodeProps.data" />
+          <AgentNode :id="nodeProps.id" :data="nodeProps.data" />
         </template>
       </VueFlow>
 
-      <p v-if="!hasNodes" class="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-ink-muted">
-        {{ t('map.empty') }}
-      </p>
+      <div v-if="!hasNodes" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-ink-muted">
+        <ArtImage name="agent-map-bg" class="w-full max-w-3xl opacity-25" />
+        <p>{{ t('map.empty') }}</p>
+      </div>
 
       <AgentDetails />
     </div>

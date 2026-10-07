@@ -1,10 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { MonitorEvent, MonitorSnapshot, ServerMessage } from '@ccm/shared'
+import type { ClientMessage, FolderPickResult, LaunchMode, MonitorEvent, MonitorSnapshot, ServerMessage } from '@ccm/shared'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
+import { useExtrasStore } from './extras'
+import { useFavoritesStore } from './favorites'
+import { useHistoryStore } from './history'
 import { useTerminalsStore } from './terminals'
 import { useUiStore } from './ui'
+import { useUsageStore } from './usage'
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
 
@@ -37,6 +41,10 @@ export const useConnectionStore = defineStore('connection', () => {
   const agents = useAgentsStore()
   const activity = useActivityStore()
   const ui = useUiStore()
+  const usage = useUsageStore()
+  const favorites = useFavoritesStore()
+  const extras = useExtrasStore()
+  const history = useHistoryStore()
 
   function url(): string {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -47,6 +55,10 @@ export const useConnectionStore = defineStore('connection', () => {
     terminals.replaceAll(snapshot.terminals ?? [])
     agents.replaceAll(snapshot.agents ?? [])
     activity.replaceAll(snapshot.activity ?? [])
+    usage.reset(snapshot.usage)
+    favorites.replaceAll(snapshot.favorites ?? [])
+    extras.hydrate(snapshot)
+    history.invalidate()
     supportedClaudeVersion.value = snapshot.supportedClaudeVersion ?? null
     if (ui.selectedAgentId && !agents.byId[ui.selectedAgentId]) ui.selectAgent(null)
     hasData.value = true
@@ -80,6 +92,55 @@ export const useConnectionStore = defineStore('connection', () => {
           break
         case 'activity':
           newActivity.push(event.payload)
+          break
+        case 'usage.reset':
+          usage.reset(event.payload)
+          break
+        case 'usage.updated':
+          usage.update(event.payload.buckets ?? [])
+          break
+        case 'usage.scan':
+          usage.setScan(event.payload)
+          break
+        case 'usage.roots':
+          usage.setRoots(event.payload.roots ?? {})
+          break
+        case 'favorites.updated':
+          favorites.replaceAll(event.payload.favorites ?? [])
+          break
+        case 'folder.picked': {
+          // Every tab receives the answer; only the tab that asked has the request id.
+          const done = folderPicks.get(event.payload.requestId)
+          folderPicks.delete(event.payload.requestId)
+          done?.({ result: event.payload.result, dir: event.payload.dir })
+          break
+        }
+        case 'favorite.rejected':
+          favorites.reject(event.payload.dir, event.payload.reason)
+          break
+        case 'jobs.updated':
+          extras.setJobs(event.payload.jobs ?? [])
+          break
+        case 'limits.updated':
+          extras.setLimits(event.payload)
+          break
+        case 'response.updated':
+          extras.setResponse(event.payload)
+          break
+        case 'history.data':
+          history.setSessions(event.payload.sessions ?? [])
+          break
+        case 'history.added':
+          history.add(event.payload)
+          break
+        case 'timeline.data':
+          history.setTimeline(event.payload)
+          break
+        case 'terminal.focusResult':
+          ui.reportWindowResult(event.payload.terminalId, event.payload.result)
+          break
+        case 'models.updated':
+          extras.setModelNames(event.payload.modelNames ?? {})
           break
         default:
           break
@@ -143,6 +204,8 @@ export const useConnectionStore = defineStore('connection', () => {
     ws.onmessage = (e) => onMessage(String(e.data))
     ws.onclose = () => {
       if (socket === ws) socket = null
+      for (const done of folderPicks.values()) done({ result: 'failed' })
+      folderPicks.clear()
       scheduleReconnect()
     }
     ws.onerror = () => ws.close()
@@ -162,5 +225,53 @@ export const useConnectionStore = defineStore('connection', () => {
     })
   }
 
-  return { state, lastEventAt, hasData, supportedClaudeVersion, start, apply, onMessage }
+  const folderPicks = new Map<string, (r: { result: FolderPickResult; dir?: string }) => void>()
+
+  function request(message: ClientMessage): boolean {
+    if (socket?.readyState !== WebSocket.OPEN) return false
+    send(message)
+    return true
+  }
+
+  const setAlias = (terminalId: string, alias: string | null): boolean => request({ type: 'terminal.alias', terminalId, alias })
+  const toggleFavorite = (terminalId: string): boolean => request({ type: 'favorite.toggle', terminalId })
+  const removeFavorite = (dir: string): boolean => request({ type: 'favorite.remove', dir })
+  const addFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.add', dir, label })
+  const renameFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.rename', dir, label })
+  const openFavorite = (dir: string, mode: LaunchMode): boolean => request({ type: 'favorite.open', dir, mode })
+  const dismissEnded = (terminalId?: string): boolean => request({ type: 'terminal.dismiss', terminalId })
+  const loadHistory = (): boolean => request({ type: 'history.get' })
+  const loadTimeline = (): boolean => request({ type: 'timeline.get' })
+  function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
+    const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
+    if (!request({ type: 'folder.pick', requestId })) return Promise.resolve({ result: 'offline' })
+    return new Promise((resolve) => folderPicks.set(requestId, resolve))
+  }
+
+  function focusWindow(terminalId: string): boolean {
+    if (!request({ type: 'terminal.focusWindow', terminalId })) return false
+    ui.startWindowFocus(terminalId)
+    return true
+  }
+
+  return {
+    state,
+    lastEventAt,
+    hasData,
+    supportedClaudeVersion,
+    start,
+    apply,
+    onMessage,
+    setAlias,
+    toggleFavorite,
+    removeFavorite,
+    addFavorite,
+    renameFavorite,
+    openFavorite,
+    dismissEnded,
+    focusWindow,
+    pickFolder,
+    loadHistory,
+    loadTimeline,
+  }
 })

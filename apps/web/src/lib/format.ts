@@ -64,3 +64,20 @@ export function shortPath(path: string | undefined): string {
   if (parts.length <= 2) return path
   return `…/${parts.slice(-2).join('/')}`
 }
+
+export function formatCost(n: number, locale: string): string {
+  const digits = n >= 100 ? 0 : n >= 1 ? 2 : 3
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n)
+}
+
+export function formatDay(day: string, locale: string, style: 'short' | 'long' = 'short'): string {
+  const [y, m, d] = day.split('-').map(Number)
+  if (!y || !m || !d) return day
+  const opts: Intl.DateTimeFormatOptions = style === 'short' ? { day: 'numeric', month: 'numeric' } : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+  return new Intl.DateTimeFormat(locale, opts).format(new Date(y, m - 1, d))
+}
+
+export function baseName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) ?? path
+}

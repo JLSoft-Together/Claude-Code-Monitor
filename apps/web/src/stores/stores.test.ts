@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Agent, MonitorSnapshot, ServerMessage, TerminalSession } from '@ccm/shared'
 import { CHILD_INDENT, columnsFor, computeLayout, COLUMN_WIDTH, treeOrder, visibleAgents } from '../lib/layout'
-import { useActivityStore, ACTIVITY_LIMIT } from './activity'
+import { useActivityStore, ACTIVITY_LIMIT, TOOL_ACTIVITY_LIMIT } from './activity'
 import { useAgentsStore } from './agents'
 import { useConnectionStore } from './connection'
 import { useTerminalsStore } from './terminals'
@@ -80,11 +80,19 @@ describe('connection message handling', () => {
 
   it('caps activity and dedupes by id', () => {
     const activity = useActivityStore()
-    const many = Array.from({ length: ACTIVITY_LIMIT + 50 }, (_, i) => ({ id: `e${i}`, at: '2026-10-07T10:00:00.000Z', kind: 'tool.started' as const }))
+    const many = Array.from({ length: ACTIVITY_LIMIT + 50 }, (_, i) => ({ id: `e${i}`, at: '2026-10-07T10:00:00.000Z', kind: 'agent.started' as const }))
     activity.push(many)
     activity.push([many[many.length - 1]!])
     expect(activity.items).toHaveLength(ACTIVITY_LIMIT)
     expect(activity.items[0]?.id).toBe(`e${ACTIVITY_LIMIT + 49}`)
+  })
+
+  it('keeps tool events from evicting other activity', () => {
+    const activity = useActivityStore()
+    activity.push([{ id: 'wait', at: '2026-10-07T10:00:00.000Z', kind: 'terminal.status' }])
+    activity.push(Array.from({ length: TOOL_ACTIVITY_LIMIT + 20 }, (_, i) => ({ id: `t${i}`, at: '2026-10-07T10:00:01.000Z', kind: 'tool.started' as const })))
+    expect(activity.items).toHaveLength(TOOL_ACTIVITY_LIMIT + 1)
+    expect(activity.items.at(-1)?.id).toBe('wait')
   })
 })
 

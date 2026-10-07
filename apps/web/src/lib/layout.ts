@@ -5,16 +5,26 @@ export interface Point {
   y: number
 }
 
-export const COLUMN_WIDTH = 290
+export const COLUMN_WIDTH = 316
 export const CHILD_INDENT = 28
-export const MAIN_HEIGHT = 84
-export const ROW_HEIGHT = 70
+export const MAIN_HEIGHT = 150
+export const ROW_HEIGHT = 128
 export const ROW_GAP = 56
+export const MAIN_WIDTH = 264
+export const SUB_WIDTH = 240
+const STACK_GAP = 20
+const COLUMN_GAP = 52
+
+export interface NodeSize {
+  w?: number
+  h?: number
+}
 
 export interface LayoutInput {
   terminals: string[]
   agentsByTerminal: Record<string, Agent[]>
   perRow: number
+  sizes?: Record<string, NodeSize>
 }
 
 export function columnsFor(width: number): number {
@@ -61,22 +71,29 @@ export function computeLayout(input: LayoutInput): Map<string, Point> {
   const positions = new Map<string, Point>()
   const placed = terminals.filter((id) => agentsByTerminal[id]?.length)
 
+  const sizes = input.sizes ?? {}
+  // A resized node takes the room it needs; untouched nodes keep the fixed grid.
+  const slot = (id: string | undefined, fallback: number) => Math.max(fallback, (id ? sizes[id]?.h ?? 0 : 0) + STACK_GAP)
   let y = 0
   for (let start = 0; start < placed.length; start += perRow) {
     const row = placed.slice(start, start + perRow)
     let rowHeight = 0
-    row.forEach((terminalId, col) => {
+    let x0 = 0
+    for (const terminalId of row) {
       const agents = agentsByTerminal[terminalId] ?? []
-      const x0 = col * COLUMN_WIDTH
       const main = agents.find((a) => a.role === 'main')
       if (main) positions.set(main.id, { x: x0, y })
-      let childY = y + MAIN_HEIGHT - ROW_HEIGHT
+      let right = main ? sizes[main.id]?.w ?? MAIN_WIDTH : 0
+      let cursor = y + slot(main?.id, MAIN_HEIGHT)
       for (const { agent, depth } of treeOrder(agents)) {
-        childY += ROW_HEIGHT
-        positions.set(agent.id, { x: x0 + Math.min(depth, MAX_INDENT_DEPTH) * CHILD_INDENT, y: childY })
+        const x = x0 + Math.min(depth, MAX_INDENT_DEPTH) * CHILD_INDENT
+        positions.set(agent.id, { x, y: cursor })
+        right = Math.max(right, x - x0 + (sizes[agent.id]?.w ?? SUB_WIDTH))
+        cursor += slot(agent.id, ROW_HEIGHT)
       }
-      rowHeight = Math.max(rowHeight, treeHeight(agents))
-    })
+      rowHeight = Math.max(rowHeight, cursor - y)
+      x0 += Math.max(COLUMN_WIDTH, right + COLUMN_GAP)
+    }
     y += rowHeight + ROW_GAP
   }
   return positions

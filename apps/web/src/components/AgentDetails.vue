@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
 import { compactNumber, fullNumber, now, relativeTime } from '../lib/format'
+import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
@@ -15,12 +16,13 @@ const ui = useUiStore()
 
 const agent = computed(() => (ui.selectedAgentId ? agents.byId[ui.selectedAgentId] : undefined))
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
+const terminalTitle = computed(() => displayTitle(terminal.value))
 
 const rows = computed(() => {
   const a = agent.value
   if (!a) return []
   const out: { label: string; value: string; title?: string; mono?: boolean }[] = []
-  out.push({ label: t('agent.session'), value: terminal.value?.title ?? '—' })
+  out.push({ label: t('agent.session'), value: terminalTitle.value || '—' })
   if (a.role === 'subagent') {
     out.push({ label: t('agent.type'), value: a.type ?? '—', mono: true })
     if (a.description) out.push({ label: t('agent.currentTask'), value: a.description })
@@ -56,16 +58,16 @@ const rows = computed(() => {
   >
     <aside
       v-if="agent"
-      class="absolute right-3 bottom-3 left-3 z-10 max-h-[70%] overflow-y-auto rounded-lg border border-line-strong bg-surface p-3.5 shadow-lg shadow-black/10 sm:left-auto sm:w-[300px]"
+      class="absolute right-3 bottom-3 left-3 z-10 max-h-[70%] overflow-y-auto rounded-xl border border-line-strong bg-surface p-4 shadow-lg shadow-black/10 sm:left-auto sm:w-[320px]"
       :aria-label="agent.role === 'main' ? t('agent.main') : t('agent.subagent')"
     >
       <div class="flex items-start gap-2">
         <div class="min-w-0 flex-1">
-          <p class="text-2xs font-medium text-ink-faint uppercase">
+          <p class="text-2xs font-medium text-ink-faint">
             {{ agent.role === 'main' ? t('agent.main') : t('agent.subagent') }}
           </p>
-          <h3 class="truncate text-sm font-semibold" :title="agent.role === 'main' ? terminal?.title : agent.type">
-            {{ agent.role === 'main' ? terminal?.title : agent.type ?? agent.name }}
+          <h3 class="truncate text-base font-semibold" :title="agent.role === 'main' ? terminalTitle : agent.type">
+            {{ agent.role === 'main' ? terminalTitle : agent.type ?? agent.name }}
           </h3>
           <StatusBadge :status="agent.status" class="mt-1" />
         </div>

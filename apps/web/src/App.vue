@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useNotifications } from './composables/useNotifications'
 import { startClock } from './lib/format'
+import { useAwayStore } from './stores/away'
 import { useConnectionStore } from './stores/connection'
 import { useSettingsStore } from './stores/settings'
-import ActivityFeed from './components/ActivityFeed.vue'
-import AgentMap from './components/AgentMap.vue'
+import { useUiStore } from './stores/ui'
 import AppHeader from './components/AppHeader.vue'
-import SessionList from './components/SessionList.vue'
+import CommandPalette from './components/CommandPalette.vue'
+import RecapDialog from './components/RecapDialog.vue'
+import MonitorView from './components/MonitorView.vue'
+import UsageView from './components/usage/UsageView.vue'
+import HistoryView from './components/history/HistoryView.vue'
 
 const { t } = useI18n()
 const connection = useConnectionStore()
+const ui = useUiStore()
 useSettingsStore()
+useNotifications()
+useAwayStore().install()
 
 onMounted(() => {
   startClock()
@@ -20,23 +28,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col overflow-x-hidden lg:h-dvh">
+  <div class="flex min-h-dvh flex-col overflow-x-hidden" :class="ui.view === 'monitor' ? 'lg:h-dvh' : ''">
     <a
-      href="#sessions"
+      href="#main"
       class="sr-only z-50 rounded-md bg-surface px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
     >
       {{ t('app.skipToContent') }}
     </a>
     <AppHeader />
-    <main
-      class="mx-auto grid w-full max-w-[1800px] flex-1 grid-cols-[minmax(0,1fr)] gap-4 px-4 py-4 sm:px-6 lg:min-h-0 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_260px] xl:grid-cols-[340px_minmax(0,1fr)_320px] xl:grid-rows-1"
-      :class="connection.state !== 'connected' && connection.hasData ? 'opacity-90' : ''"
-    >
-      <div class="min-w-0 lg:row-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1 xl:row-span-1">
-        <SessionList />
-      </div>
-      <AgentMap class="min-h-[460px] min-w-0 lg:min-h-0" />
-      <ActivityFeed class="max-h-[420px] min-w-0 lg:col-start-2 lg:max-h-none lg:min-h-0 xl:col-start-3" />
-    </main>
+    <Transition name="ccm-view" mode="out-in">
+      <MonitorView v-if="ui.view === 'monitor'" id="main" key="monitor" />
+      <UsageView v-else-if="ui.view === 'usage'" id="main" key="usage" />
+      <HistoryView v-else id="main" key="history" />
+    </Transition>
+    <CommandPalette />
+    <RecapDialog />
   </div>
 </template>
