@@ -38,7 +38,7 @@ App Electron đóng gói sẵn collector + web: người dùng cuối **không c
 
 - Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, Mở trong trình duyệt, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
 - Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray.
-- Nếu đã có collector chạy ở port `4317` (ví dụ đang mở bằng bat), app dùng luôn collector đó, không khởi động cái thứ hai.
+- Nếu đã có collector chạy ở port `4317` (ví dụ đang mở bằng bat), app dùng luôn collector đó, không khởi động cái thứ hai; đóng bat thì app tự bật collector riêng sau vài giây.
 
 Build:
 

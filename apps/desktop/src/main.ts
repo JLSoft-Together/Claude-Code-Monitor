@@ -121,6 +121,11 @@ function createMainWindow(): BrowserWindow {
     if (!START_HIDDEN) win.show()
   })
   win.on('page-title-updated', (_event, title) => tray?.setToolTip(title))
+  // Logoff/shutdown closes windows without before-quit; hide-on-close must not block it.
+  win.on('session-end', () => {
+    quitting = true
+    void host.stop()
+  })
   win.on('close', (event) => {
     saveBounds(win)
     if (quitting) return
@@ -268,11 +273,6 @@ if (!app.requestSingleInstanceLock()) {
       stopped = true
       app.quit()
     })
-  })
-  // Logoff/shutdown may close windows without before-quit; hide-on-close must not block it.
-  app.on('session-end', () => {
-    quitting = true
-    void host?.stop()
   })
   app
     .whenReady()

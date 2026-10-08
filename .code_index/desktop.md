@@ -4,7 +4,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (reuse or fork collector) 
 
 ## Files
 - `src/main.ts`: single-instance lock, AUMID `dev.ccm.monitor`, `lockPermissions` (notifications/clipboard/fullscreen, app origin only), `harden` (deny window.open → `openAppWindow` for app URLs / `shell.openExternal` http(s); block cross-origin navigate; F5/Ctrl R, F12, zoom keys), main window (bounds in `userData/window.json`, close = hide + one balloon), compact window (`?mode=compact`, 440×720), tray menu (open / compact / browser / Start with Windows `--hidden` / logs / quit), `boot()` loading page → host.start → load ORIGIN, `before-quit` → `host.stop()`.
-- `src/collector-host.ts` `CollectorHost`: `isHealthy` (`GET /health`), `external` = port already healthy → no fork; `utilityProcess.fork(collector.cjs)` stdout/stderr → `logs/collector.log` + 40-line `tail`; `stop()` posts `'shutdown'`, kill after 4 s.
+- `src/collector-host.ts` `CollectorHost`: `isHealthy` (`GET /health`), `external` = port already healthy → no fork, poll every 3 s, 2 misses → `start()` own collector (bat closed); `utilityProcess.fork(collector.cjs)` stdout/stderr → `logs/collector.log` + 40-line `tail`; `stop()` posts `'shutdown'`, kill after 4 s.
 - `src/bridge.ts` `installBridge`: copy bridge → `<dataDir>/bin/statusline-bridge.mjs` (write if changed); command `node "<script>"` if portable/dev or `where node` ok, else write `statusline-bridge.cmd` (`ELECTRON_RUN_AS_NODE=1` + exe).
 - `src/pages.ts`: loading / error `data:` pages (tokens match launcher page), retry link `ccm-desktop://retry` intercepted in `will-navigate` → `boot()`.
 - `src/strings.ts`: en/vi by `app.getLocale()`.

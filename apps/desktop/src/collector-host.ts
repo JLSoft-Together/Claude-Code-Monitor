@@ -16,6 +16,8 @@ const BOOT_TIMEOUT_MS = 30_000
 const STOP_TIMEOUT_MS = 4_000
 const STABLE_MS = 60_000
 const LOG_TAIL = 40
+const EXTERNAL_POLL_MS = 3_000
+const EXTERNAL_MISSES = 2
 
 export async function isHealthy(port: number): Promise<boolean> {
   try {
@@ -39,6 +41,7 @@ export class CollectorHost {
   private stopping = false
   private log: WriteStream | null = null
   private lastExit: number | null | undefined
+  private externalTimer: NodeJS.Timeout | null = null
   readonly tail: string[] = []
   /** True when another collector (e.g. the .bat launcher) already serves the port. */
   external = false
@@ -47,10 +50,11 @@ export class CollectorHost {
 
   async start(): Promise<void> {
     if (this.child) await this.stop()
+    this.unwatchExternal()
     this.stopping = false
     this.restarts = 0
     this.external = await isHealthy(this.opts.port)
-    if (this.external) return
+    if (this.external) return this.watchExternal()
     this.log ??= createWriteStream(this.opts.logFile, { flags: 'w' })
     this.spawn()
     await this.waitHealthy()
@@ -58,6 +62,7 @@ export class CollectorHost {
 
   async stop(): Promise<void> {
     this.stopping = true
+    this.unwatchExternal()
     const child = this.child
     if (!child) return
     const exited = new Promise<'exited'>((resolve) => child.once('exit', () => resolve('exited')))
@@ -73,6 +78,28 @@ export class CollectorHost {
     }
     this.log?.end()
     this.log = null
+  }
+
+  // A borrowed collector (the .bat launcher) can be closed at any time; take over the port once it is gone.
+  private watchExternal(): void {
+    let misses = 0
+    this.externalTimer = setInterval(() => {
+      void isHealthy(this.opts.port).then((ok) => {
+        if (this.stopping || !this.externalTimer) return
+        misses = ok ? 0 : misses + 1
+        if (misses < EXTERNAL_MISSES) return
+        this.unwatchExternal()
+        this.write('external collector is gone, starting the bundled one')
+        this.start().catch((err: unknown) => {
+          if (err instanceof FatalError && !this.stopping) this.opts.onFatal(err.reason)
+        })
+      })
+    }, EXTERNAL_POLL_MS)
+  }
+
+  private unwatchExternal(): void {
+    if (this.externalTimer) clearInterval(this.externalTimer)
+    this.externalTimer = null
   }
 
   private spawn(): void {
