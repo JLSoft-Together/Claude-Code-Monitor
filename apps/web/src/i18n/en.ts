@@ -455,6 +455,8 @@ export default {
     fiveHourLong: '5 hours',
     sevenDayLong: 'Weekly',
     resetsIn: 'resets in {in}',
+    leftWord: 'left',
+    usedLabel: 'Used',
     resetLabel: 'Resets',
     rateLabel: 'Pace',
     rate: '~{rate}% per hour',

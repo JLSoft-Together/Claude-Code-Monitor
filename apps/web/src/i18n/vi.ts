@@ -457,6 +457,8 @@ const vi: typeof en = {
     fiveHourLong: '5 giờ',
     sevenDayLong: 'Weekly',
     resetsIn: 'reset sau {in}',
+    leftWord: 'còn lại',
+    usedLabel: 'Đã dùng',
     resetLabel: 'Reset',
     rateLabel: 'Tốc độ',
     rate: '~{rate}% mỗi giờ',

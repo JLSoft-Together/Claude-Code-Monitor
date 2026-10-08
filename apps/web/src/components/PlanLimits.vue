@@ -39,9 +39,10 @@ function view(key: 'fiveHour' | 'sevenDay', w: LimitWindow | undefined) {
   return {
     key,
     pct,
+    left: Math.max(0, 100 - pct),
     level,
     label: t(`limits.${key}Long`),
-    left: hasReset ? countdown(resets - now.value) : null,
+    resetsIn: hasReset ? countdown(resets - now.value) : null,
     resetAt: hasReset ? resetFormat.value.format(resets) : null,
     rate: f ? f.pctPerHour : null,
     risk,
@@ -63,11 +64,11 @@ const updated = computed(() => relativeTime(extras.limits?.updatedAt, locale.val
 
 type WindowKey = 'fiveHour' | 'sevenDay'
 
-const fivePct = computed(() => Math.round(extras.limits?.fiveHour?.usedPct ?? 0))
-const sevenPct = computed(() => Math.round(extras.limits?.sevenDay?.usedPct ?? 0))
+const fiveLeft = computed(() => Math.max(0, 100 - Math.round(extras.limits?.fiveHour?.usedPct ?? 0)))
+const sevenLeft = computed(() => Math.max(0, 100 - Math.round(extras.limits?.sevenDay?.usedPct ?? 0)))
 const shown: Record<WindowKey, ReturnType<typeof useCountUp>> = {
-  fiveHour: useCountUp(fivePct, 700),
-  sevenDay: useCountUp(sevenPct, 700),
+  fiveHour: useCountUp(fiveLeft, 700),
+  sevenDay: useCountUp(sevenLeft, 700),
 }
 
 const changes = reactive<Record<WindowKey, { delta: number; n: number }>>({
@@ -82,8 +83,8 @@ function track(key: WindowKey, source: () => number | undefined): void {
     changes[key].n++
   })
 }
-track('fiveHour', () => (extras.limits?.fiveHour ? fivePct.value : undefined))
-track('sevenDay', () => (extras.limits?.sevenDay ? sevenPct.value : undefined))
+track('fiveHour', () => (extras.limits?.fiveHour ? fiveLeft.value : undefined))
+track('sevenDay', () => (extras.limits?.sevenDay ? sevenLeft.value : undefined))
 
 const LEVEL = {
   ok: { bar: 'bg-accent', text: 'text-ink', icon: Gauge },
@@ -140,17 +141,17 @@ onBeforeUnmount(() => {
           v-if="changes[w.key].n"
           :key="`flash-${changes[w.key].n}`"
           class="ccm-quota-flash pointer-events-none absolute inset-0 rounded-lg"
-          :class="changes[w.key].delta < 0 ? 'text-st-done' : LEVEL[w.level].text"
+          :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
           aria-hidden="true"
         />
         <span
           v-if="changes[w.key].n"
           :key="`delta-${changes[w.key].n}`"
           class="ccm-quota-delta pointer-events-none absolute -top-2 right-1 inline-flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 text-2xs font-semibold tabular shadow-sm"
-          :class="changes[w.key].delta < 0 ? 'text-st-done' : LEVEL[w.level].text"
+          :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
           aria-hidden="true"
         >
-          <RotateCcw v-if="changes[w.key].delta < 0" :size="10" aria-hidden="true" />{{ changes[w.key].delta > 0 ? '+' : '−' }}{{ Math.abs(changes[w.key].delta) }}%
+          <RotateCcw v-if="changes[w.key].delta > 0" :size="10" aria-hidden="true" />{{ changes[w.key].delta > 0 ? '+' : '−' }}{{ Math.abs(changes[w.key].delta) }}%
         </span>
         <span class="flex items-baseline justify-between gap-2">
           <span class="inline-flex items-center gap-1 text-2xs text-ink-muted">
@@ -158,20 +159,20 @@ onBeforeUnmount(() => {
               <component :is="LEVEL[w.level].icon" :size="12" :class="[LEVEL[w.level].text, w.level === 'critical' ? 'ccm-pulse' : '']" aria-hidden="true" />
             </span>{{ w.label }}
           </span>
-          <span :key="changes[w.key].n" class="ccm-tick text-sm font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%</span>
+          <span :key="changes[w.key].n" class="ccm-tick text-sm font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%<span class="ml-1 hidden text-2xs font-normal text-ink-faint sm:inline">{{ t('limits.leftWord') }}</span></span>
         </span>
         <span class="relative h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden="true">
           <span
             class="block h-full origin-left rounded-full transition-[transform,background-color] duration-700 ease-out-quint"
             :class="LEVEL[w.level].bar"
-            :style="{ transform: `scaleX(${Math.min(100, w.pct) / 100})` }"
+            :style="{ transform: `scaleX(${w.left / 100})` }"
           />
           <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
         </span>
         <span v-if="w.risk" class="hidden items-center gap-1 truncate sm:inline-flex text-2xs font-medium text-st-waiting tabular">
           <TrendingUp :size="12" class="shrink-0" aria-hidden="true" />{{ t('limits.forecastShort', { at: w.fullAt }) }}
         </span>
-        <span v-else class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ w.left ? t('limits.resetsIn', { in: w.left }) : ' ' }}</span>
+        <span v-else class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ w.resetsIn ? t('limits.resetsIn', { in: w.resetsIn }) : ' ' }}</span>
       </span>
       <ChevronDown :size="14" class="self-center text-ink-faint transition-transform" :class="open ? 'rotate-180' : ''" aria-hidden="true" />
     </button>
@@ -186,17 +187,19 @@ onBeforeUnmount(() => {
       <section v-for="w in windows" :key="w.key" class="mt-4 first-of-type:mt-3">
         <div class="flex items-baseline justify-between gap-3">
           <span class="text-sm text-ink-muted">{{ w.label }}</span>
-          <span class="text-2xl font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%</span>
+          <span class="text-2xl font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%<span class="ml-1.5 text-sm font-normal text-ink-faint">{{ t('limits.leftWord') }}</span></span>
         </div>
         <div class="relative mt-2 h-2 overflow-hidden rounded-full bg-raised" aria-hidden="true">
-          <span class="block h-full rounded-full transition-[width,background-color] duration-700 ease-out-quint" :class="LEVEL[w.level].bar" :style="{ width: `${Math.min(100, w.pct)}%` }" />
+          <span class="block h-full rounded-full transition-[width,background-color] duration-700 ease-out-quint" :class="LEVEL[w.level].bar" :style="{ width: `${w.left}%` }" />
           <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
-          <span class="absolute inset-y-0 left-[80%] w-px bg-surface" />
+          <span class="absolute inset-y-0 left-[20%] w-px bg-surface" />
         </div>
         <dl class="mt-2.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt class="text-ink-faint">{{ t('limits.usedLabel') }}</dt>
+          <dd class="text-right text-ink tabular">{{ w.pct }}%</dd>
           <template v-if="w.resetAt">
             <dt class="text-ink-faint">{{ t('limits.resetLabel') }}</dt>
-            <dd class="text-right text-ink tabular">{{ w.resetAt }} <span class="text-ink-faint">({{ w.left }})</span></dd>
+            <dd class="text-right text-ink tabular">{{ w.resetAt }} <span class="text-ink-faint">({{ w.resetsIn }})</span></dd>
           </template>
           <template v-if="w.rate !== null">
             <dt class="text-ink-faint">{{ t('limits.rateLabel') }}</dt>
