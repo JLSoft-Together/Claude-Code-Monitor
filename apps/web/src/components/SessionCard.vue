@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AppWindow, BellOff, Check, Code, Cpu, FileDiff, FolderOpen, FoldVertical, GitBranch, GitMerge, Hourglass, LoaderCircle, Pencil, Pin, Repeat, RotateCcw, Snowflake, Star, Trash2, TriangleAlert, X } from 'lucide-vue-next'
+import { AppWindow, BellOff, Check, Code, Cpu, FileDiff, FoldVertical, FolderOpen, GitBranch, GitMerge, Hourglass, LoaderCircle, Pencil, Pin, Repeat, RotateCcw, Snowflake, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
 import type { OpenApp, TerminalSession } from '@ccm/shared'
 import { cacheState, formatUsd, quietFor } from '../lib/attention'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
@@ -229,6 +229,34 @@ function cancel(): void {
   saveFailed.value = false
 }
 
+const noting = ref(false)
+const noteDraft = ref('')
+const noteInput = ref<HTMLInputElement | null>(null)
+const noteFailed = ref(false)
+
+async function startNote(): Promise<void> {
+  noteDraft.value = props.terminal.note ?? ''
+  noteFailed.value = false
+  noting.value = true
+  await nextTick()
+  noteInput.value?.focus()
+}
+
+function commitNote(): void {
+  if (!noting.value) return
+  const note = noteDraft.value.trim() || null
+  if ((note ?? undefined) !== props.terminal.note && !connection.setNote(props.terminal.id, note)) {
+    noteFailed.value = true
+    return
+  }
+  noting.value = false
+}
+
+function cancelNote(): void {
+  noting.value = false
+  noteFailed.value = false
+}
+
 function clearAlias(): void {
   connection.setAlias(props.terminal.id, null)
 }
@@ -334,6 +362,16 @@ function clearAlias(): void {
       </button>
       <button
         type="button"
+        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised hover:text-ink"
+        :class="terminal.note ? 'text-accent' : 'text-ink-faint'"
+        :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
+        :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
+        @click="startNote"
+      >
+        <StickyNote :size="15" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
         class="relative z-10 -my-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
         :aria-label="t('terminal.rename')"
         :title="t('terminal.rename')"
@@ -364,6 +402,40 @@ function clearAlias(): void {
     <p v-else-if="!editing && autoNamed" class="mt-0.5 truncate text-2xs text-ink-faint" :title="t('terminal.nameHintLong')">
       {{ t('terminal.nameHint') }}
     </p>
+
+    <form v-if="noting" class="relative z-10 mt-2 flex items-center gap-1.5" @submit.prevent="commitNote">
+      <label :for="`note-${terminal.id}`" class="sr-only">{{ t('terminal.noteLabel') }}</label>
+      <input
+        :id="`note-${terminal.id}`"
+        ref="noteInput"
+        v-model="noteDraft"
+        maxlength="140"
+        :placeholder="t('terminal.notePlaceholder')"
+        class="h-8 min-w-0 flex-1 rounded-lg border border-accent bg-canvas px-2.5 text-xs text-ink outline-none"
+        :aria-invalid="noteFailed"
+        :aria-describedby="noteFailed ? `note-err-${terminal.id}` : undefined"
+        @keydown.esc.prevent="cancelNote"
+      />
+      <button type="submit" class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg bg-accent text-on-accent" :aria-label="t('terminal.noteSave')">
+        <Check :size="15" aria-hidden="true" />
+      </button>
+      <button type="button" class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-muted hover:bg-raised hover:text-ink" :aria-label="t('terminal.renameCancel')" @click="cancelNote">
+        <X :size="15" aria-hidden="true" />
+      </button>
+    </form>
+    <p v-if="noting && noteFailed" :id="`note-err-${terminal.id}`" role="alert" class="relative z-10 mt-1 text-2xs text-st-error">
+      {{ t('terminal.renameOffline') }}
+    </p>
+    <button
+      v-else-if="!noting && terminal.note"
+      type="button"
+      class="relative z-10 mt-2 flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-md border-l-2 border-accent bg-accent-soft/60 px-2 py-1 text-left text-xs text-ink transition-colors hover:bg-accent-soft"
+      :title="t('terminal.noteEdit')"
+      @click="startNote"
+    >
+      <StickyNote :size="13" class="mt-px shrink-0 text-accent" aria-hidden="true" />
+      <span class="min-w-0 break-words">{{ terminal.note }}</span>
+    </button>
 
     <div class="mt-2 flex min-w-0 items-center gap-2">
       <StatusBadge :status="terminal.status" />

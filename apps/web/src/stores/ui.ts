@@ -21,6 +21,14 @@ function initialCompact(): boolean {
   return new URLSearchParams(location.search).get('mode') === 'compact'
 }
 
+function initialSessionTab(): string | null {
+  try {
+    return sessionStorage.getItem('ccm.sessionTab')
+  } catch {
+    return null
+  }
+}
+
 function initialCollapsed(): Panel[] {
   try {
     const raw = JSON.parse(localStorage.getItem('ccm.collapsed') ?? '[]')
@@ -90,6 +98,20 @@ export const useUiStore = defineStore('ui', () => {
   const selectedAgentId = ref<string | null>(null)
   const focusedTerminalId = ref<string | null>(null)
   const focusRequest = ref(0)
+  const revealRequest = ref(0)
+  const activityTerminalId = ref<string | null>(null)
+  const sessionTab = ref<string | null>(initialSessionTab())
+  watch(sessionTab, (id) => {
+    try {
+      if (id) sessionStorage.setItem('ccm.sessionTab', id)
+      else sessionStorage.removeItem('ccm.sessionTab')
+    } catch {
+      return
+    }
+  })
+  watch(focusedTerminalId, (id) => {
+    if (id && activityTerminalId.value && id !== activityTerminalId.value) activityTerminalId.value = id
+  })
   const layoutRequest = ref(0)
   const collapsed = ref<Panel[]>(initialCollapsed())
   const panelSize = ref(initialSizes())
@@ -187,9 +209,24 @@ export const useUiStore = defineStore('ui', () => {
     selectedAgentId.value = id
   }
 
+  function openSessionTab(id: string | null): void {
+    sessionTab.value = id
+    if (id) focusedTerminalId.value = id
+  }
+
   function focusTerminal(id: string): void {
+    if (sessionTab.value !== null) sessionTab.value = id
     focusedTerminalId.value = id
     focusRequest.value++
+  }
+
+  function filterActivity(id: string | null): void {
+    activityTerminalId.value = id
+  }
+
+  function revealTerminal(id: string): void {
+    focusedTerminalId.value = id
+    revealRequest.value++
   }
 
   function startWindowFocus(id: string): void {
@@ -258,7 +295,7 @@ export const useUiStore = defineStore('ui', () => {
     panelSize,
     setPanelSize,
     savePanelSizes,
-    resetPanelSize, selectedAgentId, focusedTerminalId, focusRequest, layoutRequest, setView, selectAgent, focusTerminal, resetLayout,
+    resetPanelSize, selectedAgentId, focusedTerminalId, focusRequest, revealRequest, layoutRequest, setView, selectAgent, focusTerminal, revealTerminal, resetLayout, activityTerminalId, filterActivity, sessionTab, openSessionTab,
     nodeSizes,
     nodeResized,
     setNodeSize,

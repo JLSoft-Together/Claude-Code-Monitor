@@ -57,6 +57,18 @@ function onFocusOut(e: FocusEvent): void {
   const list = e.currentTarget as HTMLElement
   if (!list.contains(e.relatedTarget as Node | null) && !list.matches(':hover')) freeze(false)
 }
+const listEl = ref<{ $el: HTMLElement } | null>(null)
+watch(
+  () => ui.revealRequest,
+  () => {
+    const id = ui.focusedTerminalId
+    const root = listEl.value?.$el
+    if (!id || !root || ui.collapsed.includes('sessions') || !window.matchMedia('(min-width: 64rem)').matches) return
+    const item = [...root.querySelectorAll<HTMLElement>('[data-terminal-id]')].find((el) => el.dataset.terminalId === id)
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    item?.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
+  },
+)
 const endedCount = computed(() => terminals.list.length - terminals.live.length)
 </script>
 
@@ -107,6 +119,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
 
     <TransitionGroup
       v-else
+      ref="listEl"
       tag="ul"
       name="ccm-list"
       class="relative grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-1"
@@ -115,7 +128,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       @focusin="freeze(true)"
       @focusout="onFocusOut"
     >
-      <li v-for="terminal in sorted" :key="terminal.id">
+      <li v-for="terminal in sorted" :key="terminal.id" :data-terminal-id="terminal.id">
         <SessionCard :terminal="terminal" />
       </li>
     </TransitionGroup>

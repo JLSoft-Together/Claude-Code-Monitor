@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, FolderOpen, FolderPlus, History, LoaderCircle, Pencil, SquareTerminal, Star, X } from 'lucide-vue-next'
+import { Check, FolderOpen, FolderPlus, GripVertical, History, LoaderCircle, Pencil, SquareTerminal, Star, X } from 'lucide-vue-next'
 import type { Favorite, LaunchMode } from '@ccm/shared'
 import { shortPath } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
@@ -73,6 +73,92 @@ const shown = computed(() => favorites.list.slice(page.value * PAGE_SIZE, (page.
 watch(pages, (n) => {
   if (page.value > n - 1) page.value = n - 1
 })
+
+const listEl = ref<ComponentPublicInstance | null>(null)
+const dragging = ref<string | null>(null)
+const announce = ref('')
+const handles = new Map<string, HTMLElement>()
+let dragStart: string[] = []
+
+const indexOf = (dir: string): number => favorites.list.findIndex((f) => f.dir === dir)
+
+function setHandle(dir: string, el: unknown): void {
+  if (el instanceof HTMLElement) handles.set(dir, el)
+  else handles.delete(dir)
+}
+
+function commitOrder(dir: string, before: string[]): void {
+  const after = favorites.list.map((f) => f.dir)
+  if (after.every((d, i) => d === before[i])) return
+  if (connection.reorderFavorites(after)) {
+    failed.value = null
+    const f = favorites.list[indexOf(dir)]
+    if (f) announce.value = t('favorites.moved', { name: f.label, pos: indexOf(dir) + 1, n: after.length })
+    return
+  }
+  const byDir = new Map(favorites.list.map((f) => [f.dir, f]))
+  favorites.replaceAll(before.flatMap((d) => byDir.get(d) ?? []))
+  window.clearTimeout(timer)
+  failed.value = dir
+  timer = window.setTimeout(() => (failed.value = null), 1800)
+}
+
+function onDragMove(e: PointerEvent): void {
+  const dir = dragging.value
+  const ul = listEl.value?.$el as HTMLElement | undefined
+  if (!dir || !ul) return
+  const y = e.clientY - ul.getBoundingClientRect().top
+  const items = [...ul.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !!el.dataset.favIndex)
+  let target = items.length - 1
+  for (let i = 0; i < items.length; i++) {
+    const el = items[i]!
+    if (y < el.offsetTop + el.offsetHeight / 2) {
+      target = i
+      break
+    }
+  }
+  const from = indexOf(dir)
+  const to = page.value * PAGE_SIZE + Math.max(0, target)
+  if (from >= 0 && to !== from) favorites.move(from, to)
+}
+
+function onDragEnd(e: PointerEvent): void {
+  const handle = e.currentTarget as HTMLElement
+  handle.removeEventListener('pointermove', onDragMove)
+  handle.removeEventListener('pointerup', onDragEnd)
+  handle.removeEventListener('pointercancel', onDragEnd)
+  const dir = dragging.value
+  dragging.value = null
+  if (dir) commitOrder(dir, dragStart)
+}
+
+function onDragStart(e: PointerEvent, f: Favorite): void {
+  if (e.button !== 0 || editing.value) return
+  e.preventDefault()
+  const handle = e.currentTarget as HTMLElement
+  handle.setPointerCapture(e.pointerId)
+  handle.focus()
+  dragStart = favorites.list.map((x) => x.dir)
+  dragging.value = f.dir
+  handle.addEventListener('pointermove', onDragMove)
+  handle.addEventListener('pointerup', onDragEnd)
+  handle.addEventListener('pointercancel', onDragEnd)
+}
+
+async function onHandleKey(e: KeyboardEvent, f: Favorite): Promise<void> {
+  const from = indexOf(f.dir)
+  const last = favorites.list.length - 1
+  const to = { ArrowUp: from - 1, ArrowDown: from + 1, Home: 0, End: last }[e.key]
+  if (to === undefined || from < 0) return
+  e.preventDefault()
+  if (to < 0 || to > last || to === from) return
+  const before = favorites.list.map((x) => x.dir)
+  favorites.move(from, to)
+  page.value = Math.floor(to / PAGE_SIZE)
+  commitOrder(f.dir, before)
+  await nextTick()
+  handles.get(f.dir)?.focus()
+}
 
 const adding = ref(false)
 const addDir = ref('')
@@ -249,14 +335,31 @@ const actionCls =
       {{ t('favorites.empty') }}
     </p>
 
-    <TransitionGroup tag="ul" name="ccm-list" class="relative space-y-1.5">
+    <p class="sr-only" aria-live="polite">{{ announce }}</p>
+    <TransitionGroup ref="listEl" tag="ul" name="ccm-list" class="relative space-y-1.5" :class="dragging ? 'cursor-grabbing select-none' : ''">
       <li
-        v-for="f in shown"
+        v-for="(f, i) in shown"
         :key="f.dir"
-        class="flex items-center gap-2 rounded-xl border border-line bg-surface py-1.5 pr-1.5 pl-3"
-        :class="justAdded === f.dir ? 'ccm-highlight' : ''"
+        :data-fav-index="i"
+        class="flex items-center gap-1 rounded-xl border bg-surface py-1.5 pr-1.5 pl-0.5 transition-[border-color,box-shadow]"
+        :class="[justAdded === f.dir ? 'ccm-highlight' : '', dragging === f.dir ? 'relative z-10 border-accent shadow-lg' : 'border-line']"
         @animationend="justAdded === f.dir && (justAdded = null)"
       >
+        <button
+          v-if="editing !== f.dir && favorites.list.length > 1"
+          :ref="(el) => setHandle(f.dir, el)"
+          type="button"
+          class="inline-flex h-8 w-6 shrink-0 touch-none items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-raised hover:text-ink focus-visible:text-ink"
+          :class="dragging === f.dir ? 'cursor-grabbing text-accent' : 'cursor-grab'"
+          :aria-label="t('favorites.moveName', { name: f.label })"
+          :aria-describedby="'fav-move-hint'"
+          :title="t('favorites.move')"
+          @pointerdown="onDragStart($event, f)"
+          @keydown="onHandleKey($event, f)"
+        >
+          <GripVertical :size="14" aria-hidden="true" />
+        </button>
+        <span v-else class="w-2.5 shrink-0" aria-hidden="true" />
         <form v-if="editing === f.dir" class="flex min-w-0 flex-1 items-center gap-1" @submit.prevent="commitEdit(f)">
           <label :for="'fav-name-edit'" class="sr-only">{{ t('favorites.renameLabel') }}</label>
           <input
@@ -315,6 +418,7 @@ const actionCls =
         </template>
       </li>
     </TransitionGroup>
+    <p id="fav-move-hint" class="sr-only">{{ t('favorites.move') }}</p>
     <Pager v-if="pages > 1" v-model="page" :pages="pages" class="mt-2 justify-end" />
   </section>
 </template>

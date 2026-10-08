@@ -79,9 +79,13 @@ function onKey(e: KeyboardEvent): void {
   trigger.value?.focus()
 }
 watch(open, (value) => {
-  const method = value ? 'addEventListener' : 'removeEventListener'
-  document[method]('pointerdown', onOutside, true)
-  document[method]('keydown', onKey)
+  if (value) {
+    document.addEventListener('pointerdown', onOutside, true)
+    document.addEventListener('keydown', onKey)
+  } else {
+    document.removeEventListener('pointerdown', onOutside, true)
+    document.removeEventListener('keydown', onKey)
+  }
 })
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onOutside, true)

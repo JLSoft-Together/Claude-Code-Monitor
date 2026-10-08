@@ -13,14 +13,16 @@ import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
 
+const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
 const agents = useAgentsStore()
 const terminals = useTerminalsStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
 
-const FLOW_ID = 'agent-map'
-const { addNodes, removeNodes, getNodes, fitView, zoomIn, zoomOut, updateNode, onNodeClick, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
+const scoped = !!props.terminalId
+const FLOW_ID = scoped ? `agent-map-${props.terminalId}` : 'agent-map'
+const { addNodes, removeNodes, getNodes, fitView, getViewport, setViewport, zoomIn, zoomOut, updateNode, onNodeClick, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
 
 const canvas = ref<HTMLElement | null>(null)
 const hasNodes = ref(false)
@@ -30,11 +32,13 @@ let pendingFit = false
 const highlighted = computed(() => (ui.selectedAgentId ? agents.lineage(ui.selectedAgentId) : null))
 provide('ccm-highlight', highlighted)
 
-const visibility = computed(() => visibleAgents(agents.list, settings.hideFinished))
-const shownList = computed(() => agents.list.filter((a) => visibility.value.visible.has(a.id)))
+const source = computed(() => (props.terminalId ? (agents.byTerminal[props.terminalId] ?? []) : agents.list))
+const visibility = computed(() => visibleAgents(source.value, settings.hideFinished))
+const shownList = computed(() => source.value.filter((a) => visibility.value.visible.has(a.id)))
 const shownByTerminal = computed(() => {
   const out: Record<string, typeof agents.list> = {}
   for (const [id, list] of Object.entries(agents.byTerminal)) {
+    if (props.terminalId && id !== props.terminalId) continue
     const kept = list.filter((a) => visibility.value.visible.has(a.id))
     if (kept.length) out[id] = kept
   }
@@ -42,7 +46,7 @@ const shownByTerminal = computed(() => {
 })
 
 const terminalOrder = computed(() =>
-  [...terminals.list].sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '') || a.id.localeCompare(b.id)),
+  [...terminals.list].filter((x) => !props.terminalId || x.id === props.terminalId).sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '') || a.id.localeCompare(b.id)),
 )
 
 const structureKey = computed(() =>
@@ -70,7 +74,7 @@ function syncNodes(fit = false): void {
 
   const fresh: Node[] = []
   for (const id of wanted) {
-    const position = ui.nodePos[id] ?? placed.get(id)
+    const position = (scoped ? undefined : ui.nodePos[id]) ?? placed.get(id)
     if (!position) continue
     const node = current.get(id)
     if (!node) {
@@ -86,8 +90,21 @@ function syncNodes(fit = false): void {
     didInitialFit = true
     pendingFit = true
   } else if (fit) {
-    void nextTick(() => fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }))
+    void nextTick(() => autoFit(250))
   }
+}
+
+const MIN_AUTO_ZOOM = 0.6
+const EDGE_PAD = 24
+
+async function autoFit(duration = 0): Promise<void> {
+  await fitView({ padding: 0.2, duration, maxZoom: 1.1 })
+  if (getViewport().zoom >= MIN_AUTO_ZOOM) return
+  const nodes = getNodes.value
+  if (!nodes.length) return
+  const minX = Math.min(...nodes.map((n) => n.position.x))
+  const minY = Math.min(...nodes.map((n) => n.position.y))
+  await setViewport({ x: EDGE_PAD - minX * MIN_AUTO_ZOOM, y: EDGE_PAD - minY * MIN_AUTO_ZOOM, zoom: MIN_AUTO_ZOOM }, { duration })
 }
 
 const edges = computed<Edge[]>(() =>
@@ -141,7 +158,7 @@ watch(
 onNodesInitialized(() => {
   if (!pendingFit) return
   pendingFit = false
-  void fitView({ padding: 0.2, maxZoom: 1.1 })
+  void autoFit()
 })
 
 watch(
@@ -151,9 +168,15 @@ watch(
   },
 )
 
-onNodeClick(({ node }) => ui.selectAgent(ui.selectedAgentId === node.id ? null : node.id))
+onNodeClick(({ node }) => {
+  const selecting = ui.selectedAgentId !== node.id
+  ui.selectAgent(selecting ? node.id : null)
+  const terminalId = agents.byId[node.id]?.terminalId
+  if (selecting && terminalId) ui.revealTerminal(terminalId)
+})
 onPaneClick(() => ui.selectAgent(null))
 onNodeDragStop(({ nodes }) => {
+  if (scoped) return
   for (const n of nodes) ui.setNodePos(n.id, n.position)
 })
 
@@ -166,9 +189,9 @@ const controls = computed(() => [
 </script>
 
 <template>
-  <section aria-labelledby="map-title" class="flex min-h-0 flex-col">
+  <section :aria-labelledby="`${FLOW_ID}-title`" class="flex min-h-0 flex-col">
     <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
-      <h2 id="map-title" class="text-sm font-semibold text-ink">{{ t('map.title') }}</h2>
+      <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink">{{ t('map.title') }}</h2>
       <div class="flex items-center gap-0.5" role="toolbar" :aria-label="t('map.title')">
         <button
           type="button"

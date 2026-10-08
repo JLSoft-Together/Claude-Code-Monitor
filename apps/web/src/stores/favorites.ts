@@ -13,6 +13,14 @@ export const useFavoritesStore = defineStore('favorites', () => {
     list.value = next
   }
 
+  function move(from: number, to: number): void {
+    const next = [...list.value]
+    const [item] = next.splice(from, 1)
+    if (!item) return
+    next.splice(Math.max(0, Math.min(next.length, to)), 0, item)
+    list.value = next
+  }
+
   function has(dir: string | undefined): boolean {
     return !!dir && keys.value.has(dirKey(dir))
   }
@@ -21,5 +29,5 @@ export const useFavoritesStore = defineStore('favorites', () => {
     rejected.value = { dir, reason, n: (rejected.value?.n ?? 0) + 1 }
   }
 
-  return { list, rejected, replaceAll, has, reject }
+  return { list, rejected, replaceAll, move, has, reject }
 })

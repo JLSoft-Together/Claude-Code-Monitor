@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ListFilter, X } from 'lucide-vue-next'
 import type { ActivityEvent } from '@ccm/shared'
 import { clockTime, compactNumber } from '../lib/format'
 import { modeMeta } from '../lib/mode'
@@ -15,6 +16,7 @@ import Pager from './Pager.vue'
 import PanelHeader from './PanelHeader.vue'
 import StatusIcon from './StatusIcon.vue'
 
+const props = defineProps<{ terminalId?: string | null }>()
 const { t, te, locale } = useI18n()
 const activity = useActivityStore()
 const agents = useAgentsStore()
@@ -40,6 +42,8 @@ const ICON_STATUS: Record<string, string> = {
   'launch.failed': 'error',
   'job.blocked': 'waiting',
   'job.done': 'completed',
+  'job.stopped': 'cancelled',
+  'job.stopFailed': 'error',
 }
 
 function terminalTitle(e: ActivityEvent): string {
@@ -83,6 +87,11 @@ function message(e: ActivityEvent): string {
         mode: t(d.mode === 'continue' ? 'favorites.continue' : 'favorites.openNew'),
         error: t(d.error === 'notFound' ? 'favorites.errorNotFound' : 'favorites.errorFailed'),
       })
+    case 'job.stopFailed':
+      return t('activity.job_stopFailed', {
+        title: d.title ?? '—',
+        error: t(d.error && te(`jobs.stopError.${d.error}`) ? `jobs.stopError.${d.error}` : 'jobs.stopError.failed'),
+      })
     case 'tool.started':
     case 'tool.failed':
       return t(`activity.${e.kind.replace('.', '_')}`, { agent: agentName(e), tool: d.tool ?? t('activity.unknownTool') })
@@ -114,10 +123,24 @@ function secondary(e: ActivityEvent): string | null {
   return null
 }
 
-const filtered = computed(() => activity.items.filter((e) => !settings.hideTools || !e.kind.startsWith('tool.')))
+const scopeId = computed(() => props.terminalId ?? ui.activityTerminalId)
+const scopeTitle = computed(() => {
+  const id = scopeId.value ?? ui.focusedTerminalId
+  const x = id ? terminals.byId[id] : undefined
+  return x ? displayTitle(x) || x.id : null
+})
+watch(
+  () => !props.terminalId && ui.activityTerminalId && !terminals.byId[ui.activityTerminalId],
+  (gone) => {
+    if (gone) ui.filterActivity(null)
+  },
+)
+const filtered = computed(() =>
+  activity.items.filter((e) => (!settings.hideTools || !e.kind.startsWith('tool.')) && (!scopeId.value || e.terminalId === scopeId.value)),
+)
 const page = ref(0)
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / settings.activityPageSize)))
-watch([() => settings.hideTools, () => settings.activityPageSize], () => (page.value = 0))
+watch([() => settings.hideTools, () => settings.activityPageSize, scopeId], () => (page.value = 0))
 watch(pages, (n) => {
   if (page.value > n - 1) page.value = n - 1
 })
@@ -154,8 +177,30 @@ const rows = computed(() =>
           <input v-model="settings.hideTools" type="checkbox" class="size-4 cursor-pointer accent-[var(--ccm-accent)]" />
           {{ t('activity.hideTools') }}
         </label>
+        <button
+          v-if="!props.terminalId && scopeId && scopeTitle"
+          type="button"
+          class="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-accent bg-accent-soft py-1 pr-2 pl-2.5 text-xs font-medium text-ink transition-colors hover:border-line-strong"
+          :aria-label="t('activity.filterClear')"
+          :title="t('activity.filterClear')"
+          @click="ui.filterActivity(null)"
+        >
+          <ListFilter :size="13" class="shrink-0 text-accent" aria-hidden="true" />
+          <span class="truncate">{{ t('activity.filterOn', { title: scopeTitle }) }}</span>
+          <X :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+        </button>
+        <button
+          v-else-if="!props.terminalId && ui.focusedTerminalId && scopeTitle"
+          type="button"
+          class="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-line py-1 pr-2.5 pl-2 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+          :title="t('activity.filterSessionTitle', { title: scopeTitle })"
+          @click="ui.filterActivity(ui.focusedTerminalId)"
+        >
+          <ListFilter :size="13" class="shrink-0" aria-hidden="true" />
+          {{ t('activity.filterSession') }}
+        </button>
       </div>
-      <p v-if="rows.length === 0" class="px-4 py-6 text-sm text-ink-muted">{{ t('activity.empty') }}</p>
+      <p v-if="rows.length === 0" class="px-4 py-6 text-sm text-ink-muted">{{ scopeId ? t('activity.emptyFiltered') : t('activity.empty') }}</p>
       <TransitionGroup v-else tag="ol" name="ccm-list" class="relative divide-y divide-line" aria-live="off">
         <li
           v-for="{ e, text, sub } in rows"

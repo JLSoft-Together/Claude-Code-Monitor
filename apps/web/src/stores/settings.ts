@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
 
 export type Theme = 'light' | 'dark'
@@ -30,7 +31,7 @@ function persist(key: string, value: string): void {
   }
 }
 
-export const STUCK_CHOICES = [0, 5, 10, 15, 30]
+export { STUCK_CHOICES }
 export const ACTIVITY_PAGE_SIZES = [50, 100, 200, 500]
 
 function readPinned(): Set<string> {
@@ -60,7 +61,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const notifyLoop = ref(read('ccm.notify.loop') !== '0')
   const notifyPermission = ref<NotifyPermission>(permissionNow())
   const sound = ref(read('ccm.sound') === '1')
-  const stuckMinutes = ref(STUCK_CHOICES.includes(Number(read('ccm.stuckMin'))) ? Number(read('ccm.stuckMin')) : 10)
+  const stuckMinutes = ref((STUCK_CHOICES as readonly number[]).includes(Number(read('ccm.stuckMin'))) ? Number(read('ccm.stuckMin')) : 10)
   const hideTools = ref(read('ccm.hideTools') === '1')
   const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const pinned = ref<Set<string>>(readPinned())

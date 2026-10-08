@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '../stores/connection'
 import { useUiStore } from '../stores/ui'
@@ -10,6 +10,8 @@ import MetricsStrip from './MetricsStrip.vue'
 import PanelSplitter from './PanelSplitter.vue'
 import WaitingQueue from './WaitingQueue.vue'
 import SessionList from './SessionList.vue'
+import SessionTabs from './SessionTabs.vue'
+import SessionView from './SessionView.vue'
 
 const { t } = useI18n()
 const connection = useConnectionStore()
@@ -38,13 +40,28 @@ onMounted(() => {
   readBp()
   lgQuery.addEventListener('change', readBp)
   xlQuery.addEventListener('change', readBp)
-  if (grid.value) observer.observe(grid.value)
+})
+watch(grid, (el, old) => {
+  if (old) observer.unobserve(old)
+  if (el) observer.observe(el)
 })
 onBeforeUnmount(() => {
   lgQuery.removeEventListener('change', readBp)
   xlQuery.removeEventListener('change', readBp)
   observer.disconnect()
 })
+
+watch(
+  () => ui.focusRequest,
+  () => {
+    const el = grid.value
+    if (!el || bp.value === 'sm') return
+    const rect = el.getBoundingClientRect()
+    if (rect.bottom <= window.innerHeight + 1) return
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' })
+  },
+)
 
 const sessionsW = computed(() => (sessionsOpen.value ? ui.panelSize.sessions : RAIL))
 const activityW = computed(() => (activityOpen.value ? ui.panelSize.activity : RAIL))
@@ -66,15 +83,18 @@ const gridStyle = computed(() => {
 
 <template>
   <main
-    class="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 px-4 py-4 sm:px-6 lg:min-h-0"
+    class="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 px-4 py-4 sm:px-6"
     :class="connection.state !== 'connected' && connection.hasData ? 'opacity-90' : ''"
   >
+    <SessionTabs />
     <AwaySummary />
+    <SessionView v-if="ui.sessionTab" :key="ui.sessionTab" :terminal-id="ui.sessionTab" />
+    <template v-else>
     <WaitingQueue data-tour="waiting" />
     <MetricsStrip data-tour="metrics" />
     <div
       ref="grid"
-      class="relative grid flex-1 grid-cols-[minmax(0,1fr)] gap-4 lg:min-h-0 xl:grid-rows-1"
+      class="relative grid grid-cols-[minmax(0,1fr)] gap-4 lg:h-[calc(100dvh-var(--ccm-header-h,4.5rem)-2rem)] lg:min-h-[560px] lg:scroll-mt-[calc(var(--ccm-header-h,4.5rem)+1rem)] xl:grid-rows-1"
       :class="dragging ? 'select-none' : 'transition-[grid-template-columns,grid-template-rows] duration-200 ease-out motion-reduce:transition-none'"
       :style="gridStyle"
     >
@@ -119,5 +139,6 @@ const gridStyle = computed(() => {
         />
       </template>
     </div>
+    </template>
   </main>
 </template>

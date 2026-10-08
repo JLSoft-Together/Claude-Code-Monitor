@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, GraduationCap, Moon, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
+import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type ToastKind } from '@ccm/shared'
+import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { playChime } from '../lib/sound'
+import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useUiStore } from '../stores/ui'
 import { STUCK_CHOICES, useSettingsStore, type Palette } from '../stores/settings'
@@ -14,6 +16,7 @@ import ToggleSwitch from './ToggleSwitch.vue'
 const { t } = useI18n()
 const settings = useSettingsStore()
 const extras = useExtrasStore()
+const connection = useConnectionStore()
 const ui = useUiStore()
 const panel = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
@@ -79,6 +82,47 @@ const breakHint = computed(() => {
 const blocked = computed(() => settings.notifyPermission === 'denied')
 const unsupported = computed(() => settings.notifyPermission === 'unsupported')
 const bellLabel = computed(() => (settings.notifyEnabled ? t('settings.notifyOff') : t('settings.notifyOn')))
+const offline = computed(() => connection.state !== 'connected')
+const toast = computed({
+  get: () => extras.toast === 'on',
+  set: (on: boolean) => void connection.updateNotify({ toast: on }),
+})
+const toastAvailable = computed(() => extras.toast === 'on' || extras.toast === 'off')
+const quiet = computed(() => extras.notify?.quiet ?? DEFAULT_QUIET)
+
+function setKind(kind: ToastKind, on: boolean): void {
+  connection.updateNotify({ kinds: { [kind]: on } })
+}
+
+function setQuiet(patch: Partial<QuietHours>): void {
+  connection.updateNotify({ quiet: { ...quiet.value, ...patch } })
+}
+
+function setStuck(minutes: number): void {
+  settings.stuckMinutes = minutes
+  connection.updateNotify({ stuckMinutes: minutes })
+}
+
+const testNote = computed(() => {
+  const r = extras.toastTest
+  if (!r) return null
+  if (r.state === 'sending') return { tone: 'muted', text: t('settings.toastTest.sending') }
+  if (r.result !== 'ok') return { tone: 'error', text: t(`settings.toastTest.${r.result}`) }
+  return { tone: 'ok', text: t('settings.toastTest.ok') }
+})
+const healthNote = computed(() => {
+  const h = extras.toastTest?.state === 'done' ? (extras.toastTest.health ?? extras.notify?.health) : extras.notify?.health
+  return h === 'globalOff' || h === 'appOff' ? t(`settings.toastHealth.${h}`) : null
+})
+
+onBeforeUnmount(() => extras.setToastTest(null))
+
+function onTime(field: 'from' | 'to', e: Event): void {
+  const input = e.target as HTMLInputElement
+  if (isHm(input.value)) setQuiet({ [field]: input.value })
+  else input.value = quiet.value[field]
+}
+
 const notifyNote = computed(() => (unsupported.value ? t('settings.notifyUnsupported') : blocked.value ? t('settings.notifyBlocked') : t('settings.notifyHint')))
 
 function close(): void {
@@ -274,7 +318,46 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
 
           <section aria-labelledby="set-notify" class="mt-6 border-t border-line pt-5">
             <h3 id="set-notify" class="mb-1 text-xs font-semibold text-ink-muted">{{ t('settings.section.notifications') }}</h3>
-            <ToggleSwitch v-model="notify" :label="t('settings.notifyEnable')" :hint="notifyNote" :disabled="unsupported" />
+            <template v-if="toastAvailable">
+              <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="t('settings.toastHint')" :disabled="offline" />
+              <p v-if="healthNote" role="alert" class="mb-2 flex items-start gap-2 rounded-lg border border-st-error/40 bg-st-error/10 px-3 py-2 text-xs leading-relaxed text-ink">
+                <CircleAlert :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />{{ healthNote }}
+              </p>
+              <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <button
+                  type="button"
+                  class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!toast || offline || extras.toastTest?.state === 'sending'"
+                  @click="connection.testToast()"
+                >
+                  <Send :size="13" aria-hidden="true" />{{ t('settings.toastTest.action') }}
+                </button>
+                <span
+                  v-if="testNote"
+                  aria-live="polite"
+                  class="text-xs"
+                  :class="testNote.tone === 'error' ? 'text-st-error' : testNote.tone === 'ok' ? 'text-ink-muted' : 'text-ink-faint'"
+                >{{ testNote.text }}</span>
+              </div>
+              <div class="mt-1 mb-2 rounded-lg border border-line bg-canvas px-3 py-1" role="group" :aria-label="t('settings.toastKinds')">
+                <p class="pt-2 text-xs text-ink-faint">{{ t('settings.toastKinds') }}</p>
+                <ToggleSwitch
+                  v-for="k in TOAST_KINDS"
+                  :key="k"
+                  :model-value="extras.notify?.kinds[k] ?? false"
+                  :label="t(`settings.toastKind.${k}`)"
+                  :disabled="!toast || offline"
+                  class="border-b border-line last:border-b-0"
+                  @update:model-value="(on: boolean) => setKind(k, on)"
+                />
+              </div>
+            </template>
+            <ToggleSwitch
+              v-model="notify"
+              :label="t('settings.notifyEnable')"
+              :hint="toast && !unsupported && !blocked ? `${notifyNote} ${t('settings.toastOnHint')}` : notifyNote"
+              :disabled="unsupported"
+            />
             <div class="mt-1 rounded-lg border border-line bg-canvas px-3 py-1" :aria-label="t('settings.notifyEvents')" role="group">
               <p class="pt-2 text-xs text-ink-faint">{{ t('settings.notifyEvents') }}</p>
               <ToggleSwitch
@@ -287,6 +370,27 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
               />
             </div>
             <ToggleSwitch v-model="sound" :label="t('settings.sound')" :hint="t('settings.soundHint')" class="mt-2" />
+            <div v-if="extras.notify" class="mt-2">
+              <ToggleSwitch
+                :model-value="quiet.enabled"
+                :label="t('settings.quiet')"
+                :hint="t('settings.quietHint')"
+                :disabled="offline"
+                @update:model-value="(on: boolean) => setQuiet({ enabled: on })"
+              />
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pb-1">
+                <label v-for="f in (['from', 'to'] as const)" :key="f" class="flex items-center gap-2 text-sm text-ink-muted">
+                  {{ f === 'from' ? t('settings.quietFrom') : t('settings.quietTo') }}
+                  <input
+                    type="time"
+                    :value="quiet[f]"
+                    :disabled="!quiet.enabled || offline"
+                    class="h-9 rounded-lg border border-line bg-canvas px-2 text-sm text-ink tabular outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    @change="onTime(f, $event)"
+                  />
+                </label>
+              </div>
+            </div>
           </section>
 
           <section aria-labelledby="set-reminders" class="mt-6 border-t border-line pt-5">
@@ -303,7 +407,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 :aria-checked="settings.stuckMinutes === o.value"
                 class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md text-xs transition-colors"
                 :class="settings.stuckMinutes === o.value ? 'bg-surface font-semibold text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-                @click="settings.stuckMinutes = o.value"
+                @click="setStuck(o.value)"
               >
                 {{ o.label }}
               </button>

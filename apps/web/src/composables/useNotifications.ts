@@ -1,6 +1,6 @@
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CONTEXT_THRESHOLDS, type TerminalSession, type TerminalStatus } from '@ccm/shared'
+import { CONTEXT_THRESHOLDS, inQuietHours, remindersDue, type TerminalSession, type TerminalStatus, type ToastKind } from '@ccm/shared'
 import { quietFor } from '../lib/attention'
 import { duration, now } from '../lib/format'
 import { playChime } from '../lib/sound'
@@ -18,8 +18,7 @@ import { useUiStore } from '../stores/ui'
 export type NotifyKind = 'waiting' | 'done' | 'reminder' | 'context' | 'stuck' | 'job' | 'limit' | 'loop'
 
 const THROTTLE_MS = 30_000
-export const LONG_WAIT_MS = 5 * 60_000
-export const MAX_REMINDERS = 3
+export { LONG_WAIT_MS, MAX_REMINDERS, remindersDue } from '@ccm/shared'
 
 export function transitionKind(before: TerminalStatus | undefined, after: TerminalStatus): NotifyKind | null {
   if (before === undefined || before === after) return null
@@ -28,12 +27,7 @@ export function transitionKind(before: TerminalStatus | undefined, after: Termin
   return null
 }
 
-/** Reminders due for one waiting episode: one per full 5 minutes, capped. */
-export function remindersDue(statusSince: string | undefined, nowMs: number): number {
-  const since = statusSince ? Date.parse(statusSince) : NaN
-  if (!Number.isFinite(since)) return 0
-  return Math.min(MAX_REMINDERS, Math.floor((nowMs - since) / LONG_WAIT_MS))
-}
+const TOAST_KIND: Partial<Record<NotifyKind, ToastKind>> = { waiting: 'waiting', reminder: 'waiting', done: 'done', job: 'job', loop: 'loop', stuck: 'stuck', context: 'context' }
 
 /** Desktop notifications + "(N)" tab title for sessions that need the user. Install once at app root. */
 export function useNotifications(): void {
@@ -52,10 +46,19 @@ export function useNotifications(): void {
   const waiting = computed(
     () => terminals.list.filter((x) => x.status === 'waiting' && !snooze.isSnoozed(x, now.value)).length + extras.blockedJobs.length,
   )
+  const hidden = ref(document.visibilityState !== 'visible')
+  document.addEventListener('visibilitychange', () => (hidden.value = document.visibilityState !== 'visible'))
+  watch(
+    [waiting, hidden, now],
+    ([n, h, nowMs]) => {
+      const blink = h && n > 0 && Math.floor(nowMs / 1000) % 2 === 1
+      document.title = blink ? `🔔 ${t('notify.tabWaiting', { n })}` : n ? `(${n}) ${baseTitle}` : baseTitle
+    },
+    { immediate: true },
+  )
   watch(
     waiting,
     (n) => {
-      document.title = n ? `(${n}) ${baseTitle}` : baseTitle
       // Taskbar badge when installed as an app; missing API or a browser tab just ignores it.
       const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
       void (n ? nav.setAppBadge?.(n) : nav.clearAppBadge?.())?.catch(() => undefined)
@@ -87,10 +90,13 @@ export function useNotifications(): void {
     const at = Date.now()
     if (at - (lastSent.get(tag) ?? 0) < THROTTLE_MS) return
     if (terminal && snooze.isSnoozed(terminal, at)) return
+    if (inQuietHours(extras.notify?.quiet, new Date(at))) return
     lastSent.set(tag, at)
     if (lastSent.size > 200) for (const [k, v] of lastSent) if (at - v >= THROTTLE_MS) lastSent.delete(k)
     chime(kind)
     if (!enabled(kind)) return
+    const toastKind = key === 'limit5h' ? 'limit' : TOAST_KIND[kind]
+    if (toastKind && extras.toastCovers(toastKind)) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     if (document.visibilityState === 'visible' && document.hasFocus()) return
     try {

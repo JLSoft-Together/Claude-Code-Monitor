@@ -1,65 +1,36 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { TerminalSession } from '@ccm/shared'
+import { snoozedUntil, type SnoozeEntry, type TerminalSession } from '@ccm/shared'
+import { useConnectionStore } from './connection'
 
-interface Entry {
-  until: number
-  /** The waiting episode it belongs to; a new wait starts unsnoozed. */
-  since?: string
-}
-
-const KEY = 'ccm.snooze'
 export const SNOOZE_CHOICES = [15, 60] as const
 
-function load(): Record<string, Entry> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, Partial<Entry>>
-    const out: Record<string, Entry> = {}
-    for (const [id, e] of Object.entries(raw)) {
-      if (typeof e?.until === 'number' && e.until > Date.now()) out[id] = { until: e.until, since: typeof e.since === 'string' ? e.since : undefined }
-    }
-    return out
-  } catch {
-    return {}
-  }
-}
-
-/** "Remind me later" for a waiting session: hides it from the badge and holds its notifications until the time is up. */
 export const useSnoozeStore = defineStore('snooze', () => {
-  const entries = ref<Record<string, Entry>>(load())
+  const entries = ref<Record<string, SnoozeEntry>>({})
 
-  function save(): void {
-    const nowMs = Date.now()
-    const kept: Record<string, Entry> = {}
-    for (const [id, e] of Object.entries(entries.value)) if (e.until > nowMs) kept[id] = e
-    entries.value = kept
-    try {
-      localStorage.setItem(KEY, JSON.stringify(kept))
-    } catch {
-      return
-    }
+  function replaceAll(next: Record<string, SnoozeEntry>): void {
+    entries.value = { ...next }
   }
 
-  function snooze(terminal: TerminalSession, minutes: number): void {
+  function snooze(terminal: TerminalSession, minutes: number): boolean {
+    if (!useConnectionStore().snoozeTerminal(terminal.id, minutes)) return false
     entries.value = { ...entries.value, [terminal.id]: { until: Date.now() + minutes * 60_000, since: terminal.statusSince } }
-    save()
+    return true
   }
 
-  function clear(id: string): void {
-    if (!entries.value[id]) return
+  function clear(id: string): boolean {
+    if (!entries.value[id] || !useConnectionStore().snoozeTerminal(id, null)) return false
     const next = { ...entries.value }
     delete next[id]
     entries.value = next
-    save()
+    return true
   }
 
   function until(terminal: TerminalSession | undefined, nowMs: number): number | null {
-    if (!terminal || terminal.status !== 'waiting') return null
-    const e = entries.value[terminal.id]
-    return e && e.until > nowMs && e.since === terminal.statusSince ? e.until : null
+    return terminal ? snoozedUntil(entries.value[terminal.id], terminal, nowMs) : null
   }
 
   const isSnoozed = (terminal: TerminalSession | undefined, nowMs: number): boolean => until(terminal, nowMs) !== null
 
-  return { entries, snooze, clear, until, isSnoozed }
+  return { entries, replaceAll, snooze, clear, until, isSnoozed }
 })

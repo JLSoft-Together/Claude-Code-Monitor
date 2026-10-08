@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, ServerMessage } from '@ccm/shared'
+import { ref, watch } from 'vue'
+import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, ServerMessage, ToastKind } from '@ccm/shared'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
 import { useExtrasStore } from './extras'
 import { useFavoritesStore } from './favorites'
 import { useHistoryStore } from './history'
+import { useSettingsStore } from './settings'
+import { useSnoozeStore } from './snooze'
 import { useTerminalsStore } from './terminals'
 import { useUiStore } from './ui'
 import { useUsageStore } from './usage'
@@ -22,6 +24,19 @@ function isServerMessage(value: unknown): value is ServerMessage {
     typeof (value as ServerMessage).seq === 'number' &&
     Array.isArray((value as ServerMessage).events)
   )
+}
+
+function takeFocusParam(): string | null {
+  try {
+    const url = new URL(location.href)
+    const id = url.searchParams.get('focus')
+    if (id === null) return null
+    url.searchParams.delete('focus')
+    history.replaceState(history.state, '', url)
+    return id
+  } catch {
+    return null
+  }
 }
 
 export const useConnectionStore = defineStore('connection', () => {
@@ -45,6 +60,9 @@ export const useConnectionStore = defineStore('connection', () => {
   const favorites = useFavoritesStore()
   const extras = useExtrasStore()
   const history = useHistoryStore()
+  const settings = useSettingsStore()
+  const snooze = useSnoozeStore()
+  let pendingFocus = takeFocusParam()
 
   function url(): string {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -60,8 +78,16 @@ export const useConnectionStore = defineStore('connection', () => {
     extras.hydrate(snapshot)
     history.invalidate()
     supportedClaudeVersion.value = snapshot.supportedClaudeVersion ?? null
+    snooze.replaceAll(snapshot.snoozes ?? {})
+    if (snapshot.notify) settings.stuckMinutes = snapshot.notify.stuckMinutes
     if (ui.selectedAgentId && !agents.byId[ui.selectedAgentId]) ui.selectAgent(null)
     hasData.value = true
+    if (pendingFocus && terminals.byId[pendingFocus]) {
+      ui.setView('monitor')
+      ui.openSessionTab(pendingFocus)
+      ui.focusTerminal(pendingFocus)
+    }
+    pendingFocus = null
   }
 
   function apply(events: MonitorEvent[]): void {
@@ -148,6 +174,16 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'models.updated':
           extras.setModelNames(event.payload.modelNames ?? {})
           break
+        case 'notify.settings':
+          extras.setNotify(event.payload)
+          settings.stuckMinutes = event.payload.stuckMinutes
+          break
+        case 'notify.testResult':
+          extras.setToastTest({ state: 'done', result: event.payload.result, health: event.payload.health })
+          break
+        case 'snooze.updated':
+          snooze.replaceAll(event.payload.snoozes ?? {})
+          break
         default:
           break
       }
@@ -213,6 +249,8 @@ export const useConnectionStore = defineStore('connection', () => {
     ws.onopen = () => {
       state.value = 'connected'
       retryMs = MIN_RETRY_MS
+      lastPresence = null
+      sendPresence()
     }
     ws.onmessage = (e) => onMessage(String(e.data))
     ws.onclose = () => {
@@ -224,11 +262,24 @@ export const useConnectionStore = defineStore('connection', () => {
     ws.onerror = () => ws.close()
   }
 
+  let lastPresence: string | null = null
+  function sendPresence(): void {
+    const attentive = document.visibilityState === 'visible' && document.hasFocus()
+    const key = `${attentive}|${settings.locale}`
+    if (key === lastPresence || socket?.readyState !== WebSocket.OPEN) return
+    lastPresence = key
+    send({ type: 'client.presence', attentive, locale: settings.locale })
+  }
+
   function start(): void {
     if (started) return
     started = true
     connect()
+    window.addEventListener('focus', sendPresence)
+    window.addEventListener('blur', sendPresence)
+    watch(() => settings.locale, sendPresence)
     document.addEventListener('visibilitychange', () => {
+      sendPresence()
       if (document.visibilityState === 'visible' && !socket && retryTimer !== null) {
         clearTimeout(retryTimer)
         retryTimer = null
@@ -249,10 +300,13 @@ export const useConnectionStore = defineStore('connection', () => {
   const setAlias = (terminalId: string, alias: string | null): boolean => request({ type: 'terminal.alias', terminalId, alias })
   const toggleFavorite = (terminalId: string): boolean => request({ type: 'favorite.toggle', terminalId })
   const removeFavorite = (dir: string): boolean => request({ type: 'favorite.remove', dir })
+  const reorderFavorites = (dirs: string[]): boolean => request({ type: 'favorite.reorder', dirs })
   const addFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.add', dir, label })
   const renameFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.rename', dir, label })
   const openFavorite = (dir: string, mode: LaunchMode): boolean => request({ type: 'favorite.open', dir, mode })
   const dismissEnded = (terminalId?: string): boolean => request({ type: 'terminal.dismiss', terminalId })
+  const dismissJobs = (jobId?: string): boolean => request({ type: 'job.dismiss', jobId })
+  const stopJob = (jobId: string): boolean => request({ type: 'job.stop', jobId })
   const loadHistory = (): boolean => request({ type: 'history.get' })
   const loadTimeline = (): boolean => request({ type: 'timeline.get' })
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
@@ -276,6 +330,18 @@ export const useConnectionStore = defineStore('connection', () => {
   }
 
   const loadDiagnostics = (): boolean => request({ type: 'diagnostics.get' })
+  const updateNotify = (patch: { toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number }): boolean =>
+    request({ type: 'notify.update', ...patch })
+  const setNote = (terminalId: string, note: string | null): boolean => request({ type: 'terminal.note', terminalId, note })
+  function testToast(): boolean {
+    if (!request({ type: 'notify.test' })) {
+      extras.setToastTest({ state: 'done', result: 'offline' })
+      return false
+    }
+    extras.setToastTest({ state: 'sending' })
+    return true
+  }
+  const snoozeTerminal = (terminalId: string, minutes: number | null): boolean => request({ type: 'terminal.snooze', terminalId, minutes })
 
   function focusWindow(terminalId: string): boolean {
     if (!request({ type: 'terminal.focusWindow', terminalId })) return false
@@ -294,14 +360,21 @@ export const useConnectionStore = defineStore('connection', () => {
     setAlias,
     toggleFavorite,
     removeFavorite,
+    reorderFavorites,
     addFavorite,
     renameFavorite,
     openFavorite,
     dismissEnded,
+    dismissJobs,
+    stopJob,
     focusWindow,
     pickFolder,
     openFolder,
     loadDiagnostics,
+    updateNotify,
+    snoozeTerminal,
+    setNote,
+    testToast,
     loadHistory,
     loadTimeline,
   }

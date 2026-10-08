@@ -94,3 +94,18 @@ describe('recap', () => {
     expect(csv[1]?.startsWith(`"'=cmd|calc"`) || csv[1]?.startsWith(`'=cmd|calc`)).toBe(true)
   })
 })
+
+describe('quiet hours', () => {
+  it('handles windows inside a day and across midnight', async () => {
+    const { inQuietHours, sanitizeQuiet } = await import('@ccm/shared')
+    const at = (h: number, m = 0) => new Date(2026, 9, 8, h, m)
+    const night = { enabled: true, from: '22:00', to: '08:00' }
+    expect([at(23), at(3), at(7, 59), at(8), at(12)].map((d) => inQuietHours(night, d))).toEqual([true, true, true, false, false])
+    const lunch = { enabled: true, from: '12:00', to: '13:30' }
+    expect([at(11, 59), at(12), at(13, 29), at(13, 30)].map((d) => inQuietHours(lunch, d))).toEqual([false, true, true, false])
+    expect(inQuietHours({ ...night, enabled: false }, at(23))).toBe(false)
+    expect(inQuietHours({ enabled: true, from: '09:00', to: '09:00' }, at(9))).toBe(false)
+    expect(sanitizeQuiet({ enabled: true, from: '24:00', to: '08:00' })).toBeNull()
+    expect(sanitizeQuiet({ enabled: true, from: '07:05', to: '08:00', extra: 1 })).toEqual({ enabled: true, from: '07:05', to: '08:00' })
+  })
+})

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useBreakReminder } from './composables/useBreakReminder'
 import { useNotifications } from './composables/useNotifications'
@@ -27,21 +27,29 @@ useNotifications()
 useBreakReminder()
 useAwayStore().install()
 
+const header = ref<ComponentPublicInstance | null>(null)
+const headerObserver = new ResizeObserver(([entry]) => {
+  if (entry) document.documentElement.style.setProperty('--ccm-header-h', `${Math.ceil(entry.target.getBoundingClientRect().height)}px`)
+})
+
 onMounted(() => {
   startClock()
   connection.start()
+  const el = header.value?.$el as Element | undefined
+  if (el) headerObserver.observe(el)
 })
+onBeforeUnmount(() => headerObserver.disconnect())
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col overflow-x-hidden" :class="ui.view === 'monitor' && !ui.compact ? 'lg:h-dvh' : ''">
+  <div class="flex min-h-dvh flex-col overflow-x-hidden">
     <a
       href="#main"
       class="sr-only z-50 rounded-md bg-surface px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
     >
       {{ t('app.skipToContent') }}
     </a>
-    <AppHeader />
+    <AppHeader ref="header" />
     <Transition name="ccm-view" mode="out-in">
       <CompactView v-if="ui.compact" id="main" key="compact" />
       <MonitorView v-else-if="ui.view === 'monitor'" id="main" key="monitor" />
