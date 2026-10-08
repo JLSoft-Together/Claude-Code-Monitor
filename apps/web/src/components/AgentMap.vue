@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Eye, EyeOff, LayoutGrid, Maximize, Minus, Plus } from 'lucide-vue-next'
+import { Eye, EyeOff, LayoutGrid, Maximize, Minus, Plus, X } from 'lucide-vue-next'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
@@ -25,6 +25,7 @@ const FLOW_ID = scoped ? `agent-map-${props.terminalId}` : 'agent-map'
 const { addNodes, removeNodes, getNodes, fitView, getViewport, setViewport, zoomIn, zoomOut, updateNode, onNodeClick, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
 
 const canvas = ref<HTMLElement | null>(null)
+const picked = ref<Set<string>>(new Set())
 const hasNodes = ref(false)
 let didInitialFit = false
 let pendingFit = false
@@ -84,6 +85,8 @@ function syncNodes(fit = false): void {
     }
   }
   if (fresh.length) addNodes(fresh)
+  prunePicked()
+  applyPicked()
   hasNodes.value = agents.list.length > 0
 
   if (hasNodes.value && !didInitialFit) {
@@ -93,6 +96,35 @@ function syncNodes(fit = false): void {
     void nextTick(() => autoFit(250))
   }
 }
+
+function isPicked(agentId: string): boolean {
+  const terminalId = agents.byId[agentId]?.terminalId
+  return !!terminalId && picked.value.has(terminalId)
+}
+
+function applyPicked(): void {
+  for (const n of getNodes.value) {
+    const want = isPicked(n.id)
+    if (n.selected !== want) n.selected = want
+  }
+}
+
+function prunePicked(): void {
+  const live = [...picked.value].filter((id) => shownByTerminal.value[id])
+  if (live.length !== picked.value.size) picked.value = new Set(live)
+}
+
+function togglePicked(terminalId: string): void {
+  const next = new Set(picked.value)
+  if (!next.delete(terminalId)) next.add(terminalId)
+  picked.value = next
+}
+
+function clearPicked(): void {
+  if (picked.value.size) picked.value = new Set()
+}
+
+watch(picked, applyPicked)
 
 const MIN_AUTO_ZOOM = 0.6
 const EDGE_PAD = 24
@@ -107,9 +139,11 @@ async function autoFit(duration = 0): Promise<void> {
   await setViewport({ x: EDGE_PAD - minX * MIN_AUTO_ZOOM, y: EDGE_PAD - minY * MIN_AUTO_ZOOM, zoom: MIN_AUTO_ZOOM }, { duration })
 }
 
+const nodeIds = computed(() => new Set(getNodes.value.map((n) => n.id)))
+
 const edges = computed<Edge[]>(() =>
   shownList.value
-    .filter((a) => a.parentId && visibility.value.visible.has(a.parentId))
+    .filter((a) => a.parentId && visibility.value.visible.has(a.parentId) && nodeIds.value.has(a.id) && nodeIds.value.has(a.parentId))
     .map((a) => ({
       id: `${a.parentId}->${a.id}`,
       source: a.parentId!,
@@ -168,13 +202,20 @@ watch(
   },
 )
 
-onNodeClick(({ node }) => {
+onNodeClick(({ node, event }) => {
+  const terminalId = agents.byId[node.id]?.terminalId
+  if (!scoped && terminalId && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+    togglePicked(terminalId)
+    return
+  }
   const selecting = ui.selectedAgentId !== node.id
   ui.selectAgent(selecting ? node.id : null)
-  const terminalId = agents.byId[node.id]?.terminalId
   if (selecting && terminalId) ui.revealTerminal(terminalId)
 })
-onPaneClick(() => ui.selectAgent(null))
+onPaneClick(() => {
+  ui.selectAgent(null)
+  clearPicked()
+})
 onNodeDragStop(({ nodes }) => {
   if (scoped) return
   for (const n of nodes) ui.setNodePos(n.id, n.position)
@@ -191,8 +232,19 @@ const controls = computed(() => [
 <template>
   <section :aria-labelledby="`${FLOW_ID}-title`" class="flex min-h-0 flex-col">
     <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
-      <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink">{{ t('map.title') }}</h2>
+      <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink" :title="scoped ? undefined : t('map.multiSelectHint')">{{ t('map.title') }}</h2>
       <div class="flex items-center gap-0.5" role="toolbar" :aria-label="t('map.title')">
+        <button
+          v-if="picked.size"
+          type="button"
+          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-raised px-2 text-xs text-ink transition-colors hover:text-accent"
+          :aria-label="t('map.clearPicked')"
+          :title="t('map.clearPicked')"
+          @click="clearPicked()"
+        >
+          <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
+          <X :size="15" aria-hidden="true" />
+        </button>
         <button
           type="button"
           class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
@@ -235,12 +287,14 @@ const controls = computed(() => [
         :nodes-connectable="false"
         :elements-selectable="false"
         :zoom-on-double-click="false"
+        :delete-key-code="null"
+        :selection-key-code="null"
         :default-edge-options="{ type: 'smoothstep' }"
         class="h-full w-full"
       >
         <Background :gap="18" :size="1" pattern-color="var(--ccm-flow-dot)" />
         <template #node-agent="nodeProps">
-          <AgentNode :id="nodeProps.id" :data="nodeProps.data" />
+          <AgentNode :id="nodeProps.id" :data="nodeProps.data" :picked="nodeProps.selected" />
         </template>
       </VueFlow>
 

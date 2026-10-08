@@ -14,14 +14,14 @@ import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import StatusIcon from './StatusIcon.vue'
 
-const props = defineProps<{ id: string; data: { agentId: string } }>()
+const props = defineProps<{ id: string; data: { agentId: string }; picked?: boolean }>()
 
 const { t, locale } = useI18n()
 const agents = useAgentsStore()
 const terminals = useTerminalsStore()
 const ui = useUiStore()
 const extras = useExtrasStore()
-const { viewport, findNode, updateNode } = useVueFlow('agent-map')
+const { id: flowId, viewport, findNode, updateNode } = useVueFlow()
 const highlighted = inject<ComputedRef<Set<string> | null>>('ccm-highlight')
 
 const agent = computed(() => agents.byId[props.data.agentId])
@@ -144,7 +144,7 @@ function startResize(e: PointerEvent, dir: Dir): void {
   const up = () => {
     stop?.()
     resizing.value = false
-    if (moved) ui.setNodePos(props.id, moved)
+    if (moved && flowId === 'agent-map') ui.setNodePos(props.id, moved)
     ui.nodeResized++
   }
   window.addEventListener('pointermove', move)
@@ -179,6 +179,7 @@ onBeforeUnmount(() => stop?.())
         working && !selected ? 'ccm-breathe' : '',
         quiet && !selected ? 'opacity-60' : '',
         dimmed ? 'opacity-30' : '',
+        picked ? 'outline-2 outline-offset-4 outline-accent outline-dashed' : '',
       ]"
     >
       <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-xl" :class="meta.text" aria-hidden="true" />
