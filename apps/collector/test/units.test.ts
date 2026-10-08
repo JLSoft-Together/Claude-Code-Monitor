@@ -144,6 +144,11 @@ describe('context window and launcher', () => {
     expect(contextWindowOf('claude-haiku-4-5', { settingsModel: 'opus[1m]' })).toBe(200_000)
     expect(contextWindowOf('claude-sonnet-5', { peak: 300_000 })).toBe(1_000_000)
     expect(contextWindowOf('gpt-x')).toBeUndefined()
+    expect(contextWindowOf('claude-opus-5-5', { catalog: 1_000_000 })).toBe(1_000_000)
+    expect(contextWindowOf('claude-opus-4-1', { catalog: 200_000, settingsModel: 'opus[1m]' })).toBe(1_000_000)
+    expect(contextWindowOf('claude-opus-5-5', { catalog: 1_000_000, reported: 200_000 })).toBe(200_000)
+    expect(contextWindowOf(undefined, { reported: 1_000_000 })).toBe(1_000_000)
+    expect(contextWindowOf('claude-opus-5-5', { reported: 0, catalog: -1 })).toBe(200_000)
     expect([59, 60, 80, 95].map(contextLevel)).toEqual(['ok', 'notice', 'warning', 'critical'])
   })
 

@@ -24,9 +24,19 @@ export function modelFamily(model: string | undefined): string | undefined {
  */
 export function contextWindowOf(
   model: string | undefined,
-  hints: { settingsModel?: string; peak?: number } = {},
+  hints: { settingsModel?: string; peak?: number; reported?: number; catalog?: number } = {},
 ): number | undefined {
+  if (validWindow(hints.reported)) return hints.reported
   if (!model?.startsWith('claude-')) return undefined
+  const guess = guessWindow(model, hints)
+  return validWindow(hints.catalog) ? Math.max(hints.catalog, guess) : guess
+}
+
+function validWindow(n: number | undefined): n is number {
+  return typeof n === 'number' && Number.isFinite(n) && n >= 1_000 && n <= 100_000_000
+}
+
+function guessWindow(model: string, hints: { settingsModel?: string; peak?: number }): number {
   if (model.includes('[1m]')) return CONTEXT_WINDOW_1M
   const s = hints.settingsModel
   if (s?.includes('[1m]') && (modelFamily(s) === modelFamily(model) || model.startsWith(s.replace('[1m]', '')))) {

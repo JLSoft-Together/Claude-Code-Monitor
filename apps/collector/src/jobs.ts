@@ -7,7 +7,8 @@ const MAX_STATE_BYTES = 256 * 1024
 const TAIL_BYTES = 4096
 const MAX_JOBS = 50
 const DONE_KEEP_MS = 24 * 3_600_000
-const STATES = new Set<JobState>(['working', 'blocked', 'done'])
+const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const STATES =new Set<JobState>(['working', 'blocked', 'done'])
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -33,6 +34,7 @@ export function parseJobState(id: string, text: string): BackgroundJob | null {
     tasks: count(inFlight.tasks),
     queued: count(inFlight.queued),
     tokens: count(raw.tokens),
+    sessionId: typeof raw.sessionId === 'string' && SESSION_RE.test(raw.sessionId) ? raw.sessionId : undefined,
   }
 }
 

@@ -1,11 +1,13 @@
 import path from 'node:path'
-import { AliasStore } from './aliases'
+import { AliasStore, MAX_NOTE_LENGTH } from './aliases'
 import { firstStartToday } from './daystart'
 import { loadConfig } from './config'
 import { FavoriteStore } from './favorites'
 import { LimitHistory } from './forecast'
 import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
+import { SnoozeStore } from './snooze'
+import { TEXT, Toaster } from './toast'
 import { Monitor } from './monitor'
 import { RepoRoots } from './repo'
 import { ResponseTracker } from './response'
@@ -30,7 +32,9 @@ async function main(): Promise<void> {
   await history.load()
   const timeline = new StatusTimeline(path.join(config.dataDir, 'timeline.json'))
   await timeline.load()
-  const monitor = new Monitor(config, store, undefined, aliases, favorites, response, { limitHistory, history, timeline })
+  const notes = new AliasStore(path.join(config.dataDir, 'notes.json'), MAX_NOTE_LENGTH)
+  await notes.load()
+  const monitor = new Monitor(config, store, undefined, aliases, favorites, response, { limitHistory, history, timeline, notes })
   const usage = new UsageIndex(path.join(config.claudeRoot, 'projects'), path.join(config.dataDir, 'usage-index.json'), store)
   monitor.onProjectFile = (file) => usage.notify(file)
   const repoRoots = new RepoRoots()
@@ -40,6 +44,25 @@ async function main(): Promise<void> {
     )
   }
 
+  const snoozes = new SnoozeStore(path.join(config.dataDir, 'snooze.json'))
+  await snoozes.load()
+  store.setSnoozes(snoozes.all())
+  const toaster = new Toaster({ supported: config.toast, port: config.port, file: path.join(config.dataDir, 'notify.json') })
+  await toaster.load()
+  toaster.snoozed = (t) => snoozes.isSnoozed(t)
+  store.setNotify(toaster.settings())
+  const observe = () => {
+    if (snoozes.prune(store.terminalList())) store.setSnoozes(snoozes.all())
+    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id) })
+  }
+  store.subscribe(observe)
+  void toaster.refreshHealth().then(() => store.setNotify(toaster.settings()))
+  const toastTimer = setInterval(() => {
+    observe()
+    toaster.checkLoops(store.toolEvents())
+  }, 15_000)
+  toastTimer.unref()
+
   await monitor.start()
   const server = await startServer({
     host: config.host,
@@ -47,6 +70,25 @@ async function main(): Promise<void> {
     webDist: config.webDist,
     devOriginPorts: config.devOriginPorts,
     store,
+    onClientClose: (clientId) => toaster.dropClient(clientId),
+    onFocusLink: (terminalId, key) => {
+      if (!toaster.accepts(key)) return null
+      if (terminalId !== null) toaster.hideFor(terminalId)
+      return TEXT[toaster.locale].page
+    },
+    onFocusRun: async (terminalId, key) => {
+      if (!toaster.accepts(key)) return null
+      if (!store.getTerminal(terminalId)) return 'notFound'
+      toaster.hideFor(terminalId)
+      return monitor.focusWindow(terminalId, () => undefined)
+    },
+    onSnoozeLink: (terminalId, key, minutes) => {
+      const terminal = store.getTerminal(terminalId)
+      if (!toaster.accepts(key) || !terminal || !snoozes.set(terminal, minutes)) return null
+      store.setSnoozes(snoozes.all())
+      toaster.hideFor(terminalId)
+      return TEXT[toaster.locale].page.snoozed(minutes)
+    },
     onClientMessage: (message, ctx) => {
       switch (message.type) {
         case 'terminal.alias':
@@ -60,6 +102,9 @@ async function main(): Promise<void> {
           break
         case 'favorite.remove':
           monitor.removeFavorite(message.dir)
+          break
+        case 'favorite.reorder':
+          monitor.reorderFavorites(message.dirs)
           break
         case 'favorite.add':
           void monitor.addFavorite(message.dir, message.label)
@@ -85,9 +130,38 @@ async function main(): Promise<void> {
         case 'terminal.dismiss':
           monitor.dismissEnded(message.terminalId)
           break
+        case 'job.dismiss':
+          monitor.dismissJobs(message.jobId)
+          break
+        case 'job.stop':
+          void monitor.stopJob(message.jobId)
+          break
         case 'favorite.open':
           void monitor.openFavorite(message.dir, message.mode)
           break
+        case 'client.presence':
+          toaster.setPresence(ctx.clientId, message.attentive, message.locale)
+          break
+        case 'notify.update':
+          toaster.update({ toast: message.toast, kinds: message.kinds, quiet: message.quiet, stuckMinutes: message.stuckMinutes })
+          store.setNotify(toaster.settings())
+          break
+        case 'notify.test':
+          void toaster.test().then((r) => {
+            store.setNotify(toaster.settings())
+            ctx.reply({ type: 'notify.testResult', payload: r })
+          })
+          break
+        case 'terminal.note':
+          monitor.setNote(message.terminalId, message.note)
+          break
+        case 'terminal.snooze': {
+          const terminal = store.getTerminal(message.terminalId)
+          if (!terminal || !snoozes.set(terminal, message.minutes)) break
+          store.setSnoozes(snoozes.all())
+          if (snoozes.isSnoozed(terminal)) toaster.hideFor(terminal.id)
+          break
+        }
         default:
           break
       }
@@ -103,9 +177,10 @@ async function main(): Promise<void> {
   const shutdown = () => {
     if (closing) return
     closing = true
+    clearInterval(toastTimer)
     monitor.stop()
     server.close()
-    void Promise.all([usage.stop(), response.save(), limitHistory.save(), history.save(), timeline.save()]).finally(() => process.exit(0))
+    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), history.save(), timeline.save()]).finally(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)

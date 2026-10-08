@@ -19,23 +19,37 @@ export class FavoriteStore {
     try {
       const parsed: unknown = JSON.parse(await readFile(this.file, 'utf8'))
       if (!Array.isArray(parsed)) return
+      const items: { favorite: Favorite; order: number | null }[] = []
       for (const item of parsed) {
         if (typeof item !== 'object' || item === null) continue
-        const { dir, label, addedAt } = item as Record<string, unknown>
+        const { dir, label, addedAt, order } = item as Record<string, unknown>
         if (typeof dir !== 'string' || !path.isAbsolute(dir)) continue
-        this.map.set(keyOf(dir), {
-          dir: path.resolve(dir),
-          label: sanitizeAlias(label) ?? path.basename(dir),
-          addedAt: typeof addedAt === 'string' ? addedAt : new Date(0).toISOString(),
+        items.push({
+          favorite: {
+            dir: path.resolve(dir),
+            label: sanitizeAlias(label) ?? path.basename(dir),
+            addedAt: typeof addedAt === 'string' ? addedAt : new Date(0).toISOString(),
+          },
+          order: typeof order === 'number' && Number.isFinite(order) ? order : null,
         })
       }
+      items.sort((a, b) =>
+        a.order !== null && b.order !== null
+          ? a.order - b.order
+          : a.order !== null
+            ? -1
+            : b.order !== null
+              ? 1
+              : a.favorite.label.localeCompare(b.favorite.label),
+      )
+      for (const { favorite } of items) this.map.set(keyOf(favorite.dir), favorite)
     } catch {
       return
     }
   }
 
   list(): Favorite[] {
-    return [...this.map.values()].sort((a, b) => a.label.localeCompare(b.label))
+    return [...this.map.values()]
   }
 
   get(dir: string): Favorite | undefined {
@@ -79,6 +93,23 @@ export class FavoriteStore {
     return removed
   }
 
+  reorder(dirs: string[]): boolean {
+    const before = [...this.map.keys()]
+    const next = new Map<string, Favorite>()
+    for (const dir of dirs) {
+      const key = keyOf(dir)
+      const favorite = this.map.get(key)
+      if (favorite && !next.has(key)) next.set(key, favorite)
+    }
+    for (const [key, favorite] of this.map) if (!next.has(key)) next.set(key, favorite)
+    const after = [...next.keys()]
+    if (after.every((key, i) => key === before[i])) return false
+    this.map.clear()
+    for (const [key, favorite] of next) this.map.set(key, favorite)
+    void this.save()
+    return true
+  }
+
   whenSaved(): Promise<void> {
     return this.saving
   }
@@ -93,7 +124,7 @@ export class FavoriteStore {
     const tmp = `${this.file}.tmp`
     try {
       await mkdir(path.dirname(this.file), { recursive: true })
-      await writeFile(tmp, JSON.stringify([...this.map.values()], null, 2))
+      await writeFile(tmp, JSON.stringify([...this.map.values()].map((f, order) => ({ ...f, order })), null, 2))
       await rename(tmp, this.file)
     } catch (err) {
       console.error('[collector] cannot save favorites:', (err as Error).message)

@@ -19,6 +19,8 @@ export type ActivityDraft = Omit<ActivityEvent, 'id' | 'at'> & { at?: string }
 
 export interface ContextHints {
   settingsModel?: string
+  modelWindows?: Record<string, number>
+  sessionWindows?: Map<string, number>
 }
 
 interface SubagentMeta {
@@ -241,11 +243,21 @@ export class SessionTracker {
     }
   }
 
-  private contextOf(state: TranscriptState, model: string | undefined): { contextTokens?: number; contextWindow?: number } {
+  private contextOf(
+    state: TranscriptState,
+    model: string | undefined,
+    main = false,
+  ): { contextTokens?: number; contextWindow?: number } {
     if (state.contextTokens === undefined) return {}
+    const sessionId = this.record.sessionId
     return {
       contextTokens: state.contextTokens,
-      contextWindow: contextWindowOf(model, { settingsModel: this.hints.settingsModel, peak: state.peakContext }),
+      contextWindow: contextWindowOf(model, {
+        settingsModel: this.hints.settingsModel,
+        peak: state.peakContext,
+        reported: main && sessionId ? this.hints.sessionWindows?.get(sessionId) : undefined,
+        catalog: model ? this.hints.modelWindows?.[model.replace('[1m]', '')] : undefined,
+      }),
     }
   }
 
@@ -404,7 +416,7 @@ export class SessionTracker {
         outputTokens: mainTokens?.output,
         cacheReadTokens: mainTokens?.cacheRead,
         totalTokens: mainTokens ? mainTokens.input + mainTokens.output : undefined,
-        ...this.contextOf(this.main, this.main.model),
+        ...this.contextOf(this.main, this.main.model, true),
         cacheTtl: this.main.cacheTtl,
         cacheAt: this.main.cacheAt,
       },

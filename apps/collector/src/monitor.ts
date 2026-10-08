@@ -3,8 +3,8 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
-import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord } from '@ccm/shared'
-import { AliasStore, sanitizeAlias } from './aliases'
+import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord } from '@ccm/shared'
+import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
 import { focusProcessWindow } from './focus'
@@ -15,8 +15,9 @@ import { LimitHistory } from './forecast'
 import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
 import { JobReader } from './jobs'
+import { stopBackgroundJob } from './job-stop'
 import { launchClaude } from './launcher'
-import { readModelNames } from './model-catalog'
+import { readModelCatalog } from './model-catalog'
 import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
 import { latestLimits, StatusLineReader } from './statusline'
@@ -30,6 +31,7 @@ export interface MonitorStores {
   limitHistory?: LimitHistory
   history?: SessionHistory
   timeline?: StatusTimeline
+  notes?: AliasStore
 }
 
 export interface MonitorDeps {
@@ -42,6 +44,7 @@ export interface MonitorDeps {
   openFolder?: (dir: string, app: OpenApp) => Promise<OpenResult>
   diffStat?: (cwd: string) => Promise<GitDiffStat | null>
   diffDelayMs?: number
+  stopJob?: (jobId: string) => Promise<JobStopResult>
 }
 
 /** Sends an answer to the socket that asked; without one (tests, internal calls) it falls back to a broadcast. */
@@ -66,12 +69,14 @@ export class Monitor {
   private projectsWatched = false
   private stopped = false
   onProjectFile: ((file: string) => void) | null = null
-  readonly contextHints: ContextHints = {}
+  readonly contextHints: ContextHints = { sessionWindows: new Map() }
   private readonly jobReader: JobReader
   private readonly statusLine: StatusLineReader
   private readonly costs = new Map<string, number>()
   private jobs = new Map<string, BackgroundJob>()
   private jobsLoaded = false
+  private readonly dismissedJobs = new Map<string, string>()
+  private readonly stoppingJobs = new Set<string>()
   private focusing: Promise<void> = Promise.resolve()
   private picking = false
   private readonly diffs = new Map<string, GitDiffStat>()
@@ -81,6 +86,7 @@ export class Monitor {
   private readonly limitHistory: LimitHistory
   private readonly history: SessionHistory
   private readonly timeline: StatusTimeline
+  private readonly notes: AliasStore
 
   constructor(
     private readonly config: CollectorConfig,
@@ -94,6 +100,7 @@ export class Monitor {
     this.limitHistory = stores.limitHistory ?? new LimitHistory()
     this.history = stores.history ?? new SessionHistory()
     this.timeline = stores.timeline ?? new StatusTimeline(null, () => this.deps.now())
+    this.notes = stores.notes ?? new AliasStore(null, MAX_NOTE_LENGTH)
     this.sessionsDir = path.join(config.claudeRoot, 'sessions')
     this.projectsDir = path.join(config.claudeRoot, 'projects')
     this.jobReader = new JobReader(path.join(config.claudeRoot, 'jobs'))
@@ -116,7 +123,9 @@ export class Monitor {
 
   private async refreshHints(): Promise<void> {
     this.contextHints.settingsModel = await readSettingsModel(this.config.claudeRoot)
-    this.store.setModelNames(await readModelNames(this.config.claudeRoot))
+    const catalog = await readModelCatalog(this.config.claudeRoot)
+    this.contextHints.modelWindows = catalog.windows
+    this.store.setModelNames(catalog.names)
   }
 
   /** Background jobs + status line bridge files; both are small directories, polled with the reconcile cadence. */
@@ -130,7 +139,12 @@ export class Monitor {
       this.store.setLimits(this.limitHistory.apply(latestLimits(records)))
       const changed = new Set<string>()
       const live = new Set<string>()
+      const windows = this.contextHints.sessionWindows!
       for (const r of records) {
+        if (r.contextWindow !== undefined && windows.get(r.sessionId) !== r.contextWindow) {
+          windows.set(r.sessionId, r.contextWindow)
+          changed.add(r.sessionId)
+        }
         if (r.costUsd === undefined) continue
         live.add(r.sessionId)
         if (this.costs.get(r.sessionId) === r.costUsd) continue
@@ -140,6 +154,8 @@ export class Monitor {
       // A status line file can expire while its session is still open; keep the last cost until the tracker goes.
       const tracked = new Set([...this.trackers.values()].map((t) => t.sessionId).filter(Boolean))
       for (const id of this.costs.keys()) if (!live.has(id) && !tracked.has(id)) this.costs.delete(id)
+      const reported = new Set(records.map((r) => r.sessionId))
+      for (const id of windows.keys()) if (!reported.has(id) && !tracked.has(id)) windows.delete(id)
       if (changed.size) for (const t of this.trackers.values()) if (t.sessionId && changed.has(t.sessionId)) this.publish(t)
       if (this.response.rollDay()) this.store.setResponse(this.response.stats())
     } catch (err) {
@@ -161,8 +177,42 @@ export class Monitor {
     }
     this.jobs = next
     this.jobsLoaded = true
-    this.store.setJobs(list)
+    for (const [id, at] of this.dismissedJobs) {
+      const job = next.get(id)
+      if (!job || job.updatedAt !== at) this.dismissedJobs.delete(id)
+    }
+    this.publishJobs()
     this.pushActivity(drafts)
+  }
+
+  private publishJobs(): void {
+    this.store.setJobs([...this.jobs.values()].filter((j) => !this.dismissedJobs.has(j.id)))
+  }
+
+  dismissJobs(jobId?: string): number {
+    let removed = 0
+    for (const job of this.jobs.values()) {
+      if ((jobId === undefined ? job.state !== 'done' : job.id !== jobId) || this.dismissedJobs.has(job.id)) continue
+      this.dismissedJobs.set(job.id, job.updatedAt ?? '')
+      removed++
+    }
+    if (removed) this.publishJobs()
+    return removed
+  }
+
+  async stopJob(jobId: string): Promise<JobStopResult | null> {
+    const job = this.jobs.get(jobId)
+    if (!job || job.state === 'done' || this.stoppingJobs.has(jobId)) return null
+    this.stoppingJobs.add(jobId)
+    try {
+      const result = await (this.deps.stopJob ?? stopBackgroundJob)(jobId)
+      const data = { title: job.name ?? job.id, jobId, ...(result === 'ok' ? {} : { error: result }) }
+      this.pushActivity([{ kind: result === 'ok' ? 'job.stopped' : 'job.stopFailed', data }])
+      if (result === 'ok') await this.pollExtras()
+      return result
+    } finally {
+      this.stoppingJobs.delete(jobId)
+    }
   }
 
   stop(): void {
@@ -339,6 +389,13 @@ export class Monitor {
     return true
   }
 
+  setNote(terminalId: string, value: unknown): boolean {
+    const tracker = this.trackers.get(terminalId)
+    if (!tracker || !this.notes.set(terminalId, sanitizeAlias(value, MAX_NOTE_LENGTH))) return false
+    this.publish(tracker)
+    return true
+  }
+
   /** Returns how many ended sessions were removed. */
   dismissEnded(terminalId?: string): number {
     let removed = 0
@@ -357,6 +414,7 @@ export class Monitor {
     this.diffTimers.delete(tracker.terminalId)
     this.store.removeTerminal(tracker.terminalId)
     this.aliases.delete(tracker.terminalId)
+    this.notes.delete(tracker.terminalId)
   }
 
   toggleFavorite(terminalId: string): boolean {
@@ -391,6 +449,12 @@ export class Monitor {
       this.store.rejectFavorite(dir, result)
       return false
     }
+    this.store.setFavorites(this.favorites.list())
+    return true
+  }
+
+  reorderFavorites(dirs: string[]): boolean {
+    if (!this.favorites.reorder(dirs)) return false
     this.store.setFavorites(this.favorites.list())
     return true
   }
@@ -533,7 +597,8 @@ export class Monitor {
   }
 
   /** Raises the window of a live session; requests run one at a time and every request gets an answer. */
-  focusWindow(terminalId: string, reply?: Reply): Promise<void> {
+  focusWindow(terminalId: string, reply?: Reply): Promise<FocusWindowResult> {
+    let outcome: FocusWindowResult = 'failed'
     const run = async () => {
       const tracker = this.trackers.get(terminalId)
       const focus = this.deps.focusWindow
@@ -543,9 +608,10 @@ export class Monitor {
       else result = await focus(tracker.record.pid).catch((): FocusWindowResult => 'failed')
       if (reply) reply({ type: 'terminal.focusResult', payload: { terminalId, result } })
       else this.store.focusResult(terminalId, result)
+      outcome = result
     }
     this.focusing = this.focusing.then(run, run)
-    return this.focusing
+    return this.focusing.then(() => outcome)
   }
 
   private titleOf(tracker: SessionTracker): string {
@@ -557,6 +623,7 @@ export class Monitor {
     const terminal = {
       ...tracker.buildTerminal(),
       alias: this.aliases.get(tracker.terminalId),
+      note: this.notes.get(tracker.terminalId),
       costUsd: sessionId ? this.costs.get(sessionId) : undefined,
       diff: this.diffs.get(tracker.terminalId),
     }

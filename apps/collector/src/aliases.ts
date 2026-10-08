@@ -2,11 +2,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export const MAX_ALIAS_LENGTH = 80
+export const MAX_NOTE_LENGTH = 140
 
-export function sanitizeAlias(value: unknown): string | null {
+export function sanitizeAlias(value: unknown, max = MAX_ALIAS_LENGTH): string | null {
   if (typeof value !== 'string') return null
   const clean = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
-  return clean ? clean.slice(0, MAX_ALIAS_LENGTH) : null
+  return clean ? clean.slice(0, max) : null
 }
 
 /** Dashboard-side names keyed by terminal id; persisted so a collector restart keeps them. */
@@ -14,7 +15,10 @@ export class AliasStore {
   private readonly map = new Map<string, string>()
   private saving: Promise<void> = Promise.resolve()
 
-  constructor(private readonly file: string | null = null) {}
+  constructor(
+    private readonly file: string | null = null,
+    private readonly max = MAX_ALIAS_LENGTH,
+  ) {}
 
   async load(): Promise<void> {
     if (!this.file) return
@@ -22,7 +26,7 @@ export class AliasStore {
       const parsed: unknown = JSON.parse(await readFile(this.file, 'utf8'))
       if (typeof parsed !== 'object' || parsed === null) return
       for (const [id, value] of Object.entries(parsed)) {
-        const alias = sanitizeAlias(value)
+        const alias = sanitizeAlias(value, this.max)
         if (alias) this.map.set(id, alias)
       }
     } catch {
@@ -60,7 +64,7 @@ export class AliasStore {
       await writeFile(tmp, JSON.stringify(Object.fromEntries(this.map), null, 2))
       await rename(tmp, this.file)
     } catch (err) {
-      console.error('[collector] cannot save aliases:', (err as Error).message)
+      console.error(`[collector] cannot save ${path.basename(this.file)}:`, (err as Error).message)
     }
   }
 }

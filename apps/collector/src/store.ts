@@ -16,6 +16,8 @@ import {
   type ResponseStats,
   type ServerMessage,
   type TerminalSession,
+  type NotifySettings,
+  type SnoozeEntry,
   type UsageBucket,
   type UsageScan,
   type UsageSnapshot,
@@ -57,6 +59,8 @@ export class MonitorStore implements UsageSink {
   private modelNames: Record<string, string> = {}
   statusLineCommand?: string
   dayStartedAt?: string
+  notify?: NotifySettings
+  private snoozes: Record<string, SnoozeEntry> = {}
   private readonly usage = new Map<string, UsageBucket>()
   private usageScan: UsageScan = { state: 'idle', filesDone: 0, filesTotal: 0 }
   private favorites: Favorite[] = []
@@ -81,6 +85,42 @@ export class MonitorStore implements UsageSink {
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  terminalList(): IterableIterator<TerminalSession> {
+    return this.terminals.values()
+  }
+
+  contextPct(terminalId: string): number | null {
+    for (const a of this.agents.values()) {
+      if (a.terminalId !== terminalId || a.role !== 'main') continue
+      return a.contextTokens !== undefined && a.contextWindow ? (a.contextTokens / a.contextWindow) * 100 : null
+    }
+    return null
+  }
+
+  jobList(): readonly BackgroundJob[] {
+    return this.jobs
+  }
+
+  currentLimits(): PlanLimits | null {
+    return this.limits
+  }
+
+  toolEvents(): readonly ActivityEvent[] {
+    return this.toolActivity
+  }
+
+  setNotify(settings: NotifySettings): void {
+    if (JSON.stringify(settings) === JSON.stringify(this.notify)) return
+    this.notify = { ...settings, kinds: { ...settings.kinds }, quiet: { ...settings.quiet } }
+    this.emit({ type: 'notify.settings', payload: this.notify })
+  }
+
+  setSnoozes(snoozes: Record<string, SnoozeEntry>): void {
+    if (JSON.stringify(snoozes) === JSON.stringify(this.snoozes)) return
+    this.snoozes = { ...snoozes }
+    this.emit({ type: 'snooze.updated', payload: { snoozes: this.snoozes } })
   }
 
   getTerminal(id: string): TerminalSession | undefined {
@@ -243,6 +283,8 @@ export class MonitorStore implements UsageSink {
       modelNames: { ...this.modelNames },
       statusLineCommand: this.statusLineCommand,
       dayStartedAt: this.dayStartedAt,
+      notify: this.notify,
+      snoozes: { ...this.snoozes },
     }
   }
 

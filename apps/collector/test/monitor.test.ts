@@ -45,6 +45,7 @@ describe('Monitor with fixture claude root', () => {
     claudeRoot: root,
     host: '127.0.0.1',
     port: 0,
+    toast: false,
     staleTtlMs: 120 * 60_000,
     reconcileMs: 5_000,
     processVerifyMs: 60_000,
@@ -117,6 +118,29 @@ describe('Monitor with fixture claude root', () => {
     expect(monitor.setAlias(id, '   ')).toBe(true)
     snap = store.snapshot()
     expect(snap.terminals[0]!.alias).toBeUndefined()
+  })
+
+  it('prefers the status line window, then the model catalog, over the 200k guess', async () => {
+    const mainOf = () => store.snapshot().agents.find((a) => a.role === 'main')!
+    expect(mainOf().contextWindow).toBe(200_000)
+
+    const doc = { surfaces: { cc: { model_selector_config: [{ models: [{ id: 'claude-opus-5-5', runtime: { max_input_tokens: 1_000_000 } }] }] } } }
+    await mkdir(path.join(root, 'cache', 'model-catalog'), { recursive: true })
+    await writeFile(
+      path.join(root, 'cache', 'model-catalog', 'published-x.json'),
+      JSON.stringify({ documentBytes: Buffer.from(JSON.stringify(doc)).toString('base64') }),
+    )
+    monitor.stop()
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, deps())
+    await monitor.start({ watch: false })
+    expect(mainOf().contextWindow).toBe(1_000_000)
+
+    await mkdir(path.join(root, 'statusline'), { recursive: true })
+    await writeFile(path.join(root, 'statusline', `${SID}.json`), JSON.stringify({ v: 1, sessionId: SID, at: '2026-10-07T10:00:00.000Z', contextWindow: 500_000 }))
+    await monitor.pollExtras()
+    expect(mainOf().contextWindow).toBe(500_000)
+    expect(store.snapshot().agents.find((a) => a.role === 'subagent')!.contextWindow).not.toBe(500_000)
   })
 
   it('reports context, permission mode, branch and compaction without content', async () => {

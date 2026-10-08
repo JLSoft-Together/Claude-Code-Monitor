@@ -28,6 +28,7 @@ function save(input) {
     sessionId: input.session_id,
     at: new Date().toISOString(),
     costUsd: num(input.cost?.total_cost_usd),
+    contextWindow: num(input.context_window?.context_window_size),
     fiveHour: window(input.rate_limits?.five_hour),
     sevenDay: window(input.rate_limits?.seven_day),
   }

@@ -19,6 +19,7 @@ export interface TerminalSession {
 
   title: string
   alias?: string
+  note?: string
   nameSource?: string
   kind?: string
   entrypoint?: string
@@ -101,6 +102,8 @@ export type ActivityKind =
   | 'launch.failed'
   | 'job.blocked'
   | 'job.done'
+  | 'job.stopped'
+  | 'job.stopFailed'
 
 export interface ActivityEvent {
   id: string
@@ -121,6 +124,7 @@ export interface ActivityEvent {
     preTokens?: number
     postTokens?: number
     error?: string
+    jobId?: string
   }
 }
 
@@ -150,6 +154,32 @@ export interface MonitorSnapshot {
   statusLineCommand?: string
   /** First collector start today (local day), the anchor for break reminders. */
   dayStartedAt?: string
+  notify?: NotifySettings
+  snoozes?: Record<string, SnoozeEntry>
+}
+
+export type ToastState = 'on' | 'off' | 'unsupported'
+export type ToastKind = 'waiting' | 'done' | 'job' | 'loop' | 'limit' | 'context' | 'stuck'
+export type ToastHealth = 'ok' | 'globalOff' | 'appOff' | 'unknown'
+export type ToastTestResult = 'ok' | 'failed' | 'unsupported'
+
+export interface QuietHours {
+  enabled: boolean
+  from: string
+  to: string
+}
+
+export interface NotifySettings {
+  toast: ToastState
+  kinds: Record<ToastKind, boolean>
+  quiet: QuietHours
+  stuckMinutes: number
+  health?: ToastHealth
+}
+
+export interface SnoozeEntry {
+  until: number
+  since?: string
 }
 
 export type JobState = 'working' | 'blocked' | 'done' | 'unknown'
@@ -165,7 +195,10 @@ export interface BackgroundJob {
   tokens?: number
   stateSince?: string
   updatedAt?: string
+  sessionId?: string
 }
+
+export type JobStopResult = 'ok' | 'notFound' | 'unconfirmed' | 'noCli' | 'failed'
 
 export interface LimitWindow {
   /** 0–100. */
@@ -337,6 +370,9 @@ export type MonitorEvent =
   | { type: 'timeline.data'; payload: DayTimeline }
   | { type: 'terminal.openResult'; payload: { terminalId: string; app: OpenApp; result: OpenResult } }
   | { type: 'diagnostics.data'; payload: Diagnostics }
+  | { type: 'notify.settings'; payload: NotifySettings }
+  | { type: 'snooze.updated'; payload: { snoozes: Record<string, SnoozeEntry> } }
+  | { type: 'notify.testResult'; payload: { result: ToastTestResult; health?: ToastHealth } }
 
 export interface ServerMessage {
   seq: number
@@ -350,6 +386,7 @@ export type ClientMessage =
   | { type: 'terminal.alias'; terminalId: string; alias: string | null }
   | { type: 'favorite.toggle'; terminalId: string }
   | { type: 'favorite.remove'; dir: string }
+  | { type: 'favorite.reorder'; dirs: string[] }
   /** Star a folder by path; must be an existing local absolute directory. */
   | { type: 'favorite.add'; dir: string; label?: string | null }
   | { type: 'folder.pick'; requestId: string }
@@ -366,3 +403,10 @@ export type ClientMessage =
   /** Open the session's working folder in Explorer or VS Code (path comes from the collector, never the client). */
   | { type: 'terminal.open'; terminalId: string; app: OpenApp }
   | { type: 'diagnostics.get' }
+  | { type: 'job.dismiss'; jobId?: string }
+  | { type: 'job.stop'; jobId: string }
+  | { type: 'client.presence'; attentive: boolean; locale?: 'en' | 'vi' }
+  | { type: 'notify.update'; toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number }
+  | { type: 'notify.test' }
+  | { type: 'terminal.note'; terminalId: string; note: string | null }
+  | { type: 'terminal.snooze'; terminalId: string; minutes: number | null }

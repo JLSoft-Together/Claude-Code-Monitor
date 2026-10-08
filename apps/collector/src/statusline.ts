@@ -10,6 +10,7 @@ export interface StatusLineRecord {
   sessionId: string
   at: string
   costUsd?: number
+  contextWindow?: number
   fiveHour?: LimitWindow
   sevenDay?: LimitWindow
 }
@@ -29,7 +30,15 @@ export function parseStatusLine(text: string): StatusLineRecord | null {
   try {
     const raw = JSON.parse(text) as Record<string, unknown>
     if (typeof raw.sessionId !== 'string' || typeof raw.at !== 'string' || !Number.isFinite(Date.parse(raw.at))) return null
-    return { sessionId: raw.sessionId, at: raw.at, costUsd: num(raw.costUsd), fiveHour: windowOf(raw.fiveHour), sevenDay: windowOf(raw.sevenDay) }
+    const contextWindow = num(raw.contextWindow)
+    return {
+      sessionId: raw.sessionId,
+      at: raw.at,
+      costUsd: num(raw.costUsd),
+      contextWindow: contextWindow !== undefined && contextWindow >= 1_000 && contextWindow <= 100_000_000 ? Math.round(contextWindow) : undefined,
+      fiveHour: windowOf(raw.fiveHour),
+      sevenDay: windowOf(raw.sevenDay),
+    }
   } catch {
     return null
   }

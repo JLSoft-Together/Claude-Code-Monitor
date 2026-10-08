@@ -6,7 +6,7 @@ import { forecastWindow, LimitHistory } from '../src/forecast'
 import { SessionHistory } from '../src/history'
 import { StatusTimeline } from '../src/timeline'
 import { JobReader, lastStateChange, parseJobState } from '../src/jobs'
-import { parseModelCatalog } from '../src/model-catalog'
+import { parseModelCatalog, parseModelWindows } from '../src/model-catalog'
 import { ResponseTracker } from '../src/response'
 import { latestLimits, parseStatusLine } from '../src/statusline'
 import { MonitorStore } from '../src/store'
@@ -73,6 +73,29 @@ describe('model catalog', () => {
     expect(parseModelCatalog(text)).toEqual({ 'claude-opus-5-5': 'Opus 5.5' })
     expect(parseModelCatalog('nope')).toEqual({})
   })
+
+  it('reads max_input_tokens from the signed published catalog', () => {
+    const doc = {
+      surfaces: {
+        cc: {
+          model_selector_config: [
+            {
+              models: [
+                { id: 'claude-opus-5-5', runtime: { max_input_tokens: 1_000_000 } },
+                { id: 'claude-haiku-4-5-20251001', runtime: { max_input_tokens: 200_000 } },
+                { id: '../x', runtime: { max_input_tokens: 1_000_000 } },
+                { id: 'claude-bad', runtime: { max_input_tokens: 'big' } },
+              ],
+            },
+          ],
+        },
+      },
+    }
+    const text = JSON.stringify({ version: 1, documentBytes: Buffer.from(JSON.stringify(doc)).toString('base64') })
+    expect(parseModelWindows(text)).toEqual({ 'claude-opus-5-5': 1_000_000, 'claude-haiku-4-5-20251001': 200_000 })
+    expect(parseModelWindows(JSON.stringify({ documentBytes: '!!' }))).toEqual({})
+    expect(parseModelWindows('nope')).toEqual({})
+  })
 })
 
 describe('status line bridge records', () => {
@@ -83,6 +106,8 @@ describe('status line bridge records', () => {
     expect(latestLimits([a!, b!])).toEqual({ fiveHour: undefined, sevenDay: { usedPct: 40, resetsAt: '2026-10-10T00:00:00Z' }, updatedAt: '2026-10-08T02:00:00Z' })
     expect(latestLimits([parseStatusLine(JSON.stringify({ sessionId: SID, at: '2026-10-08T01:00:00Z' }))!])).toBeNull()
     expect(parseStatusLine('{"sessionId":1}')).toBeNull()
+    expect(parseStatusLine(JSON.stringify({ sessionId: SID, at: '2026-10-08T01:00:00Z', contextWindow: 1_000_000 }))!.contextWindow).toBe(1_000_000)
+    expect(parseStatusLine(JSON.stringify({ sessionId: SID, at: '2026-10-08T01:00:00Z', contextWindow: 5 }))!.contextWindow).toBeUndefined()
   })
 })
 
