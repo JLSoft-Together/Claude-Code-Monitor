@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, CircleAlert, Gauge, OctagonAlert, TrendingUp } from 'lucide-vue-next'
+import { ChevronDown, CircleAlert, Gauge, OctagonAlert, RotateCcw, TrendingUp } from 'lucide-vue-next'
 import type { LimitWindow } from '@ccm/shared'
 import { now, relativeTime } from '../lib/format'
 import { useExtrasStore } from '../stores/extras'
+import { useCountUp } from '../composables/useCountUp'
 
 const { t, locale } = useI18n()
 const extras = useExtrasStore()
@@ -60,6 +61,30 @@ const stale = computed(() => {
 })
 const updated = computed(() => relativeTime(extras.limits?.updatedAt, locale.value, now.value) ?? '')
 
+type WindowKey = 'fiveHour' | 'sevenDay'
+
+const fivePct = computed(() => Math.round(extras.limits?.fiveHour?.usedPct ?? 0))
+const sevenPct = computed(() => Math.round(extras.limits?.sevenDay?.usedPct ?? 0))
+const shown: Record<WindowKey, ReturnType<typeof useCountUp>> = {
+  fiveHour: useCountUp(fivePct, 700),
+  sevenDay: useCountUp(sevenPct, 700),
+}
+
+const changes = reactive<Record<WindowKey, { delta: number; n: number }>>({
+  fiveHour: { delta: 0, n: 0 },
+  sevenDay: { delta: 0, n: 0 },
+})
+
+function track(key: WindowKey, source: () => number | undefined): void {
+  watch(source, (to, from) => {
+    if (to === undefined || from === undefined || to === from) return
+    changes[key].delta = to - from
+    changes[key].n++
+  })
+}
+track('fiveHour', () => (extras.limits?.fiveHour ? fivePct.value : undefined))
+track('sevenDay', () => (extras.limits?.sevenDay ? sevenPct.value : undefined))
+
 const LEVEL = {
   ok: { bar: 'bg-accent', text: 'text-ink', icon: Gauge },
   warn: { bar: 'bg-st-waiting', text: 'text-st-waiting', icon: CircleAlert },
@@ -108,21 +133,40 @@ onBeforeUnmount(() => {
       <span
         v-for="(w, i) in windows"
         :key="w.key"
-        class="flex w-[88px] flex-col gap-1 px-1.5 py-1 sm:w-[156px] sm:px-2"
+        class="relative flex w-[88px] flex-col gap-1 rounded-lg px-1.5 py-1 sm:w-[156px] sm:px-2"
         :class="i > 0 ? 'border-l border-line' : ''"
       >
+        <span
+          v-if="changes[w.key].n"
+          :key="`flash-${changes[w.key].n}`"
+          class="ccm-quota-flash pointer-events-none absolute inset-0 rounded-lg"
+          :class="changes[w.key].delta < 0 ? 'text-st-done' : LEVEL[w.level].text"
+          aria-hidden="true"
+        />
+        <span
+          v-if="changes[w.key].n"
+          :key="`delta-${changes[w.key].n}`"
+          class="ccm-quota-delta pointer-events-none absolute -top-2 right-1 inline-flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 text-2xs font-semibold tabular shadow-sm"
+          :class="changes[w.key].delta < 0 ? 'text-st-done' : LEVEL[w.level].text"
+          aria-hidden="true"
+        >
+          <RotateCcw v-if="changes[w.key].delta < 0" :size="10" aria-hidden="true" />{{ changes[w.key].delta > 0 ? '+' : '−' }}{{ Math.abs(changes[w.key].delta) }}%
+        </span>
         <span class="flex items-baseline justify-between gap-2">
           <span class="inline-flex items-center gap-1 text-2xs text-ink-muted">
-            <component :is="LEVEL[w.level].icon" :size="12" :class="[LEVEL[w.level].text, w.level === 'critical' ? 'ccm-pulse' : '']" aria-hidden="true" />{{ w.label }}
+            <span :key="w.level" class="inline-flex" :class="changes[w.key].n ? 'ccm-pop' : ''">
+              <component :is="LEVEL[w.level].icon" :size="12" :class="[LEVEL[w.level].text, w.level === 'critical' ? 'ccm-pulse' : '']" aria-hidden="true" />
+            </span>{{ w.label }}
           </span>
-          <span :key="w.pct" class="ccm-tick text-sm font-semibold tabular" :class="LEVEL[w.level].text">{{ w.pct }}%</span>
+          <span :key="changes[w.key].n" class="ccm-tick text-sm font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%</span>
         </span>
-        <span class="h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+        <span class="relative h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden="true">
           <span
-            class="block h-full origin-left rounded-full transition-[transform,background-color] duration-500 ease-out-quint"
+            class="block h-full origin-left rounded-full transition-[transform,background-color] duration-700 ease-out-quint"
             :class="LEVEL[w.level].bar"
             :style="{ transform: `scaleX(${Math.min(100, w.pct) / 100})` }"
           />
+          <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
         </span>
         <span v-if="w.risk" class="hidden items-center gap-1 truncate sm:inline-flex text-2xs font-medium text-st-waiting tabular">
           <TrendingUp :size="12" class="shrink-0" aria-hidden="true" />{{ t('limits.forecastShort', { at: w.fullAt }) }}
@@ -142,10 +186,11 @@ onBeforeUnmount(() => {
       <section v-for="w in windows" :key="w.key" class="mt-4 first-of-type:mt-3">
         <div class="flex items-baseline justify-between gap-3">
           <span class="text-sm text-ink-muted">{{ w.label }}</span>
-          <span class="text-2xl font-semibold tabular" :class="LEVEL[w.level].text">{{ w.pct }}%</span>
+          <span class="text-2xl font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%</span>
         </div>
         <div class="relative mt-2 h-2 overflow-hidden rounded-full bg-raised" aria-hidden="true">
-          <span class="block h-full rounded-full" :class="LEVEL[w.level].bar" :style="{ width: `${Math.min(100, w.pct)}%` }" />
+          <span class="block h-full rounded-full transition-[width,background-color] duration-700 ease-out-quint" :class="LEVEL[w.level].bar" :style="{ width: `${Math.min(100, w.pct)}%` }" />
+          <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
           <span class="absolute inset-y-0 left-[80%] w-px bg-surface" />
         </div>
         <dl class="mt-2.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">

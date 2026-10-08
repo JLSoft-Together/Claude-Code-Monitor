@@ -370,6 +370,83 @@ body {
   transform-origin: center;
 }
 
+@keyframes ccm-quota-flash {
+  0% {
+    opacity: 0;
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+  20% {
+    opacity: 1;
+    background-color: color-mix(in srgb, currentColor 12%, transparent);
+    box-shadow: inset 0 0 0 1.5px currentColor;
+  }
+  100% {
+    opacity: 0;
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+}
+
+.ccm-quota-flash {
+  animation: ccm-quota-flash 1.2s var(--ease-out-quint) forwards;
+}
+
+@keyframes ccm-quota-delta {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.85);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  25% {
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.ccm-quota-delta {
+  animation: ccm-quota-delta 2.2s var(--ease-out-quint) forwards;
+}
+
+@keyframes ccm-quota-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-quota-delta {
+    animation: ccm-quota-fade 2.2s linear forwards;
+  }
+}
+
+@keyframes ccm-quota-shine {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.ccm-quota-shine {
+  background-color: color-mix(in srgb, var(--ccm-surface) 55%, transparent);
+  transform: translateX(300%);
+  animation: ccm-quota-shine 900ms 150ms var(--ease-out-quint) both;
+}
+
 /* list transitions (TransitionGroup name="ccm-list") */
 .ccm-list-enter-active {
   transition:
@@ -420,6 +497,8 @@ body {
   .ccm-shimmer,
   .ccm-tick,
   .ccm-pulse,
+  .ccm-quota-shine,
+  .ccm-quota-flash,
   .ccm-breathe::before,
   .ccm-flash::after {
     animation: none;
