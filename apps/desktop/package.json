@@ -1,13 +1,14 @@
 {
   "name": "@ccm/desktop",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
-  "description": "Claude Code Monitor desktop app (Windows)",
+  "description": "Claude Code Monitor desktop app (Windows, macOS)",
   "scripts": {
     "build": "node build.mjs",
     "start": "node build.mjs && electron stage",
-    "dist": "node build.mjs && electron-builder --win --config electron-builder.yml",
-    "typecheck": "tsc -p tsconfig.json"
+    "dist": "node build.mjs && electron-builder --win --config electron-builder.yml --publish never",
+    "typecheck": "tsc -p tsconfig.json",
+    "dist:mac": "node build.mjs && electron-builder --mac --config electron-builder.yml --publish never"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

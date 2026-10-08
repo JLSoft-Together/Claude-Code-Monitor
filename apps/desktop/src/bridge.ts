@@ -1,5 +1,4 @@
-import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export interface BridgeInstall {
@@ -8,8 +7,12 @@ export interface BridgeInstall {
 }
 
 const slashes = (p: string): string => p.replaceAll('\\', '/')
+const shQuote = (s: string): string => `'${s.replaceAll("'", `'\\''`)}'`
 
-const hasNode = (): boolean => spawnSync('where.exe', ['node'], { windowsHide: true, stdio: 'ignore' }).status === 0
+const hasNode = (): boolean => {
+  const exe = process.platform === 'win32' ? 'node.exe' : 'node'
+  return (process.env.PATH ?? '').split(path.delimiter).some((dir) => dir !== '' && existsSync(path.join(dir, exe)))
+}
 
 function writeIfChanged(file: string, content: string | Buffer): void {
   if (existsSync(file) && readFileSync(file).equals(Buffer.from(content))) return
@@ -28,6 +31,12 @@ export function installBridge(source: string, dataDir: string, exe: string, port
   const nodeCommand = `node "${slashes(script)}"`
   // A portable exe extracts to a fresh temp dir per run, so its path cannot go into settings.json.
   if (portable || hasNode()) return { script, command: nodeCommand }
+  if (process.platform !== 'win32') {
+    const sh = path.join(dir, 'statusline-bridge.sh')
+    writeIfChanged(sh, `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec ${shQuote(exe)} "$(dirname "$0")/statusline-bridge.mjs" "$@"\n`)
+    chmodSync(sh, 0o755)
+    return { script, command: `"${sh}"` }
+  }
   const cmd = path.join(dir, 'statusline-bridge.cmd')
   writeIfChanged(cmd, `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${exe.replaceAll('%', '%%')}" "%~dp0statusline-bridge.mjs" %*\r\n`)
   return { script, command: `"${slashes(cmd)}"` }

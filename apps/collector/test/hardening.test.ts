@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { request } from 'node:http'
@@ -135,8 +136,44 @@ describe('openFolder', () => {
     const { openFolder } = await import('../src/opener')
     const calls: string[][] = []
     const spawner = async (cmd: string, args: string[]) => void calls.push([cmd, ...args])
-    expect(await openFolder(process.cwd(), 'explorer', spawner)).toBe('ok')
+    expect(await openFolder(process.cwd(), 'explorer', spawner, 'win32')).toBe('ok')
     expect(calls[0]?.[0]).toBe('explorer.exe')
-    expect(await openFolder(path.join(process.cwd(), 'no-such-dir-xyz'), 'explorer', spawner)).toBe('notFound')
+    expect(await openFolder(path.join(process.cwd(), 'no-such-dir-xyz'), 'explorer', spawner, 'win32')).toBe('notFound')
+  })
+
+  it('picks the folder opener per platform and reports a missing one as noApp', async () => {
+    const { openFolder } = await import('../src/opener')
+    const calls: string[][] = []
+    const spawner = async (cmd: string, args: string[]) => void calls.push([cmd, ...args])
+    expect(await openFolder(process.cwd(), 'explorer', spawner, 'darwin')).toBe('ok')
+    expect(await openFolder(process.cwd(), 'explorer', spawner, 'linux')).toBe('ok')
+    expect(calls.map((c) => c[0])).toEqual(['/usr/bin/open', 'xdg-open'])
+    expect(await openFolder(process.cwd(), 'explorer', spawner, 'aix')).toBe('unsupported')
+    const enoent = async () => {
+      throw Object.assign(new Error('spawn xdg-open ENOENT'), { code: 'ENOENT' })
+    }
+    expect(await openFolder(process.cwd(), 'explorer', enoent, 'linux')).toBe('noApp')
+  })
+
+  // A Mac with VS Code in /Applications would find the real bundle first.
+  it.skipIf(existsSync('/Applications/Visual Studio Code.app'))('finds VS Code on PATH, then the macOS app bundle', async () => {
+    const { openFolder } = await import('../src/opener')
+    const bin = await mkdtemp(path.join(os.tmpdir(), 'ccm-bin-'))
+    const home = await mkdtemp(path.join(os.tmpdir(), 'ccm-home-'))
+    const calls: string[][] = []
+    const spawner = async (cmd: string, args: string[]) => void calls.push([cmd, ...args])
+    const dir = path.normalize(process.cwd())
+
+    expect(await openFolder(dir, 'vscode', spawner, 'linux', { PATH: bin, HOME: home })).toBe('noApp')
+    expect(await openFolder(dir, 'vscode', spawner, 'darwin', { PATH: bin, HOME: home })).toBe('noApp')
+
+    const bundle = path.join(home, 'Applications', 'Visual Studio Code.app')
+    await mkdir(bundle, { recursive: true })
+    expect(await openFolder(dir, 'vscode', spawner, 'darwin', { PATH: bin, HOME: home })).toBe('ok')
+    expect(calls.at(-1)).toEqual(['/usr/bin/open', '-a', bundle, dir])
+
+    await writeFile(path.join(bin, 'code'), '')
+    expect(await openFolder(dir, 'vscode', spawner, 'darwin', { PATH: bin, HOME: home })).toBe('ok')
+    expect(calls.at(-1)).toEqual([path.join(bin, 'code'), dir])
   })
 })

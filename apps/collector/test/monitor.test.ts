@@ -4,6 +4,7 @@ import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectorConfig } from '../src/config'
 import { Monitor, type MonitorDeps } from '../src/monitor'
+import type { ProcessInfo } from '../src/process'
 import { MonitorStore } from '../src/store'
 
 const SID = '11111111-2222-3333-4444-555555555555'
@@ -374,6 +375,25 @@ describe('Monitor with fixture claude root', () => {
     const t = store.snapshot().terminals[0]!
     expect(t.status).toBe('stale')
     expect(store.getAgent('a1')?.status).toBe('unknown')
+  })
+
+  it('verifies a macOS/Linux session by ps lstart and rejects a reused pid', async () => {
+    const lstart = 'Thu Oct  8 03:01:22 2026'
+    await writeFile(path.join(root, 'sessions', `${PID}.json`), registry({ procStart: lstart }))
+    const terminalsWith = async (start: string) => {
+      const s = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+      const queryProcesses = async (pids: number[]) => {
+        const info = new Map<number, ProcessInfo>()
+        for (const pid of pids) info.set(pid, { pid, start: { kind: 'lstart', value: start }, parentPid: 1, parentName: 'zsh' })
+        return info
+      }
+      const m = new Monitor({ ...config(), verifyProcesses: true }, s, { ...deps(), queryProcesses })
+      await m.start({ watch: false })
+      m.stop()
+      return s.snapshot().terminals
+    }
+    expect(await terminalsWith('Thu Oct 8 03:01:22 2026')).toMatchObject([{ processId: PID }])
+    expect(await terminalsWith('Fri Oct  9 07:00:00 2026')).toHaveLength(0)
   })
 
   it('dismisses ended sessions on request but never live ones', async () => {

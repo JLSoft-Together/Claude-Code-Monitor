@@ -330,7 +330,7 @@ export class Monitor {
     const accepted: SessionTracker[] = []
     for (const tracker of created) {
       const proc = info.get(tracker.record.pid)
-      if (!proc || !procStartMatches(tracker.record.procStart, proc.creationFileTime)) {
+      if (!proc || !procStartMatches(tracker.record.procStart, proc.start)) {
         this.rejected.add(tracker.terminalId)
         continue
       }
@@ -350,7 +350,7 @@ export class Monitor {
     const now = this.deps.now()
     for (const tracker of live) {
       const proc = info.get(tracker.record.pid)
-      if (!proc || !procStartMatches(tracker.record.procStart, proc.creationFileTime)) {
+      if (!proc || !procStartMatches(tracker.record.procStart, proc.start)) {
         await this.endTracker(tracker, now)
       }
     }

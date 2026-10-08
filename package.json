@@ -14,7 +14,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "desktop": "npm run build -w @ccm/web && npm run start -w @ccm/desktop",
-    "dist:win": "npm run build -w @ccm/web && npm run dist -w @ccm/desktop"
+    "dist:win": "npm run build -w @ccm/web && npm run dist -w @ccm/desktop",
+    "dist:mac": "npm run build -w @ccm/web && npm run dist:mac -w @ccm/desktop"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

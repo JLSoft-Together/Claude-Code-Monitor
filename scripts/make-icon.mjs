@@ -54,20 +54,29 @@ function insideRoundRect(x, y, r) {
   return Math.hypot(x - cx, y - cy) <= r
 }
 
-function render(size) {
+// Menu bar glyph for macOS: ring + prompt only (the ticks vanish at 16 px), black on transparent.
+const GLYPH = [
+  { color: [0, 0, 0], width: 11, lines: [arc(64, 64, 50, deg(-90), deg(-360))] },
+  { color: [0, 0, 0], width: 11, lines: [[[46, 51], [63, 64], [46, 77]], [[68, 78], [84, 78]]] },
+]
+
+// inset: transparent margin per side (macOS icons sit inside 824 of 1024 px); glyph: GLYPH strokes without the tile.
+function render(size, { inset = 0, glyph = false } = {}) {
   const ss = size <= 32 ? 6 : 4
-  const scale = 128 / size
+  const scale = 128 / (size - 2 * inset)
+  const strokes = glyph ? GLYPH : STROKES
   const rgba = Buffer.alloc(size * size * 4)
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
       let r = 0, g = 0, b = 0, a = 0
       for (let sy = 0; sy < ss; sy++) {
         for (let sx = 0; sx < ss; sx++) {
-          const x = (px + (sx + 0.5) / ss) * scale
-          const y = (py + (sy + 0.5) / ss) * scale
+          const x = (px - inset + (sx + 0.5) / ss) * scale
+          const y = (py - inset + (sy + 0.5) / ss) * scale
           if (!insideRoundRect(x, y, 28)) continue
-          let c = BG
-          for (const s of STROKES) if (strokeDist(s, x, y) <= s.width / 2) c = s.color
+          let c = glyph ? null : BG
+          for (const s of strokes) if (strokeDist(s, x, y) <= s.width / 2) c = s.color
+          if (!c) continue
           r += c[0]; g += c[1]; b += c[2]; a += 255
         }
       }
@@ -142,3 +151,8 @@ console.log(`wrote ${OUT}`)
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'web', 'public')
 for (const size of [192, 512]) writeFileSync(path.join(PUBLIC, `icon-${size}.png`), png(size, render(size)))
 console.log(`wrote ${PUBLIC}/icon-{192,512}.png`)
+const ASSETS = path.dirname(OUT)
+writeFileSync(path.join(ASSETS, 'ccm-mac.png'), png(512, render(512, { inset: 50 })))
+writeFileSync(path.join(ASSETS, 'ccmTrayTemplate.png'), png(16, render(16, { glyph: true })))
+writeFileSync(path.join(ASSETS, 'ccmTrayTemplate@2x.png'), png(32, render(32, { glyph: true })))
+console.log(`wrote ${ASSETS}/ccm-mac.png, ccmTrayTemplate{,@2x}.png`)

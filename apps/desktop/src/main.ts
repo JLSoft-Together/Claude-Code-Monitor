@@ -2,12 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
+import { defaultDataDir } from '../../collector/src/datadir'
 import { installBridge } from './bridge'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
+import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
 import { errorPage, loadingPage, RETRY_URL } from './pages'
 import { stringsFor, type Strings } from './strings'
 
 const APP_ID = 'dev.ccm.monitor'
+const IS_MAC = process.platform === 'darwin'
 const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
 const ORIGIN = `http://127.0.0.1:${PORT}`
 const START_HIDDEN = process.argv.includes('--hidden')
@@ -17,7 +20,7 @@ const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-sanitized-write
 const REPO = path.resolve(__dirname, '..', '..', '..')
 const resource = (packaged: string, dev: string): string =>
   app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(REPO, dev)
-const DATA_DIR = process.env.CCM_DATA_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'ccm')
+const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process.platform, os.homedir())
 
 let t: Strings
 let host: CollectorHost
@@ -101,7 +104,8 @@ function saveBounds(win: BrowserWindow): void {
 function baseWindow(options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
-    icon: resource('ccm.ico', 'scripts/assets/ccm.ico'),
+    // macOS takes the window icon from the app bundle.
+    icon: IS_MAC ? undefined : resource('ccm.ico', 'scripts/assets/ccm.ico'),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#121211' : '#f4f4f2',
     autoHideMenuBar: true,
     title: t.appName,
@@ -131,7 +135,7 @@ function createMainWindow(): BrowserWindow {
     if (quitting) return
     event.preventDefault()
     win.hide()
-    if (!hiddenNoticeShown && tray) {
+    if (!hiddenNoticeShown && tray && !IS_MAC) {
       hiddenNoticeShown = true
       tray.displayBalloon({ title: t.appName, content: t.hiddenNotice, iconType: 'info' })
     }
@@ -162,7 +166,8 @@ function openAppWindow(url: string): void {
   void win.loadURL(url)
 }
 
-const loginOptions = (): Electron.Settings => ({ path: PORTABLE_EXE ?? process.execPath, args: ['--hidden'] })
+// macOS registers the bundle itself (no path/args), so a login start there shows the window.
+const loginOptions = (): Electron.Settings => (IS_MAC ? {} : { path: PORTABLE_EXE ?? process.execPath, args: ['--hidden'] })
 
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
@@ -171,7 +176,7 @@ function buildTrayMenu(): Menu {
     { label: t.trayBrowser, click: () => void shell.openExternal(`${ORIGIN}/`) },
     { type: 'separator' },
     {
-      label: t.trayLogin,
+      label: IS_MAC ? t.trayLoginMac : t.trayLogin,
       type: 'checkbox',
       enabled: app.isPackaged,
       checked: app.isPackaged && app.getLoginItemSettings(loginOptions()).openAtLogin,
@@ -184,7 +189,8 @@ function buildTrayMenu(): Menu {
 }
 
 function createTray(): void {
-  tray = new Tray(resource('ccm.ico', 'scripts/assets/ccm.ico'))
+  // A "Template" name makes macOS tint the menu bar icon for light/dark; @2x is picked up next to it.
+  tray = new Tray(IS_MAC ? resource('ccmTrayTemplate.png', 'scripts/assets/ccmTrayTemplate.png') : resource('ccm.ico', 'scripts/assets/ccm.ico'))
   tray.setToolTip(t.appName)
   tray.setContextMenu(buildTrayMenu())
   tray.on('click', showMain)
@@ -241,6 +247,11 @@ function lockPermissions(): void {
 
 async function ready(): Promise<void> {
   t = stringsFor(app.getLocale())
+  if (IS_MAC) {
+    setMacMenu()
+    if (await offerMoveToApplications(t)) return
+    adoptLoginShellPath()
+  }
   lockPermissions()
   for (const dir of [DATA_DIR, app.getPath('logs')]) if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   host = new CollectorHost({
@@ -258,8 +269,9 @@ async function ready(): Promise<void> {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.setAppUserModelId(APP_ID)
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
   app.on('second-instance', showMain)
+  app.on('activate', showMain)
   app.on('window-all-closed', () => {
     // Closing windows only hides the dashboard; quitting goes through the tray.
   })

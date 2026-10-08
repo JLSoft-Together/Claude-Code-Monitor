@@ -26,6 +26,22 @@ extraResources:
     to: bridge/statusline-bridge.mjs
   - from: ../../scripts/assets/ccm.ico
     to: ccm.ico
+  - from: ../../scripts/assets/ccmTrayTemplate.png
+    to: ccmTrayTemplate.png
+  - from: ../../scripts/assets/ccmTrayTemplate@2x.png
+    to: ccmTrayTemplate@2x.png
+mac:
+  icon: ../../scripts/assets/ccm-mac.png
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  # No Developer ID yet: ad-hoc signature (arm64 refuses unsigned code), no notarization.
+  # Hardened runtime + ad-hoc breaks Electron's library validation, so it stays off.
+  identity: '-'
+  hardenedRuntime: false
+dmg:
+  artifactName: Claude-Code-Monitor-${version}-${arch}.${ext}
 win:
   icon: ../../scripts/assets/ccm.ico
   target:

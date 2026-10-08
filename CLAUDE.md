@@ -17,15 +17,16 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm run typecheck`
 - `npm run desktop` — build web, then run the Electron app from `apps/desktop/stage` (dev)
 - `npm run dist:win` — build web + desktop → `apps/desktop/release/` (NSIS Setup + Portable exe)
+- `npm run dist:mac` — same → `.dmg` arm64 + x64; **macOS only** (or GitHub Actions workflow `desktop`)
 - `node scripts/demo-fixture.mjs --sessions=5 --subagents=3` — fake Claude root for load/UI testing; run collector with `CLAUDE_CONFIG_DIR=<printed root> CCM_VERIFY_PROCESSES=0`
 
-Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`: usage cache + aliases).
+Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`: usage cache + aliases).
 
 Deviations from `PLAN.md` are allowed only when a discovered Claude Code limitation forces them, and must be documented in `docs/claude-code-integration.md`.
 
 ## What this is
 
-A local-only Windows dashboard that observes running Claude Code CLI sessions (target version **2.1.289**) across multiple terminals and shows sessions, terminal titles, and the main-agent → sub-agent hierarchy in realtime.
+A local-only, Windows-first dashboard (macOS/Linux supported for monitoring; desktop `.dmg` for macOS) that observes running Claude Code CLI sessions (target version **2.1.289**) across multiple terminals and shows sessions, terminal titles, and the main-agent → sub-agent hierarchy in realtime.
 
 Core principle: **Observe → Normalize → Broadcast → Render**. Monitoring must never send prompts to Claude Code, call the Claude API, or spawn another LLM agent — zero additional token cost.
 
@@ -36,7 +37,7 @@ apps/collector   Node.js + TS. Discovers Claude processes, session files, hook e
                  Normalizes into shared types, keeps in-memory state, serves WebSocket on 127.0.0.1 only.
 apps/web         Vue 3 + TS + Vite + Tailwind + Pinia + vue-i18n + Vue Flow (Cytoscape.js fallback).
 packages/shared  Event protocol + TerminalSession / Agent types shared by both apps.
-apps/desktop     Electron shell (Windows): hosts collector in utilityProcess, tray, packaging.
+apps/desktop     Electron shell (Windows + macOS): hosts collector in utilityProcess, tray, packaging.
 ```
 
 Key cross-cutting contracts:

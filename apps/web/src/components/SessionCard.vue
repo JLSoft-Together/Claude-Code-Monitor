@@ -6,6 +6,7 @@ import type { OpenApp, TerminalSession } from '@ccm/shared'
 import { cacheState, formatUsd, quietFor } from '../lib/attention'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
 import { modeMeta } from '../lib/mode'
+import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
 import { statusMeta } from '../lib/status'
 import { useBump } from '../composables/useBump'
@@ -394,7 +395,7 @@ function clearAlias(): void {
       {{ t(`terminal.jumpError.${jumpError.result}`) }}
     </p>
     <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
-      {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openError.app}`) }) }}
+      {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openAppKey(openError.app)}`) }) }}
     </p>
     <p v-if="!editing && terminal.alias" class="mt-0.5 truncate text-2xs text-ink-faint" :title="terminal.title">
       {{ t('terminal.originalName', { title: terminal.title }) }}
@@ -527,8 +528,8 @@ function clearAlias(): void {
             :key="o.app"
             type="button"
             class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink disabled:cursor-wait"
-            :aria-label="t('open.action', { app: t(`open.app.${o.app}`), title })"
-            :title="t('open.title', { app: t(`open.app.${o.app}`) })"
+            :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
+            :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
             :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"
             @click="open(o.app)"
           >

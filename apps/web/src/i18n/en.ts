@@ -544,12 +544,12 @@ export default {
   open: {
     action: 'Open {title} in {app}',
     title: 'Open folder in {app}',
-    app: { explorer: 'Explorer', vscode: 'VS Code' },
+    app: { explorer: 'Explorer', finder: 'Finder', vscode: 'VS Code' },
     error: {
       notFound: 'The folder no longer exists.',
       noApp: '{app} was not found on this machine.',
       failed: 'Could not open {app}.',
-      unsupported: 'Opening folders only works on Windows.',
+      unsupported: 'Opening folders is not supported on this system.',
       offline: 'Lost connection to the collector.',
     },
   },

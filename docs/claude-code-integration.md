@@ -198,6 +198,14 @@ Only `spawnDepth = 1` observed. Nested subagents (depth ≥ 2) — file location
 - PID reuse: verify `procStart` vs process creation time **once when a session is first seen** and every ~60 s, using a single batched PowerShell/CIM query for all PIDs. Claude itself spawns PowerShell for this (~1 s), so never call it per event.
 - FILETIME compare tolerance: ± 10 000 units (1 ms).
 
+## 7b. macOS / Linux (verified in the 2.1.289 bundle, 2026-10-09)
+
+- Same `sessions/<pid>.json`; `procStart` = trimmed stdout of `ps -o lstart= -p <pid>` run with `LC_ALL=C TZ=UTC` (e.g. `Thu Oct  8 03:01:22 2026`, 1 s precision). No `procStartFt`.
+- Collector (`process.ts`): `ps -o pid=,ppid=,lstart= -p <pids>` + `ps -o pid=,comm= -p <ppids>` (shell name), same env, no shell. `ps` exit 1 without stderr = some pids gone (parsed); missing `ps` / bad option / timeout → `null` (TTL only). Match = equal strings after collapsing spaces; a `procStart` that is not lstart-shaped keeps the session.
+- Data dir (`datadir.ts`, mirrored in `statusline-bridge.mjs`): macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` or `~/.local/share/ccm`.
+- Open folder: macOS `/usr/bin/open`, Linux `xdg-open`; VS Code via `code` on PATH, macOS fallback `open -a "<...>/Visual Studio Code.app"`.
+- Still Windows-only (`unsupported`): window focus, folder picker, launch from favorites, system toast.
+
 ---
 
 ## 8. Terminal title
@@ -354,6 +362,16 @@ Windows-only shell in `apps/desktop` (plan `.planning/PLAN-v12-electron.md`). De
 3. **Toasts unchanged.** Still PowerShell 5.1 + powershell.exe AUMID (§11i), so they work in the portable build without a Start Menu shortcut; clicks open the default browser (`/focus`), not the app window. App window via `ccm://` is a follow-up.
 4. **`ELECTRON_RUN_AS_NODE` stripped** from the env of terminals opened by `launcher.ts`, so a `claude` started from the dashboard never inherits it (would make child Electron apps run as Node).
 5. **Window origin.** The window loads `http://127.0.0.1:<port>/`, not `file://`, because `server.ts` only accepts http localhost origins and the web app builds its WS URL from `location.host`.
+
+## 11k. macOS desktop (dmg, 2026-10-09)
+
+Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences:
+
+1. **Build.** DMG needs macOS (`hdiutil`, framework symlinks): `npm run dist:mac` on a Mac or the `desktop` GitHub Actions workflow (`macos-latest`). Targets `dmg` arm64 + x64.
+2. **Signing.** No Developer ID: ad-hoc (`mac.identity: '-'`), `hardenedRuntime: false` (ad-hoc + hardened runtime fails Electron library validation), not notarized. Gatekeeper blocks first launch → Privacy & Security → Open Anyway.
+3. **PATH.** Finder/Dock launches get launchd's minimal PATH, so `main.ts` merges `$SHELL -ilc` PATH (5 s timeout) before forking the collector: `node` (bridge command), `git`, `code`, `claude` resolve like in Terminal.
+4. **Bridge without node.** `statusline-bridge.sh` (`ELECTRON_RUN_AS_NODE=1 exec <app exe>`), chmod 755. The exe path is baked in, so the app offers `moveToApplicationsFolder()` when run from the DMG / Downloads (translocated).
+5. **Shell.** App menu (app / edit / window roles) for Cmd C/V/Q/W; menu bar icon `ccmTrayTemplate.png`; `activate` reopens the window; login item without `path/args` (opens shown, `--hidden` is Windows only); no AUMID / balloon.
 
 ## 12. Open items
 

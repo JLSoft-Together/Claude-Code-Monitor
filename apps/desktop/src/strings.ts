@@ -11,9 +11,14 @@ const en = {
   trayCompact: 'Compact window',
   trayBrowser: 'Open in browser',
   trayLogin: 'Start with Windows',
+  trayLoginMac: 'Open at login',
   trayLogs: 'Open log folder',
   trayQuit: 'Quit',
   hiddenNotice: 'Still running in the tray. Quit from the tray menu.',
+  moveTitle: 'Move to the Applications folder?',
+  moveDetail: "Claude Code's status line runs through this app, so it should not run from the disk image or Downloads.",
+  moveConfirm: 'Move to Applications',
+  moveLater: 'Not now',
 }
 
 const vi: typeof en = {
@@ -29,9 +34,14 @@ const vi: typeof en = {
   trayCompact: 'Cửa sổ gọn',
   trayBrowser: 'Mở trong trình duyệt',
   trayLogin: 'Chạy cùng Windows',
+  trayLoginMac: 'Mở khi đăng nhập',
   trayLogs: 'Mở thư mục log',
   trayQuit: 'Thoát',
   hiddenNotice: 'Monitor vẫn chạy dưới khay hệ thống. Thoát từ menu khay.',
+  moveTitle: 'Chuyển vào thư mục Applications?',
+  moveDetail: 'Status line của Claude Code chạy qua app này, nên đừng chạy app từ ổ đĩa DMG hay thư mục Downloads.',
+  moveConfirm: 'Chuyển vào Applications',
+  moveLater: 'Để sau',
 }
 
 export type Strings = typeof en

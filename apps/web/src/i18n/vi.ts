@@ -546,12 +546,12 @@ const vi: typeof en = {
   open: {
     action: 'Mở {title} bằng {app}',
     title: 'Mở thư mục bằng {app}',
-    app: { explorer: 'Explorer', vscode: 'VS Code' },
+    app: { explorer: 'Explorer', finder: 'Finder', vscode: 'VS Code' },
     error: {
       notFound: 'Thư mục không còn tồn tại.',
       noApp: 'Không tìm thấy {app} trên máy.',
       failed: 'Không mở được {app}.',
-      unsupported: 'Chỉ mở được thư mục trên Windows.',
+      unsupported: 'Hệ điều hành này chưa hỗ trợ mở thư mục.',
       offline: 'Mất kết nối tới collector.',
     },
   },

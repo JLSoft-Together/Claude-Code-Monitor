@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { mapRegistryStatus, mapTaskNotificationStatus } from '@ccm/shared'
-import { parseProcessQueryOutput, procStartMatches } from '../src/process'
+import { parseProcessQueryOutput, parsePsNames, parsePsOutput, procStartMatches } from '../src/process'
 import { parseRegistryRecord, pidFromFileName } from '../src/registry'
 import { JsonlTailer } from '../src/tailer'
 import { extractSignals, TranscriptState } from '../src/transcript'
@@ -51,10 +51,31 @@ describe('registry', () => {
 })
 
 describe('process', () => {
+  const ft = (value: bigint) => ({ kind: 'filetime' as const, value })
+  const ls = (value: string) => ({ kind: 'lstart' as const, value })
+
   it('matches FILETIME within 1ms', () => {
-    expect(procStartMatches('134358400013081891', 134358400013081890n)).toBe(true)
-    expect(procStartMatches('134358400013081891', 134358400013181891n)).toBe(false)
-    expect(procStartMatches(undefined, 1n)).toBe(true)
+    expect(procStartMatches('134358400013081891', ft(134358400013081890n))).toBe(true)
+    expect(procStartMatches('134358400013081891', ft(134358400013181891n))).toBe(false)
+    expect(procStartMatches(undefined, ft(1n))).toBe(true)
+  })
+
+  it('matches ps lstart exactly, ignoring spacing, and keeps unknown formats', () => {
+    expect(procStartMatches('Thu Oct  8 03:01:22 2026', ls('Thu Oct 8 03:01:22 2026'))).toBe(true)
+    expect(procStartMatches('Thu Oct  8 03:01:22 2026', ls('Thu Oct  8 03:01:23 2026'))).toBe(false)
+    expect(procStartMatches('2026-10-08T03:01:22Z', ls('Thu Oct  8 03:01:22 2026'))).toBe(true)
+    expect(procStartMatches(undefined, ls('Thu Oct  8 03:01:22 2026'))).toBe(true)
+  })
+
+  it('parses ps rows and parent names', () => {
+    const out = '  4242   311 Thu Oct  8 03:01:22 2026\n  77 1 Fri Oct 10 12:00:00 2026\ngarbage\n\n'
+    const info = parsePsOutput(out)
+    expect(info.get(4242)).toEqual({ pid: 4242, parentPid: 311, start: ls('Thu Oct 8 03:01:22 2026') })
+    expect(info.get(77)?.start).toEqual(ls('Fri Oct 10 12:00:00 2026'))
+    expect(info.size).toBe(2)
+    expect(parsePsOutput('').size).toBe(0)
+    const names = parsePsNames('  311 -zsh\n  12 /Applications/iTerm.app/Contents/MacOS/iTerm2\n 9 bash\n')
+    expect([...names.values()]).toEqual(['zsh', 'iTerm2', 'bash'])
   })
 
   it('parses single and array CIM output', () => {

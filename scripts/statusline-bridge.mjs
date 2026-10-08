@@ -7,8 +7,15 @@ import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-// Must match apps/collector/src/config.ts `dataDir`.
-const DATA_DIR = process.env.CCM_DATA_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'ccm')
+// Must match apps/collector/src/datadir.ts (test/datadir.test.ts compares both).
+function defaultDataDir(env, platform, home) {
+  const p = platform === 'win32' ? path.win32 : path.posix
+  if (platform === 'win32') return p.join(env.LOCALAPPDATA || p.join(home, 'AppData', 'Local'), 'ccm')
+  if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', 'ccm')
+  return p.join(env.XDG_DATA_HOME || p.join(home, '.local', 'share'), 'ccm')
+}
+
+const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process.platform, os.homedir())
 const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)

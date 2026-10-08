@@ -1,0 +1,36 @@
+name: desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            files: apps/desktop/release/*.dmg
+          - os: windows-latest
+            script: dist:win
+            files: apps/desktop/release/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claude-code-monitor-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
