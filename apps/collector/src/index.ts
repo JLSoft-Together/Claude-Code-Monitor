@@ -18,7 +18,7 @@ import { UsageIndex } from './usage'
 async function main(): Promise<void> {
   const config = loadConfig()
   const store = new MonitorStore({ activityLimit: config.activityLimit, batchMs: config.batchMs })
-  store.statusLineCommand = `node "${config.statusLineBridge.replaceAll('\\', '/')}"`
+  store.statusLineCommand = config.statusLineCommand
   store.dayStartedAt = await firstStartToday(path.join(config.dataDir, 'day-start.json'))
   const aliases = new AliasStore(path.join(config.dataDir, 'aliases.json'))
   await aliases.load()
@@ -184,6 +184,11 @@ async function main(): Promise<void> {
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
+  // Electron utilityProcess (desktop app) receives no signals on Windows; the host asks over parentPort instead.
+  const { parentPort } = process as NodeJS.Process & { parentPort?: { on(event: 'message', fn: (e: { data: unknown }) => void): void } }
+  parentPort?.on('message', (e) => {
+    if (e.data === 'shutdown') shutdown()
+  })
 }
 
 process.on('unhandledRejection', (err: unknown) => {

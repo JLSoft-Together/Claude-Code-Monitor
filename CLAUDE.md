@@ -15,6 +15,8 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm start` — build web, then collector serves it at `http://127.0.0.1:4317`
 - `npm test` — Vitest in all workspaces; single file: `npm test -w @ccm/collector -- test/monitor.test.ts`
 - `npm run typecheck`
+- `npm run desktop` — build web, then run the Electron app from `apps/desktop/stage` (dev)
+- `npm run dist:win` — build web + desktop → `apps/desktop/release/` (NSIS Setup + Portable exe)
 - `node scripts/demo-fixture.mjs --sessions=5 --subagents=3` — fake Claude root for load/UI testing; run collector with `CLAUDE_CONFIG_DIR=<printed root> CCM_VERIFY_PROCESSES=0`
 
 Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`: usage cache + aliases).
@@ -34,6 +36,7 @@ apps/collector   Node.js + TS. Discovers Claude processes, session files, hook e
                  Normalizes into shared types, keeps in-memory state, serves WebSocket on 127.0.0.1 only.
 apps/web         Vue 3 + TS + Vite + Tailwind + Pinia + vue-i18n + Vue Flow (Cytoscape.js fallback).
 packages/shared  Event protocol + TerminalSession / Agent types shared by both apps.
+apps/desktop     Electron shell (Windows): hosts collector in utilityProcess, tray, packaging.
 ```
 
 Key cross-cutting contracts:
@@ -63,6 +66,7 @@ Maintain a compact architecture index in `.code_index/` (same convention as the 
 - `collector.md` — data sources → normalizers → state store → WebSocket broadcaster.
 - `web.md` — WebSocket client → Pinia stores → components (dashboard, session cards, Agent Map, activity).
 - `protocol.md` — event types and shared models in `packages/shared`, and which side emits/consumes each.
+- `desktop.md` — Electron shell: boot flow, collector host, bridge install, packaging layout.
 
 "Why"/invariant/trade-off notes belong in `.code_index/` or `.planning/`, not in source comments.
 

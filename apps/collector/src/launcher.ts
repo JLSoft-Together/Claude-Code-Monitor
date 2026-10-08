@@ -9,7 +9,8 @@ const claudeArgs = (mode: LaunchMode): string[] => ['-NoLogo', '-NoExit', '-Comm
 
 const defaultSpawner: Spawner = (command, args, cwd) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, detached: true, stdio: 'ignore', windowsHide: false })
+    const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env
+    const child = spawn(command, args, { cwd, env, detached: true, stdio: 'ignore', windowsHide: false })
     child.once('error', reject)
     child.once('spawn', () => {
       child.unref()

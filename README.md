@@ -32,6 +32,28 @@ Nên làm thêm:
 2. Cài **status line bridge** (dưới) để có giới hạn 5 giờ / 7 ngày và chi phí.
 3. Chrome / Edge → "Cài đặt ứng dụng" để chạy trong cửa sổ riêng, có badge số session đang chờ.
 
+## Bản desktop (exe, Windows)
+
+App Electron đóng gói sẵn collector + web: người dùng cuối **không cần cài Node.js**.
+
+- Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, Mở trong trình duyệt, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
+- Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray.
+- Nếu đã có collector chạy ở port `4317` (ví dụ đang mở bằng bat), app dùng luôn collector đó, không khởi động cái thứ hai.
+
+Build:
+
+```powershell
+npm install
+npm run dist:win    # → apps/desktop/release/: Claude-Code-Monitor-Setup-<ver>.exe (NSIS) + Claude-Code-Monitor-Portable-<ver>.exe
+npm run desktop     # chạy thử bản dev, không đóng gói
+```
+
+Exe chưa ký số nên Windows SmartScreen cảnh báo lần đầu: bấm **More info → Run anyway**.
+
+Status line bridge ở bản desktop được chép ra `%LOCALAPPDATA%\ccm\bin\statusline-bridge.mjs` (đường dẫn không đổi qua update). Cài đặt → Status line hiện đúng lệnh cần dán: máy có `node` → `node "<...>/statusline-bridge.mjs"`; không có `node` → file `statusline-bridge.cmd` chạy chính exe của app (`ELECTRON_RUN_AS_NODE=1`). Bản portable giải nén vào thư mục tạm khác nhau mỗi lần nên **luôn cần `node`** cho status line.
+
+Cách chạy bằng `.bat` / `npm start` bên dưới vẫn được hỗ trợ.
+
 ## Tính năng chính
 
 - **Giám sát**: hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới terminal, hoãn nhắc), Agent Map main → subagent, luồng hoạt động.
@@ -67,6 +89,9 @@ Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. T
 | `CCM_DATA_DIR` | `%LOCALAPPDATA%/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
 | `CCM_WEB_DIST` | `apps/web/dist` | Web đã build |
 | `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ kiểm PID (dùng với data giả) |
+| `CCM_TOAST` | `1` | `0` = tắt Windows toast |
+| `CCM_STATUSLINE_BRIDGE` | `scripts/statusline-bridge.mjs` | Đường dẫn bridge (bản desktop tự đặt) |
+| `CCM_STATUSLINE_COMMAND` | `node "<bridge>"` | Lệnh status line hiện trong Cài đặt (bản desktop tự đặt) |
 
 ## Dev và test
 
@@ -97,6 +122,7 @@ Mở **Cài đặt → Chẩn đoán** trước.
 ```
 apps/collector     Node.js + TS: đọc session + transcript, chuẩn hoá, WebSocket
 apps/web           Vue 3 + Vite + Tailwind + Pinia + vue-i18n + Vue Flow
+apps/desktop       Electron (Windows): chạy collector trong utilityProcess, tray, đóng gói exe
 packages/shared    Kiểu dữ liệu + protocol dùng chung
 scripts/           launch.mjs, statusline-bridge.mjs, demo-fixture.mjs
 docs/              claude-code-integration.md: nguồn data Claude Code đã kiểm

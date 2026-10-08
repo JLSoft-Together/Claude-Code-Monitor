@@ -16,6 +16,7 @@ export interface CollectorConfig {
   dataDir: string
   devOriginPorts: number[]
   statusLineBridge: string
+  statusLineCommand: string
   toast: boolean
 }
 
@@ -24,8 +25,11 @@ function intFromEnv(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
+// The desktop bundle is CJS without import.meta, so repo-relative fallbacks resolve only when the env var is missing.
+const fromHere = (rel: string): string => path.resolve(path.dirname(fileURLToPath(import.meta.url)), rel)
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfig {
-  const here = path.dirname(fileURLToPath(import.meta.url))
+  const statusLineBridge = env.CCM_STATUSLINE_BRIDGE || fromHere('../../../scripts/statusline-bridge.mjs')
   return {
     claudeRoot: env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
     host: '127.0.0.1',
@@ -36,8 +40,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     activityLimit: 1000,
     batchMs: 50,
     verifyProcesses: process.platform === 'win32' && env.CCM_VERIFY_PROCESSES !== '0',
-    webDist: env.CCM_WEB_DIST || path.resolve(here, '../../web/dist'),
-    statusLineBridge: path.resolve(here, '../../../scripts/statusline-bridge.mjs'),
+    webDist: env.CCM_WEB_DIST || fromHere('../../web/dist'),
+    statusLineBridge,
+    statusLineCommand: env.CCM_STATUSLINE_COMMAND || `node "${statusLineBridge.replaceAll('\\', '/')}"`,
     devOriginPorts: [intFromEnv(env.CCM_DEV_ORIGIN_PORT, 5173)],
     toast: process.platform === 'win32' && env.CCM_TOAST !== '0',
     dataDir: env.CCM_DATA_DIR || path.join(env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'ccm'),

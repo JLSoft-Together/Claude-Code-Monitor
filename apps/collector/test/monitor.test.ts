@@ -56,6 +56,7 @@ describe('Monitor with fixture claude root', () => {
     dataDir: root,
     devOriginPorts: [],
     statusLineBridge: path.join(root, 'statusline-bridge.mjs'),
+    statusLineCommand: 'node statusline-bridge.mjs',
   })
 
   const deps = (): MonitorDeps => ({ isPidAlive: () => alive, queryProcesses: async () => null, now: () => now })

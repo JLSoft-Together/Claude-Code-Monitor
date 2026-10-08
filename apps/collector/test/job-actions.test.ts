@@ -67,6 +67,7 @@ describe('Monitor job actions', () => {
     dataDir: root,
     devOriginPorts: [],
     statusLineBridge: path.join(root, 'statusline-bridge.mjs'),
+    statusLineCommand: 'node statusline-bridge.mjs',
   })
 
   const monitor = () =>

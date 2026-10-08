@@ -345,6 +345,16 @@ A job is a background session started with `claude --bg` / dispatched from `clau
 
 - v11: toast kinds `stuck` (threshold now stored by the collector, `notify.update.stuckMinutes`) and `context` (main agent ≥ 95 %, once per crossing). Waiting toasts get a third action "Snooze 15 min" → `GET /snooze?k=&t=&m=15` (same per-process key), page closes itself. Settings "Send test" + registry check: `HKCU\...\PushNotifications\ToastEnabled = 0` (all off) or `HKCU\...\Notifications\Settings\<powershell AUMID>\Enabled = 0` (PowerShell blocked); missing values mean on. Do Not Disturb / Focus state is not readable here, so the test result hint mentions it.
 
+## 11j. Desktop app (Electron, 2026-10-09)
+
+Windows-only shell in `apps/desktop` (plan `.planning/PLAN-v12-electron.md`). Deviations from the Node/bat setup:
+
+1. **Status line command.** Claude Code spawns the status line command itself and cannot read inside `app.asar`; the portable exe extracts to a new temp dir per run. The desktop host copies the bridge to `%LOCALAPPDATA%\ccm\bin\statusline-bridge.mjs` and passes `CCM_STATUSLINE_BRIDGE` + `CCM_STATUSLINE_COMMAND` to the collector (`config.ts`; `index.ts` uses it for Settings). Command: `node "<bridge>"` when `node` is on PATH (always for portable / dev); otherwise `"<...>/bin/statusline-bridge.cmd"`, which runs the installed app exe with `ELECTRON_RUN_AS_NODE=1`.
+2. **Collector process.** Bundled to `collector.cjs` (esbuild, CJS, unpacked from asar) and run with `utilityProcess.fork`. Signals do not reach a utility process on Windows, so the host posts `'shutdown'` over `parentPort`; `index.ts` runs the normal `shutdown()` (state save). Host kills after 4 s. If `/health` on the port already answers (bat collector running), the app reuses it and forks nothing.
+3. **Toasts unchanged.** Still PowerShell 5.1 + powershell.exe AUMID (§11i), so they work in the portable build without a Start Menu shortcut; clicks open the default browser (`/focus`), not the app window. App window via `ccm://` is a follow-up.
+4. **`ELECTRON_RUN_AS_NODE` stripped** from the env of terminals opened by `launcher.ts`, so a `claude` started from the dashboard never inherits it (would make child Electron apps run as Node).
+5. **Window origin.** The window loads `http://127.0.0.1:<port>/`, not `file://`, because `server.ts` only accepts http localhost origins and the web app builds its WS URL from `location.host`.
+
 ## 12. Open items
 
 | Item | State |

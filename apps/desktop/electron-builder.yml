@@ -1,0 +1,45 @@
+appId: dev.ccm.monitor
+productName: Claude Code Monitor
+copyright: Claude Code Monitor
+directories:
+  app: stage
+  output: release
+asar: true
+# Chromium ships 55 UI locale packs (~49 MB); the app only speaks en / vi.
+electronLanguages:
+  - en-US
+  - vi
+compression: maximum
+# utilityProcess.fork runs collector.cjs from disk, outside the archive.
+asarUnpack:
+  - collector.cjs
+npmRebuild: false
+nodeGypRebuild: false
+files:
+  - main.cjs
+  - collector.cjs
+  - package.json
+extraResources:
+  - from: ../web/dist
+    to: web
+  - from: ../../scripts/statusline-bridge.mjs
+    to: bridge/statusline-bridge.mjs
+  - from: ../../scripts/assets/ccm.ico
+    to: ccm.ico
+win:
+  icon: ../../scripts/assets/ccm.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Claude Code Monitor
+  artifactName: Claude-Code-Monitor-Setup-${version}.${ext}
+portable:
+  artifactName: Claude-Code-Monitor-Portable-${version}.${ext}
