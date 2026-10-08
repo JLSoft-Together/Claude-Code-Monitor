@@ -262,7 +262,12 @@ Note: the internal tool `SubagentHandback` appears briefly as a subagent's curre
 | `message.usage` of the latest assistant record | `Agent.contextTokens` = input + cache write + cache read | — |
 | `cost-state` `{totalCostUSD, modelUsage[model]{inputTokens, outputTokens, thinkingTokens, cacheRead/CreationInputTokens, webSearchRequests, costUSD}, totalLinesAdded/Removed, total*Duration}` | Not yet (F4/F6) | — |
 
-Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsage` keys do), so `contextWindowOf` (`packages/shared/src/context.ts`) uses 1M when the `model` field of `<claudeRoot>/settings.json` contains `[1m]` for the same family, or when the observed context already exceeded 200k; otherwise 200k. Only the `model` field of settings is read. UI levels: 60 / 80 / 95 %.
+Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsage` keys do), and Claude Code 2.1.289 runs Opus/Sonnet 4.6+ and 5.x with a 1M window even when settings say plain `opus` (verified 2026-10-08: terminal showed ~9 % while the old 200k guess showed 44 % for the same ~88k tokens). `contextWindowOf` (`packages/shared/src/context.ts`) resolves, in order:
+1. **Reported** (main agent only): `context_window.context_window_size` from the status line stdin, saved by the bridge as `contextWindow` in `<dataDir>/statusline/<session_id>.json` → `ContextHints.sessionWindows`.
+2. **Catalog**: `runtime.max_input_tokens` per model id from `<claudeRoot>/cache/model-catalog/published-*.json` (`documentBytes` = base64 JSON, `surfaces.cc.model_selector_config[].models[]`; seen 1M for opus/sonnet 4.6+ and 5.x, 200k for haiku-4-5 and opus-4-1) → `ContextHints.modelWindows`. Combined as `max(catalog, guess)`.
+3. **Guess**: 1M when the `model` field of `<claudeRoot>/settings.json` contains `[1m]` for the same family, or when the observed context already exceeded 200k; otherwise 200k.
+
+Only the `model` field of settings is read. UI levels: 60 / 80 / 95 %. Caveat: the catalog gives the model maximum; a plan/provider that caps lower is only correct with the status line bridge installed.
 
 ## 11d. Repo grouping and wait time (2026-10-07)
 
@@ -275,11 +280,11 @@ Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsag
 |---|---|---|
 | `assistant.effort` (fallback `perTurnEffort`) on transcript records | Latest value → `Agent.effort` (validated `[a-z]{2,12}`) | — |
 | `message.usage.cache_creation.ephemeral_{1h,5m}_input_tokens` + record `timestamp` | Tier of the latest write → `Agent.cacheTtl`, time of the latest reply → `Agent.cacheAt`. A read-only reply keeps the previous tier. UI: cache expiry and the extra cost of rewriting `contextTokens` (API list prices, labelled estimate) | — |
-| `<claudeRoot>/cache/model-catalog/*.json` | `catalog.config.models[].{id,name}` → snapshot `modelNames` (refreshed every 60 s) | `notice`, `description`, `catalog.state` |
-| `<claudeRoot>/jobs/<id>/state.json` (`claude agents` / daemon jobs) | `state` (working / blocked / done), `tempo`, `name`, `inFlight.tasks/queued`, `tokens`, file mtime. Polled every 5 s, cached by mtime; done jobs older than 24 h dropped | `intent`, `detail`, `output`, `linkScanPath`, `respawnFlags`, `children` |
+| `<claudeRoot>/cache/model-catalog/*.json` | `catalog.config.models[].{id,name}` → snapshot `modelNames`; `published-*.json` decoded `surfaces.cc.model_selector_config[].models[].{id, runtime.max_input_tokens}` → context window per model (refreshed every 60 s) | `notice`, `description`, `catalog.state` |
+| `<claudeRoot>/jobs/<id>/state.json` (`claude agents` / daemon jobs) | `state` (working / blocked / done), `tempo`, `name`, `inFlight.tasks/queued`, `tokens`, `sessionId` (UUID only, see §11h), file mtime. Polled every 5 s, cached by mtime; done jobs older than 24 h dropped | `intent`, `detail`, `output`, `linkScanPath`, `respawnFlags`, `children` |
 | `<claudeRoot>/jobs/<id>/timeline.jsonl` | Last 4 KB, only `at` + `state` → `stateSince` | `text`, `detail` |
 | `<claudeRoot>/daemon/roster.json` | Not read (holds socket paths and auth tokens) | everything |
-| Status line JSON (opt-in, `scripts/statusline-bridge.mjs`) | The bridge writes only numbers to `<dataDir>/statusline/<session_id>.json`: `rate_limits.five_hour/seven_day.{used_percentage, resets_at (unix s)}`, `cost.total_cost_usd`. Collector: newest limits win (account wide) → `limits`; cost → `TerminalSession.costUsd`. Files older than 7 days deleted | `transcript_path`, `cwd`, `workspace`, `session_name`, everything else |
+| Status line JSON (opt-in, `scripts/statusline-bridge.mjs`) | The bridge writes only numbers to `<dataDir>/statusline/<session_id>.json`: `rate_limits.five_hour/seven_day.{used_percentage, resets_at (unix s)}`, `cost.total_cost_usd`, `context_window.context_window_size` (→ `contextWindow`). Collector: newest limits win (account wide) → `limits`; cost → `TerminalSession.costUsd`; window → main `Agent.contextWindow`. Files older than 7 days deleted | `transcript_path`, `cwd`, `workspace`, `session_name`, everything else |
 | Registry status change waiting → busy | Duration → `ResponseStats` (today, median, waits > 5 min; > 8 h ignored), persisted `<dataDir>/response-stats.json` | — |
 
 `rate_limits` exists only for Pro/Max subscribers (docs: code.claude.com/docs/en/statusline). The bridge is never installed automatically: the settings menu shows the snippet to paste; an existing status line is kept with `--chain "<old command>"`.
@@ -317,6 +322,28 @@ No new Claude Code source; everything below is derived from data already read.
 **Snooze** — browser-only (localStorage `ccm.snooze`), bound to the waiting episode (`statusSince`): a new wait is never pre-snoozed.
 
 **Break reminders (`MonitorSnapshot.dayStartedAt`)** — collector-owned, not a Claude Code source: `<dataDir>/day-start.json` keeps the first collector start of the local day (`daystart.ts`); restarts later that day keep the morning time. The web reminds every 45 minutes from it (midnight if the collector has run since yesterday), deduplicated across tabs via localStorage.
+
+## 11h. Background jobs — link, dismiss, stop (verified 2026-10-08, keys only)
+
+A job is a background session started with `claude --bg` / dispatched from `claude agents`, run by the Claude Code daemon (`backend: "daemon"`, `template: "bg"`). Dir name under `<claudeRoot>/jobs/` = `daemonShort` = the short id that `claude attach|logs|stop|rm <id>` take. Other `state.json` keys seen (not read): `respawnFlags`, `bgIsolation`, `interactiveLineage`, `nameSource`, `resumeSessionId`, `cliVersion`, `cwd`, `createdAt`, `updatedAt`, `firstTerminalAt`, `needs`, `suggestedReply`, `inFlight.kinds`, `inFlight.drainableMonitors`. `<claudeRoot>/jobs/pins.json` (array) sits next to the job dirs and is skipped by the id regex. No pid is recorded in the job file; `<claudeRoot>/daemon/` holds `control.key` / `pipe.key` (auth for the daemon pipe) — never read.
+
+- **Link to a session**: `state.json.sessionId` (validated UUID) → `BackgroundJob.sessionId`. The web matches it against `TerminalSession.claudeSessionId`; a row is clickable (→ `ui.focusTerminal`) only when that session is currently tracked. No cwd fallback (several sessions share a cwd).
+- **Dismiss** (`job.dismiss {jobId?}`): collector-side, in memory, keyed by `id + updatedAt` of a done job. The job comes back if its file changes or it leaves `done`; dismissals are lost on collector restart (done jobs still age out after 24 h).
+- **Stop** (`job.stop {jobId}`): exception to observe-only, requested by the user. Uses the official CLI command `claude stop <id>` (`claude --help`: "Stop a background session. Its conversation is kept"), no pid kill. The collector resolves the real executable (`claude.exe` on PATH, `<PATH dir>/node_modules/@anthropic-ai/claude-code/bin/claude.exe` behind the npm `.cmd` shim, `~/.local/bin`) and runs it with `execFile` (no shell, 20 s timeout, inherited env). Only ids the collector itself read, not `done`, matching `^[A-Za-z0-9][A-Za-z0-9_-]{3,63}$` (cannot be read as an option); one stop per job at a time. Exit 0 → `ok`; output `No job matching` → `notFound`; no executable → `noCli`; else `failed`. Result → activity `job.stopped` / `job.stopFailed {title, jobId, error}`. Not verified end to end against a live job (starting one would spend tokens); verified that `claude stop <unknown>` exits 1 with `No job matching '<id>'`. Which `state` a stopped job writes is unknown — the list just follows `state.json`.
+
+## 11i. Windows toast for waiting sessions (verified 2026-10-08, Windows 11 26200)
+
+- Browser notifications need the bell + site permission and vanish after a few seconds, so the collector also sends a Windows toast when a session goes to `waiting` and no dashboard tab is visible + focused (`client.presence`). No tab connected still toasts.
+- Sent with Windows PowerShell 5.1 + WinRT `ToastNotificationManager`, AUMID of powershell.exe (toast source reads "Windows PowerShell"). `scenario='reminder'` keeps it on screen until clicked.
+- Limitation: PowerShell 5.1 cannot subscribe to WinRT events (`Register-ObjectEvent`: "cannot subscribe to Windows RT events"), so clicks use `activationType='protocol'` to `http://127.0.0.1:<port>/focus?t=<terminalId>&k=<per-process random key>`; the collector raises the terminal window and the page closes itself. Browser opens for a moment.
+- Leaving `waiting` / user back on the dashboard removes the toast (`History.Remove(tag, 'ccm')`). Focus Assist / Do Not Disturb can still hide toasts.
+- Off switch: Settings → Windows notifications (persisted `<dataDir>/notify.json`) or `CCM_TOAST=0`.
+- v10: kinds `waiting` (+ reminder every 5 min while still waiting, max 3, not replayed for sessions already waiting at startup), `done` (off by default, not persistent), `job` (blocked background job), `loop` (error loop, shared `errorLoops` over the collector tool ring every 15 s), `limit` (5h forecast full within 1 h, once per window, not on first sighting). Only `waiting` / `job` use `scenario='reminder'`.
+- Click flow v10: `GET /focus?k=&t=` returns a page that `POST /focus {t,k}` → `Monitor.focusWindow` result. `ok` → page closes; anything else → `/?focus=<terminalId>` opens the dashboard on that session. No `t` (limit, job without session) → dashboard. Raising after the page loaded replaces the old fixed 400 ms delay.
+- Snooze moved to the collector (`<dataDir>/snooze.json`, `terminal.snooze`, `snooze.updated`) so toasts honour it; entry valid only for the same `statusSince`.
+- Quiet hours (`notify.update.quiet`, local time of the collector machine, may cross midnight) silence toasts, browser notifications and chimes; tab title and badge still count.
+
+- v11: toast kinds `stuck` (threshold now stored by the collector, `notify.update.stuckMinutes`) and `context` (main agent ≥ 95 %, once per crossing). Waiting toasts get a third action "Snooze 15 min" → `GET /snooze?k=&t=&m=15` (same per-process key), page closes itself. Settings "Send test" + registry check: `HKCU\...\PushNotifications\ToastEnabled = 0` (all off) or `HKCU\...\Notifications\Settings\<powershell AUMID>\Enabled = 0` (PowerShell blocked); missing values mean on. Do Not Disturb / Focus state is not readable here, so the test result hint mentions it.
 
 ## 12. Open items
 
