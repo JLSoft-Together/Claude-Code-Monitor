@@ -213,7 +213,7 @@ const rows = computed(() =>
           <time :datetime="e.at" class="pt-0.5 font-mono text-2xs text-ink-faint tabular">{{ clockTime(e.at, locale) }}</time>
           <StatusIcon :status="ICON_STATUS[e.kind] ?? 'unknown'" :size="14" :animate="false" class="mt-1" />
           <div class="min-w-0">
-            <p class="truncate" :title="text">{{ text }}</p>
+            <p class="break-words">{{ text }}</p>
             <p v-if="sub" class="truncate text-xs text-ink-faint" :title="sub">{{ sub }}</p>
           </div>
         </li>

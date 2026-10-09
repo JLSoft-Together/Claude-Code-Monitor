@@ -61,3 +61,5 @@
 - 2026-10-09 Stopped job ghost fix: `Monitor` dismissed jobs persisted (`dismissed-jobs.json`, `index.ts` `JsonFile`) + `stopJob` ok/notFound auto-dismiss — `apps/collector/src/monitor.ts`; tests `job-actions.test.ts`.
 - 2026-10-09 Quick wins (E1+F): port clash → exit 3 + desktop `port-in-use` (`server.ts` `isPortInUse`, `collector-host.ts`); `JsonlTailer` 1 MB chunks; `test/tracker.test.ts`; `SessionCard` → `SessionCardHeader` + `SessionCardSignals` + `useInlineEdit`. Plan: tool analytics (A), notifications/macOS parity (C) next.
 - 2026-10-09 Port clash message names a running CCM (desktop app / other `npm start`) via `server.ts` `isCollectorAt` `/health` probe; test in `hardening.test.ts`.
+- 2026-10-09 Activity row text wraps (`break-words`) instead of `truncate` — `ActivityFeed.vue`; session sub-line still truncates.
+- 2026-10-09 Stop of a dead job: `job-stop.ts` `isDaemonRunning` (roster `supervisorPid`) → `Monitor.stopJob` maps `unconfirmed` → `notRunning` (shared `JobStopResult`), web `activity.job_notRunning` in `ActivityFeed.vue`; docs §11h.
