@@ -148,7 +148,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
                 <span class="truncate">{{ r.detail }}</span>
               </span>
               <span v-if="jumpNote(r.id)" class="inline-flex min-w-0 items-center gap-1 text-sm text-ink-muted">
-                <Info :size="14" class="shrink-0" aria-hidden="true" />{{ jumpError(r.id) }}
+                <Info :size="14" class="shrink-0" aria-hidden="true" />{{ t('terminal.jumpError.appOnly') }}
               </span>
               <span v-else-if="jumpError(r.id)" class="text-sm text-st-error">{{ jumpError(r.id) }}</span>
             </span>

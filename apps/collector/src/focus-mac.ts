@@ -66,7 +66,7 @@ export function hostOf(tree: Map<number, PsRow>, pid: number): MacHost | null {
   const self = tree.get(pid)
   let row = self
   for (let i = 0; row && i <= 8; i++) {
-    if (row.comm.includes(APP_MARK)) {
+    if (row.comm.startsWith('/') && row.comm.includes(APP_MARK)) {
       const bundle = row.comm.slice(0, row.comm.indexOf('.app/') + 4)
       const kind = bundle.endsWith('/Terminal.app') ? 'terminal' : bundle.endsWith('/iTerm.app') ? 'iterm' : 'app'
       return self && /^ttys\d+$/.test(self.tty) ? { kind, bundle, tty: self.tty } : { kind, bundle }

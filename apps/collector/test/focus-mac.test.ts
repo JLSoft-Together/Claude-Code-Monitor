@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../src/osascript', async (load) => {
+  const actual = await load<typeof import('../src/osascript')>()
+  return { ...actual, runCommand: vi.fn(actual.runCommand) }
+})
 import { focusMacWindow, hostOf, parsePsTree, TERMINAL_SCRIPT, ITERM_SCRIPT } from '../src/focus-mac'
 import { focusTerminalWindow } from '../src/focus'
-import { parseOsaError, type RunResult, type Runner } from '../src/osascript'
+import { parseOsaError, runCommand, type RunResult, type Runner } from '../src/osascript'
 
 const PS = [
   '    1     0 ??       /sbin/launchd',
@@ -23,6 +28,8 @@ const PS = [
   '  951   950 ttys011  claude',
   '  960     1 ??       /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal',
   '  961   960 ??       claude',
+  '  970     1 ??       -Evil.app/Contents/MacOS/evil',
+  '  971   970 ttys012  claude',
 ].join('\n')
 
 const tree = parsePsTree(PS)
@@ -69,6 +76,10 @@ describe('hostOf', () => {
     expect(hostOf(tree, 901)).toEqual({ kind: 'app', bundle: '/Applications/IntelliJ IDEA.app' })
   })
 
+  it('ignores a bundle that is not an absolute path', () => {
+    expect(hostOf(tree, 971)).toBeNull()
+  })
+
   it('takes the outer bundle of a nested helper app', () => {
     expect(hostOf(tree, 951)?.bundle).toBe('/Applications/Visual Studio Code.app')
   })
@@ -78,7 +89,9 @@ describe('parseOsaError', () => {
   it('maps AppleScript error codes', () => {
     expect(parseOsaError('execution error: Not authorized to send Apple events to Terminal. (-1743)')).toBe('denied')
     expect(parseOsaError('execution error: User canceled. (-128)')).toBe('cancelled')
-    expect(parseOsaError('syntax error: Can’t get application "iTerm". (-2700)')).toBe('notInstalled')
+    expect(parseOsaError('execution error: Terminal got an error: Can’t get window 1. (-1728)')).toBe('notInstalled')
+    expect(parseOsaError('Can\'t get application "iTerm"')).toBe('notInstalled')
+    expect(parseOsaError('syntax error: Expected end of line. (-2700)')).toBe('failed')
     expect(parseOsaError('something else')).toBe('failed')
   })
 })
@@ -152,5 +165,10 @@ describe('focusMacWindow', () => {
 describe('focusTerminalWindow', () => {
   it('is unsupported off win32 and darwin', async () => {
     expect(await focusTerminalWindow(123, 'linux')).toBe('unsupported')
+  })
+
+  it('routes darwin to the mac path and rejects an invalid pid without running anything', async () => {
+    expect(await focusTerminalWindow(0, 'darwin')).toBe('notFound')
+    expect(runCommand).not.toHaveBeenCalled()
   })
 })

@@ -20,7 +20,7 @@ export type OsaError = 'denied' | 'notInstalled' | 'cancelled' | 'failed'
 
 export function parseOsaError(stderr: string): OsaError {
   if (/\(-1743\)/.test(stderr)) return 'denied'
+  if (/\(-1728\)|Can[’']t get application/.test(stderr)) return 'notInstalled'
   if (/\(-128\)/.test(stderr)) return 'cancelled'
-  if (/\(-(2700|10814)\)|Can[’']t get application/.test(stderr)) return 'notInstalled'
   return 'failed'
 }

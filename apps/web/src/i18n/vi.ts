@@ -73,7 +73,7 @@ const vi: typeof en = {
     jumpError: {
       notFound: 'Không tìm thấy cửa sổ terminal.',
       ambiguous: 'Không xác định được cửa sổ Windows Terminal của session này (thường do Windows Terminal bản cũ). Hãy chọn trên taskbar.',
-      failed: 'Windows chặn chuyển cửa sổ. Hãy bấm trên taskbar.',
+      failed: 'Không đưa được terminal lên trước. Hãy tự chuyển sang terminal đó.',
       unsupported: 'Hệ điều hành này chưa hỗ trợ chuyển tới terminal.',
       appOnly: 'Đã đưa app chứa terminal lên trước, chưa chọn được đúng tab.',
       denied: 'macOS chặn quyền điều khiển terminal. Hãy cho phép trong System Settings › Privacy & Security › Automation.',

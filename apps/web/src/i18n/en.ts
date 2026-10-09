@@ -71,7 +71,7 @@ export default {
     jumpError: {
       notFound: 'Terminal window not found.',
       ambiguous: 'Could not tell which Windows Terminal window hosts this session (usually an older Windows Terminal). Use the taskbar.',
-      failed: 'Windows blocked the switch. Click the taskbar instead.',
+      failed: 'Could not bring the terminal to the front. Switch to it yourself.',
       unsupported: 'Jumping to the terminal is not available on this system.',
       appOnly: 'Brought the app hosting this terminal to the front. Could not select the exact tab.',
       denied: 'macOS blocked control of the terminal. Allow it in System Settings › Privacy & Security › Automation.',
