@@ -71,7 +71,7 @@ Module mới `apps/collector/src/focus-mac.ts`, chỉ chạy khi người dùng 
    - Không có bundle → `notFound`. Có bundle `terminal`/`iterm` nhưng không có tty → `open -a` → `appOnly`.
 3. **Lỗi:** stderr chứa `-1743` → `denied`; lỗi khác → `failed`.
 4. `FocusWindowResult` (shared) thêm `appOnly` và `denied`. Monitor chọn `focusProcessWindow` (win32) hoặc `focusMacWindow` (darwin) theo platform, platform là tham số để test được. Linux vẫn `unsupported`.
-5. **UI:** chuỗi `terminal.jumpError.appOnly {app}` (tên app = basename của bundle, bỏ `.app`), `jumpError.denied` (hướng dẫn mở System Settings › Privacy & Security › Automation). `jumpError.unsupported` viết lại trung tính. `appOnly` được coi là thành công một phần: hiện thông điệp nhẹ, không phải lỗi.
+5. **UI:** chuỗi `terminal.jumpError.appOnly` ("đã đưa app chứa terminal lên trước, chưa chọn được tab"; không kèm tên app để không phải đổi payload `terminal.focusResult`), `jumpError.denied` (hướng dẫn mở System Settings › Privacy & Security › Automation). `jumpError.unsupported` viết lại trung tính. `appOnly` được coi là thành công một phần: hiện thông điệp nhẹ, không phải lỗi.
 
 ## 5. C2b: thông báo native qua Electron
 
@@ -80,7 +80,7 @@ Module mới `apps/collector/src/focus-mac.ts`, chỉ chạy khi người dùng 
     - `show(content)` → `post({ type: 'toast.show', tag, title, body, persistent, focus: { t, k }, snooze?: { t, k, m, label } })`. Các trường lấy từ `ToastContent` (`url`/`snoozeUrl` được tách sẵn thành `t`, `k`, `m`).
     - `hide(tag)` → `post({ type: 'toast.hide', tag })`.
     - `health()` → `'unknown'`.
-  - `config.ts`: `toast` supported khi `(platform === 'win32' || env.CCM_TOAST_BACKEND === 'electron') && env.CCM_TOAST !== '0'`.
+  - `config.ts`: `toast` supported khi `(platform === 'win32' || env.CCM_TOAST_BACKEND === 'electron') && env.CCM_TOAST !== '0'`. Desktop chỉ đặt `CCM_TOAST_BACKEND=electron` trên darwin (Windows giữ toast PowerShell).
   - `index.ts`: khi `CCM_TOAST_BACKEND === 'electron'` và có `process.parentPort` thì dùng `electronToastDeps(parentPort.postMessage)`.
 - **Desktop:**
   - `collector-host.ts` đặt `CCM_TOAST_BACKEND=electron` khi fork collector. Nó chuyển các message `toast.*` từ `child.on('message')` cho `notifier`, và kiểm tra hình dạng message bằng `parseToastMessage` (shared; `tag` ≤ 200 ký tự, `title`/`body` là string, `t`/`k` là string).
@@ -90,7 +90,7 @@ Module mới `apps/collector/src/focus-mac.ts`, chỉ chạy khi người dùng 
     - `action` → `GET /snooze?k&t&m`.
     - `hide` → `close()`.
   - Notifier chỉ chạy khi chính app sở hữu collector. Collector mượn từ `.bat` không có `parentPort`, nên không đổi gì.
-- **`server.ts`:** `POST /focus` trả về kết quả focus dạng JSON để notifier quyết định có fallback hay không (trang `/focus` hiện có vẫn dùng được).
+- **`server.ts`:** `POST /focus` đã trả `{ result }` dạng JSON (không cần đổi); notifier dựa vào đó để quyết định fallback.
 - **Web:** mục toast trong SettingsMenu đổi nhãn thành "Thông báo hệ thống" (i18n trung tính nền tảng), tự hiện trên mac khi `extras.toast` là `on`/`off`.
 
 ## 6. C3: launcher và chọn thư mục trên macOS
@@ -102,7 +102,7 @@ Module mới `apps/collector/src/focus-mac.ts`, chỉ chạy khi người dùng 
     - iTerm2: `create window with default profile`, rồi `write text` cùng lệnh vào session mới đó.
   - Ràng buộc giữ nguyên: chỉ thư mục đã đánh dấu sao, đường dẫn tuyệt đối, tồn tại.
   - Lỗi → activity `launch.failed` với `error` ∈ `denied` (`-1743`) | `notInstalled` (`-1728` hoặc "Can't get application") | `failed`, mỗi loại có chuỗi i18n.
-- **Chọn thư mục** (`folder-pick.ts`): `osascript` với `POSIX path of (choose folder with prompt <argv 1>)`. `-128` → `cancelled`, stdout là đường dẫn → `ok`, còn lại → `failed`.
+- **Chọn thư mục** (`folder-pick.ts`): `osascript` với `POSIX path of (choose folder)` (prompt mặc định của macOS, đã được dịch). `-128` → `cancelled`, stdout là đường dẫn → `ok`, còn lại → `failed`.
 - **UI:**
   - SettingsMenu có mục "Mở session bằng" (Terminal.app / iTerm2), chỉ hiện khi `isMac`.
   - `pickError.unsupported` viết lại trung tính.
