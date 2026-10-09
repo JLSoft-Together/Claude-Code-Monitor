@@ -384,6 +384,24 @@ A span is one tool call: `tool_use.id` in an assistant message paired with `tool
 
 Limits: 2000 spans per session, spans older than 2 h are dropped. Spans are recorded during catch-up of existing transcripts too, but `tool.span` is broadcast only for changes seen live. The dashboard fetches history with `toolSpans.get` (optional `terminalId`, optional ISO `since`, max 40 chars) and gets one `toolSpans.data` reply; an unknown `terminalId` returns an empty list.
 
+## 11n. Waiting reasons and macOS automation (verified 2026-10-09, macOS 15, Claude Code 2.1.289)
+
+Registry `waitingFor` observed live (1 s poll of `sessions/<pid>.json`), matched to the open `tool_use` in the transcript (tool names and timestamps only):
+
+| `waitingFor` | Open tool | Meaning |
+|---|---|---|
+| `input needed` | `AskUserQuestion` | Claude is asking the user |
+| `permission prompt` | `Bash` | tool permission |
+| `permission prompt` | `ExitPlanMode` | plan approval |
+
+A read-only command (`ls ~`) ran without a prompt (`busy → idle`). `sandbox request`, `worker request`, `dialog open` were not observed; they stay as documented in §3.
+
+macOS process tree for a Terminal.app session: `claude (ttys006) → -zsh → login → /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal` (3 hops; login shells show a leading `-`; Terminal.app lives under `/System/Applications/Utilities`, so match the bundle name, not `/Applications`). JetBrains: `claude (ttys003) → /bin/zsh → /Applications/WebStorm.app/Contents/MacOS/webstorm`. `sdk-cli` sessions run under `bun` with no tty and no `.app` ancestor.
+
+AppleScript `tell application "Terminal"` → `tabs of windows` → `tty of t is "/dev/ttysNNN"` → `set selected`, `set index of window to 1`, `activate` selects the right tab (`ok`); an unknown tty returns `notFound`. No Automation prompt appeared for a host that already had the permission; a new app identity will be asked once.
+
+Native notifications: an Electron `Notification` from the dev binary (`com.github.Electron`) fails with `UNErrorDomain error 1` (notifications not allowed) without any permission dialog, and the installed ad-hoc signed app (`dev.ccm.monitor`, `Signature=adhoc`) shows no prompt either; neither appears in `com.apple.ncprefs`. Native macOS notifications therefore need a Developer ID signature. The desktop app uses a dock badge and `dock.bounce('critical')` instead, which need no permission.
+
 ## 12. Open items
 
 | Item | State |
