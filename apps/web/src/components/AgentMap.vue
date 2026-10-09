@@ -4,14 +4,16 @@ import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Eye, EyeOff, LayoutGrid, Maximize, Minus, Plus, X } from 'lucide-vue-next'
+import { ChartGantt, Eye, EyeOff, LayoutGrid, Maximize, Minus, Network, Plus, X } from 'lucide-vue-next'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
-import { useUiStore } from '../stores/ui'
+import { useUiStore, type MapView } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
+import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
+import ToolTimeline from './ToolTimeline.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
@@ -189,6 +191,18 @@ watch(
   },
 )
 
+watch(
+  () => ui.mapView,
+  (view) => {
+    if (view !== 'map') return
+    void nextTick(() => {
+      const restoring = !getNodes.value.length
+      syncNodes(false)
+      if (restoring && getNodes.value.length) pendingFit = true
+    })
+  },
+)
+
 onNodesInitialized(() => {
   if (!pendingFit) return
   pendingFit = false
@@ -227,49 +241,93 @@ const controls = computed(() => [
   { key: 'fit', label: t('map.fit'), icon: Maximize, run: () => fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }) },
   { key: 'reset', label: t('map.reset'), icon: LayoutGrid, run: () => ui.resetLayout() },
 ])
+
+const views = computed(() => [
+  { key: 'map' as MapView, label: t('tools.view.map'), icon: Network },
+  { key: 'timeline' as MapView, label: t('tools.view.timeline'), icon: ChartGantt },
+])
+
+function onViewKey(event: KeyboardEvent): void {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  const group = event.currentTarget as HTMLElement
+  ui.mapView = ui.mapView === 'map' ? 'timeline' : 'map'
+  void nextTick(() => group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus())
+}
 </script>
 
 <template>
   <section :aria-labelledby="`${FLOW_ID}-title`" class="flex min-h-0 flex-col">
     <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
       <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink" :title="scoped ? undefined : t('map.multiSelectHint')">{{ t('map.title') }}</h2>
-      <div class="flex items-center gap-0.5" role="toolbar" :aria-label="t('map.title')">
-        <button
-          v-if="picked.size"
-          type="button"
-          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-raised px-2 text-xs text-ink transition-colors hover:text-accent"
-          :aria-label="t('map.clearPicked')"
-          :title="t('map.clearPicked')"
-          @click="clearPicked()"
-        >
-          <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
-          <X :size="15" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-          :class="settings.hideFinished ? 'bg-raised text-ink' : 'text-ink-muted'"
-          :aria-pressed="settings.hideFinished"
-          :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-          :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-          :disabled="!hasNodes"
-          @click="settings.toggleHideFinished()"
-        >
-          <component :is="settings.hideFinished ? EyeOff : Eye" :size="17" aria-hidden="true" />
-          <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
-        </button>
-        <button
-          v-for="c in controls"
-          :key="c.key"
-          type="button"
-          class="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-          :aria-label="c.label"
-          :title="c.label"
-          :disabled="!hasNodes"
-          @click="c.run()"
-        >
-          <component :is="c.icon" :size="17" aria-hidden="true" />
-        </button>
+      <div class="flex min-w-0 flex-wrap items-center justify-end gap-0.5" role="toolbar" :aria-label="t('map.title')">
+        <div class="mr-1 inline-flex rounded-md bg-raised p-0.5" role="radiogroup" :aria-label="t('tools.view.label')" @keydown="onViewKey">
+          <button
+            v-for="v in views"
+            :key="v.key"
+            type="button"
+            role="radio"
+            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors hover:text-ink"
+            :class="ui.mapView === v.key ? 'bg-surface text-ink' : 'text-ink-muted'"
+            :aria-checked="ui.mapView === v.key"
+            :tabindex="ui.mapView === v.key ? 0 : -1"
+            @click="ui.mapView = v.key"
+          >
+            <component :is="v.icon" :size="15" aria-hidden="true" />
+            <span>{{ v.label }}</span>
+          </button>
+        </div>
+        <div v-if="ui.mapView === 'timeline'" class="inline-flex items-center gap-0.5" role="group" :aria-label="t('tools.window')">
+          <button
+            v-for="w in WINDOWS"
+            :key="w"
+            type="button"
+            class="inline-flex h-9 cursor-pointer items-center rounded-md px-2 text-xs tabular-nums transition-colors hover:bg-raised hover:text-ink"
+            :class="ui.timelineWindow === w ? 'bg-raised text-ink' : 'text-ink-muted'"
+            :aria-pressed="ui.timelineWindow === w"
+            @click="ui.timelineWindow = w"
+          >
+            {{ t('tools.minutes', { n: w }) }}
+          </button>
+        </div>
+        <template v-else>
+          <button
+            v-if="picked.size"
+            type="button"
+            class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-raised px-2 text-xs text-ink transition-colors hover:text-accent"
+            :aria-label="t('map.clearPicked')"
+            :title="t('map.clearPicked')"
+            @click="clearPicked()"
+          >
+            <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
+            <X :size="15" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            :class="settings.hideFinished ? 'bg-raised text-ink' : 'text-ink-muted'"
+            :aria-pressed="settings.hideFinished"
+            :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+            :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+            :disabled="!hasNodes"
+            @click="settings.toggleHideFinished()"
+          >
+            <component :is="settings.hideFinished ? EyeOff : Eye" :size="17" aria-hidden="true" />
+            <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
+          </button>
+          <button
+            v-for="c in controls"
+            :key="c.key"
+            type="button"
+            class="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            :aria-label="c.label"
+            :title="c.label"
+            :disabled="!hasNodes"
+            @click="c.run()"
+          >
+            <component :is="c.icon" :size="17" aria-hidden="true" />
+          </button>
+        </template>
       </div>
     </div>
 
@@ -279,7 +337,9 @@ const controls = computed(() => [
       role="region"
       :aria-label="t('map.ariaLabel')"
     >
+      <ToolTimeline v-if="ui.mapView === 'timeline'" :terminal-id="terminalId" />
       <VueFlow
+        v-else
         :id="FLOW_ID"
         :edges="edges"
         :min-zoom="0.2"
@@ -298,12 +358,12 @@ const controls = computed(() => [
         </template>
       </VueFlow>
 
-      <div v-if="!hasNodes" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-ink-muted">
+      <div v-if="ui.mapView === 'map' && !hasNodes" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-ink-muted">
         <ArtImage name="agent-map-bg" class="w-full max-w-3xl opacity-25" />
         <p>{{ t('map.empty') }}</p>
       </div>
 
-      <AgentDetails />
+      <AgentDetails v-if="ui.mapView === 'map'" />
     </div>
   </section>
 </template>
