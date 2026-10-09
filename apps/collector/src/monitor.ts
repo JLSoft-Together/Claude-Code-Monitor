@@ -7,7 +7,7 @@ import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, G
 import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
-import { focusProcessWindow } from './focus'
+import { focusTerminalWindow } from './focus'
 import { pickFolder } from './folder-pick'
 import { readDiffStat } from './gitstat'
 import { openFolder } from './opener'
@@ -54,7 +54,7 @@ export type Reply = (event: MonitorEvent) => void
 
 const DIFF_DEBOUNCE_MS = 2_000
 
-const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: focusProcessWindow, pickFolder, openFolder, diffStat: readDiffStat }
+const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: (pid) => focusTerminalWindow(pid), pickFolder, openFolder, diffStat: readDiffStat }
 
 export class Monitor {
   private readonly trackers = new Map<string, SessionTracker>()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AppWindow, Check, LoaderCircle, Pencil, Pin, RotateCcw, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
+import { AppWindow, Check, Info, LoaderCircle, Pencil, Pin, RotateCcw, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { openAppKey } from '../lib/platform'
 import { useBump } from '../composables/useBump'
@@ -181,7 +181,10 @@ function clearAlias(): void {
       <Trash2 :size="15" aria-hidden="true" />
     </button>
   </div>
-  <p v-if="jumpError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
+  <p v-if="jumpError?.result === 'appOnly'" role="status" class="ccm-enter relative z-10 mt-1 inline-flex items-center gap-1 text-2xs text-ink-muted">
+    <Info :size="12" class="shrink-0" aria-hidden="true" />{{ t('terminal.jumpError.appOnly') }}
+  </p>
+  <p v-else-if="jumpError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
     {{ t(`terminal.jumpError.${jumpError.result}`) }}
   </p>
   <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">

@@ -341,7 +341,7 @@ export interface Diagnostics {
 }
 
 /** Outcome of bringing a session's terminal window to the front. */
-export type FocusWindowResult = 'ok' | 'notFound' | 'ambiguous' | 'failed' | 'unsupported'
+export type FocusWindowResult = 'ok' | 'notFound' | 'ambiguous' | 'failed' | 'unsupported' | 'appOnly' | 'denied'
 export type FolderPickResult = 'ok' | 'cancelled' | 'busy' | 'failed' | 'unsupported'
 
 export type ToolOutcome = 'ok' | 'error' | 'interrupted'

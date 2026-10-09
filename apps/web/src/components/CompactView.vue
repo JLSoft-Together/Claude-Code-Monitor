@@ -2,7 +2,7 @@
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TerminalSession } from '@ccm/shared'
-import { AlarmClock, AppWindow, BellOff, BellRing, Hand, LoaderCircle } from 'lucide-vue-next'
+import { AlarmClock, AppWindow, BellOff, BellRing, Hand, Info, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
@@ -109,6 +109,7 @@ function toggleSnooze(id: string): void {
   else snooze.snooze(x, SNOOZE_CHOICES[0])
 }
 
+const jumpNote = (id: string) => ui.windowResult?.terminalId === id && ui.windowResult.result === 'appOnly'
 const jumpError = (id: string) => (ui.windowResult?.terminalId === id && ui.windowResult.result !== 'ok' ? t(`terminal.jumpError.${ui.windowResult.result}`) : null)
 const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }) : t('compact.show', { title: r.title }))
 </script>
@@ -146,7 +147,10 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
                 <component :is="r.icon" v-if="r.icon" :size="14" class="shrink-0" aria-hidden="true" />
                 <span class="truncate">{{ r.detail }}</span>
               </span>
-              <span v-if="jumpError(r.id)" class="text-sm text-st-error">{{ jumpError(r.id) }}</span>
+              <span v-if="jumpNote(r.id)" class="inline-flex min-w-0 items-center gap-1 text-sm text-ink-muted">
+                <Info :size="14" class="shrink-0" aria-hidden="true" />{{ jumpError(r.id) }}
+              </span>
+              <span v-else-if="jumpError(r.id)" class="text-sm text-st-error">{{ jumpError(r.id) }}</span>
             </span>
             <span v-if="r.snoozedUntil" class="inline-flex shrink-0 items-center gap-1.5 text-base text-ink-muted tabular">
               <BellOff :size="16" aria-hidden="true" />{{ r.snoozedUntil }}

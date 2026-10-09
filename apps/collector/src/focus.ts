@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { FocusWindowResult } from '@ccm/shared'
+import { focusMacWindow } from './focus-mac'
 
 // First asks the session's own console: ConPTY's hidden pseudo-console window is owned by the hosting terminal window
 // (Windows Terminal sets it per tab), and a classic console window is the console itself, so this names the exact
@@ -97,4 +98,10 @@ export function focusProcessWindow(pid: number): Promise<FocusWindowResult> {
       (err, stdout) => resolve(err ? 'failed' : parseFocusOutput(stdout)),
     )
   })
+}
+
+export function focusTerminalWindow(pid: number, platform: NodeJS.Platform = process.platform): Promise<FocusWindowResult> {
+  if (platform === 'win32') return focusProcessWindow(pid)
+  if (platform === 'darwin') return focusMacWindow(pid)
+  return Promise.resolve('unsupported')
 }

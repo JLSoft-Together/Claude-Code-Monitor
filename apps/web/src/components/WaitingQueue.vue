@@ -140,7 +140,7 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
               v-if="item.canJump"
               type="button"
               class="-ml-px inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-l-none rounded-r-lg border border-line bg-surface text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
-              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' ? 'border-st-error text-st-error' : ''"
+              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' && ui.windowResult.result !== 'appOnly' ? 'border-st-error text-st-error' : ''"
               :aria-label="t('terminal.jump', { title: item.title })"
               :title="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' ? t(`terminal.jumpError.${ui.windowResult.result}`) : t('terminal.jumpTitle')"
               @click="jump(item.id)"
