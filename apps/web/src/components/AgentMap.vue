@@ -335,7 +335,7 @@ function onViewKey(event: KeyboardEvent): void {
       ref="canvas"
       class="relative min-h-[440px] flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:min-h-0"
       role="region"
-      :aria-label="t('map.ariaLabel')"
+      :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
     >
       <ToolTimeline v-if="ui.mapView === 'timeline'" :terminal-id="terminalId" />
       <VueFlow

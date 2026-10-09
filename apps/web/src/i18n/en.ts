@@ -153,6 +153,7 @@ export default {
     ariaLabel: 'Agent hierarchy map. Use the session list to focus a session.',
   },
   tools: {
+    ariaLabel: 'Tool call timeline per agent. Use the arrow keys to move between bars.',
     view: { label: 'View', map: 'Map', timeline: 'Timeline' },
     window: 'Time window',
     minutes: '{n} min',

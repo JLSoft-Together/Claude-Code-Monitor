@@ -155,6 +155,7 @@ const vi: typeof en = {
     ariaLabel: 'Sơ đồ agent. Dùng danh sách session để focus vào một session.',
   },
   tools: {
+    ariaLabel: 'Dòng thời gian gọi tool theo agent. Dùng phím mũi tên để chuyển giữa các thanh.',
     view: { label: 'Chế độ xem', map: 'Sơ đồ', timeline: 'Dòng thời gian' },
     window: 'Khoảng thời gian',
     minutes: '{n} phút',
