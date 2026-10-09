@@ -34,6 +34,15 @@ export class ToolSpanLog {
     return changed
   }
 
+  closeOpen(at: string, agentId?: string): ToolSpan[] {
+    const changed: ToolSpan[] = []
+    for (const span of this.spans.values()) {
+      if (span.end || (agentId !== undefined && span.agentId !== agentId)) continue
+      if (this.close(span, at, 'interrupted')) changed.push({ ...span })
+    }
+    return changed
+  }
+
   list(sinceMs?: number): ToolSpan[] {
     this.prune()
     const out: ToolSpan[] = []

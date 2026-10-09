@@ -127,9 +127,11 @@ describe('Monitor with fixture claude root', () => {
     expect(live).toContainEqual({ id: 'toolu_bash', outcome: 'ok' })
 
     const id = store.snapshot().terminals[0]!.id
+    const replies: unknown[] = []
     const ask = (terminalId?: string, since?: string) => {
       let out: { spans: Array<{ id: string }> } | undefined
       monitor.sendToolSpans((e) => {
+        replies.push(e)
         if (e.type === 'toolSpans.data') out = e.payload
       }, terminalId, since)
       return out!.spans.map((s) => s.id)
@@ -140,7 +142,27 @@ describe('Monitor with fixture claude root', () => {
     const open = ask(id, '2026-10-07T10:00:00.500Z')
     expect(open).not.toContain('toolu_bash')
     expect(open).toContain('toolu_grep')
-    expect(JSON.stringify(events)).not.toContain('secret')
+    expect(replies.length).toBeGreaterThan(0)
+    expect(JSON.stringify([events, replies])).not.toContain('secret')
+  })
+
+  it('closes open spans as interrupted when the session ends', async () => {
+    const spans: Array<{ id: string; outcome?: string; end?: string }> = []
+    store.subscribe((m) => {
+      for (const e of m.events) if (e.type === 'tool.span') spans.push(e.payload)
+    })
+    alive = false
+    now += 60_000
+    await monitor.reconcile()
+    store.flush()
+    const at = new Date(now).toISOString()
+    expect(spans).toContainEqual(expect.objectContaining({ id: 'toolu_bash', outcome: 'interrupted', end: at }))
+    let reply: { spans: Array<{ id: string; outcome?: string; end?: string }> } | undefined
+    monitor.sendToolSpans((e) => {
+      if (e.type === 'toolSpans.data') reply = e.payload
+    })
+    expect(reply!.spans.find((s) => s.id === 'toolu_bash')).toMatchObject({ outcome: 'interrupted', end: at })
+    expect(reply!.spans.every((s) => s.end)).toBe(true)
   })
 
   it('applies a dashboard alias and clears it again', () => {

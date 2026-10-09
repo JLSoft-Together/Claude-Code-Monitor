@@ -50,6 +50,25 @@ describe('ToolSpanLog', () => {
     expect(byId.s?.end).toBeUndefined()
   })
 
+  it("closeOpen interrupts all open spans (or one agent's)", () => {
+    const log = new ToolSpanLog('t1', () => T0)
+    log.apply([use('m', 0), use('done', 5), result('done', 6)], 'main')
+    log.apply([use('s', 10)], 'a1')
+    log.apply([use('s2', 20)], 'a2')
+    expect(log.closeOpen(iso(15), 'a1')).toEqual([
+      { id: 's', terminalId: 't1', agentId: 'a1', tool: 'Bash', start: iso(10), end: iso(15), outcome: 'interrupted' },
+    ])
+    const changed = log.closeOpen(iso(100))
+    expect(changed.map((s) => s.id)).toEqual(['m', 's2'])
+    const byId = Object.fromEntries(log.list().map((s) => [s.id, s]))
+    expect(byId.m).toMatchObject({ end: iso(100), outcome: 'interrupted' })
+    expect(byId.done).toMatchObject({ end: iso(6), outcome: 'ok' })
+    expect(byId.s2).toMatchObject({ end: iso(100), outcome: 'interrupted' })
+    expect(log.closeOpen(iso(200))).toEqual([])
+    log.apply([use('late', 500)], 'main')
+    expect(log.closeOpen(iso(300))[0]?.end).toBe(iso(500))
+  })
+
   it('caps tool names at 80 chars', () => {
     const log = new ToolSpanLog('t1', () => T0)
     log.apply([use('a', 0, 'x'.repeat(200))], 'main')

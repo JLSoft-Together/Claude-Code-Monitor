@@ -379,7 +379,7 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 
 ## 11m. Tool spans (2026-10-09)
 
-A span is one tool call: `tool_use.id` in an assistant message paired with `tool_result.tool_use_id` in a later user message. Start and end are the transcript line timestamps; outcome is `ok`, `error` (`is_error`) or `interrupted` (a `turn_end` closes every span still open for that agent). Only the tool name (cut to 80 chars) and timestamps are read: inputs, outputs and results are never stored or sent.
+A span is one tool call: `tool_use.id` in an assistant message paired with `tool_result.tool_use_id` in a later user message. Start and end are the transcript line timestamps; outcome is `ok`, `error` (`is_error`) or `interrupted` (a `turn_end` closes every span still open for that agent). Only the tool name (cut to 80 chars) and timestamps are read: inputs, outputs and results are never stored or sent. Subagent transcripts never contain `system/turn_duration`, so the collector also closes spans as `interrupted` when a subagent resolves to a finished status (at its `completedAt`) and when the session ends (at the end time); otherwise they would stay open until the tracker is dropped.
 
 Limits: 2000 spans per session, spans older than 2 h are dropped. Spans are recorded during catch-up of existing transcripts too, but `tool.span` is broadcast only for changes seen live. The dashboard fetches history with `toolSpans.get` (optional `terminalId`, optional ISO `since`, max 40 chars) and gets one `toolSpans.data` reply; an unknown `terminalId` returns an empty list.
 

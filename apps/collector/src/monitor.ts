@@ -379,7 +379,9 @@ export class Monitor {
 
   private async endTracker(tracker: SessionTracker, now: number): Promise<void> {
     await this.syncTracker(tracker)
-    tracker.markEnded(new Date(now).toISOString())
+    const at = new Date(now).toISOString()
+    tracker.markEnded(at)
+    for (const span of tracker.closeOpenSpans(at)) this.store.toolSpan(span)
     this.publish(tracker)
     const record = this.recordOf(tracker)
     if (record) {

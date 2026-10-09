@@ -147,6 +147,10 @@ export class SessionTracker {
     return out
   }
 
+  closeOpenSpans(at: string): ToolSpan[] {
+    return this.spans.closeOpen(at)
+  }
+
   toolSpans(sinceMs?: number): ToolSpan[] {
     return this.spans.list(sinceMs)
   }
@@ -373,7 +377,9 @@ export class SessionTracker {
     entry.status = status
     entry.resolved = true
     entry.completedAt = at ?? entry.state.lastAt
+    const closed = entry.completedAt ? this.spans.closeOpen(entry.completedAt, entry.agentId) : []
     if (catchUp) return
+    this.pendingSpans.push(...closed)
     const kind = status === 'completed' ? 'agent.completed' : status === 'cancelled' ? 'agent.cancelled' : 'agent.failed'
     activity.push({
       kind,
