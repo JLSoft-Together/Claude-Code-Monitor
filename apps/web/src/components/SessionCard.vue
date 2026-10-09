@@ -1,26 +1,25 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AppWindow, BellOff, Check, Code, Cpu, FileDiff, FoldVertical, FolderOpen, GitBranch, GitMerge, Hourglass, LoaderCircle, Pencil, Pin, Repeat, RotateCcw, Snowflake, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
+import { BellOff, Check, Code, Cpu, FileDiff, FoldVertical, FolderOpen, GitBranch, LoaderCircle, StickyNote, X } from 'lucide-vue-next'
 import type { OpenApp, TerminalSession } from '@ccm/shared'
-import { cacheState, formatUsd, quietFor } from '../lib/attention'
+import { formatUsd } from '../lib/attention'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
 import { modeMeta } from '../lib/mode'
 import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
 import { statusMeta } from '../lib/status'
 import { useBump } from '../composables/useBump'
-import { displayTitle, isAutoNamed } from '../lib/title'
+import { useInlineEdit } from '../composables/useInlineEdit'
+import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
-import { useAttentionStore } from '../stores/attention'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
-import { useFavoritesStore } from '../stores/favorites'
-import { useSettingsStore } from '../stores/settings'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
-import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
+import SessionCardHeader from './SessionCardHeader.vue'
+import SessionCardSignals from './SessionCardSignals.vue'
 import StatusBadge from './StatusBadge.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
@@ -29,11 +28,7 @@ const { t, locale } = useI18n()
 const agents = useAgentsStore()
 const ui = useUiStore()
 const connection = useConnectionStore()
-const favorites = useFavoritesStore()
 const extras = useExtrasStore()
-const settings = useSettingsStore()
-const attention = useAttentionStore()
-const terminals = useTerminalsStore()
 const snooze = useSnoozeStore()
 
 const meta = computed(() => statusMeta(props.terminal.status))
@@ -43,7 +38,6 @@ const subs = computed(() => (agents.byTerminal[props.terminal.id] ?? []).filter(
 const subsWorking = computed(() => subs.value.filter((a) => a.status === 'working').length)
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
-const autoNamed = computed(() => isAutoNamed(props.terminal))
 
 const flash = ref(0)
 watch(
@@ -98,8 +92,6 @@ const tokens = computed(() => {
   }
 })
 
-const starred = computed(() => favorites.has(props.terminal.cwd))
-const starLabel = computed(() => t(starred.value ? 'favorites.unstar' : 'favorites.star'))
 const mode = computed(() => modeMeta(props.terminal.permissionMode))
 const modeLabel = computed(() => {
   const m = mode.value
@@ -121,45 +113,6 @@ const model = computed(() => {
     title: effort ? t('agent.modelEffortTitle', { model: m.model, effort }) : t('agent.modelTitle', { model: m.model }),
   }
 })
-const pinned = computed(() => settings.pinned.has(props.terminal.id))
-const pinLabel = computed(() => t(pinned.value ? 'terminal.unpin' : 'terminal.pin'))
-const quiet = computed(() => {
-  const ms = quietFor(props.terminal, now.value, settings.stuckMinutes)
-  return ms === null ? null : t('terminal.quiet', { quiet: duration(props.terminal.lastActivityAt, now.value) ?? '' })
-})
-const cache = computed(() => {
-  const c = cacheState(main.value, props.terminal, now.value)
-  if (!c) return null
-  const tokens = compactNumber(c.tokens)
-  if (!c.expired) {
-    const left = duration(new Date(now.value).toISOString(), c.expiresAt) ?? ''
-    return { cold: false, label: t('terminal.cacheWarm', { left }), title: t('terminal.cacheWarmTitle', { tokens }) }
-  }
-  const cost = c.extraCost !== null ? formatUsd(c.extraCost) : null
-  return {
-    cold: true,
-    label: cost ? t('terminal.cacheColdCost', { cost }) : t('terminal.cacheCold'),
-    title: t('terminal.cacheColdTitle', { tokens }),
-  }
-})
-const loop = computed(() => {
-  const l = attention.loops.get(props.terminal.id)
-  if (!l || ended.value) return null
-  const tool = l.tool ?? t('activity.unknownTool')
-  return { label: t('terminal.loop', { n: l.failures, tool }), title: t('terminal.loopTitle', { n: l.failures, calls: l.calls, tool }) }
-})
-const conflict = computed(() => {
-  const c = attention.conflicts.get(props.terminal.id)
-  if (!c) return null
-  const names = c.others.map((id) => displayTitle(terminals.byId[id]) || id)
-  return { hot: c.hot, first: c.others[0], label: t(c.hot ? 'terminal.conflictHot' : 'terminal.conflict', { names: names.join(', ') }) }
-})
-const jumping = computed(() => ui.focusingWindow === props.terminal.id)
-const jumpError = computed(() => (ui.windowResult?.terminalId === props.terminal.id && ui.windowResult.result !== 'ok' ? ui.windowResult : null))
-const canJump = computed(() => !ended.value && !!props.terminal.processId)
-function jump(): void {
-  if (!connection.focusWindow(props.terminal.id)) ui.reportWindowResult(props.terminal.id, 'offline')
-}
 const cost = computed(() => (props.terminal.costUsd === undefined ? null : formatUsd(props.terminal.costUsd)))
 
 const diff = computed(() => {
@@ -178,14 +131,10 @@ const openApps: { app: OpenApp; icon: typeof FolderOpen }[] = [
   { app: 'explorer', icon: FolderOpen },
   { app: 'vscode', icon: Code },
 ]
-const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))
 function open(app: OpenApp): void {
   if (!connection.openFolder(props.terminal.id, app)) ui.reportOpenResult(props.terminal.id, app, 'offline')
 }
-const pinBump = useBump(() => pinned.value)
-const starBump = useBump(() => starred.value)
 const effortBump = useBump(() => model.value?.effort)
-const coldBump = useBump(() => cache.value?.cold)
 const costBump = useBump(() => cost.value)
 const context = computed(() => {
   const m = main.value
@@ -193,73 +142,17 @@ const context = computed(() => {
   return { tokens: m.contextTokens, window: m.contextWindow }
 })
 
-const versionWarning = computed(() => {
-  const supported = connection.supportedClaudeVersion
-  const actual = props.terminal.claudeVersion
-  if (!supported || !actual || supported === actual) return null
-  return t('connection.versionMismatch', { supported, actual })
-})
+const { active: noting, draft: noteDraft, failed: noteFailed, input: noteInput, start: beginNote, commit, cancel: cancelNote } = useInlineEdit()
 
-const editing = ref(false)
-const draft = ref('')
-const input = ref<HTMLInputElement | null>(null)
-const saveFailed = ref(false)
-
-async function startEdit(): Promise<void> {
-  draft.value = title.value
-  saveFailed.value = false
-  editing.value = true
-  await nextTick()
-  input.value?.focus()
-  input.value?.select()
-}
-
-function commit(): void {
-  if (!editing.value) return
-  const value = draft.value.trim()
-  const alias = value && value !== props.terminal.title ? value : null
-  if ((alias ?? undefined) !== props.terminal.alias && !connection.setAlias(props.terminal.id, alias)) {
-    saveFailed.value = true
-    return
-  }
-  editing.value = false
-}
-
-function cancel(): void {
-  editing.value = false
-  saveFailed.value = false
-}
-
-const noting = ref(false)
-const noteDraft = ref('')
-const noteInput = ref<HTMLInputElement | null>(null)
-const noteFailed = ref(false)
-
-async function startNote(): Promise<void> {
-  noteDraft.value = props.terminal.note ?? ''
-  noteFailed.value = false
-  noting.value = true
-  await nextTick()
-  noteInput.value?.focus()
+function startNote(): void {
+  void beginNote(props.terminal.note ?? '')
 }
 
 function commitNote(): void {
-  if (!noting.value) return
-  const note = noteDraft.value.trim() || null
-  if ((note ?? undefined) !== props.terminal.note && !connection.setNote(props.terminal.id, note)) {
-    noteFailed.value = true
-    return
-  }
-  noting.value = false
-}
-
-function cancelNote(): void {
-  noting.value = false
-  noteFailed.value = false
-}
-
-function clearAlias(): void {
-  connection.setAlias(props.terminal.id, null)
+  commit((value) => {
+    const note = value || null
+    return (note ?? undefined) === props.terminal.note || connection.setNote(props.terminal.id, note)
+  })
 }
 </script>
 
@@ -271,138 +164,7 @@ function clearAlias(): void {
     <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-xl" :class="meta.text" aria-hidden="true" />
 
-    <form v-if="editing" class="relative z-10 flex items-center gap-1.5" @submit.prevent="commit">
-      <label :for="`alias-${terminal.id}`" class="sr-only">{{ t('terminal.renameLabel') }}</label>
-      <input
-        :id="`alias-${terminal.id}`"
-        ref="input"
-        v-model="draft"
-        maxlength="80"
-        class="h-9 min-w-0 flex-1 rounded-lg border border-accent bg-canvas px-2.5 text-sm font-semibold text-ink outline-none"
-        :aria-invalid="saveFailed"
-        :aria-describedby="saveFailed ? `alias-err-${terminal.id}` : undefined"
-        @keydown.esc.prevent="cancel"
-      />
-      <button type="submit" class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg bg-accent text-on-accent" :aria-label="t('terminal.renameSave')">
-        <Check :size="16" aria-hidden="true" />
-      </button>
-      <button type="button" class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted hover:bg-raised hover:text-ink" :aria-label="t('terminal.renameCancel')" @click="cancel">
-        <X :size="16" aria-hidden="true" />
-      </button>
-    </form>
-    <p v-if="editing && saveFailed" :id="`alias-err-${terminal.id}`" role="alert" class="relative z-10 mt-1 text-2xs text-st-error">
-      {{ t('terminal.renameOffline') }}
-    </p>
-
-    <div v-if="!editing" class="flex items-start gap-2">
-      <button
-        type="button"
-        class="min-w-0 flex-1 cursor-pointer truncate text-left text-base font-semibold after:absolute after:inset-0 after:rounded-xl after:content-['']"
-        :title="title"
-        :aria-label="t('terminal.focus', { title })"
-        :aria-pressed="focused"
-        @click="ui.focusTerminal(terminal.id)"
-      >
-        {{ title }}
-      </button>
-      <span
-        v-if="terminal.kind && terminal.kind !== 'interactive'"
-        class="shrink-0 rounded-md border border-line px-1.5 py-px font-mono text-2xs text-ink-muted"
-        :title="t('terminal.kind')"
-      >
-        {{ terminal.kind }}
-      </span>
-      <span v-if="versionWarning" class="shrink-0 pt-1 text-st-waiting" :title="versionWarning" role="img" :aria-label="versionWarning">
-        <TriangleAlert :size="15" aria-hidden="true" />
-      </span>
-      <button
-        v-if="terminal.alias"
-        type="button"
-        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
-        :aria-label="t('terminal.renameReset', { title: terminal.title })"
-        :title="t('terminal.renameReset', { title: terminal.title })"
-        @click="clearAlias"
-      >
-        <RotateCcw :size="15" aria-hidden="true" />
-      </button>
-      <button
-        v-if="canJump"
-        type="button"
-        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-accent disabled:cursor-wait"
-        :aria-label="t('terminal.jump', { title })"
-        :title="t('terminal.jumpTitle')"
-        :disabled="jumping"
-        @click="jump"
-      >
-        <LoaderCircle v-if="jumping" :size="15" class="animate-spin" aria-hidden="true" />
-        <AppWindow v-else :size="15" aria-hidden="true" />
-      </button>
-      <button
-        v-if="!ended"
-        type="button"
-        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised"
-        :class="pinned ? 'text-accent' : 'text-ink-faint hover:text-ink'"
-        :aria-label="pinLabel"
-        :aria-pressed="pinned"
-        :title="pinLabel"
-        @click="settings.togglePin(terminal.id)"
-      >
-        <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
-      </button>
-      <button
-        v-if="terminal.cwd"
-        type="button"
-        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised"
-        :class="starred ? 'text-st-waiting' : 'text-ink-faint hover:text-ink'"
-        :aria-label="starLabel"
-        :aria-pressed="starred"
-        :title="starLabel"
-        @click="connection.toggleFavorite(terminal.id)"
-      >
-        <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised hover:text-ink"
-        :class="terminal.note ? 'text-accent' : 'text-ink-faint'"
-        :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-        :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-        @click="startNote"
-      >
-        <StickyNote :size="15" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="relative z-10 -my-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
-        :aria-label="t('terminal.rename')"
-        :title="t('terminal.rename')"
-        @click="startEdit"
-      >
-        <Pencil :size="15" aria-hidden="true" />
-      </button>
-      <button
-        v-if="ended"
-        type="button"
-        class="relative z-10 -my-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-st-error"
-        :aria-label="t('terminal.dismiss', { title })"
-        :title="t('terminal.dismiss', { title })"
-        @click="connection.dismissEnded(terminal.id)"
-      >
-        <Trash2 :size="15" aria-hidden="true" />
-      </button>
-    </div>
-    <p v-if="jumpError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
-      {{ t(`terminal.jumpError.${jumpError.result}`) }}
-    </p>
-    <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
-      {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openAppKey(openError.app)}`) }) }}
-    </p>
-    <p v-if="!editing && terminal.alias" class="mt-0.5 truncate text-2xs text-ink-faint" :title="terminal.title">
-      {{ t('terminal.originalName', { title: terminal.title }) }}
-    </p>
-    <p v-else-if="!editing && autoNamed" class="mt-0.5 truncate text-2xs text-ink-faint" :title="t('terminal.nameHintLong')">
-      {{ t('terminal.nameHint') }}
-    </p>
+    <SessionCardHeader :terminal="terminal" @note="startNote" />
 
     <form v-if="noting" class="relative z-10 mt-2 flex items-center gap-1.5" @submit.prevent="commitNote">
       <label :for="`note-${terminal.id}`" class="sr-only">{{ t('terminal.noteLabel') }}</label>
@@ -461,30 +223,7 @@ function clearAlias(): void {
         </button>
       </template>
     </div>
-    <p v-if="quiet" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-st-waiting" :title="t('terminal.quietTitle')">
-      <Hourglass :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ quiet }}</span>
-    </p>
-    <p
-      v-if="cache"
-      class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs transition-colors duration-300"
-      :class="cache.cold ? 'font-medium text-st-waiting' : 'text-ink-muted'"
-      :title="cache.title"
-    >
-      <Snowflake :key="coldBump" :size="13" class="shrink-0" :class="coldBump ? 'ccm-pop' : ''" aria-hidden="true" /><span class="truncate">{{ cache.label }}</span>
-    </p>
-    <p v-if="loop" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-st-error" :title="loop.title">
-      <Repeat :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ loop.label }}</span>
-    </p>
-    <button
-      v-if="conflict"
-      type="button"
-      class="ccm-enter relative z-10 mt-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded text-left text-xs transition-colors duration-300 hover:underline"
-      :class="conflict.hot ? 'font-medium text-st-waiting' : 'text-ink-muted'"
-      :title="t('terminal.conflictTitle')"
-      @click="conflict.first && ui.focusTerminal(conflict.first)"
-    >
-      <GitMerge :size="13" class="shrink-0" :class="conflict.hot ? 'ccm-pulse' : ''" aria-hidden="true" /><span class="truncate">{{ conflict.label }}</span>
-    </button>
+    <SessionCardSignals :terminal="terminal" />
 
     <div v-if="mode || branch || model" class="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-2xs">
       <span
