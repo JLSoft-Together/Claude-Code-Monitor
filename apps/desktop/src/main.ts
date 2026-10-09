@@ -270,6 +270,7 @@ async function ready(): Promise<void> {
     logFile: path.join(app.getPath('logs'), 'collector.log'),
     onFatal: showError,
     onMessage: (data) => attention?.handle(data),
+    onExit: () => attention?.clear(),
   })
   createTray()
   mainWindow = createMainWindow()
