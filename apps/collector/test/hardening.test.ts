@@ -98,6 +98,42 @@ describe('toolSpans.get validation', () => {
   })
 })
 
+describe('favorite.open validation', () => {
+  it('keeps terminal and iterm, drops any other terminalApp', async () => {
+    const dist = await mkdtemp(path.join(os.tmpdir(), 'ccm-dist-'))
+    await writeFile(path.join(dist, 'index.html'), '<!doctype html>ok')
+    const got: unknown[] = []
+    const server = await startServer({
+      host: '127.0.0.1',
+      port: 0,
+      webDist: dist,
+      store: new MonitorStore({ activityLimit: 10, batchMs: 10 }),
+      onClientMessage: (m) => void got.push(m),
+    })
+    const port = (server.address() as AddressInfo).port
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      for (const terminalApp of ['iterm', 'terminal', 'warp', 5, undefined]) ws.send(JSON.stringify({ type: 'favorite.open', dir: '/x', mode: 'new', terminalApp }))
+      for (let i = 0; i < 100 && got.length < 5; i++) await new Promise((r) => setTimeout(r, 20))
+      expect(got).toEqual([
+        { type: 'favorite.open', dir: '/x', mode: 'new', terminalApp: 'iterm' },
+        { type: 'favorite.open', dir: '/x', mode: 'new', terminalApp: 'terminal' },
+        { type: 'favorite.open', dir: '/x', mode: 'new' },
+        { type: 'favorite.open', dir: '/x', mode: 'new' },
+        { type: 'favorite.open', dir: '/x', mode: 'new' },
+      ])
+      for (const m of got.slice(2)) expect(m).not.toHaveProperty('terminalApp')
+    } finally {
+      ws.close()
+      server.close()
+    }
+  })
+})
+
 class Sink implements UsageSink {
   snapshot: UsageSnapshot = { buckets: [], scan: { state: 'idle', filesDone: 0, filesTotal: 0 } }
   resetUsage(s: UsageSnapshot) {

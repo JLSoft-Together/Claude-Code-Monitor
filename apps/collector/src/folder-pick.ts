@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { FolderPickResult } from '@ccm/shared'
+import { parseOsaError, runCommand, type Runner } from './osascript'
 
 // Vista-style IFileOpenDialog in folder mode, owned by an invisible topmost form so it opens above the browser
 // (a background process cannot take the foreground otherwise). The path goes out base64 UTF-8 so non-ASCII folder
@@ -96,8 +97,24 @@ export function parsePickOutput(stdout: string): { result: FolderPickResult; dir
   return dir ? { result: 'ok', dir } : { result: 'failed' }
 }
 
-export function pickFolder(): Promise<{ result: FolderPickResult; dir?: string }> {
-  if (process.platform !== 'win32') return Promise.resolve({ result: 'unsupported' })
+const PICK_TIMEOUT_MS = 10 * 60_000
+
+export const MAC_PICK_SCRIPT = `activate
+POSIX path of (choose folder)`
+
+const macRun: Runner = (command, args) => runCommand(command, args, PICK_TIMEOUT_MS)
+
+async function pickFolderMac(run: Runner): Promise<{ result: FolderPickResult; dir?: string }> {
+  const r = await run('osascript', ['-e', MAC_PICK_SCRIPT])
+  if (r.code !== 0) return { result: parseOsaError(r.stderr) === 'cancelled' ? 'cancelled' : 'failed' }
+  const raw = r.stdout.replace(/\r?\n$/, '')
+  if (!raw.startsWith('/')) return { result: 'failed' }
+  return { result: 'ok', dir: raw.length > 1 ? raw.replace(/\/$/, '') : raw }
+}
+
+export function pickFolder(platform: NodeJS.Platform = process.platform, run: Runner = macRun): Promise<{ result: FolderPickResult; dir?: string }> {
+  if (platform === 'darwin') return pickFolderMac(run)
+  if (platform !== 'win32') return Promise.resolve({ result: 'unsupported' })
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',

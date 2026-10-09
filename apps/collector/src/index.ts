@@ -148,7 +148,7 @@ async function main(): Promise<void> {
           void monitor.stopJob(message.jobId)
           break
         case 'favorite.open':
-          void monitor.openFavorite(message.dir, message.mode)
+          void monitor.openFavorite(message.dir, message.mode, message.terminalApp)
           break
         case 'client.presence':
           toaster.setPresence(ctx.clientId, message.attentive, message.locale)

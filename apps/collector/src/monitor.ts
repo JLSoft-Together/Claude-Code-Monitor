@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
-import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord } from '@ccm/shared'
+import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchErrorCode, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord, TerminalApp } from '@ccm/shared'
 import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
@@ -17,7 +17,7 @@ import { StatusTimeline } from './timeline'
 import { JobReader } from './jobs'
 import type { JsonFile } from './json-file'
 import { isDaemonRunning, stopBackgroundJob } from './job-stop'
-import { launchClaude } from './launcher'
+import { LaunchError, launchClaude } from './launcher'
 import { readModelCatalog } from './model-catalog'
 import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
@@ -40,7 +40,7 @@ export interface MonitorDeps {
   queryProcesses: (pids: number[]) => Promise<Map<number, ProcessInfo> | null>
   isPidAlive: (pid: number) => boolean
   now: () => number
-  launch?: (dir: string, mode: LaunchMode) => Promise<void>
+  launch?: (dir: string, mode: LaunchMode, terminalApp?: TerminalApp) => Promise<void>
   focusWindow?: (pid: number) => Promise<FocusWindowResult>
   pickFolder?: () => Promise<{ result: FolderPickResult; dir?: string }>
   openFolder?: (dir: string, app: OpenApp) => Promise<OpenResult>
@@ -54,7 +54,7 @@ export type Reply = (event: MonitorEvent) => void
 
 const DIFF_DEBOUNCE_MS = 2_000
 
-const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: launchClaude, focusWindow: (pid) => focusTerminalWindow(pid), pickFolder, openFolder, diffStat: readDiffStat }
+const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: (dir, mode, terminalApp) => launchClaude(dir, mode, undefined, terminalApp), focusWindow: (pid) => focusTerminalWindow(pid), pickFolder, openFolder, diffStat: readDiffStat }
 
 export class Monitor {
   private readonly trackers = new Map<string, SessionTracker>()
@@ -491,16 +491,16 @@ export class Monitor {
     return true
   }
 
-  async openFavorite(dir: string, mode: LaunchMode): Promise<boolean> {
+  async openFavorite(dir: string, mode: LaunchMode, terminalApp?: TerminalApp): Promise<boolean> {
     const favorite = this.favorites.get(dir)
     const launch = this.deps.launch
     if (!favorite || !launch) return false
     try {
-      await launch(favorite.dir, mode)
+      await launch(favorite.dir, mode, terminalApp)
       this.pushActivity([{ kind: 'launch.started', data: { title: favorite.label, mode } }])
       return true
     } catch (err) {
-      const error = (err as Error).message === 'directory not found' ? 'notFound' : 'failed'
+      const error: LaunchErrorCode = err instanceof LaunchError ? err.code : (err as Error).message === 'directory not found' ? 'notFound' : 'failed'
       this.pushActivity([{ kind: 'launch.failed', data: { title: favorite.label, mode, error } }])
       return false
     }

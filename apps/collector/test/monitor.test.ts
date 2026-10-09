@@ -250,6 +250,39 @@ describe('Monitor with fixture claude root', () => {
     expect(store.snapshot().favorites).toEqual([])
   })
 
+  it('passes terminalApp to launch and reports LaunchError codes', async () => {
+    const { LaunchError } = await import('../src/launcher')
+    const launched: unknown[][] = []
+    let fail: Error | null = null
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, {
+      ...deps(),
+      launch: async (...args) => {
+        launched.push(args)
+        if (fail) throw fail
+      },
+    })
+    await monitor.start({ watch: false })
+    expect(monitor.toggleFavorite(store.snapshot().terminals[0]!.id)).toBe(true)
+    expect(await monitor.openFavorite(CWD, 'new', 'iterm')).toBe(true)
+    expect(await monitor.openFavorite(CWD, 'continue')).toBe(true)
+    expect(launched).toEqual([
+      [path.resolve(CWD), 'new', 'iterm'],
+      [path.resolve(CWD), 'continue', undefined],
+    ])
+    for (const code of ['denied', 'notInstalled', 'failed'] as const) {
+      fail = new LaunchError(code)
+      expect(await monitor.openFavorite(CWD, 'new', 'terminal')).toBe(false)
+      expect(store.snapshot().activity.at(-1)).toMatchObject({ kind: 'launch.failed', data: { error: code } })
+    }
+    fail = new Error('directory not found')
+    await monitor.openFavorite(CWD, 'new')
+    expect(store.snapshot().activity.at(-1)).toMatchObject({ kind: 'launch.failed', data: { error: 'notFound' } })
+    fail = new Error('unsupported platform')
+    await monitor.openFavorite(CWD, 'new')
+    expect(store.snapshot().activity.at(-1)).toMatchObject({ kind: 'launch.failed', data: { error: 'failed' } })
+  })
+
   it('records an ended session in history with token totals only', async () => {
     const sessions: string[] = []
     store.subscribe((m) => {

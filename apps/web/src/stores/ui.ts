@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import type { FocusWindowResult, OpenApp, OpenResult } from '@ccm/shared'
+import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
 import { WINDOWS, type WindowMin } from '../lib/toolTimeline'
 
@@ -18,6 +18,14 @@ function initialView(): View {
 }
 
 export type MapView = 'map' | 'timeline'
+
+function initialLaunchTerminal(): TerminalApp {
+  try {
+    return localStorage.getItem('ccm.launchTerminal') === 'iterm' ? 'iterm' : 'terminal'
+  } catch {
+    return 'terminal'
+  }
+}
 
 function initialMapView(): MapView {
   try {
@@ -181,6 +189,15 @@ export const useUiStore = defineStore('ui', () => {
     }
   })
 
+  const launchTerminal = ref<TerminalApp>(initialLaunchTerminal())
+  watch(launchTerminal, (value) => {
+    try {
+      localStorage.setItem('ccm.launchTerminal', value)
+    } catch {
+      return
+    }
+  })
+
   const timelineWindow = ref<WindowMin>(initialTimelineWindow())
   watch(timelineWindow, (value) => {
     try {
@@ -326,6 +343,7 @@ export const useUiStore = defineStore('ui', () => {
   return {
     view,
     mapView,
+    launchTerminal,
     timelineWindow,
     compact,
     toggleCompact,

@@ -130,6 +130,11 @@ export interface ActivityEvent {
 
 export type LaunchMode = 'new' | 'continue'
 
+export type TerminalApp = 'terminal' | 'iterm'
+
+/** `data.error` of a `launch.failed` activity. */
+export type LaunchErrorCode = 'notFound' | 'denied' | 'notInstalled' | 'failed'
+
 export interface Favorite {
   dir: string
   label: string
@@ -411,7 +416,8 @@ export type ClientMessage =
   /** Star a folder by path; must be an existing local absolute directory. */
   | { type: 'favorite.add'; dir: string; label?: string | null }
   | { type: 'folder.pick'; requestId: string }
-  | { type: 'favorite.open'; dir: string; mode: LaunchMode }
+  /** terminalApp picks Terminal.app or iTerm2 on macOS; ignored elsewhere. */
+  | { type: 'favorite.open'; dir: string; mode: LaunchMode; terminalApp?: TerminalApp }
   /** null or blank label resets to the folder name. */
   | { type: 'favorite.rename'; dir: string; label: string | null }
   /** Drop ended sessions from the dashboard; without terminalId every ended session goes. Live sessions are never touched. */

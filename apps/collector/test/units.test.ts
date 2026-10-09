@@ -1,7 +1,7 @@
 import { mkdtemp, appendFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mapRegistryStatus, mapTaskNotificationStatus, waitReason } from '@ccm/shared'
 import { parseProcessQueryOutput, parsePsNames, parsePsOutput, procStartMatches } from '../src/process'
 import { parseRegistryRecord, pidFromFileName } from '../src/registry'
@@ -9,6 +9,7 @@ import { JsonlTailer } from '../src/tailer'
 import { extractSignals, TranscriptState } from '../src/transcript'
 import { MonitorStore } from '../src/store'
 import { loadConfig } from '../src/config'
+import type { RunResult, Runner } from '../src/osascript'
 
 describe('waitReason', () => {
   it('maps documented values', () => {
@@ -189,13 +190,117 @@ describe('context window and launcher', () => {
     const { launchClaude } = await import('../src/launcher')
     const calls: string[][] = []
     const dir = process.cwd()
-    await launchClaude(dir, 'continue', async (cmd, args, cwd) => {
-      calls.push([cmd, ...args, `cwd=${cwd}`])
-      if (cmd === 'wt.exe') throw new Error('ENOENT')
-    })
+    await launchClaude(
+      dir,
+      'continue',
+      async (cmd, args, cwd) => {
+        calls.push([cmd, ...args, `cwd=${cwd}`])
+        if (cmd === 'wt.exe') throw new Error('ENOENT')
+      },
+      undefined,
+      'win32',
+    )
     expect(calls[0]).toEqual(['wt.exe', '-w', '0', 'nt', '-d', dir, 'powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
     expect(calls[1]).toEqual(['powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
-    await expect(launchClaude(`${dir}/does-not-exist`, 'new', async () => {})).rejects.toThrow('directory not found')
+    await expect(launchClaude(`${dir}/does-not-exist`, 'new', async () => {}, undefined, 'win32')).rejects.toThrow('directory not found')
+  })
+})
+
+function fakeRun(result: Partial<RunResult> = {}) {
+  const calls: [string, string[]][] = []
+  const run: Runner = async (command, args) => {
+    calls.push([command, args])
+    return { code: 0, stdout: '', stderr: '', ...result }
+  }
+  return { calls, run }
+}
+
+describe('macOS launcher', () => {
+  it('launchArgs keeps the dir as a separate argv item', async () => {
+    const { launchArgs } = await import('../src/launcher')
+    const dir = "/tmp/a b'c$(x)"
+    for (const app of ['terminal', 'iterm'] as const) {
+      const args = launchArgs(app, dir, 'new')
+      expect(args).toHaveLength(4)
+      expect(args[0]).toBe('-e')
+      expect(args[1]).toContain('on run argv')
+      expect(args[1]).toContain('quoted form of')
+      expect(args[1]).not.toContain('a b')
+      expect(args[2]).toBe(dir)
+      expect(args[3]).toBe('claude')
+    }
+    expect(launchArgs('iterm', dir, 'new')[1]).toContain('application id "com.googlecode.iterm2"')
+    expect(launchArgs('iterm', dir, 'new')[1]).toContain('create window with default profile')
+    expect(launchArgs('terminal', dir, 'new')[1]).toMatch(/do script cmdLine\n/)
+  })
+
+  it('continue runs claude --continue', async () => {
+    const { launchArgs } = await import('../src/launcher')
+    expect(launchArgs('terminal', '/x', 'continue')[3]).toBe('claude --continue')
+    expect(launchArgs('iterm', '/x', 'continue')[3]).toBe('claude --continue')
+  })
+
+  it('runs osascript on darwin and never the spawner', async () => {
+    const { launchArgs, launchClaude } = await import('../src/launcher')
+    const dir = process.cwd()
+    const spawner = vi.fn(async () => {})
+    const ok = fakeRun()
+    await launchClaude(dir, 'continue', spawner, 'iterm', 'darwin', ok.run)
+    expect(spawner).not.toHaveBeenCalled()
+    expect(ok.calls).toEqual([['osascript', launchArgs('iterm', dir, 'continue')]])
+    const def = fakeRun()
+    await launchClaude(dir, 'new', spawner, undefined, 'darwin', def.run)
+    expect(def.calls[0]![1]).toEqual(launchArgs('terminal', dir, 'new'))
+  })
+
+  it('maps osascript failures to LaunchError codes', async () => {
+    const { launchClaude, LaunchError } = await import('../src/launcher')
+    const dir = process.cwd()
+    const cases: [string, string][] = [
+      ['execution error: Not authorized to send Apple events to iTerm. (-1743)', 'denied'],
+      ['execution error: Can’t get application "iTerm". (-1728)', 'notInstalled'],
+      ['104:145: syntax error: Can’t get application id "com.googlecode.iterm2". (-1728)', 'notInstalled'],
+      ['execution error: User canceled. (-128)', 'failed'],
+      ['boom', 'failed'],
+    ]
+    for (const [stderr, code] of cases) {
+      const err = await launchClaude(dir, 'new', undefined, 'iterm', 'darwin', fakeRun({ code: 1, stderr }).run).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(LaunchError)
+      expect(err).toMatchObject({ code })
+    }
+  })
+
+  it('checks the directory first and stays unsupported on linux', async () => {
+    const { launchClaude } = await import('../src/launcher')
+    const r = fakeRun()
+    await expect(launchClaude(`${process.cwd()}/does-not-exist`, 'new', undefined, 'terminal', 'darwin', r.run)).rejects.toThrow('directory not found')
+    expect(r.calls).toEqual([])
+    await expect(launchClaude(process.cwd(), 'new', undefined, 'terminal', 'linux', r.run)).rejects.toThrow('unsupported platform')
+    expect(r.calls).toEqual([])
+  })
+})
+
+describe('macOS folder picker', () => {
+  it('returns the POSIX path without the trailing slash', async () => {
+    const { pickFolder } = await import('../src/folder-pick')
+    const r = fakeRun({ stdout: '/Users/x/p/\n' })
+    expect(await pickFolder('darwin', r.run)).toEqual({ result: 'ok', dir: '/Users/x/p' })
+    expect(r.calls[0]![0]).toBe('osascript')
+    expect(r.calls[0]![1][0]).toBe('-e')
+    expect(r.calls[0]![1][1]).toContain('POSIX path of (choose folder')
+    expect(await pickFolder('darwin', fakeRun({ stdout: '/\n' }).run)).toEqual({ result: 'ok', dir: '/' })
+    expect(await pickFolder('darwin', fakeRun({ stdout: "/Users/x/a b'c/\n" }).run)).toEqual({ result: 'ok', dir: "/Users/x/a b'c" })
+  })
+
+  it('maps cancel, errors and other platforms', async () => {
+    const { pickFolder } = await import('../src/folder-pick')
+    expect(await pickFolder('darwin', fakeRun({ code: 1, stderr: 'execution error: User canceled. (-128)' }).run)).toEqual({ result: 'cancelled' })
+    expect(await pickFolder('darwin', fakeRun({ code: 1, stderr: 'boom' }).run)).toEqual({ result: 'failed' })
+    expect(await pickFolder('darwin', fakeRun({ stdout: '\n' }).run)).toEqual({ result: 'failed' })
+    expect(await pickFolder('darwin', fakeRun({ stdout: 'relative/\n' }).run)).toEqual({ result: 'failed' })
+    const r = fakeRun()
+    expect(await pickFolder('linux', r.run)).toEqual({ result: 'unsupported' })
+    expect(r.calls).toEqual([])
   })
 })
 

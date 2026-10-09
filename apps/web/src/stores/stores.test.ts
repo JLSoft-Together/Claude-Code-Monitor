@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import type { Agent, MonitorSnapshot, ServerMessage, TerminalSession } from '@ccm/shared'
 import { CHILD_INDENT, columnsFor, computeLayout, COLUMN_WIDTH, treeOrder, visibleAgents } from '../lib/layout'
 import { useActivityStore, ACTIVITY_LIMIT, TOOL_ACTIVITY_LIMIT } from './activity'
@@ -145,5 +146,26 @@ describe('nested subagents and finished filter', () => {
     expect(hidden).toBe(2)
     const errored = visibleAgents([agent('t1:main', 't1', { role: 'main' }), agent('e1', 't1', { status: 'error' })], true)
     expect(errored.visible.has('e1')).toBe(true)
+  })
+})
+
+describe('launch terminal setting', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('defaults to terminal, persists and reads back', async () => {
+    const { useUiStore } = await import('./ui')
+    const ui = useUiStore()
+    expect(ui.launchTerminal).toBe('terminal')
+    ui.launchTerminal = 'iterm'
+    await nextTick()
+    expect(localStorage.getItem('ccm.launchTerminal')).toBe('iterm')
+    setActivePinia(createPinia())
+    expect(useUiStore().launchTerminal).toBe('iterm')
+    localStorage.setItem('ccm.launchTerminal', 'warp')
+    setActivePinia(createPinia())
+    expect(useUiStore().launchTerminal).toBe('terminal')
   })
 })

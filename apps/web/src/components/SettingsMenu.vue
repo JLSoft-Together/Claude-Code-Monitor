@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type ToastKind } from '@ccm/shared'
+import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
 import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
@@ -35,6 +35,7 @@ const locales = [
   { id: 'vi' as const, label: 'Tiếng Việt' },
   { id: 'en' as const, label: 'English' },
 ]
+const terminalApps: TerminalApp[] = ['terminal', 'iterm']
 const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
 
 const events = computed(() => [
@@ -315,6 +316,28 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 </div>
               </div>
             </div>
+          </section>
+
+          <section v-if="isMac" aria-labelledby="set-launch" class="mt-6 border-t border-line pt-5">
+            <h3 id="set-launch" class="mb-3 text-xs font-semibold text-ink-muted">{{ t('settings.section.launch') }}</h3>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm">{{ t('settings.launchTerminal') }}</span>
+              <div class="grid grid-cols-2 rounded-lg border border-line bg-canvas p-0.5" role="radiogroup" :aria-label="t('settings.launchTerminal')">
+                <button
+                  v-for="app in terminalApps"
+                  :key="app"
+                  type="button"
+                  role="radio"
+                  :aria-checked="ui.launchTerminal === app"
+                  class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-xs font-medium transition-colors"
+                  :class="ui.launchTerminal === app ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
+                  @click="ui.launchTerminal = app"
+                >
+                  {{ t(`settings.launchTerminalApp.${app}`) }}
+                </button>
+              </div>
+            </div>
+            <p class="mt-1.5 text-xs leading-relaxed text-ink-faint">{{ t('settings.launchTerminalHint') }}</p>
           </section>
 
           <section aria-labelledby="set-notify" class="mt-6 border-t border-line pt-5">

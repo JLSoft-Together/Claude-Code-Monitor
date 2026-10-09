@@ -8,9 +8,9 @@ export interface RunResult {
 
 export type Runner = (command: string, args: string[]) => Promise<RunResult>
 
-export const runCommand: Runner = (command, args) =>
+export const runCommand = (command: string, args: string[], timeout = 10_000): Promise<RunResult> =>
   new Promise((resolve) => {
-    execFile(command, args, { timeout: 10_000, maxBuffer: 8_000_000, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(command, args, { timeout, maxBuffer: 8_000_000, windowsHide: true }, (err, stdout, stderr) => {
       const code = !err ? 0 : typeof err.code === 'number' ? err.code : 1
       resolve({ code, stdout: String(stdout), stderr: String(stderr) || (err ? err.message : '') })
     })

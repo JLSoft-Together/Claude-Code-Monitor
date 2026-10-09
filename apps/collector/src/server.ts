@@ -280,7 +280,7 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'terminal.alias' && typeof m.terminalId === 'string' && (typeof m.alias === 'string' || m.alias === null)) {
@@ -333,7 +333,8 @@ export function startServer(options: {
         ) {
           options.onClientMessage?.({ type: 'terminal.snooze', terminalId: m.terminalId, minutes: m.minutes }, ctx())
         } else if (m.type === 'favorite.open' && typeof m.dir === 'string' && (m.mode === 'new' || m.mode === 'continue')) {
-          options.onClientMessage?.({ type: 'favorite.open', dir: m.dir, mode: m.mode }, ctx())
+          const terminalApp = m.terminalApp === 'terminal' || m.terminalApp === 'iterm' ? m.terminalApp : undefined
+          options.onClientMessage?.({ type: 'favorite.open', dir: m.dir, mode: m.mode, ...(terminalApp && { terminalApp }) }, ctx())
         }
       } catch {
         return

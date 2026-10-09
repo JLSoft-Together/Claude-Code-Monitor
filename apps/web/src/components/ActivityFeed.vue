@@ -88,7 +88,9 @@ function message(e: ActivityEvent): string {
       return t(`activity.${e.kind.replace('.', '_')}`, {
         title: d.title ?? '—',
         mode: t(d.mode === 'continue' ? 'favorites.continue' : 'favorites.openNew'),
-        error: t(d.error === 'notFound' ? 'favorites.errorNotFound' : 'favorites.errorFailed'),
+        error: t(
+          d.error === 'notFound' ? 'favorites.errorNotFound' : d.error && te(`activity.launchError.${d.error}`) ? `activity.launchError.${d.error}` : 'favorites.errorFailed',
+        ),
       })
     case 'job.stopped':
       return t(d.error === 'notRunning' ? 'activity.job_notRunning' : 'activity.job_stopped', { title: d.title ?? '—' })
