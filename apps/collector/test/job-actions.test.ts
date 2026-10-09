@@ -6,6 +6,7 @@ import type { ActivityEvent, BackgroundJob, JobStopResult, MonitorEvent } from '
 import type { CollectorConfig } from '../src/config'
 import { claudeCliCandidates, stopBackgroundJob } from '../src/job-stop'
 import { parseJobState } from '../src/jobs'
+import { JsonFile } from '../src/json-file'
 import { Monitor } from '../src/monitor'
 import { MonitorStore } from '../src/store'
 
@@ -70,13 +71,21 @@ describe('Monitor job actions', () => {
     statusLineCommand: 'node statusline-bridge.mjs',
   })
 
-  const monitor = () =>
-    new Monitor(config(), store, {
-      isPidAlive: () => true,
-      queryProcesses: async () => null,
-      now: () => now,
-      stopJob: async (id) => (stops.push(id), stopResult),
-    })
+  const monitor = (dismissedJobs?: JsonFile) =>
+    new Monitor(
+      config(),
+      store,
+      {
+        isPidAlive: () => true,
+        queryProcesses: async () => null,
+        now: () => now,
+        stopJob: async (id) => (stops.push(id), stopResult),
+      },
+      undefined,
+      undefined,
+      undefined,
+      { dismissedJobs },
+    )
 
   async function writeJob(id: string, state: string, mtime: number): Promise<void> {
     const dir = path.join(root, 'jobs', id)
@@ -149,5 +158,39 @@ describe('Monitor job actions', () => {
     stopResult = 'noCli'
     expect(await m.stopJob('work0001')).toBe('noCli')
     expect(activity().find((e) => e.kind === 'job.stopFailed')?.data).toMatchObject({ jobId: 'work0001', error: 'noCli' })
+  })
+
+  it('keeps dismissed jobs hidden across a collector restart until the job changes', async () => {
+    await writeJob('blck0001', 'blocked', now - 40_000)
+    const file = path.join(root, 'dismissed-jobs.json')
+    const saved = new JsonFile(file, 60_000)
+    const first = monitor(saved)
+    await first.pollExtras()
+    expect(first.dismissJobs('blck0001')).toBe(1)
+    await saved.flush()
+
+    store = new MonitorStore({ activityLimit: 100, batchMs: 1 })
+    await monitor(new JsonFile(file, 60_000)).pollExtras()
+    expect(jobs()).toEqual([])
+
+    await writeJob('blck0001', 'working', now - 5_000)
+    store = new MonitorStore({ activityLimit: 100, batchMs: 1 })
+    const resumed = new JsonFile(file, 60_000)
+    await monitor(resumed).pollExtras()
+    expect(jobs().map((j) => j.id)).toEqual(['blck0001'])
+    await resumed.flush()
+  })
+
+  it('hides a job once it is stopped or already gone, since state.json is never rewritten', async () => {
+    await writeJob('blck0001', 'blocked', now - 40_000)
+    await writeJob('blck0002', 'blocked', now - 30_000)
+    const m = monitor()
+    await m.pollExtras()
+    expect(await m.stopJob('blck0001')).toBe('ok')
+    stopResult = 'notFound'
+    expect(await m.stopJob('blck0002')).toBe('notFound')
+    expect(jobs()).toEqual([])
+    await m.pollExtras()
+    expect(jobs()).toEqual([])
   })
 })

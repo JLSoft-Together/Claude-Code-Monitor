@@ -15,6 +15,7 @@ import { LimitHistory } from './forecast'
 import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
 import { JobReader } from './jobs'
+import type { JsonFile } from './json-file'
 import { stopBackgroundJob } from './job-stop'
 import { launchClaude } from './launcher'
 import { readModelCatalog } from './model-catalog'
@@ -32,6 +33,7 @@ export interface MonitorStores {
   history?: SessionHistory
   timeline?: StatusTimeline
   notes?: AliasStore
+  dismissedJobs?: JsonFile
 }
 
 export interface MonitorDeps {
@@ -87,6 +89,7 @@ export class Monitor {
   private readonly history: SessionHistory
   private readonly timeline: StatusTimeline
   private readonly notes: AliasStore
+  private readonly dismissedJobsFile: JsonFile | null
 
   constructor(
     private readonly config: CollectorConfig,
@@ -101,6 +104,7 @@ export class Monitor {
     this.history = stores.history ?? new SessionHistory()
     this.timeline = stores.timeline ?? new StatusTimeline(null, () => this.deps.now())
     this.notes = stores.notes ?? new AliasStore(null, MAX_NOTE_LENGTH)
+    this.dismissedJobsFile = stores.dismissedJobs ?? null
     this.sessionsDir = path.join(config.claudeRoot, 'sessions')
     this.projectsDir = path.join(config.claudeRoot, 'projects')
     this.jobReader = new JobReader(path.join(config.claudeRoot, 'jobs'))
@@ -164,6 +168,7 @@ export class Monitor {
   }
 
   private async pollJobs(now: number): Promise<void> {
+    if (!this.jobsLoaded) await this.loadDismissedJobs()
     const list = await this.jobReader.read(now)
     const drafts: ActivityDraft[] = []
     const next = new Map(list.map((j) => [j.id, j]))
@@ -179,10 +184,22 @@ export class Monitor {
     this.jobsLoaded = true
     for (const [id, at] of this.dismissedJobs) {
       const job = next.get(id)
-      if (!job || job.updatedAt !== at) this.dismissedJobs.delete(id)
+      if (job && job.updatedAt === at) continue
+      this.dismissedJobs.delete(id)
+      this.saveDismissedJobs()
     }
     this.publishJobs()
     this.pushActivity(drafts)
+  }
+
+  private async loadDismissedJobs(): Promise<void> {
+    const saved = await this.dismissedJobsFile?.read()
+    if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return
+    for (const [id, at] of Object.entries(saved)) if (typeof at === 'string') this.dismissedJobs.set(id, at)
+  }
+
+  private saveDismissedJobs(): void {
+    this.dismissedJobsFile?.schedule(() => Object.fromEntries(this.dismissedJobs))
   }
 
   private publishJobs(): void {
@@ -196,7 +213,10 @@ export class Monitor {
       this.dismissedJobs.set(job.id, job.updatedAt ?? '')
       removed++
     }
-    if (removed) this.publishJobs()
+    if (removed) {
+      this.saveDismissedJobs()
+      this.publishJobs()
+    }
     return removed
   }
 
@@ -208,6 +228,7 @@ export class Monitor {
       const result = await (this.deps.stopJob ?? stopBackgroundJob)(jobId)
       const data = { title: job.name ?? job.id, jobId, ...(result === 'ok' ? {} : { error: result }) }
       this.pushActivity([{ kind: result === 'ok' ? 'job.stopped' : 'job.stopFailed', data }])
+      if (result === 'ok' || result === 'notFound') this.dismissJobs(jobId)
       if (result === 'ok') await this.pollExtras()
       return result
     } finally {

@@ -6,6 +6,7 @@ import { FavoriteStore } from './favorites'
 import { LimitHistory } from './forecast'
 import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
+import { JsonFile } from './json-file'
 import { SnoozeStore } from './snooze'
 import { TEXT, Toaster } from './toast'
 import { Monitor } from './monitor'
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
   await timeline.load()
   const notes = new AliasStore(path.join(config.dataDir, 'notes.json'), MAX_NOTE_LENGTH)
   await notes.load()
-  const monitor = new Monitor(config, store, undefined, aliases, favorites, response, { limitHistory, history, timeline, notes })
+  const dismissedJobs = new JsonFile(path.join(config.dataDir, 'dismissed-jobs.json'), 500)
+  const monitor = new Monitor(config, store, undefined, aliases, favorites, response, { limitHistory, history, timeline, notes, dismissedJobs })
   const usage = new UsageIndex(path.join(config.claudeRoot, 'projects'), path.join(config.dataDir, 'usage-index.json'), store)
   monitor.onProjectFile = (file) => usage.notify(file)
   const repoRoots = new RepoRoots()
@@ -180,7 +182,7 @@ async function main(): Promise<void> {
     clearInterval(toastTimer)
     monitor.stop()
     server.close()
-    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), history.save(), timeline.save()]).finally(() => process.exit(0))
+    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), history.save(), timeline.save(), dismissedJobs.flush()]).finally(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
