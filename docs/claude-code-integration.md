@@ -204,7 +204,8 @@ Only `spawnDepth = 1` observed. Nested subagents (depth ≥ 2) — file location
 - Collector (`process.ts`): `ps -o pid=,ppid=,lstart= -p <pids>` + `ps -o pid=,comm= -p <ppids>` (shell name), same env, no shell. `ps` exit 1 without stderr = some pids gone (parsed); missing `ps` / bad option / timeout → `null` (TTL only). Match = equal strings after collapsing spaces; a `procStart` that is not lstart-shaped keeps the session.
 - Data dir (`datadir.ts`, mirrored in `statusline-bridge.mjs`): macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` or `~/.local/share/ccm`.
 - Open folder: macOS `/usr/bin/open`, Linux `xdg-open`; VS Code via `code` on PATH, macOS fallback `open -a "<...>/Visual Studio Code.app"`.
-- Still Windows-only (`unsupported`): window focus, folder picker, launch from favorites, system toast.
+- macOS (since 2026-10-09, §11k/§11n): window focus (`focus-mac.ts`: exact tab by tty for Terminal.app / iTerm2, app-only `open -a` for JetBrains and other `.app` hosts), alerts (dock badge + bounce, desktop app only), launch from favorites (Terminal.app / iTerm2) and the folder picker (`choose folder`).
+- Still unsupported on Linux (`unsupported`): window focus, folder picker, launch from favorites, system toast. On macOS the collector alone (no desktop app) has no toast.
 
 ---
 
@@ -373,6 +374,12 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 3. **PATH.** Finder/Dock launches get launchd's minimal PATH, so `main.ts` merges `$SHELL -ilc` PATH (5 s timeout) before forking the collector: `node` (bridge command), `git`, `code`, `claude` resolve like in Terminal.
 4. **Bridge without node.** `statusline-bridge.sh` (`ELECTRON_RUN_AS_NODE=1 exec <app exe>`), chmod 755. The exe path is baked in, so the app offers `moveToApplicationsFolder()` when run from the DMG / Downloads (translocated).
 5. **Shell.** App menu (app / edit / window roles) for Cmd C/V/Q/W; menu bar icon `ccmTrayTemplate.png`; `activate` reopens the window; login item without `path/args` (opens shown, `--hidden` is Windows only); no AUMID / balloon.
+6. **Alerts, focus, launch (2026-10-09; live results in §11n).**
+   - Alerts: the desktop app sets `CCM_TOAST_BACKEND=electron`; with `process.parentPort` the collector posts `{type:'toast.show',tag,title,persistent}` / `{type:'toast.hide',tag}` (no body, no url). `attention.ts` bounces the dock (`critical`) on a new tag, sets the badge to the number of persistent alerts, settles on window focus, clears on quit and when the collector exits. Settings Test bounces without a badge. Native notifications are refused for ad-hoc apps (§11n), so badge + bounce stay until Developer ID signing.
+   - Waiting labels: `permission prompt` + `ExitPlanMode` = "Needs plan approval"; with another tool = "Needs approval: <tool>"; `input needed` = "Asking you"; unknown values shown raw (`waitReason()` in shared, `waitDisplay` in web).
+   - Focus results: `ok`, `appOnly` (info), `denied` (-1743), `notFound` (no tab on that tty, no fallback). Bundles must be absolute paths; at most 8 ancestors are walked. Verified live: Terminal ok, iTerm2 ok, WebStorm appOnly.
+   - Launch: `osascript -e SCRIPT dir cmd` (argv only; cmd is `claude` or `claude --continue`). Terminal.app `do script` opens a new window; iTerm2 (by bundle id) a new window with the default profile. The dir goes through `quoted form of`; dirs with control characters are refused because `do script` / `write text` type the line into the shell's line editor, where `^U` and similar bypass quoting. Timeout 60 s (covers the consent prompt). Picker: `choose folder`, 10 min, `-128` = cancelled. Errors `activity.launchError.{denied,notInstalled,failed}`. Verified with the dir `a b'c`. The terminal choice is `ccm.launchTerminal` in localStorage.
+   - **Automation permission.** The first use per target app (Terminal, iTerm2) shows the macOS consent prompt. If denied, the user re-enables it in System Settings → Privacy & Security → Automation.
 
 ## 11l. Port clash with OpenTelemetry (2026-10-09)
 
