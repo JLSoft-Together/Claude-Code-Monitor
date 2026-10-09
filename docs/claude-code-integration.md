@@ -377,6 +377,12 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 
 `4317` is also the OTLP/gRPC default, so a local OTel collector (Claude Code's `CLAUDE_CODE_ENABLE_TELEMETRY`) takes it first. Default kept at 4317: changing it would change the web origin and drop every `localStorage` setting, the installed PWA and bookmarks. Instead `EADDRINUSE` makes the collector print the cause and exit with code `3`; the desktop host treats that code as fatal without restarting and shows a port message.
 
+## 11m. Tool spans (2026-10-09)
+
+A span is one tool call: `tool_use.id` in an assistant message paired with `tool_result.tool_use_id` in a later user message. Start and end are the transcript line timestamps; outcome is `ok`, `error` (`is_error`) or `interrupted` (a `turn_end` closes every span still open for that agent). Only the tool name (cut to 80 chars) and timestamps are read: inputs, outputs and results are never stored or sent.
+
+Limits: 2000 spans per session, spans older than 2 h are dropped. Spans are recorded during catch-up of existing transcripts too, but `tool.span` is broadcast only for changes seen live. The dashboard fetches history with `toolSpans.get` (optional `terminalId`, optional ISO `since`, max 40 chars) and gets one `toolSpans.data` reply; an unknown `terminalId` returns an empty list.
+
 ## 12. Open items
 
 | Item | State |

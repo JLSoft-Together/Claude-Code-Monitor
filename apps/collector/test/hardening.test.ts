@@ -5,6 +5,7 @@ import { createServer, request } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import WebSocket from 'ws'
 import type { UsageBucket, UsageScan, UsageSnapshot } from '@ccm/shared'
 import { isAllowedOrigin, isCollectorAt, isPortInUse, startServer } from '../src/server'
 import { MonitorStore } from '../src/store'
@@ -61,6 +62,39 @@ describe('static server', () => {
 
   it('rejects a cross-site origin', async () => {
     expect(await get('/', { origin: 'http://localhost:9999' })).toBe(403)
+  })
+})
+
+describe('toolSpans.get validation', () => {
+  it('accepts toolSpans.get only with valid fields', async () => {
+    const dist = await mkdtemp(path.join(os.tmpdir(), 'ccm-dist-'))
+    await writeFile(path.join(dist, 'index.html'), '<!doctype html>ok')
+    const got: unknown[] = []
+    const server = await startServer({
+      host: '127.0.0.1',
+      port: 0,
+      webDist: dist,
+      store: new MonitorStore({ activityLimit: 10, batchMs: 10 }),
+      onClientMessage: (m) => void got.push(m),
+    })
+    const port = (server.address() as AddressInfo).port
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      const bad = [{ since: 'nope' }, { since: 'x'.repeat(41) }, { terminalId: 5 }]
+      for (const extra of bad) ws.send(JSON.stringify({ type: 'toolSpans.get', ...extra }))
+      ws.send(JSON.stringify({ type: 'toolSpans.get' }))
+      ws.send(JSON.stringify({ type: 'toolSpans.get', terminalId: 'x', since: '2026-10-09T00:00:00.000Z' }))
+      for (let i = 0; i < 100 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 20))
+      await new Promise((r) => setTimeout(r, 50))
+      expect(got).toEqual([{ type: 'toolSpans.get' }, { type: 'toolSpans.get', terminalId: 'x', since: '2026-10-09T00:00:00.000Z' }])
+    } finally {
+      ws.close()
+      server.close()
+    }
   })
 })
 

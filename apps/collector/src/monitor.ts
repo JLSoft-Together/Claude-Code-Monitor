@@ -393,6 +393,7 @@ export class Monitor {
     try {
       const drafts = await tracker.sync(false)
       this.publish(tracker)
+      for (const span of tracker.drainSpans()) this.store.toolSpan(span)
       this.pushActivity(drafts)
     } catch (err) {
       console.error('[collector] sync failed:', (err as Error).message)
@@ -537,6 +538,12 @@ export class Monitor {
   sendHistory(reply?: Reply): void {
     if (reply) reply({ type: 'history.data', payload: { sessions: this.history.list() } })
     else this.store.historyData(this.history.list())
+  }
+
+  sendToolSpans(reply: Reply, terminalId?: string, since?: string): void {
+    const sinceMs = since === undefined ? undefined : Date.parse(since)
+    const trackers = terminalId === undefined ? [...this.trackers.values()] : [this.trackers.get(terminalId)].filter((t): t is SessionTracker => t !== undefined)
+    reply({ type: 'toolSpans.data', payload: { terminalId, since, spans: trackers.flatMap((t) => t.toolSpans(sinceMs)) } })
   }
 
   sendTimeline(reply?: Reply): void {

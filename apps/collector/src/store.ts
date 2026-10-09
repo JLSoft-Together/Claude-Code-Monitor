@@ -7,6 +7,7 @@ import {
   type Favorite,
   type FavoriteRejectReason,
   type DayTimeline,
+  type ToolSpan,
   type FocusWindowResult,
   type FolderPickResult,
   type SessionRecord,
@@ -225,6 +226,10 @@ export class MonitorStore implements UsageSink {
 
   historyAdded(record: SessionRecord): void {
     this.emit({ type: 'history.added', payload: record })
+  }
+
+  toolSpan(span: ToolSpan): void {
+    this.emit({ type: 'tool.span', payload: span })
   }
 
   timelineData(timeline: DayTimeline): void {

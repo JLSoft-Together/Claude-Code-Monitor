@@ -109,6 +109,40 @@ describe('Monitor with fixture claude root', () => {
     expect(json).not.toContain('pipe')
   })
 
+  it('broadcasts tool spans live and answers toolSpans.get', async () => {
+    const live: Array<{ id: string; outcome?: string }> = []
+    const events: unknown[] = []
+    store.subscribe((m) => {
+      for (const e of m.events) {
+        events.push(e)
+        if (e.type === 'tool.span') live.push({ id: e.payload.id, outcome: e.payload.outcome })
+      }
+    })
+    await appendFile(
+      path.join(projectDir, `${SID}.jsonl`),
+      line({ type: 'user', timestamp: '2026-10-07T10:00:00.000Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_bash', content: 'secret output' }] } }),
+    )
+    await monitor.reconcile()
+    store.flush()
+    expect(live).toContainEqual({ id: 'toolu_bash', outcome: 'ok' })
+
+    const id = store.snapshot().terminals[0]!.id
+    const ask = (terminalId?: string, since?: string) => {
+      let out: { spans: Array<{ id: string }> } | undefined
+      monitor.sendToolSpans((e) => {
+        if (e.type === 'toolSpans.data') out = e.payload
+      }, terminalId, since)
+      return out!.spans.map((s) => s.id)
+    }
+    expect(ask(id)).toContain('toolu_bash')
+    expect(ask()).toContain('toolu_bash')
+    expect(ask('nope')).toEqual([])
+    const open = ask(id, '2026-10-07T10:00:00.500Z')
+    expect(open).not.toContain('toolu_bash')
+    expect(open).toContain('toolu_grep')
+    expect(JSON.stringify(events)).not.toContain('secret')
+  })
+
   it('applies a dashboard alias and clears it again', () => {
     const id = store.snapshot().terminals[0]!.id
     expect(monitor.setAlias(id, '  Ads work  ')).toBe(true)

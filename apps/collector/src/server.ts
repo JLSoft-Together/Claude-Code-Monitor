@@ -280,7 +280,7 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'terminal.alias' && typeof m.terminalId === 'string' && (typeof m.alias === 'string' || m.alias === null)) {
@@ -301,6 +301,12 @@ export function startServer(options: {
           options.onClientMessage?.({ type: 'terminal.open', terminalId: m.terminalId, app: m.app }, ctx())
         } else if (m.type === 'history.get' || m.type === 'timeline.get' || m.type === 'diagnostics.get') {
           options.onClientMessage?.({ type: m.type }, ctx())
+        } else if (
+          m.type === 'toolSpans.get' &&
+          (m.terminalId === undefined || typeof m.terminalId === 'string') &&
+          (m.since === undefined || (typeof m.since === 'string' && m.since.length <= 40 && Number.isFinite(Date.parse(m.since))))
+        ) {
+          options.onClientMessage?.({ type: 'toolSpans.get', terminalId: m.terminalId, since: m.since }, ctx())
         } else if (m.type === 'terminal.focusWindow' && typeof m.terminalId === 'string') {
           options.onClientMessage?.({ type: 'terminal.focusWindow', terminalId: m.terminalId }, ctx())
         } else if (m.type === 'terminal.dismiss' && (m.terminalId === undefined || typeof m.terminalId === 'string')) {
