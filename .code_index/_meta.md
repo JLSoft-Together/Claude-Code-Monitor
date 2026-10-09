@@ -60,3 +60,4 @@
 - 2026-10-09 New logo (v1.1.1): `scripts/assets/logo.svg` → `art/01-logo.svg`, `favicon.svg`; `scripts/make-icon.mjs` rewritten for it (all OS/PWA/tray icons regenerated). Desktop version 1.1.1.
 - 2026-10-09 Stopped job ghost fix: `Monitor` dismissed jobs persisted (`dismissed-jobs.json`, `index.ts` `JsonFile`) + `stopJob` ok/notFound auto-dismiss — `apps/collector/src/monitor.ts`; tests `job-actions.test.ts`.
 - 2026-10-09 Quick wins (E1+F): port clash → exit 3 + desktop `port-in-use` (`server.ts` `isPortInUse`, `collector-host.ts`); `JsonlTailer` 1 MB chunks; `test/tracker.test.ts`; `SessionCard` → `SessionCardHeader` + `SessionCardSignals` + `useInlineEdit`. Plan: tool analytics (A), notifications/macOS parity (C) next.
+- 2026-10-09 Port clash message names a running CCM (desktop app / other `npm start`) via `server.ts` `isCollectorAt` `/health` probe; test in `hardening.test.ts`.

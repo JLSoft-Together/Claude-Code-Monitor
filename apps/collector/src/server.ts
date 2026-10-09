@@ -25,6 +25,17 @@ export function isPortInUse(err: unknown): boolean {
   return err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
 }
 
+/** True when the port answers /health the way this collector does (another CCM instance or the desktop app). */
+export async function isCollectorAt(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) })
+    const body = (await res.json()) as { ok?: unknown; seq?: unknown }
+    return res.ok && body.ok === true && typeof body.seq === 'number'
+  } catch {
+    return false
+  }
+}
+
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 function hostOf(value: string | undefined): string | null {

@@ -12,7 +12,7 @@ import { TEXT, Toaster } from './toast'
 import { Monitor } from './monitor'
 import { RepoRoots } from './repo'
 import { ResponseTracker } from './response'
-import { isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
+import { isCollectorAt, isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
 import { MonitorStore } from './store'
 import { UsageIndex } from './usage'
 
@@ -200,11 +200,13 @@ process.on('uncaughtException', (err: Error) => {
   console.error('[collector] uncaught exception:', err.message)
 })
 
-main().catch((err: unknown) => {
+main().catch(async (err: unknown) => {
   if (isPortInUse(err)) {
     const port = loadConfig().port
     console.error(
-      `[collector] port ${port} is already in use (4317 is also the OpenTelemetry OTLP/gRPC default). Stop the other app or set CCM_PORT.`,
+      (await isCollectorAt(port))
+        ? `[collector] Claude Code Monitor is already running on port ${port} (desktop app or another npm start) — open http://127.0.0.1:${port}, quit it first, or set CCM_PORT to run both.`
+        : `[collector] port ${port} is already in use by another app (4317 is also the OpenTelemetry OTLP/gRPC default). Stop the other app or set CCM_PORT.`,
     )
     process.exit(PORT_IN_USE_EXIT)
   }

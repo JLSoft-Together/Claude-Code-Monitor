@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
-import { request } from 'node:http'
+import { createServer, request } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { UsageBucket, UsageScan, UsageSnapshot } from '@ccm/shared'
-import { isAllowedOrigin, isPortInUse, startServer } from '../src/server'
+import { isAllowedOrigin, isCollectorAt, isPortInUse, startServer } from '../src/server'
 import { MonitorStore } from '../src/store'
 import { UsageIndex, type UsageSink } from '../src/usage'
 
@@ -191,6 +191,20 @@ describe('port already taken', () => {
       expect(isPortInUse(err)).toBe(true)
     } finally {
       first.close()
+    }
+  })
+
+  it('recognises another collector on the port, but not an unrelated app', async () => {
+    const store = new MonitorStore({ activityLimit: 10, batchMs: 10 })
+    const collector = await startServer({ host: '127.0.0.1', port: 0, webDist: os.tmpdir(), store })
+    const other = createServer((_req, res) => res.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"up"}'))
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve))
+    try {
+      expect(await isCollectorAt((collector.address() as AddressInfo).port)).toBe(true)
+      expect(await isCollectorAt((other.address() as AddressInfo).port)).toBe(false)
+    } finally {
+      collector.close()
+      other.close()
     }
   })
 
