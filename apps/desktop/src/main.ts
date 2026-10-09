@@ -197,7 +197,9 @@ function createTray(): void {
 }
 
 function fatalMessage(reason: FatalReason): string {
-  return reason.kind === 'timeout' ? t.collectorTimeout : t.collectorExited(reason.code)
+  if (reason.kind === 'timeout') return t.collectorTimeout
+  if (reason.kind === 'port-in-use') return t.portInUse(PORT)
+  return t.collectorExited(reason.code)
 }
 
 function showError(reason: FatalReason): void {

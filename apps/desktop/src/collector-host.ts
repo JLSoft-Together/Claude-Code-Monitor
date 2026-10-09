@@ -9,7 +9,10 @@ export interface CollectorHostOptions {
   onFatal: (reason: FatalReason) => void
 }
 
-export type FatalReason = { kind: 'exited'; code: number | null } | { kind: 'timeout' }
+export type FatalReason = { kind: 'exited'; code: number | null } | { kind: 'timeout' } | { kind: 'port-in-use' }
+
+/** Mirrors PORT_IN_USE_EXIT in apps/collector/src/server.ts. */
+const PORT_IN_USE_EXIT = 3
 
 const MAX_RESTARTS = 3
 const BOOT_TIMEOUT_MS = 30_000
@@ -120,6 +123,7 @@ export class CollectorHost {
       this.lastExit = code
       this.write(`collector exited (code ${code})`)
       if (this.stopping) return
+      if (code === PORT_IN_USE_EXIT) return this.opts.onFatal({ kind: 'port-in-use' })
       // Only a crash loop is fatal; a collector that ran for a while gets a fresh restart budget.
       if (Date.now() - spawnedAt > STABLE_MS) this.restarts = 0
       if (this.restarts >= MAX_RESTARTS) return this.opts.onFatal({ kind: 'exited', code })
@@ -135,6 +139,7 @@ export class CollectorHost {
   private async waitHealthy(): Promise<void> {
     const deadline = Date.now() + BOOT_TIMEOUT_MS
     while (Date.now() < deadline) {
+      if (this.lastExit === PORT_IN_USE_EXIT) throw new FatalError({ kind: 'port-in-use' })
       if (this.lastExit !== undefined && this.restarts >= MAX_RESTARTS) throw new FatalError({ kind: 'exited', code: this.lastExit })
       if (await isHealthy(this.opts.port)) return
       await new Promise((r) => setTimeout(r, 300))

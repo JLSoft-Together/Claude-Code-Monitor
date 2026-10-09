@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { UsageBucket, UsageScan, UsageSnapshot } from '@ccm/shared'
-import { isAllowedOrigin, startServer } from '../src/server'
+import { isAllowedOrigin, isPortInUse, startServer } from '../src/server'
 import { MonitorStore } from '../src/store'
 import { UsageIndex, type UsageSink } from '../src/usage'
 
@@ -175,5 +175,28 @@ describe('openFolder', () => {
     await writeFile(path.join(bin, 'code'), '')
     expect(await openFolder(dir, 'vscode', spawner, 'darwin', { PATH: bin, HOME: home })).toBe('ok')
     expect(calls.at(-1)).toEqual([path.join(bin, 'code'), dir])
+  })
+})
+
+describe('port already taken', () => {
+  it('rejects with an error isPortInUse recognises', async () => {
+    const store = new MonitorStore({ activityLimit: 10, batchMs: 10 })
+    const first = await startServer({ host: '127.0.0.1', port: 0, webDist: os.tmpdir(), store })
+    const port = (first.address() as AddressInfo).port
+    try {
+      const err = await startServer({ host: '127.0.0.1', port, webDist: os.tmpdir(), store }).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      expect(isPortInUse(err)).toBe(true)
+    } finally {
+      first.close()
+    }
+  })
+
+  it('does not mistake other errors for a taken port', () => {
+    expect(isPortInUse(new Error('boom'))).toBe(false)
+    expect(isPortInUse(Object.assign(new Error('denied'), { code: 'EACCES' }))).toBe(false)
+    expect(isPortInUse(null)).toBe(false)
   })
 })

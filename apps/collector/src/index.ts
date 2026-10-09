@@ -11,7 +11,7 @@ import { TEXT, Toaster } from './toast'
 import { Monitor } from './monitor'
 import { RepoRoots } from './repo'
 import { ResponseTracker } from './response'
-import { startServer } from './server'
+import { isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
 import { MonitorStore } from './store'
 import { UsageIndex } from './usage'
 
@@ -199,6 +199,13 @@ process.on('uncaughtException', (err: Error) => {
 })
 
 main().catch((err: unknown) => {
+  if (isPortInUse(err)) {
+    const port = loadConfig().port
+    console.error(
+      `[collector] port ${port} is already in use (4317 is also the OpenTelemetry OTLP/gRPC default). Stop the other app or set CCM_PORT.`,
+    )
+    process.exit(PORT_IN_USE_EXIT)
+  }
   console.error('[collector] fatal:', err instanceof Error ? err.message : err)
   process.exit(1)
 })

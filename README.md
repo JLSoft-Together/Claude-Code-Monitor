@@ -100,7 +100,7 @@ Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. T
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `CCM_PORT` | `4317` | Port collector |
+| `CCM_PORT` | `4317` | Port collector. 4317 cũng là cổng mặc định OTLP/gRPC của OpenTelemetry: nếu đang chạy OTel collector, đặt port khác (collector báo lỗi và thoát mã 3) |
 | `CCM_STALE_TTL_MIN` | `120` | Phút giữ session đã tắt |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Thư mục data Claude Code |
 | `CCM_DATA_DIR` | Windows `%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` hoặc `~/.local/share/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |

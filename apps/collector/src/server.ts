@@ -18,6 +18,13 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 }
 
+/** Exit code the collector uses when its port is taken; apps/desktop/src/collector-host.ts matches it. */
+export const PORT_IN_USE_EXIT = 3
+
+export function isPortInUse(err: unknown): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
+}
+
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 function hostOf(value: string | undefined): string | null {

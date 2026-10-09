@@ -373,6 +373,10 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 4. **Bridge without node.** `statusline-bridge.sh` (`ELECTRON_RUN_AS_NODE=1 exec <app exe>`), chmod 755. The exe path is baked in, so the app offers `moveToApplicationsFolder()` when run from the DMG / Downloads (translocated).
 5. **Shell.** App menu (app / edit / window roles) for Cmd C/V/Q/W; menu bar icon `ccmTrayTemplate.png`; `activate` reopens the window; login item without `path/args` (opens shown, `--hidden` is Windows only); no AUMID / balloon.
 
+## 11l. Port clash with OpenTelemetry (2026-10-09)
+
+`4317` is also the OTLP/gRPC default, so a local OTel collector (Claude Code's `CLAUDE_CODE_ENABLE_TELEMETRY`) takes it first. Default kept at 4317: changing it would change the web origin and drop every `localStorage` setting, the installed PWA and bookmarks. Instead `EADDRINUSE` makes the collector print the cause and exit with code `3`; the desktop host treats that code as fatal without restarting and shows a port message.
+
 ## 12. Open items
 
 | Item | State |
