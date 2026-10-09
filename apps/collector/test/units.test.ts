@@ -8,6 +8,7 @@ import { parseRegistryRecord, pidFromFileName } from '../src/registry'
 import { JsonlTailer } from '../src/tailer'
 import { extractSignals, TranscriptState } from '../src/transcript'
 import { MonitorStore } from '../src/store'
+import { loadConfig } from '../src/config'
 
 describe('waitReason', () => {
   it('maps documented values', () => {
@@ -229,5 +230,15 @@ describe('repo roots', () => {
     store.updateUsage([b])
     expect(asked).toHaveLength(1)
     expect(store.usageSnapshot().roots).toEqual({ 'D:/a/b': 'D:/a' })
+  })
+})
+
+describe('config toast', () => {
+  it('enables toast only for win32 or the electron backend', () => {
+    expect(loadConfig({}, 'win32')).toMatchObject({ toast: true, toastBackend: 'powershell' })
+    expect(loadConfig({ CCM_TOAST_BACKEND: 'electron' }, 'darwin')).toMatchObject({ toast: true, toastBackend: 'electron' })
+    expect(loadConfig({}, 'darwin')).toMatchObject({ toast: false, toastBackend: null })
+    expect(loadConfig({ CCM_TOAST: '0' }, 'win32')).toMatchObject({ toast: false, toastBackend: null })
+    expect(loadConfig({ CCM_TOAST_BACKEND: 'electron', CCM_TOAST: '0' }, 'darwin')).toMatchObject({ toast: false, toastBackend: null })
   })
 })

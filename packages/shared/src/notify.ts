@@ -108,3 +108,22 @@ export function errorLoops(items: Iterable<ActivityEvent>, nowMs: number): Map<s
   }
   return out
 }
+
+export type ToastMessage =
+  | { type: 'toast.show'; tag: string; title: string; persistent: boolean }
+  | { type: 'toast.hide'; tag: string }
+
+export function parseToastMessage(data: unknown): ToastMessage | null {
+  if (typeof data !== 'object' || data === null) return null
+  const m = data as Record<string, unknown>
+  if (typeof m.tag !== 'string' || m.tag.length < 1 || m.tag.length > 200) return null
+  if (m.type === 'toast.hide') return { type: 'toast.hide', tag: m.tag }
+  if (m.type === 'toast.show' && typeof m.title === 'string' && typeof m.persistent === 'boolean') return { type: 'toast.show', tag: m.tag, title: m.title, persistent: m.persistent }
+  return null
+}
+
+export function badgeCount(entries: Iterable<{ persistent: boolean }>): number {
+  let n = 0
+  for (const e of entries) if (e.persistent) n++
+  return n
+}

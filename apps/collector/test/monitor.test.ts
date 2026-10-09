@@ -47,6 +47,7 @@ describe('Monitor with fixture claude root', () => {
     host: '127.0.0.1',
     port: 0,
     toast: false,
+    toastBackend: null,
     staleTtlMs: 120 * 60_000,
     reconcileMs: 5_000,
     processVerifyMs: 60_000,
