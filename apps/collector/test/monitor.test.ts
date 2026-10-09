@@ -353,8 +353,12 @@ describe('Monitor with fixture claude root', () => {
     expect(await monitor.addFavorite('relative/dir', null)).toBe(false)
     expect(await monitor.addFavorite('\\\\server\\share', null)).toBe(false)
     expect(await monitor.addFavorite(path.join(dir, 'ccm-missing-dir-xyz'), null)).toBe(false)
+    const evil = path.join(await mkdtemp(path.join(dir, 'ccm-ctl-')), 'x\x15touch PWNED\x1by')
+    await mkdir(evil)
+    expect(await monitor.addFavorite(evil, null)).toBe(false)
     await new Promise((r) => setTimeout(r, 20))
-    expect(rejected).toEqual(['exists', 'invalid', 'invalid', 'notFound'])
+    expect(rejected).toEqual(['exists', 'invalid', 'invalid', 'notFound', 'invalid'])
+    await rm(path.dirname(evil), { recursive: true, force: true })
   })
 
   it('completes subagent from task-notification and records activity', async () => {

@@ -17,7 +17,7 @@ import { StatusTimeline } from './timeline'
 import { JobReader } from './jobs'
 import type { JsonFile } from './json-file'
 import { isDaemonRunning, stopBackgroundJob } from './job-stop'
-import { LaunchError, launchClaude } from './launcher'
+import { hasControlChars, LaunchError, launchClaude } from './launcher'
 import { readModelCatalog } from './model-catalog'
 import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
@@ -461,7 +461,7 @@ export class Monitor {
   async addFavorite(dir: string, label: string | null | undefined): Promise<boolean> {
     const trimmed = dir.trim().replace(/^"(.*)"$/, '$1')
     // UNC paths would make stat reach out over SMB (and leak NTLM credentials); only local absolute dirs are accepted.
-    if (!trimmed || trimmed.length > 1024 || !path.isAbsolute(trimmed) || /^[\\/]{2}/.test(trimmed)) {
+    if (!trimmed || trimmed.length > 1024 || !path.isAbsolute(trimmed) || /^[\\/]{2}/.test(trimmed) || hasControlChars(trimmed)) {
       this.store.rejectFavorite(dir, 'invalid')
       return false
     }

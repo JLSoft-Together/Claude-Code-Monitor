@@ -28,6 +28,10 @@ export class LaunchError extends Error {
   }
 }
 
+export const hasControlChars = (s: string): boolean => /[\x00-\x1f\x7f]/.test(s)
+
+const LAUNCH_TIMEOUT_MS = 60_000
+
 const SHELL_LINE = 'set cmdLine to "cd " & quoted form of (item 1 of argv) & " && " & (item 2 of argv)'
 
 export const TERMINAL_LAUNCH_SCRIPT = `on run argv
@@ -57,13 +61,14 @@ export async function launchClaude(
   spawner: Spawner = defaultSpawner,
   terminalApp: TerminalApp = 'terminal',
   platform: NodeJS.Platform = process.platform,
-  run: Runner = runCommand,
+  run: Runner = (command, args) => runCommand(command, args, LAUNCH_TIMEOUT_MS),
 ): Promise<void> {
   const mac = platform === 'darwin'
   if (!mac && platform !== 'win32' && spawner === defaultSpawner) throw new Error('unsupported platform')
   const st = await stat(dir).catch(() => null)
   if (!st?.isDirectory()) throw new Error('directory not found')
   if (mac) {
+    if (hasControlChars(dir)) throw new LaunchError('failed')
     const r = await run('osascript', launchArgs(terminalApp, dir, mode))
     if (r.code === 0) return
     const code = parseOsaError(r.stderr)

@@ -1,4 +1,4 @@
-import { mkdtemp, appendFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, appendFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -268,6 +268,24 @@ describe('macOS launcher', () => {
       expect(err).toBeInstanceOf(LaunchError)
       expect(err).toMatchObject({ code })
     }
+  })
+
+  it('refuses dirs with control characters before running osascript', async () => {
+    const { hasControlChars, launchClaude, LaunchError } = await import('../src/launcher')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ccm-ctl-'))
+    for (const name of ['x\x15touch PWNED', 'x\ntouch PWNED', 'x\x1b[200~y']) {
+      const dir = path.join(root, name)
+      await mkdir(dir)
+      expect(hasControlChars(dir)).toBe(true)
+      const r = fakeRun()
+      const err = await launchClaude(dir, 'new', undefined, 'terminal', 'darwin', r.run).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(LaunchError)
+      expect(err).toMatchObject({ code: 'failed' })
+      expect(r.calls).toEqual([])
+    }
+    expect(hasControlChars("/tmp/a b'c$(x)")).toBe(false)
+    expect(hasControlChars('/tmp/x\x7f')).toBe(true)
+    await rm(root, { recursive: true, force: true })
   })
 
   it('checks the directory first and stays unsupported on linux', async () => {
