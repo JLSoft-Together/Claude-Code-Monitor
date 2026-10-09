@@ -1,13 +1,17 @@
 import { open, stat } from 'node:fs/promises'
 
 const NEWLINE = 0x0a
+const CHUNK_BYTES = 1024 * 1024
 
 export class JsonlTailer {
   private offset = 0
   private remainder: Buffer = Buffer.alloc(0)
   private reading: Promise<unknown[]> | null = null
 
-  constructor(readonly file: string) {}
+  constructor(
+    readonly file: string,
+    private readonly chunkBytes = CHUNK_BYTES,
+  ) {}
 
   read(): Promise<unknown[]> {
     if (!this.reading) {
@@ -31,13 +35,17 @@ export class JsonlTailer {
     }
     if (size === this.offset) return []
 
-    const length = size - this.offset
-    const chunk = Buffer.alloc(length)
+    const chunk = Buffer.alloc(Math.min(size - this.offset, this.chunkBytes))
+    const records: unknown[] = []
     const handle = await open(this.file, 'r')
     try {
-      const { bytesRead } = await handle.read(chunk, 0, length, this.offset)
-      this.offset += bytesRead
-      return this.consume(chunk.subarray(0, bytesRead))
+      while (this.offset < size) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(size - this.offset, chunk.length), this.offset)
+        if (bytesRead === 0) break
+        this.offset += bytesRead
+        for (const record of this.consume(chunk.subarray(0, bytesRead))) records.push(record)
+      }
+      return records
     } finally {
       await handle.close()
     }
