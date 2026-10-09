@@ -63,3 +63,5 @@
 - 2026-10-09 Port clash message names a running CCM (desktop app / other `npm start`) via `server.ts` `isCollectorAt` `/health` probe; test in `hardening.test.ts`.
 - 2026-10-09 Activity row text wraps (`break-words`) instead of `truncate` — `ActivityFeed.vue`; session sub-line still truncates.
 - 2026-10-09 Stop of a dead job: `job-stop.ts` `isDaemonRunning` (roster `supervisorPid`) → `Monitor.stopJob` maps `unconfirmed` → `notRunning` (shared `JobStopResult`), web `activity.job_notRunning` in `ActivityFeed.vue`; docs §11h.
+- 2026-10-09 Tool timeline: collector `tool-spans.ts` `ToolSpanLog` → `SessionTracker.drainSpans/toolSpans` → `Monitor` `tool.span` + `sendToolSpans` (`toolSpans.get`/`toolSpans.data`); web `stores/toolSpans.ts`, `lib/toolTimeline.ts`, `components/ToolTimeline.vue` + Map | Timeline toggle in `AgentMap.vue`, i18n `tools.*`.
+- 2026-10-09 Tool spans close as `interrupted` on session end / finished subagent: `tool-spans.ts` `ToolSpanLog.closeOpen`, `tracker.ts` `closeOpenSpans` + `resolveSubagent`, `monitor.ts` `endTracker`; tests in `tool-spans`/`tracker`/`monitor.test.ts`.

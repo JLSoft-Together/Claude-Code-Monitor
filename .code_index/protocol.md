@@ -12,6 +12,7 @@
 | usage.reset | MonitorStore.resetUsage (UsageIndex start + scan end) | usage store `reset` |
 | usage.updated | MonitorStore.updateUsage (changed buckets) | usage store `update` |
 | usage.scan | MonitorStore.setUsageScan | usage store `setScan` |
+| tool.span | MonitorStore.toolSpan (Monitor drains `SessionTracker.drainSpans`) | toolSpans store `upsert` |
 
 Client → server: `resync`, `terminal.alias {terminalId, alias|null}` (collector sanitizes).
 `TerminalSession.alias` = dashboard name; `title` stays registry name. `UsageBucket` = day|model|project|speed key + messages/input/output/cacheWrite5m/cacheWrite1h/cacheRead. `pricing.ts` `priceOf`/`estimateCost` (API list prices, checked date `PRICING_CHECKED_AT`).
@@ -39,3 +40,4 @@ Tokens: input = input + cache_creation; cacheRead separate; total = input + outp
 - `ToastState = on|off|unsupported`; ClientMessage `client.presence {attentive, locale?}` (per socket, dropped on close); settings messages see v10 line.
 - v10 notify: snapshot `notify?: NotifySettings {toast, kinds: Record<ToastKind,bool>, quiet: QuietHours}` (replaces `toast?`) + `snoozes?: Record<terminalId, SnoozeEntry {until ms, since}>`; events `notify.settings` (NotifySettings), `snooze.updated {snoozes}`; client `notify.update {toast?, kinds?, quiet?}` (replaces `notify.toast`), `terminal.snooze {terminalId, minutes|null}`. Shared `notify.ts`: `TOAST_KINDS`, `inQuietHours`, `sanitizeQuiet/Kinds`, `remindersDue`, `snoozedUntil`, `errorLoops` (moved from web).
 - v11: `TerminalSession.note?`; `ToastKind` + `stuck|context`; `NotifySettings.stuckMinutes` + `health?: ToastHealth (ok|globalOff|appOff|unknown)`; client `notify.test` → direct `notify.testResult {result, health?}`, `terminal.note {terminalId, note|null}`, `notify.update.stuckMinutes`. Shared `quietFor`, `STUCK_CHOICES`, `sanitizeStuck` in `notify.ts`.
+- Tool spans: `ToolSpan {id (tool_use id), terminalId, agentId, tool, start, end?, outcome?: ToolOutcome ok|error|interrupted}`; event `tool.span` (broadcast on open + close); client `toolSpans.get {terminalId?, since?}` → direct `toolSpans.data: ToolSpansData {terminalId?, since?, spans}` (closed with end ≥ since + all open).

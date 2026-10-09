@@ -344,6 +344,24 @@ export interface Diagnostics {
 export type FocusWindowResult = 'ok' | 'notFound' | 'ambiguous' | 'failed' | 'unsupported'
 export type FolderPickResult = 'ok' | 'cancelled' | 'busy' | 'failed' | 'unsupported'
 
+export type ToolOutcome = 'ok' | 'error' | 'interrupted'
+
+export interface ToolSpan {
+  id: string
+  terminalId: string
+  agentId: string
+  tool: string
+  start: string
+  end?: string
+  outcome?: ToolOutcome
+}
+
+export interface ToolSpansData {
+  terminalId?: string
+  since?: string
+  spans: ToolSpan[]
+}
+
 export type MonitorEvent =
   | { type: 'snapshot'; payload: MonitorSnapshot }
   | { type: 'terminal.created'; payload: TerminalSession }
@@ -359,6 +377,8 @@ export type MonitorEvent =
   | { type: 'usage.roots'; payload: { roots: Record<string, string> } }
   | { type: 'favorites.updated'; payload: { favorites: Favorite[] } }
   | { type: 'favorite.rejected'; payload: { dir: string; reason: FavoriteRejectReason } }
+  | { type: 'tool.span'; payload: ToolSpan }
+  | { type: 'toolSpans.data'; payload: ToolSpansData }
   | { type: 'jobs.updated'; payload: { jobs: BackgroundJob[] } }
   | { type: 'limits.updated'; payload: PlanLimits }
   | { type: 'response.updated'; payload: ResponseStats }
@@ -383,6 +403,7 @@ export interface ServerMessage {
 
 export type ClientMessage =
   | { type: 'resync' }
+  | { type: 'toolSpans.get'; terminalId?: string; since?: string }
   | { type: 'terminal.alias'; terminalId: string; alias: string | null }
   | { type: 'favorite.toggle'; terminalId: string }
   | { type: 'favorite.remove'; dir: string }

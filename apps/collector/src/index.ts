@@ -117,6 +117,9 @@ async function main(): Promise<void> {
         case 'history.get':
           monitor.sendHistory(ctx.reply)
           break
+        case 'toolSpans.get':
+          monitor.sendToolSpans(ctx.reply, message.terminalId, message.since)
+          break
         case 'timeline.get':
           monitor.sendTimeline(ctx.reply)
           break

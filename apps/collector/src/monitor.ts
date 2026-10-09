@@ -285,7 +285,7 @@ export class Monitor {
       if (this.rejected.has(id) || !this.deps.isPidAlive(pid)) continue
       let tracker = this.trackers.get(id)
       if (!tracker) {
-        tracker = new SessionTracker(id, entry, this.projectsDir, this.contextHints)
+        tracker = new SessionTracker(id, entry, this.projectsDir, this.contextHints, () => this.deps.now())
         created.push(tracker)
         seen.add(id)
         continue
@@ -381,7 +381,9 @@ export class Monitor {
 
   private async endTracker(tracker: SessionTracker, now: number): Promise<void> {
     await this.syncTracker(tracker)
-    tracker.markEnded(new Date(now).toISOString())
+    const at = new Date(now).toISOString()
+    tracker.markEnded(at)
+    for (const span of tracker.closeOpenSpans(at)) this.store.toolSpan(span)
     this.publish(tracker)
     const record = this.recordOf(tracker)
     if (record) {
@@ -395,6 +397,7 @@ export class Monitor {
     try {
       const drafts = await tracker.sync(false)
       this.publish(tracker)
+      for (const span of tracker.drainSpans()) this.store.toolSpan(span)
       this.pushActivity(drafts)
     } catch (err) {
       console.error('[collector] sync failed:', (err as Error).message)
@@ -539,6 +542,12 @@ export class Monitor {
   sendHistory(reply?: Reply): void {
     if (reply) reply({ type: 'history.data', payload: { sessions: this.history.list() } })
     else this.store.historyData(this.history.list())
+  }
+
+  sendToolSpans(reply: Reply, terminalId?: string, since?: string): void {
+    const sinceMs = since === undefined ? undefined : Date.parse(since)
+    const trackers = terminalId === undefined ? [...this.trackers.values()] : [this.trackers.get(terminalId)].filter((t): t is SessionTracker => t !== undefined)
+    reply({ type: 'toolSpans.data', payload: { terminalId, since, spans: trackers.flatMap((t) => t.toolSpans(sinceMs)) } })
   }
 
   sendTimeline(reply?: Reply): void {

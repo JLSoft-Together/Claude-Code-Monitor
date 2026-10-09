@@ -10,9 +10,11 @@ import {
   type Agent,
   type AgentStatus,
   type TerminalSession,
+  type ToolSpan,
 } from '@ccm/shared'
 import type { RegistryRecord } from './registry'
 import { JsonlTailer } from './tailer'
+import { ToolSpanLog } from './tool-spans'
 import { extractSignals, TranscriptState, type Signal } from './transcript'
 
 export type ActivityDraft = Omit<ActivityEvent, 'id' | 'at'> & { at?: string }
@@ -125,14 +127,32 @@ export class SessionTracker {
   private agentToolUses = new Set<string>()
   private syncing: Promise<ActivityDraft[]> | null = null
   private syncAgain = false
+  private readonly spans: ToolSpanLog
+  private pendingSpans: ToolSpan[] = []
 
   constructor(
     readonly terminalId: string,
     record: RegistryRecord,
     private readonly projectsDir: string,
     private readonly hints: ContextHints = {},
+    now: () => number = Date.now,
   ) {
     this.record = record
+    this.spans = new ToolSpanLog(terminalId, now)
+  }
+
+  drainSpans(): ToolSpan[] {
+    const out = this.pendingSpans
+    this.pendingSpans = []
+    return out
+  }
+
+  closeOpenSpans(at: string): ToolSpan[] {
+    return this.spans.closeOpen(at)
+  }
+
+  toolSpans(sinceMs?: number): ToolSpan[] {
+    return this.spans.list(sinceMs)
   }
 
   get sessionId(): string | undefined {
@@ -209,6 +229,7 @@ export class SessionTracker {
       for (const rec of records) {
         const signals = extractSignals(rec)
         this.recordLinks(signals)
+        this.trackSpans(signals, entry.agentId, catchUp)
         if (!catchUp) this.toolActivity(signals, entry.state, entry.agentId, activity)
         entry.state.apply(signals)
       }
@@ -219,11 +240,17 @@ export class SessionTracker {
 
   private applyMain(signals: Signal[], catchUp: boolean, activity: ActivityDraft[]): void {
     this.recordLinks(signals)
+    this.trackSpans(signals, this.mainAgentId, catchUp)
     if (!catchUp) {
       this.toolActivity(signals, this.main, this.mainAgentId, activity)
       this.sessionActivity(signals, activity)
     }
     this.main.apply(signals)
+  }
+
+  private trackSpans(signals: Signal[], agentId: string, catchUp: boolean): void {
+    const changed = this.spans.apply(signals, agentId)
+    if (!catchUp) this.pendingSpans.push(...changed)
   }
 
   private sessionActivity(signals: Signal[], activity: ActivityDraft[]): void {
@@ -350,7 +377,9 @@ export class SessionTracker {
     entry.status = status
     entry.resolved = true
     entry.completedAt = at ?? entry.state.lastAt
+    const closed = entry.completedAt ? this.spans.closeOpen(entry.completedAt, entry.agentId) : []
     if (catchUp) return
+    this.pendingSpans.push(...closed)
     const kind = status === 'completed' ? 'agent.completed' : status === 'cancelled' ? 'agent.cancelled' : 'agent.failed'
     activity.push({
       kind,

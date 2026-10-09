@@ -9,6 +9,7 @@ import { useHistoryStore } from './history'
 import { useSettingsStore } from './settings'
 import { useSnoozeStore } from './snooze'
 import { useTerminalsStore } from './terminals'
+import { useToolSpansStore } from './toolSpans'
 import { useUiStore } from './ui'
 import { useUsageStore } from './usage'
 
@@ -62,6 +63,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const history = useHistoryStore()
   const settings = useSettingsStore()
   const snooze = useSnoozeStore()
+  const toolSpans = useToolSpansStore()
   let pendingFocus = takeFocusParam()
 
   function url(): string {
@@ -105,6 +107,13 @@ export const useConnectionStore = defineStore('connection', () => {
           break
         case 'terminal.removed':
           terminals.remove(event.payload.id)
+          toolSpans.removeTerminal(event.payload.id)
+          break
+        case 'tool.span':
+          toolSpans.upsert(event.payload)
+          break
+        case 'toolSpans.data':
+          toolSpans.applyData(event.payload)
           break
         case 'agent.created':
           agents.upsert(event.payload)
@@ -309,6 +318,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const stopJob = (jobId: string): boolean => request({ type: 'job.stop', jobId })
   const loadHistory = (): boolean => request({ type: 'history.get' })
   const loadTimeline = (): boolean => request({ type: 'timeline.get' })
+  const loadToolSpans = (terminalId: string | undefined, since: string): boolean => request({ type: 'toolSpans.get', terminalId, since })
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
     const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
     if (!request({ type: 'folder.pick', requestId })) return Promise.resolve({ result: 'offline' })
@@ -377,5 +387,6 @@ export const useConnectionStore = defineStore('connection', () => {
     testToast,
     loadHistory,
     loadTimeline,
+    loadToolSpans,
   }
 })

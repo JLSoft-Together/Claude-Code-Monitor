@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
+import { WINDOWS, type WindowMin } from '../lib/toolTimeline'
 
 export type View = 'monitor' | 'usage' | 'history'
 export type Panel = 'sessions' | 'activity'
@@ -13,6 +14,25 @@ function initialView(): View {
     return v === 'usage' || v === 'history' ? v : 'monitor'
   } catch {
     return 'monitor'
+  }
+}
+
+export type MapView = 'map' | 'timeline'
+
+function initialMapView(): MapView {
+  try {
+    return localStorage.getItem('ccm.mapView') === 'timeline' ? 'timeline' : 'map'
+  } catch {
+    return 'map'
+  }
+}
+
+function initialTimelineWindow(): WindowMin {
+  try {
+    const n = Number(localStorage.getItem('ccm.timelineWindow'))
+    return WINDOWS.find((w) => w === n) ?? 15
+  } catch {
+    return 15
   }
 }
 
@@ -147,6 +167,24 @@ export const useUiStore = defineStore('ui', () => {
   watch(view, (value) => {
     try {
       localStorage.setItem('ccm.view', value)
+    } catch {
+      return
+    }
+  })
+
+  const mapView = ref<MapView>(initialMapView())
+  watch(mapView, (value) => {
+    try {
+      localStorage.setItem('ccm.mapView', value)
+    } catch {
+      return
+    }
+  })
+
+  const timelineWindow = ref<WindowMin>(initialTimelineWindow())
+  watch(timelineWindow, (value) => {
+    try {
+      localStorage.setItem('ccm.timelineWindow', String(value))
     } catch {
       return
     }
@@ -287,6 +325,8 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     view,
+    mapView,
+    timelineWindow,
     compact,
     toggleCompact,
     collapsed,
