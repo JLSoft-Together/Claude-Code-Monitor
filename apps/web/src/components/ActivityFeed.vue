@@ -87,6 +87,8 @@ function message(e: ActivityEvent): string {
         mode: t(d.mode === 'continue' ? 'favorites.continue' : 'favorites.openNew'),
         error: t(d.error === 'notFound' ? 'favorites.errorNotFound' : 'favorites.errorFailed'),
       })
+    case 'job.stopped':
+      return t(d.error === 'notRunning' ? 'activity.job_notRunning' : 'activity.job_stopped', { title: d.title ?? '—' })
     case 'job.stopFailed':
       return t('activity.job_stopFailed', {
         title: d.title ?? '—',

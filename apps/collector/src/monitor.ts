@@ -16,7 +16,7 @@ import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
 import { JobReader } from './jobs'
 import type { JsonFile } from './json-file'
-import { stopBackgroundJob } from './job-stop'
+import { isDaemonRunning, stopBackgroundJob } from './job-stop'
 import { launchClaude } from './launcher'
 import { readModelCatalog } from './model-catalog'
 import { readRegistry } from './registry'
@@ -225,10 +225,12 @@ export class Monitor {
     if (!job || job.state === 'done' || this.stoppingJobs.has(jobId)) return null
     this.stoppingJobs.add(jobId)
     try {
-      const result = await (this.deps.stopJob ?? stopBackgroundJob)(jobId)
+      let result = await (this.deps.stopJob ?? stopBackgroundJob)(jobId)
+      if (result === 'unconfirmed' && !(await isDaemonRunning(this.config.claudeRoot, this.deps.isPidAlive))) result = 'notRunning'
+      const stopped = result === 'ok' || result === 'notRunning'
       const data = { title: job.name ?? job.id, jobId, ...(result === 'ok' ? {} : { error: result }) }
-      this.pushActivity([{ kind: result === 'ok' ? 'job.stopped' : 'job.stopFailed', data }])
-      if (result === 'ok' || result === 'notFound') this.dismissJobs(jobId)
+      this.pushActivity([{ kind: stopped ? 'job.stopped' : 'job.stopFailed', data }])
+      if (stopped || result === 'notFound') this.dismissJobs(jobId)
       if (result === 'ok') await this.pollExtras()
       return result
     } finally {

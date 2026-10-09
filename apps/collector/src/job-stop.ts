@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { JobStopResult } from '@ccm/shared'
 
@@ -45,6 +45,17 @@ const defaultRunner: CliRunner = (file, args) =>
       resolve({ code, stdout: String(stdout), stderr: String(stderr) })
     })
   })
+
+/** `<claudeRoot>/daemon/roster.json` `supervisorPid`; false only when that pid is known and dead (unknown file → assume running). */
+export async function isDaemonRunning(claudeRoot: string, isPidAlive: (pid: number) => boolean): Promise<boolean> {
+  try {
+    const roster: unknown = JSON.parse(await readFile(path.join(claudeRoot, 'daemon', 'roster.json'), 'utf8'))
+    const pid = typeof roster === 'object' && roster !== null ? (roster as { supervisorPid?: unknown }).supervisorPid : undefined
+    return typeof pid === 'number' && Number.isInteger(pid) && pid > 0 ? isPidAlive(pid) : true
+  } catch {
+    return true
+  }
+}
 
 export interface StopJobDeps {
   findCli?: () => Promise<string | null>

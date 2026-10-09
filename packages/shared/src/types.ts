@@ -198,7 +198,7 @@ export interface BackgroundJob {
   sessionId?: string
 }
 
-export type JobStopResult = 'ok' | 'notFound' | 'unconfirmed' | 'noCli' | 'failed'
+export type JobStopResult = 'ok' | 'notFound' | 'notRunning' | 'unconfirmed' | 'noCli' | 'failed'
 
 export interface LimitWindow {
   /** 0–100. */

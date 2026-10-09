@@ -175,6 +175,7 @@ export default {
     job_blocked: 'Background job needs you: {title}',
     job_done: 'Background job finished: {title}',
     job_stopped: 'Background job stopped: {title}',
+    job_notRunning: 'Background job was no longer running: {title} (Claude Code background service is off)',
     job_stopFailed: 'Could not stop background job {title}: {error}',
     terminal_compacted: '{title} compacted {pre} → {post} ({trigger})',
     terminal_mode: '{title} switched to {mode}',

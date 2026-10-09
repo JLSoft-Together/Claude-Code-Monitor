@@ -177,6 +177,7 @@ const vi: typeof en = {
     job_blocked: 'Job nền cần chủ nhân: {title}',
     job_done: 'Job nền đã xong: {title}',
     job_stopped: 'Đã dừng job nền: {title}',
+    job_notRunning: 'Job nền không còn chạy: {title} (background service của Claude Code đã tắt)',
     job_stopFailed: 'Không dừng được job nền {title}: {error}',
     terminal_compacted: '{title} compact {pre} → {post} ({trigger})',
     terminal_mode: '{title} chuyển sang chế độ {mode}',

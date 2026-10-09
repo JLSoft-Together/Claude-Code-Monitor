@@ -193,4 +193,26 @@ describe('Monitor job actions', () => {
     await m.pollExtras()
     expect(jobs()).toEqual([])
   })
+
+  it('treats an unconfirmed stop as not running when the Claude daemon is gone', async () => {
+    await writeJob('blck0001', 'blocked', now - 40_000)
+    await mkdir(path.join(root, 'daemon'), { recursive: true })
+    await writeFile(path.join(root, 'daemon', 'roster.json'), JSON.stringify({ proto: 1, supervisorPid: 4242, workers: {} }))
+    let daemonAlive = true
+    const m = new Monitor(config(), store, {
+      isPidAlive: (pid) => pid !== 4242 || daemonAlive,
+      queryProcesses: async () => null,
+      now: () => now,
+      stopJob: async () => 'unconfirmed',
+    })
+    await m.pollExtras()
+
+    expect(await m.stopJob('blck0001')).toBe('unconfirmed')
+    expect(jobs().map((j) => j.id)).toEqual(['blck0001'])
+
+    daemonAlive = false
+    expect(await m.stopJob('blck0001')).toBe('notRunning')
+    expect(activity().find((e) => e.kind === 'job.stopped')?.data).toMatchObject({ jobId: 'blck0001', error: 'notRunning' })
+    expect(jobs()).toEqual([])
+  })
 })
