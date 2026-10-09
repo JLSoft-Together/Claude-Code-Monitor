@@ -283,7 +283,7 @@ export class Monitor {
       if (this.rejected.has(id) || !this.deps.isPidAlive(pid)) continue
       let tracker = this.trackers.get(id)
       if (!tracker) {
-        tracker = new SessionTracker(id, entry, this.projectsDir, this.contextHints)
+        tracker = new SessionTracker(id, entry, this.projectsDir, this.contextHints, () => this.deps.now())
         created.push(tracker)
         seen.add(id)
         continue

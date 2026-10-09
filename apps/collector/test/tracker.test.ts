@@ -62,7 +62,7 @@ describe('SessionTracker', () => {
     await mkdir(path.join(projects, cwdSlug(CWD)))
     transcript = path.join(projects, cwdSlug(CWD), `${SID}.jsonl`)
     await writeFile(transcript, toolUse('m1', 't1', 'Read', '2026-10-07T10:00:00.000Z') + toolResult('t1', '2026-10-07T10:00:01.000Z'))
-    tracker = new SessionTracker(terminalIdOf(record()), record(), projects)
+    tracker = new SessionTracker(terminalIdOf(record()), record(), projects, {}, () => Date.parse('2026-10-07T10:30:00.000Z'))
   })
 
   it('stays silent during catch-up, then reports new tool calls by agent', async () => {
@@ -151,5 +151,36 @@ describe('SessionTracker', () => {
     sub = tracker.buildAgents(tracker.buildTerminal())[1]!
     expect(sub.status).toBe('unknown')
     expect(sub.currentTool).toBeUndefined()
+  })
+
+  it('records spans during catch-up without queueing them', async () => {
+    await tracker.sync(true)
+    expect(tracker.toolSpans().find((s) => s.id === 't1')).toMatchObject({ tool: 'Read', outcome: 'ok' })
+    expect(tracker.drainSpans()).toEqual([])
+  })
+
+  it('queues live span changes once', async () => {
+    await tracker.sync(true)
+    await appendFile(transcript, toolUse('m2', 't2', 'Grep', '2026-10-07T10:00:02.000Z') + toolResult('t2', '2026-10-07T10:00:03.000Z'))
+    await tracker.sync(false)
+    const drained = tracker.drainSpans()
+    expect(drained.at(-1)).toMatchObject({ id: 't2', tool: 'Grep', outcome: 'ok' })
+    expect(tracker.drainSpans()).toEqual([])
+  })
+
+  it('records subagent spans under the subagent id', async () => {
+    const dir = path.join(projects, cwdSlug(CWD), SID, 'subagents')
+    await mkdir(dir, { recursive: true })
+    await tracker.sync(true)
+    await writeFile(path.join(dir, 'agent-a1.meta.json'), JSON.stringify({ agentType: 'Explore', toolUseId: 'toolu_agent' }))
+    await writeFile(path.join(dir, 'agent-a1.jsonl'), toolUse('s1', 'g1', 'Grep', '2026-10-07T10:00:05.000Z'))
+    await tracker.sync(false)
+    expect(tracker.toolSpans().some((s) => s.agentId === 'a1' && s.tool === 'Grep')).toBe(true)
+  })
+
+  it('keeps spans across a session switch', async () => {
+    await tracker.sync(true)
+    tracker.setRecord(record({ sessionId: SID2 }))
+    expect(tracker.toolSpans().some((s) => s.id === 't1')).toBe(true)
   })
 })
