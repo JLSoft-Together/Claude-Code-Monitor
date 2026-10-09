@@ -12,6 +12,7 @@ import { statusMeta } from '../lib/status'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
 import { displayTitle } from '../lib/title'
+import { waitDisplay } from '../lib/wait'
 import { useAgentsStore } from '../stores/agents'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -56,12 +57,16 @@ const timeLine = computed(() => {
   return d ? t('terminal.duration', { duration: d }) : null
 })
 
+const wait = computed(() => (props.terminal.status === 'waiting' ? waitDisplay(props.terminal.waitingFor, main.value?.currentTool, t) : null))
+
 const detail = computed(() => {
   const term = props.terminal
   if (term.status === 'waiting') {
     const waited = term.statusSince ? duration(term.statusSince, now.value) : null
-    if (term.waitingFor && waited) return t('terminal.waitingForSince', { reason: term.waitingFor, waited })
-    if (term.waitingFor) return t('terminal.waitingFor', { reason: term.waitingFor })
+    const w = wait.value
+    if (w && w.reason !== 'other') return waited ? `${w.text} · ${waited}` : w.text
+    if (w && waited) return t('terminal.waitingForSince', { reason: w.text, waited })
+    if (w) return t('terminal.waitingFor', { reason: w.text })
     if (waited) return t('terminal.waitingSince', { waited })
   }
   if (main.value?.currentTool) return t('terminal.running', { tool: main.value.currentTool })
@@ -202,7 +207,10 @@ function commitNote(): void {
 
     <div class="mt-2 flex min-w-0 items-center gap-2">
       <StatusBadge :status="terminal.status" />
-      <span v-if="detail" class="min-w-0 truncate text-xs text-ink-muted" :title="detail">{{ detail }}</span>
+      <span v-if="detail" class="inline-flex min-w-0 items-center gap-1 text-xs text-ink-muted" :title="detail">
+        <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0" aria-hidden="true" />
+        <span class="truncate">{{ detail }}</span>
+      </span>
     </div>
     <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
       <template v-if="snoozedUntil">

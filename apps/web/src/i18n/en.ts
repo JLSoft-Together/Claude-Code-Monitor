@@ -204,6 +204,7 @@ export default {
     terminal_ended: 'Session {title} ended',
     terminal_renamed: 'Session renamed {from} → {to}',
     terminal_status: '{title} is waiting for {reason}',
+    terminal_wait: '{title}: {label}',
     session_cleared: '{title} cleared the conversation',
     agent_started: 'Subagent {name} started',
     agent_completed: 'Subagent {name} completed',
@@ -271,6 +272,12 @@ export default {
     resizeHint: 'Drag to resize, arrow keys to adjust, double-click to reset',
     collapse: 'Collapse',
     expand: 'Expand',
+  },
+  wait: {
+    permission: 'Needs approval',
+    permissionTool: 'Needs approval: {tool}',
+    plan: 'Plan needs approval',
+    question: 'Asking you',
   },
   waiting: {
     title: 'Needs you ({n})',

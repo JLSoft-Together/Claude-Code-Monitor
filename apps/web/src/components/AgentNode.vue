@@ -6,6 +6,7 @@ import { compactNumber, fullNumber } from '../lib/format'
 import { effortLabel, modelLabel } from '../lib/model'
 import { isQuiet, statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
+import { waitDisplay } from '../lib/wait'
 import { MAIN_WIDTH, SUB_WIDTH } from '../lib/layout'
 import { useAgentsStore } from '../stores/agents'
 import { useExtrasStore } from '../stores/extras'
@@ -50,13 +51,16 @@ const title = computed(() => {
   return isMain.value ? displayTitle(terminal.value) || a.name || a.id : a.type ?? a.name ?? t('agent.subagent')
 })
 
+const wait = computed(() => {
+  if (!isMain.value || terminal.value?.status !== 'waiting') return null
+  return waitDisplay(terminal.value.waitingFor, agent.value?.currentTool, t)
+})
+
 const subtitle = computed(() => {
   const a = agent.value
   if (!a) return ''
+  if (wait.value) return wait.value.reason === 'other' ? t('terminal.waitingFor', { reason: wait.value.text }) : wait.value.text
   if (a.currentTool && (a.status === 'working' || a.status === 'waiting')) return t('terminal.running', { tool: a.currentTool })
-  if (isMain.value && terminal.value?.status === 'waiting' && terminal.value.waitingFor) {
-    return t('terminal.waitingFor', { reason: terminal.value.waitingFor })
-  }
   if (!isMain.value && a.description) return a.description
   return t(meta.value.labelKey)
 })
@@ -195,7 +199,7 @@ onBeforeUnmount(() => stop?.())
       </div>
       <div class="mt-1 flex min-w-0 items-center gap-2 text-xs">
         <p class="min-w-0 flex-1" :class="[working ? 'text-ink' : 'text-ink-muted', sized ? 'break-words' : 'truncate']" :title="subtitle">
-          <span class="sr-only">{{ t(meta.labelKey) }} · </span>{{ subtitle }}
+          <span class="sr-only">{{ t(meta.labelKey) }} · </span><component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="mr-1 inline-block align-[-2px]" aria-hidden="true" />{{ subtitle }}
         </p>
         <span
           v-if="model"

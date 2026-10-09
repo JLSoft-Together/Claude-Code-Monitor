@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ListFilter, X } from 'lucide-vue-next'
-import type { ActivityEvent } from '@ccm/shared'
+import { waitReason, type ActivityEvent } from '@ccm/shared'
 import { clockTime, compactNumber } from '../lib/format'
 import { modeMeta } from '../lib/mode'
 import { displayTitle } from '../lib/title'
@@ -63,6 +63,9 @@ function message(e: ActivityEvent): string {
     case 'terminal.renamed':
       return t('activity.terminal_renamed', { from: d.from ?? '—', to: d.to ?? '—' })
     case 'terminal.status':
+      if (waitReason(d.waitingFor) !== 'other') {
+        return t('activity.terminal_wait', { title: terminalTitle(e), label: t(waitReason(d.waitingFor) === 'question' ? 'wait.question' : 'wait.permission') })
+      }
       return t('activity.terminal_status', { title: terminalTitle(e), reason: d.waitingFor ?? '—' })
     case 'agent.started':
     case 'agent.completed':

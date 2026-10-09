@@ -206,6 +206,7 @@ const vi: typeof en = {
     terminal_ended: 'Session {title} đã đóng',
     terminal_renamed: 'Đổi tên session {from} → {to}',
     terminal_status: '{title} đang chờ {reason}',
+    terminal_wait: '{title}: {label}',
     session_cleared: '{title} đã /clear hội thoại',
     agent_started: 'Subagent {name} bắt đầu',
     agent_completed: 'Subagent {name} completed',
@@ -273,6 +274,12 @@ const vi: typeof en = {
     resizeHint: 'Kéo để đổi kích thước, phím mũi tên để chỉnh, nhấp đúp để đặt lại',
     collapse: 'Thu gọn',
     expand: 'Mở rộng',
+  },
+  wait: {
+    permission: 'Cần duyệt',
+    permissionTool: 'Cần duyệt: {tool}',
+    plan: 'Cần duyệt plan',
+    question: 'Đang hỏi bạn',
   },
   waiting: {
     title: 'Cần chủ nhân ({n})',

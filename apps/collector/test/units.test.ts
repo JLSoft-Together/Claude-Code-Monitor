@@ -2,12 +2,23 @@ import { mkdtemp, appendFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { mapRegistryStatus, mapTaskNotificationStatus } from '@ccm/shared'
+import { mapRegistryStatus, mapTaskNotificationStatus, waitReason } from '@ccm/shared'
 import { parseProcessQueryOutput, parsePsNames, parsePsOutput, procStartMatches } from '../src/process'
 import { parseRegistryRecord, pidFromFileName } from '../src/registry'
 import { JsonlTailer } from '../src/tailer'
 import { extractSignals, TranscriptState } from '../src/transcript'
 import { MonitorStore } from '../src/store'
+
+describe('waitReason', () => {
+  it('maps documented values', () => {
+    for (const v of ['permission prompt', ' Permission Prompt ', 'sandbox request', 'worker request']) expect(waitReason(v)).toBe('permission')
+    for (const v of ['input needed', 'dialog open']) expect(waitReason(v)).toBe('question')
+  })
+
+  it('maps unknown strings to other', () => {
+    for (const v of ['something new', '', undefined]) expect(waitReason(v)).toBe('other')
+  })
+})
 
 describe('status mapping', () => {
   it('maps every verified raw status', () => {
