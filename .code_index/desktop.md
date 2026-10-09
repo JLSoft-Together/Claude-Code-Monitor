@@ -25,6 +25,6 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (reuse or fork collector) 
 ## Invariants
 - Window must load the **http origin**, never `file://`: `server.ts` origin check accepts only http localhost; web builds WS URL from `location.host`.
 - Collector bundle is CJS: `config.ts` `import.meta` fallbacks only run when `CCM_WEB_DIST` / `CCM_STATUSLINE_BRIDGE` are unset → host must always set both.
-- Fatal/restart: child exit while not stopping → restart up to 3 times; then `onFatal` → error page with log tail + retry. Boot waits `/health` up to 30 s (timeout → fatal). Retry = `boot()` → `start()` resets restart count.
+- Fatal/restart: exit code 3 (`PORT_IN_USE_EXIT`, mirrors collector `server.ts`) → `FatalReason` `port-in-use`, no restart, `strings.ts` `portInUse(port)`. Other child exit while not stopping → restart up to 3 times; then `onFatal` → error page with log tail + retry. Boot waits `/health` up to 30 s (timeout → fatal). Retry = `boot()` → `start()` resets restart count.
 - Quit only via tray (`window-all-closed` no-op); `before-quit` waits `host.stop()` once (`stopped` flag).
 - External collector (bat) is never stopped by the app.
