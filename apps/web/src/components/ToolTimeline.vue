@@ -101,10 +101,10 @@ function outcomeOf(bar: Bar): 'ok' | 'error' | 'interrupted' | 'running' {
 }
 
 const BAR_CLASS = {
-  ok: 'bg-ink-faint/40 text-ink',
-  error: 'bg-st-error text-surface',
-  interrupted: 'ccm-stripe text-ink',
-  running: 'bg-st-working text-surface ccm-breathe',
+  ok: 'inset-y-1 rounded-sm bg-ink-faint/40 text-ink',
+  error: 'inset-y-0 rounded-none bg-st-error text-surface',
+  interrupted: 'inset-y-1 rounded-sm ccm-stripe text-ink',
+  running: 'inset-y-1 rounded-l-sm border-r-2 border-dashed border-ink bg-st-working text-surface ccm-breathe',
 }
 
 function barPx(bar: Bar): number {
@@ -183,7 +183,7 @@ function percent(rate: number): string {
                 v-for="(bar, i) in lane.bars"
                 :key="bar.span.id"
                 type="button"
-                class="absolute inset-y-1 flex cursor-default items-center gap-0.5 rounded-sm px-0.5 text-2xs leading-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-accent"
+                class="absolute flex cursor-default items-center gap-0.5 px-0.5 text-2xs leading-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-accent"
                 :class="[BAR_CLASS[outcomeOf(bar)], hoveredTool === bar.span.tool ? 'z-10 ring-2 ring-accent' : '']"
                 :style="{ left: `${bar.left}%`, width: `${bar.width}%`, minWidth: '2px' }"
                 :tabindex="i === activeIndex(lane.key, lane.bars.length) ? 0 : -1"
