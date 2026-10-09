@@ -101,7 +101,7 @@ Client cũ bỏ qua event lạ. Không đổi `protocolVersion`.
      - `error`: màu `st-error` kèm dấu ✕.
      - `interrupted`: sọc chéo màu `st-waiting`.
      - Đang chạy: màu `st-working`, kéo tới `now`; tắt animation khi reduced-motion.
-   - **Trục thời gian:** vạch mỗi 1/5/10 phút tùy cửa sổ, mép phải là "bây giờ".
+   - **Trục thời gian:** vạch mỗi 5 phút (cửa sổ 15/30 phút) hoặc 10 phút (cửa sổ 1 giờ), mép phải là "bây giờ".
    - **Tooltip** (hover hoặc focus): tool, thời lượng, giờ bắt đầu, kết quả, agent.
    - **Bàn phím:** mỗi lane là một tab stop; ←/→ chuyển giữa các bar (roving tabindex).
 
