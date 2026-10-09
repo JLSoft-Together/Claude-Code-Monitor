@@ -427,10 +427,11 @@ export default {
     paletteEmber: 'Claude orange',
     paletteCobalt: 'Cobalt',
     notifications: 'Notifications',
-    toast: 'Windows notifications',
+    toast: 'System alerts',
+    toastHintMac: 'On macOS, system alerts show as a count badge on the Dock icon plus a Dock bounce while no dashboard window is in front. The badge counts sessions waiting for you and clears once they are handled.',
     toastHint: 'Sent by the collector when no dashboard tab is in front of you, even with the browser closed. Waiting sessions stay on screen until clicked. Click opens the terminal, or the dashboard when the window cannot be found.',
-    toastOnHint: 'Kinds sent to Windows are skipped by the browser to avoid double alerts.',
-    toastKinds: 'Send to Windows',
+    toastOnHint: 'Kinds sent as system alerts are skipped by the browser to avoid double alerts.',
+    toastKinds: 'Send as system alerts',
     toastKind: {
       waiting: 'Session waiting for input (reminds every 5 minutes, up to 3 times)',
       done: 'Session finished',
@@ -441,7 +442,7 @@ export default {
       limit: '5-hour limit running out',
     },
     quiet: 'Quiet hours',
-    quietHint: 'No Windows notifications, browser notifications or sounds in this window. The tab title and taskbar count keep updating.',
+    quietHint: 'No system alerts, browser notifications or sounds in this window. The tab title and taskbar count keep updating.',
     quietFrom: 'From',
     quietTo: 'To',
     toastTest: {
@@ -449,7 +450,7 @@ export default {
       sending: 'Sending…',
       ok: 'Sent. If nothing showed up, check Do Not Disturb / Focus.',
       failed: 'Could not send. Check that Windows PowerShell can run.',
-      unsupported: 'Windows notifications are not available on this machine.',
+      unsupported: 'System alerts are not available on this machine.',
       offline: 'Not connected to the collector.',
     },
     toastHealth: {

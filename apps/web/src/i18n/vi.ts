@@ -429,10 +429,11 @@ const vi: typeof en = {
     paletteEmber: 'Cam Claude',
     paletteCobalt: 'Cobalt',
     notifications: 'Thông báo',
-    toast: 'Thông báo Windows',
+    toast: 'Báo hiệu hệ thống',
+    toastHintMac: 'Trên macOS, báo hiệu hệ thống là số đếm trên icon Dock và icon nảy khi không có cửa sổ dashboard nào ở phía trước. Số đếm là số session đang chờ bạn, mất đi khi đã xử lý.',
     toastHint: 'Collector gửi khi không tab dashboard nào đang mở trước mặt, kể cả khi browser đã đóng. Thông báo session chờ nằm trên màn tới khi bạn bấm. Bấm vào mở terminal, không tìm thấy cửa sổ thì mở dashboard.',
-    toastOnHint: 'Loại nào đã gửi qua Windows thì browser không báo trùng.',
-    toastKinds: 'Gửi qua Windows',
+    toastOnHint: 'Loại nào đã báo hiệu hệ thống thì browser không báo trùng.',
+    toastKinds: 'Gửi qua báo hiệu hệ thống',
     toastKind: {
       waiting: 'Session chờ input (nhắc lại mỗi 5 phút, tối đa 3 lần)',
       done: 'Session xong việc',
@@ -443,7 +444,7 @@ const vi: typeof en = {
       limit: 'Giới hạn 5h sắp hết',
     },
     quiet: 'Giờ yên lặng',
-    quietHint: 'Trong khung giờ này không gửi thông báo Windows, thông báo browser hay âm báo. Số đếm trên tab và taskbar vẫn cập nhật.',
+    quietHint: 'Trong khung giờ này không báo hiệu hệ thống, thông báo browser hay âm báo. Số đếm trên tab và taskbar vẫn cập nhật.',
     quietFrom: 'Từ',
     quietTo: 'Đến',
     toastTest: {
@@ -451,7 +452,7 @@ const vi: typeof en = {
       sending: 'Đang gửi…',
       ok: 'Đã gửi. Không thấy hiện thì kiểm tra Do Not Disturb / Focus.',
       failed: 'Gửi không được. Kiểm tra Windows PowerShell có chạy được không.',
-      unsupported: 'Máy này không dùng được thông báo Windows.',
+      unsupported: 'Máy này không dùng được báo hiệu hệ thống.',
       offline: 'Chưa kết nối collector.',
     },
     toastHealth: {

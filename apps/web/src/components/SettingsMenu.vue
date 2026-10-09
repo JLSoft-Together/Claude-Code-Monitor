@@ -5,6 +5,7 @@ import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type ToastKind } fro
 import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
+import { isMac } from '../lib/platform'
 import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -319,7 +320,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           <section aria-labelledby="set-notify" class="mt-6 border-t border-line pt-5">
             <h3 id="set-notify" class="mb-1 text-xs font-semibold text-ink-muted">{{ t('settings.section.notifications') }}</h3>
             <template v-if="toastAvailable">
-              <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="t('settings.toastHint')" :disabled="offline" />
+              <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="isMac ? t('settings.toastHintMac') : t('settings.toastHint')" :disabled="offline" />
               <p v-if="healthNote" role="alert" class="mb-2 flex items-start gap-2 rounded-lg border border-st-error/40 bg-st-error/10 px-3 py-2 text-xs leading-relaxed text-ink">
                 <CircleAlert :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />{{ healthNote }}
               </p>
