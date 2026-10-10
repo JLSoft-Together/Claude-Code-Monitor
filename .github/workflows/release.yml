@@ -1,0 +1,37 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release, e.g. v1.2.1
+        required: true
+      run_id:
+        description: ID of the desktop workflow run whose artifacts to publish
+        required: true
+      notes:
+        description: Release notes (markdown)
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Claude Code Monitor $TAG" --notes-file notes.md dist/*.exe dist/*.dmg
