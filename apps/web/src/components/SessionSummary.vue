@@ -13,6 +13,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
+import CountNum from './CountNum.vue'
 import KeyHint from './KeyHint.vue'
 import StatusBadge from './StatusBadge.vue'
 import SubagentCounts from './SubagentCounts.vue'
@@ -59,7 +60,7 @@ const diff = computed(() => {
   const d = props.terminal.diff
   return d && (d.files || d.untracked) ? d : null
 })
-const cost = computed(() => (props.terminal.costUsd === undefined ? null : formatUsd(props.terminal.costUsd)))
+const fmtCount = (n: number) => fullNumber(Math.round(n), locale.value)
 
 const openApps: { app: OpenApp; icon: typeof FolderOpen }[] = [
   { app: 'explorer', icon: FolderOpen },
@@ -87,17 +88,17 @@ function open(app: OpenApp): void {
       <GitBranch :size="12" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ branch }}</span>
     </span>
     <span v-if="diff" class="inline-flex shrink-0 items-center gap-1 tabular">
-      <span class="font-medium text-st-done">+{{ fullNumber(diff.insertions, locale) }}</span>
-      <span class="font-medium text-st-error">−{{ fullNumber(diff.deletions, locale) }}</span>
+      <span class="font-medium text-st-done">+<CountNum :value="diff.insertions" :format="fmtCount" /></span>
+      <span class="font-medium text-st-error">−<CountNum :value="diff.deletions" :format="fmtCount" /></span>
     </span>
-    <span v-if="cost" class="shrink-0 tabular" :title="t('terminal.costTitle')">{{ cost }}</span>
+    <span v-if="terminal.costUsd !== undefined" class="shrink-0 tabular" :title="t('terminal.costTitle')"><CountNum :value="terminal.costUsd" :format="formatUsd" /></span>
 
     <div class="ms-auto flex shrink-0 items-center gap-1">
       <button
         v-for="o in openApps"
         :key="o.app"
         type="button"
-        class="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+        class="ccm-press inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
         :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
         :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
         :disabled="!terminal.cwd || !!ui.opening"
@@ -108,7 +109,7 @@ function open(app: OpenApp): void {
       </button>
       <button
         type="button"
-        class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-line px-2 text-xs font-medium text-ink transition-colors hover:border-line-strong"
+        class="ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-line px-2 text-xs font-medium text-ink transition-colors hover:border-line-strong"
         :aria-pressed="!ui.isCollapsed('sessions')"
         aria-keyshortcuts="S"
         @click="ui.togglePanel('sessions')"

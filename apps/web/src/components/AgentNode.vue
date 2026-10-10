@@ -7,6 +7,7 @@ import { effortLabel, modelLabel } from '../lib/model'
 import { isQuiet, statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
 import { MAIN_WIDTH, SUB_WIDTH } from '../lib/layout'
+import { bootNodeDelay } from '../lib/motion'
 import { useAgentsStore } from '../stores/agents'
 import { useExtrasStore } from '../stores/extras'
 import { useTerminalsStore } from '../stores/terminals'
@@ -26,6 +27,7 @@ const { id: flowId, viewport, findNode, updateNode } = useVueFlow()
 const highlighted = inject<ComputedRef<Set<string> | null>>('ccm-highlight')
 
 const agent = computed(() => agents.byId[props.data.agentId])
+const popDelay = bootNodeDelay()
 const isMain = computed(() => agent.value?.role === 'main')
 const meta = computed(() => statusMeta(agent.value?.status))
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
@@ -168,7 +170,7 @@ onBeforeUnmount(() => stop?.())
 </script>
 
 <template>
-  <div v-if="agent" class="ccm-pop">
+  <div v-if="agent" class="ccm-pop" :style="popDelay ? { animationDelay: `${popDelay}ms` } : undefined">
     <div
       ref="box"
       class="group/node relative rounded-xl border bg-surface transition-[opacity,border-color,box-shadow] duration-200"

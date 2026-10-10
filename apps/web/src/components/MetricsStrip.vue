@@ -7,6 +7,7 @@ import { useAgentsStore } from '../stores/agents'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUsageStore } from '../stores/usage'
+import CountNum from './CountNum.vue'
 import StatusIcon from './StatusIcon.vue'
 import TokenCount from './TokenCount.vue'
 
@@ -55,14 +56,16 @@ const metrics = computed(() => {
   const subs = agents.subagents
   const running = subs.filter((a) => a.status === 'working').length
   const errors = live.filter((x) => x.status === 'error').length + subs.filter((a) => a.status === 'error').length
+  const working = live.filter((x) => x.status === 'working').length
+  const waiting = live.filter((x) => x.status === 'waiting').length
   let tokens = 0
   for (const a of agents.list) if (liveIds.has(a.terminalId)) tokens += a.totalTokens ?? 0
   return [
-    { key: 'sessions', label: t('dashboard.sessions'), value: String(live.length), status: null },
+    { key: 'sessions', label: t('dashboard.sessions'), value: String(live.length), num: live.length, status: null },
     { key: 'subagents', label: t('dashboard.subagents'), value: t('dashboard.subagentsRunning', { running, total: subs.length }), status: null },
-    { key: 'working', label: t('dashboard.working'), value: String(live.filter((x) => x.status === 'working').length), status: 'working' },
-    { key: 'waiting', label: t('dashboard.waiting'), value: String(live.filter((x) => x.status === 'waiting').length), status: 'waiting' },
-    { key: 'errors', label: t('dashboard.errors'), value: String(errors), status: 'error' },
+    { key: 'working', label: t('dashboard.working'), value: String(working), num: working, status: 'working' },
+    { key: 'waiting', label: t('dashboard.waiting'), value: String(waiting), num: waiting, status: 'waiting' },
+    { key: 'errors', label: t('dashboard.errors'), value: String(errors), num: errors, status: 'error' },
     { key: 'tokens', label: t('dashboard.liveTokens'), value: compactNumber(tokens), raw: tokens, status: null },
     response.value,
     budget.value,
@@ -79,6 +82,7 @@ const metrics = computed(() => {
       </dt>
       <dd class="text-sm font-semibold text-ink tabular">
         <TokenCount v-if="'raw' in m && m.raw !== undefined" :value="m.raw" :with-unit="false" />
+        <CountNum v-else-if="'num' in m && m.num !== undefined" :value="m.num" />
         <span v-else :key="m.value" class="ccm-tick">{{ m.value }}</span>
       </dd>
       <dd v-if="'bar' in m && m.bar" class="h-1 w-10 overflow-hidden rounded-full bg-raised" aria-hidden="true">
@@ -94,6 +98,7 @@ const metrics = computed(() => {
       </dt>
       <dd class="mt-1 truncate text-xl font-semibold tracking-tight text-ink tabular">
         <TokenCount v-if="'raw' in m && m.raw !== undefined" :value="m.raw" :with-unit="false" />
+        <CountNum v-else-if="'num' in m && m.num !== undefined" :value="m.num" />
         <span v-else :key="m.value" class="ccm-tick">{{ m.value }}</span>
       </dd>
       <dd v-if="'sub' in m" class="truncate text-2xs text-ink-faint">{{ m.sub }}</dd>

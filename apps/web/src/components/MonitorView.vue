@@ -54,6 +54,11 @@ function panelClass(p: Panel): string {
   if (p === 'sessions') return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-r border-line' : `${PANEL_FLOAT} left-2`}`
   return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-l border-line' : `${PANEL_FLOAT} right-2`}`
 }
+/** Floating panels slide in from their edge; pinned ones only fade (sliding would resize the map every frame). */
+function panelTransition(p: Panel): string {
+  if (ui.panels[p].pinned) return 'ccm-fade'
+  return p === 'sessions' ? 'ccm-panel-left' : 'ccm-panel-right'
+}
 </script>
 
 <template>
@@ -68,49 +73,53 @@ function panelClass(p: Panel): string {
     </div>
 
     <div ref="stage" class="relative flex min-h-0 flex-1" :class="dragging ? 'select-none' : ''">
-      <aside
-        v-show="ui.panels.sessions.open"
-        data-tour="sessions"
-        :class="panelClass('sessions')"
-        :style="{ width: `${widthOf('sessions')}px` }"
-      >
-        <SessionList v-if="!ui.sessionTab" />
-        <section v-else-if="tabTerminal" aria-labelledby="session-panel-title" class="flex h-full min-h-0 flex-col">
-          <PanelHeader panel="sessions" title-id="session-panel-title" :title="t('panel.session')" />
-          <div class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
-            <SessionCard :terminal="tabTerminal" />
-          </div>
-        </section>
-        <PanelSplitter
-          v-model:dragging="dragging"
-          size="sessions"
-          axis="x"
-          :sign="1"
-          :label="t('sessions.title')"
-          :max="maxFor('sessions')"
-          class="inset-y-0 -right-2"
-        />
-      </aside>
+      <Transition :name="panelTransition('sessions')">
+        <aside
+          v-show="ui.panels.sessions.open"
+          data-tour="sessions"
+          :class="panelClass('sessions')"
+          :style="{ width: `${widthOf('sessions')}px` }"
+        >
+          <SessionList v-if="!ui.sessionTab" />
+          <section v-else-if="tabTerminal" aria-labelledby="session-panel-title" class="flex h-full min-h-0 flex-col">
+            <PanelHeader panel="sessions" title-id="session-panel-title" :title="t('panel.session')" />
+            <div class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
+              <SessionCard :terminal="tabTerminal" />
+            </div>
+          </section>
+          <PanelSplitter
+            v-model:dragging="dragging"
+            size="sessions"
+            axis="x"
+            :sign="1"
+            :label="t('sessions.title')"
+            :max="maxFor('sessions')"
+            class="inset-y-0 -right-2"
+          />
+        </aside>
+      </Transition>
 
       <AgentMap :key="ui.sessionTab ?? 'all'" :terminal-id="ui.sessionTab" data-tour="map" class="min-w-0 flex-1" />
 
-      <aside
-        v-show="ui.panels.activity.open"
-        data-tour="activity"
-        :class="panelClass('activity')"
-        :style="{ width: `${widthOf('activity')}px` }"
-      >
-        <ActivityFeed :key="ui.sessionTab ?? 'all'" :terminal-id="ui.sessionTab" />
-        <PanelSplitter
-          v-model:dragging="dragging"
-          size="activity"
-          axis="x"
-          :sign="-1"
-          :label="t('activity.title')"
-          :max="maxFor('activity')"
-          class="inset-y-0 -left-2"
-        />
-      </aside>
+      <Transition :name="panelTransition('activity')">
+        <aside
+          v-show="ui.panels.activity.open"
+          data-tour="activity"
+          :class="panelClass('activity')"
+          :style="{ width: `${widthOf('activity')}px` }"
+        >
+          <ActivityFeed :key="ui.sessionTab ?? 'all'" :terminal-id="ui.sessionTab" />
+          <PanelSplitter
+            v-model:dragging="dragging"
+            size="activity"
+            axis="x"
+            :sign="-1"
+            :label="t('activity.title')"
+            :max="maxFor('activity')"
+            class="inset-y-0 -left-2"
+          />
+        </aside>
+      </Transition>
     </div>
 
     <SessionBar v-if="ui.barDock === 'bottom'" data-tour="metrics" />

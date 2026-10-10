@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LayoutDashboard, X } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
@@ -55,6 +55,25 @@ async function reveal(): Promise<void> {
 }
 watch(() => ui.sessionTab, reveal)
 
+// One highlight slides between tabs instead of each tab switching its own background.
+const pill = ref<{ x: number; w: number; waiting: boolean } | null>(null)
+const pillReady = ref(false)
+let watched: HTMLElement | null = null
+const sizeObserver = new ResizeObserver(() => measure())
+function measure(): void {
+  const el = strip.value?.querySelector<HTMLElement>('[data-selected]') ?? null
+  if (el !== watched) {
+    if (watched) sizeObserver.unobserve(watched)
+    if (el) sizeObserver.observe(el)
+    watched = el
+  }
+  pill.value = el ? { x: el.offsetLeft, w: el.offsetWidth, waiting: el.dataset.waiting === '1' } : null
+  if (pill.value && !pillReady.value) requestAnimationFrame(() => (pillReady.value = true))
+}
+watch(() => [ui.sessionTab, tabs.value.map((x) => `${x.id}:${x.waiting}`).join()], measure, { flush: 'post' })
+onMounted(measure)
+onBeforeUnmount(() => sizeObserver.disconnect())
+
 function onKey(e: KeyboardEvent): void {
   const list = ids.value
   const at = list.indexOf(ui.sessionTab)
@@ -80,17 +99,28 @@ function close(id: string): void {
     ref="strip"
     role="tablist"
     :aria-label="t('tabs.label')"
-    class="ccm-scroll flex min-w-0 items-center gap-1 overflow-x-auto py-1"
+    class="ccm-scroll relative flex min-w-0 items-center gap-1 overflow-x-auto py-1"
     @keydown="onKey"
   >
+    <span
+      v-if="pill"
+      aria-hidden="true"
+      class="pointer-events-none absolute top-1 left-0 h-8 rounded-md border"
+      :class="[
+        pill.waiting ? 'border-st-waiting bg-st-waiting-soft' : 'border-accent bg-accent-soft',
+        pillReady ? 'transition-[transform,width,background-color,border-color] duration-300 ease-out-quint' : '',
+      ]"
+      :style="{ width: `${pill.w}px`, transform: `translateX(${pill.x}px)` }"
+    />
     <button
       type="button"
       role="tab"
       :aria-selected="ui.sessionTab === null"
       :tabindex="ui.sessionTab === null ? 0 : -1"
       aria-keyshortcuts="0"
-      class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors"
-      :class="ui.sessionTab === null ? 'border-accent bg-accent-soft font-semibold text-ink' : 'border-transparent text-ink-muted hover:bg-raised hover:text-ink'"
+      :data-selected="ui.sessionTab === null || undefined"
+      class="ccm-press relative inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2.5 text-sm"
+      :class="ui.sessionTab === null ? 'font-semibold text-ink' : 'text-ink-muted hover:bg-raised hover:text-ink'"
       @click="select(null)"
     >
       <LayoutDashboard :size="15" aria-hidden="true" />
@@ -104,9 +134,11 @@ function close(id: string): void {
     <div
       v-for="(tab, i) in tabs"
       :key="tab.id"
-      class="group/tab flex h-8 max-w-[220px] min-w-[110px] shrink-0 items-center rounded-md border transition-colors"
+      :data-selected="ui.sessionTab === tab.id || undefined"
+      :data-waiting="tab.waiting ? '1' : undefined"
+      class="group/tab relative flex h-8 max-w-[220px] min-w-[110px] shrink-0 items-center rounded-md border border-transparent transition-colors"
       :class="[
-        ui.sessionTab === tab.id ? (tab.waiting ? 'border-st-waiting bg-st-waiting-soft' : 'border-accent bg-accent-soft') : 'border-transparent hover:bg-raised',
+        ui.sessionTab === tab.id ? '' : 'hover:bg-raised',
         tab.waiting && ui.sessionTab !== tab.id ? 'bg-st-waiting-soft/60' : '',
         tab.ended ? 'opacity-60' : '',
       ]"

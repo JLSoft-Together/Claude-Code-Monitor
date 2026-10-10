@@ -80,20 +80,27 @@ const place = computed(() => {
     arrow: Math.max(12, Math.min(top + Math.min(h / 2, 28) - py, 120)),
   }
 })
+
+// Grows out of the arrow, so the popover reads as coming from its node.
+const origin = computed(() => {
+  const p = place.value
+  if (!p?.side) return 'top right'
+  return `${p.side === 'left' ? '0' : '100%'} ${p.arrow + 5}px`
+})
 </script>
 
 <template>
   <Transition
-    enter-active-class="transition duration-200 ease-out"
-    enter-from-class="opacity-0 translate-y-1"
-    leave-active-class="transition duration-150 ease-in"
-    leave-to-class="opacity-0 translate-y-1"
+    enter-active-class="transition-[opacity,scale] duration-200 ease-out-quint"
+    enter-from-class="opacity-0 scale-[0.94]"
+    leave-active-class="transition-[opacity,scale] duration-120 ease-in"
+    leave-to-class="opacity-0 scale-[0.97]"
   >
     <aside
       v-if="agent"
       class="absolute z-10 rounded-xl border border-accent bg-surface shadow-lg shadow-black/10"
       :class="place ? '' : 'top-3 right-3 w-[300px] max-w-[calc(100%-24px)]'"
-      :style="place?.style"
+      :style="[place?.style, { transformOrigin: origin }]"
       :aria-label="agent.role === 'main' ? t('agent.main') : t('agent.subagent')"
     >
       <span

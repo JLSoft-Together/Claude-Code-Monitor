@@ -146,6 +146,7 @@ export const useUiStore = defineStore('ui', () => {
   const barMin = ref(savedBar.min)
   const fitRequest = ref(0)
   const shortcutsOpen = ref(false)
+  const keyPress = ref<{ keys: string; n: number } | null>(null)
   const panelSize = ref(initialSizes())
   const nodeSizes = ref<Record<string, NodeSize>>(savedMap.sizes)
   const nodeResized = ref(0)
@@ -268,6 +269,10 @@ export const useUiStore = defineStore('ui', () => {
     fitRequest.value++
   }
 
+  function pressKey(keys: string): void {
+    keyPress.value = { keys, n: (keyPress.value?.n ?? 0) + 1 }
+  }
+
   function setView(value: View): void {
     view.value = value
     compact.value = false
@@ -373,6 +378,8 @@ export const useUiStore = defineStore('ui', () => {
     fitRequest,
     requestFit,
     shortcutsOpen,
+    keyPress,
+    pressKey,
     panelSize,
     setPanelSize,
     savePanelSizes,

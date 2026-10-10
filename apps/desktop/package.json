@@ -1,6 +1,6 @@
 {
   "name": "@ccm/desktop",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Claude Code Monitor desktop app (Windows, macOS)",
   "scripts": {

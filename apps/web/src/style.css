@@ -512,6 +512,122 @@ body {
   opacity: 0;
 }
 
+/* content swap in place (Transition name="ccm-fade") */
+.ccm-fade-enter-active {
+  transition: opacity 180ms var(--ease-out-quint);
+}
+.ccm-fade-leave-active {
+  transition: opacity 110ms ease-in;
+}
+.ccm-fade-enter-from,
+.ccm-fade-leave-to {
+  opacity: 0;
+}
+
+/* floating side panels slide in from their own edge */
+.ccm-panel-left-enter-active,
+.ccm-panel-right-enter-active {
+  transition:
+    opacity 220ms var(--ease-out-quint),
+    translate 260ms var(--ease-out-quint);
+}
+.ccm-panel-left-leave-active,
+.ccm-panel-right-leave-active {
+  transition:
+    opacity 150ms ease-in,
+    translate 150ms ease-in;
+}
+.ccm-panel-left-enter-from,
+.ccm-panel-left-leave-to {
+  opacity: 0;
+  translate: -24px 0;
+}
+.ccm-panel-right-enter-from,
+.ccm-panel-right-leave-to {
+  opacity: 0;
+  translate: 24px 0;
+}
+
+/* key hints pop in (delay set per badge, left to right) */
+@keyframes ccm-kbd-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.6);
+  }
+}
+.ccm-kbd-enter-active {
+  animation: ccm-kbd-in 260ms var(--ease-out-quint) both;
+}
+.ccm-kbd-leave-active {
+  transition: opacity 120ms ease-in;
+}
+.ccm-kbd-leave-to {
+  opacity: 0;
+}
+
+/* tool buttons sink a little while pressed */
+.ccm-press {
+  transition-property: color, background-color, border-color, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out-quint);
+}
+.ccm-press:active:not(:disabled) {
+  scale: 0.96;
+}
+
+/* session bar: first appearance, and a slow amber pulse while collapsed with a session waiting */
+@keyframes ccm-bar-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes ccm-bar-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.ccm-bar-in-top {
+  animation: ccm-bar-in-top 360ms 120ms var(--ease-out-quint) both;
+}
+.ccm-bar-in-bottom {
+  animation: ccm-bar-in-bottom 360ms 120ms var(--ease-out-quint) both;
+}
+.ccm-bar-alert::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--ccm-waiting-soft);
+  box-shadow: inset 0 0 0 1px var(--ccm-waiting);
+  animation: ccm-breathe 2.6s ease-in-out infinite;
+}
+.ccm-bar-alert > * {
+  position: relative;
+  z-index: 1;
+}
+
+::view-transition-group(ccm-bar) {
+  animation-duration: 340ms;
+  animation-timing-function: var(--ease-out-quint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-bar-in-top,
+  .ccm-bar-in-bottom,
+  .ccm-kbd-enter-active,
+  .ccm-bar-alert::after {
+    animation: none;
+  }
+  .ccm-bar-alert::after {
+    opacity: 0.6;
+  }
+  .ccm-press:active:not(:disabled) {
+    scale: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ccm-spin,
   .ccm-enter,
@@ -554,9 +670,28 @@ body {
   }
 }
 
+/* new edge draws from parent to child; AgentMap sets --ccm-edge-len to the path length, the fallback keeps it hidden until then */
+.vue-flow__edge.ccm-edge-new .vue-flow__edge-path {
+  stroke-dasharray: var(--ccm-edge-len, 1000);
+  animation: ccm-edge-draw 650ms var(--ease-out-quint) both;
+}
+
+@keyframes ccm-edge-draw {
+  from {
+    stroke-dashoffset: var(--ccm-edge-len, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .vue-flow__edge.ccm-edge-hot .vue-flow__edge-path {
+  .vue-flow__edge.ccm-edge-hot .vue-flow__edge-path,
+  .vue-flow__edge.ccm-edge-new .vue-flow__edge-path {
     animation: none;
+  }
+  .vue-flow__edge.ccm-edge-new .vue-flow__edge-path {
+    stroke-dasharray: none;
   }
 }
 

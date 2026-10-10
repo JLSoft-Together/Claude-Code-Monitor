@@ -28,3 +28,4 @@ Bỏ qua: animate width panel ghim (resize canvas mỗi frame), hiệu ứng tra
 
 ## Đã làm
 - Số token (yêu cầu riêng): TokenCount — đếm lên, sáng 1 nhịp, badge +N cộng dồn trong 1.5 s, ≥ 50K đổi màu cam.
+- P1 + P2 (2026-10-10): đủ 13 mục. `lib/motion.ts` (reducedMotion, withViewTransition, bootNodeDelay, takeBarEntrance, nextMapIsSwitch); panel `ccm-panel-left/right` (nổi) / `ccm-fade` (ghim); thanh grid-rows 0fr↔1fr + chevron xoay + `ccm-bar-alert`; tab pill đo `offsetLeft/Width` + ResizeObserver; popover scale từ mũi tên; KeyHint v-show + `ccm-kbd` quét trái→phải, `ui.pressKey` → WAAPI lún kbd + sáng nút; edge `ccm-edge-new` dùng `--ccm-edge-len` (getTotalLength); `.ccm-press`; dock ⇧B View Transition `ccm-bar`; node stagger 30 ms batch đầu; camera fly-in khi mở tab; `CountNum` cho số trong thanh.

@@ -26,7 +26,7 @@ const key = computed(() => (props.panel === 'sessions' ? 'S' : 'A'))
     </h2>
     <button
       type="button"
-      class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+      class="ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
       :aria-pressed="pinned"
       :aria-label="pinned ? t('panel.unpin') : t('panel.pin')"
       :title="pinned ? t('panel.unpin') : t('panel.pin')"
@@ -38,7 +38,7 @@ const key = computed(() => (props.panel === 'sessions' ? 'S' : 'A'))
     </button>
     <button
       type="button"
-      class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+      class="ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
       :aria-label="t('panel.close')"
       :title="t('panel.close')"
       :aria-keyshortcuts="key"

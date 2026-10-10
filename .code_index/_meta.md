@@ -63,3 +63,4 @@
 - SubagentCounts replaces 'N subagents · N working' in SessionCard, added to SessionSummary.
 - Context %: `contextUsedPct` (shared/context.ts, buffer 16.5 % like the status line) in ContextGauge, useNotifications, collector `store.contextPct`; tooltip keeps raw % (`contextRawPct`).
 - Context % reported: bridge `contextPct`/`bufferPct` → statusline.ts → `ContextHints.sessionContext` + env `bufferPct` → tracker `contextOf` → `Agent.contextPct`; web ContextGauge `pct` prop, useNotifications, store.contextPct. Tests `collector/test/context.test.ts`.
+- v15 motion P1+P2: lib/motion.ts, KeyHint/ui.pressKey, SessionTabs pill, SessionBar collapse/alert/dock VT, MonitorView panel transitions, AgentMap edge draw + flyToFit, CountNum, style.css ccm-fade/panel/kbd/press/bar/edge-new.

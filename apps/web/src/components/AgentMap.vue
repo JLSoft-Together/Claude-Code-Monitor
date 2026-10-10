@@ -10,6 +10,7 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
+import { nextMapIsSwitch, reducedMotion } from '../lib/motion'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
 import KeyHint from './KeyHint.vue'
@@ -30,6 +31,7 @@ const picked = ref<Set<string>>(new Set())
 const hasNodes = ref(false)
 let didInitialFit = false
 let pendingFit = false
+const flyIn = nextMapIsSwitch()
 
 const highlighted = computed(() => (ui.selectedAgentId ? agents.lineage(ui.selectedAgentId) : null))
 provide('ccm-highlight', highlighted)
@@ -142,6 +144,34 @@ async function autoFit(duration = 0): Promise<void> {
 
 const nodeIds = computed(() => new Set(getNodes.value.map((n) => n.id)))
 
+function measureEdges(ids: string[]): void {
+  for (const id of ids) {
+    const path = canvas.value?.querySelector<SVGPathElement>(`.vue-flow__edge[data-id="${CSS.escape(id)}"] .vue-flow__edge-path`)
+    if (path) path.style.setProperty('--ccm-edge-len', String(Math.ceil(path.getTotalLength()) + 1))
+  }
+}
+
+// Edges that appear after the first render draw themselves from parent to child.
+const EDGE_DRAW_MS = 700
+const freshEdges = ref<Set<string>>(new Set())
+let knownEdges: Set<string> | null = null
+function trackEdges(ids: string[]): void {
+  if (!knownEdges) {
+    knownEdges = new Set(ids)
+    return
+  }
+  const born = ids.filter((id) => !knownEdges!.has(id))
+  knownEdges = new Set(ids)
+  if (!born.length) return
+  freshEdges.value = new Set([...freshEdges.value, ...born])
+  void nextTick(() => requestAnimationFrame(() => measureEdges(born)))
+  window.setTimeout(() => {
+    const next = new Set(freshEdges.value)
+    for (const id of born) next.delete(id)
+    freshEdges.value = next
+  }, EDGE_DRAW_MS)
+}
+
 const edges = computed<Edge[]>(() =>
   shownList.value
     .filter((a) => a.parentId && visibility.value.visible.has(a.parentId) && nodeIds.value.has(a.id) && nodeIds.value.has(a.parentId))
@@ -150,10 +180,16 @@ const edges = computed<Edge[]>(() =>
       source: a.parentId!,
       target: a.id,
       type: 'smoothstep',
-      class: a.status === 'working' ? 'ccm-edge-hot' : undefined,
+      class: [a.status === 'working' ? 'ccm-edge-hot' : '', freshEdges.value.has(`${a.parentId}->${a.id}`) ? 'ccm-edge-new' : ''].join(' ').trim() || undefined,
       selectable: false,
       pathOptions: { borderRadius: 6 },
     })),
+)
+
+watch(
+  () => edges.value.map((e) => e.id),
+  (ids) => trackEdges(ids),
+  { immediate: true },
 )
 
 // First sync waits for <VueFlow> to mount: nodes added during setup are dropped when it initializes (remount after a tab switch).
@@ -197,8 +233,20 @@ watch(
 onNodesInitialized(() => {
   if (!pendingFit) return
   pendingFit = false
-  void autoFit()
+  void autoFit().then(() => (flyIn ? flyToFit() : undefined))
 })
+
+/** After a tab switch the camera eases in toward the tree instead of cutting to it. */
+async function flyToFit(): Promise<void> {
+  const box = canvas.value
+  if (!box || reducedMotion()) return
+  const target = getViewport()
+  const k = 0.82
+  const cx = box.clientWidth / 2
+  const cy = box.clientHeight / 2
+  await setViewport({ x: cx - (cx - target.x) * k, y: cy - (cy - target.y) * k, zoom: target.zoom * k })
+  await setViewport(target, { duration: 420 })
+}
 
 watch(
   () => ui.selectedAgentId && !visibility.value.visible.has(ui.selectedAgentId),
@@ -227,7 +275,7 @@ onNodeDragStop(({ nodes }) => {
 })
 
 const TOOL =
-  'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+  'ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
 
 const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
   { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },
