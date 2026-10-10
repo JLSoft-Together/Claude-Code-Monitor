@@ -13,6 +13,7 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import StatusIcon from './StatusIcon.vue'
+import TokenCount from './TokenCount.vue'
 
 const props = defineProps<{ id: string; data: { agentId: string }; picked?: boolean }>()
 
@@ -210,7 +211,7 @@ onBeforeUnmount(() => stop?.())
         class="mt-2 flex items-center gap-2 border-t border-line pt-2 text-xs tabular-nums text-ink-muted"
         :title="tokens.title"
       >
-        <span class="font-semibold text-ink">{{ t('terminal.tokens', { total: tokens.total }) }}</span>
+        <TokenCount class="font-semibold text-ink" :value="agent.totalTokens ?? 0" />
         <span class="ml-auto inline-flex items-center gap-1">
           <span class="size-1.5 rounded-full bg-series-input" aria-hidden="true" />{{ t('agent.inShort', { n: tokens.input }) }}
         </span>
@@ -224,6 +225,7 @@ onBeforeUnmount(() => stop?.())
         compact
         :tokens="agent.contextTokens"
         :window="agent.contextWindow"
+        :pct="agent.contextPct"
       />
       <Handle type="source" :position="Position.Bottom" />
       <span

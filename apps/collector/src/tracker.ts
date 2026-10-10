@@ -2,6 +2,7 @@ import { access, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   contextWindowOf,
+  usablePct,
   isAgentFinished,
   mainAgentStatus,
   mapRegistryStatus,
@@ -21,6 +22,10 @@ export interface ContextHints {
   settingsModel?: string
   modelWindows?: Record<string, number>
   sessionWindows?: Map<string, number>
+  /** Status line reports per session: Claude Code's used % of the full window and the auto-compact buffer. */
+  sessionContext?: Map<string, { pct?: number; bufferPct?: number; at: string }>
+  /** Buffer from the collector's own CLAUDE_CODE_AUTO_COMPACT_WINDOW, used when the bridge sent none. */
+  bufferPct?: number
 }
 
 interface SubagentMeta {
@@ -247,17 +252,24 @@ export class SessionTracker {
     state: TranscriptState,
     model: string | undefined,
     main = false,
-  ): { contextTokens?: number; contextWindow?: number } {
+  ): { contextTokens?: number; contextWindow?: number; contextPct?: number } {
     if (state.contextTokens === undefined) return {}
     const sessionId = this.record.sessionId
+    const contextWindow = contextWindowOf(model, {
+      settingsModel: this.hints.settingsModel,
+      peak: state.peakContext,
+      reported: main && sessionId ? this.hints.sessionWindows?.get(sessionId) : undefined,
+      catalog: model ? this.hints.modelWindows?.[model.replace('[1m]', '')] : undefined,
+    })
+    const report = main && sessionId ? this.hints.sessionContext?.get(sessionId) : undefined
+    const buffer = report?.bufferPct ?? this.hints.bufferPct
+    // The status line runs after each reply; a report older than the latest reply describes the previous prompt.
+    const reported = report?.pct !== undefined && (!state.cacheAt || report.at >= state.cacheAt) ? report.pct : undefined
+    const raw = reported ?? (contextWindow ? (state.contextTokens / contextWindow) * 100 : undefined)
     return {
       contextTokens: state.contextTokens,
-      contextWindow: contextWindowOf(model, {
-        settingsModel: this.hints.settingsModel,
-        peak: state.peakContext,
-        reported: main && sessionId ? this.hints.sessionWindows?.get(sessionId) : undefined,
-        catalog: model ? this.hints.modelWindows?.[model.replace('[1m]', '')] : undefined,
-      }),
+      contextWindow,
+      contextPct: raw === undefined ? undefined : Math.round(usablePct(raw, buffer) * 10) / 10,
     }
   }
 

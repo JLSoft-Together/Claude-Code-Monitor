@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
+import { autocompactBufferPct } from '@ccm/shared'
 import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord } from '@ccm/shared'
 import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
@@ -69,7 +70,11 @@ export class Monitor {
   private projectsWatched = false
   private stopped = false
   onProjectFile: ((file: string) => void) | null = null
-  readonly contextHints: ContextHints = { sessionWindows: new Map() }
+  readonly contextHints: ContextHints = {
+    sessionWindows: new Map(),
+    sessionContext: new Map(),
+    bufferPct: autocompactBufferPct(Number(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)),
+  }
   private readonly jobReader: JobReader
   private readonly statusLine: StatusLineReader
   private readonly costs = new Map<string, number>()
@@ -140,9 +145,15 @@ export class Monitor {
       const changed = new Set<string>()
       const live = new Set<string>()
       const windows = this.contextHints.sessionWindows!
+      const contexts = this.contextHints.sessionContext!
       for (const r of records) {
         if (r.contextWindow !== undefined && windows.get(r.sessionId) !== r.contextWindow) {
           windows.set(r.sessionId, r.contextWindow)
+          changed.add(r.sessionId)
+        }
+        const prev = contexts.get(r.sessionId)
+        if (r.contextPct !== undefined && (prev?.at !== r.at || prev.pct !== r.contextPct)) {
+          contexts.set(r.sessionId, { pct: r.contextPct, bufferPct: r.bufferPct, at: r.at })
           changed.add(r.sessionId)
         }
         if (r.costUsd === undefined) continue
@@ -156,6 +167,7 @@ export class Monitor {
       for (const id of this.costs.keys()) if (!live.has(id) && !tracked.has(id)) this.costs.delete(id)
       const reported = new Set(records.map((r) => r.sessionId))
       for (const id of windows.keys()) if (!reported.has(id) && !tracked.has(id)) windows.delete(id)
+      for (const id of contexts.keys()) if (!reported.has(id) && !tracked.has(id)) contexts.delete(id)
       if (changed.size) for (const t of this.trackers.values()) if (t.sessionId && changed.has(t.sessionId)) this.publish(t)
       if (this.response.rollDay()) this.store.setResponse(this.response.stats())
     } catch (err) {

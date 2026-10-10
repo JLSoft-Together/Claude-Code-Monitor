@@ -275,6 +275,8 @@ Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsag
 2. **Catalog**: `runtime.max_input_tokens` per model id from `<claudeRoot>/cache/model-catalog/published-*.json` (`documentBytes` = base64 JSON, `surfaces.cc.model_selector_config[].models[]`; seen 1M for opus/sonnet 4.6+ and 5.x, 200k for haiku-4-5 and opus-4-1) → `ContextHints.modelWindows`. Combined as `max(catalog, guess)`.
 3. **Guess**: 1M when the `model` field of `<claudeRoot>/settings.json` contains `[1m]` for the same family, or when the observed context already exceeded 200k; otherwise 200k.
 
+Context percent (2026-10-10): the UI and the collector (context toast) show `contextUsedPct` = share of the room before auto-compact, `raw% / (100 − 16.5)`, the same buffer math as the user's status line (gsd-statusline). Verified on a 1M session: 306,010 tokens = 30.6 % raw, terminal 37 %, dashboard now 37 %. The 16.5 % buffer is the status line heuristic, not a value Claude Code reports; the raw % stays in the tooltip. Main agent: the bridge also saves `contextPct` = `100 − context_window.remaining_percentage` (else `used_percentage`) and `bufferPct` from `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (÷ `context_window.total_tokens` or 1M, same as the status line); the collector uses the reported % while its `at` is not older than the latest reply (`cacheAt`), else tokens ÷ window; buffer = bridge → collector env → 16.5. Result in `Agent.contextPct` (UI + context toast).
+
 Only the `model` field of settings is read. UI levels: 60 / 80 / 95 %. Caveat: the catalog gives the model maximum; a plan/provider that caps lower is only correct with the status line bridge installed.
 
 ## 11d. Repo grouping and wait time (2026-10-07)

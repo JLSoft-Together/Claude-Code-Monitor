@@ -22,6 +22,8 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import StatusBadge from './StatusBadge.vue'
+import SubagentCounts from './SubagentCounts.vue'
+import TokenCount from './TokenCount.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
 
@@ -39,8 +41,6 @@ const snooze = useSnoozeStore()
 const meta = computed(() => statusMeta(props.terminal.status))
 const ended = computed(() => props.terminal.status === 'stale')
 const main = computed(() => agents.mainOf(props.terminal.id))
-const subs = computed(() => (agents.byTerminal[props.terminal.id] ?? []).filter((a) => a.role === 'subagent'))
-const subsWorking = computed(() => subs.value.filter((a) => a.status === 'working').length)
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
 const autoNamed = computed(() => isAutoNamed(props.terminal))
@@ -89,7 +89,7 @@ const tokens = computed(() => {
   }
   if (!any) return null
   return {
-    label: t('terminal.tokens', { total: compactNumber(input + output) }),
+    total: input + output,
     title: t('terminal.tokensTitle', {
       input: fullNumber(input, locale.value),
       output: fullNumber(output, locale.value),
@@ -190,7 +190,7 @@ const costBump = useBump(() => cost.value)
 const context = computed(() => {
   const m = main.value
   if (ended.value || m?.contextTokens === undefined || !m.contextWindow) return null
-  return { tokens: m.contextTokens, window: m.contextWindow }
+  return { tokens: m.contextTokens, window: m.contextWindow, pct: m.contextPct }
 })
 
 const versionWarning = computed(() => {
@@ -516,7 +516,7 @@ function clearAlias(): void {
       <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
     </p>
 
-    <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" />
+    <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" :pct="context.pct" />
 
     <dl class="mt-3 space-y-1 text-xs text-ink-muted">
       <div v-if="terminal.cwd" class="flex min-w-0 items-center gap-2">
@@ -546,17 +546,13 @@ function clearAlias(): void {
     </dl>
 
     <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs text-ink-muted">
-      <span>
-        {{ t('terminal.subagentCount', subs.length) }}<template v-if="subsWorking > 0">
-          · <span class="text-st-working">{{ t('terminal.subagentWorking', { count: subsWorking }) }}</span></template
-        >
-      </span>
+      <SubagentCounts :terminal-id="terminal.id" />
       <span v-if="terminal.compactions" class="inline-flex items-center gap-1" :title="t('terminal.compactionsTitle')">
         <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
       </span>
       <span v-if="tokens || cost" class="ml-auto inline-flex items-center gap-2 tabular">
         <span v-if="cost" :key="costBump" class="text-ink-muted" :class="costBump ? 'ccm-tick' : ''" :title="t('terminal.costTitle')">{{ cost }}</span>
-        <span v-if="tokens" class="font-medium text-ink" :title="tokens.title">{{ tokens.label }}</span>
+        <TokenCount v-if="tokens" class="font-medium text-ink" :title="tokens.title" :value="tokens.total" />
       </span>
     </div>
   </article>

@@ -27,6 +27,20 @@ function window(w) {
   return { usedPct: Math.max(0, Math.min(100, usedPct)), resetsAt: resets ? new Date(resets * 1000).toISOString() : undefined }
 }
 
+// Must match autocompactBufferPct in packages/shared/src/context.ts.
+function bufferPct(cw) {
+  const acw = Number.parseInt(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '0', 10)
+  if (!(acw > 0)) return undefined
+  const total = num(cw?.total_tokens) || 1_000_000
+  return Math.min(100, (acw / total) * 100)
+}
+
+function contextPct(cw) {
+  const remaining = num(cw?.remaining_percentage)
+  const used = remaining !== undefined ? 100 - remaining : num(cw?.used_percentage)
+  return used === undefined ? undefined : Math.max(0, Math.min(100, used))
+}
+
 // Only numbers leave this script: no paths, names, prompt or transcript data.
 function save(input) {
   if (typeof input?.session_id !== 'string' || !SESSION_RE.test(input.session_id)) return
@@ -36,6 +50,8 @@ function save(input) {
     at: new Date().toISOString(),
     costUsd: num(input.cost?.total_cost_usd),
     contextWindow: num(input.context_window?.context_window_size),
+    contextPct: contextPct(input.context_window),
+    bufferPct: bufferPct(input.context_window),
     fiveHour: window(input.rate_limits?.five_hour),
     sevenDay: window(input.rate_limits?.seven_day),
   }

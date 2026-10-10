@@ -313,6 +313,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                   </button>
                 </div>
               </div>
+              <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" />
             </div>
           </section>
 

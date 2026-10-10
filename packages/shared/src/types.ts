@@ -77,6 +77,8 @@ export interface Agent {
   /** Prompt size of the latest API call (input + cache write + cache read). */
   contextTokens?: number
   contextWindow?: number
+  /** Percent of the room before auto-compact, as the status line shows it (Claude Code's own % when the bridge reported it). */
+  contextPct?: number
   /** Prompt-cache TTL tier of the latest reply and when that reply landed (cache expiry estimate). */
   cacheTtl?: CacheTtl
   cacheAt?: string

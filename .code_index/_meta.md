@@ -58,3 +58,8 @@
 - 2026-10-09 macOS dmg (v13): collector mac/linux `process.ts` ps lstart verify, `datadir.ts`, `opener.ts` per platform; desktop `mac.ts` (login-shell PATH, app menu, move to Applications), `bridge.ts` `.sh` fallback, electron-builder `mac` dmg ad-hoc, `dist:mac`, `.github/workflows/desktop.yml`; web `lib/platform.ts` Finder label. Plan `.planning/PLAN-v13-macos-dmg.md`, docs §7b §11k.
 - 2026-10-09 Desktop takeover: `CollectorHost.watchExternal` — collector mượn (bat) mất 2 lần health liên tiếp → app tự fork collector riêng (fix "collector offline" khi đóng bat sau khi mở exe) — `apps/desktop/src/collector-host.ts`.
 - 2026-10-09 New logo (v1.1.1): `scripts/assets/logo.svg` → `art/01-logo.svg`, `favicon.svg`; `scripts/make-icon.mjs` rewritten for it (all OS/PWA/tray icons regenerated). Desktop version 1.1.1.
+- v14 Monitor layout E: `MonitorView`, `SessionBar`, `SessionSummary`, `PanelHeader`, `AgentMap`/`AgentDetails` popover, `useShortcuts` + `KeyHint` + `ShortcutsDialog`; `ui.panels/barDock/barMin/fitRequest/shortcutsOpen`, `settings.keyHints`; `SessionView.vue` removed.
+- TokenCount (count-up + combo delta badge) in AgentNode/SessionCard/MetricsStrip; style.css ccm-token-glow/delta.
+- SubagentCounts replaces 'N subagents · N working' in SessionCard, added to SessionSummary.
+- Context %: `contextUsedPct` (shared/context.ts, buffer 16.5 % like the status line) in ContextGauge, useNotifications, collector `store.contextPct`; tooltip keeps raw % (`contextRawPct`).
+- Context % reported: bridge `contextPct`/`bufferPct` → statusline.ts → `ContextHints.sessionContext` + env `bufferPct` → tracker `contextOf` → `Agent.contextPct`; web ContextGauge `pct` prop, useNotifications, store.contextPct. Tests `collector/test/context.test.ts`.

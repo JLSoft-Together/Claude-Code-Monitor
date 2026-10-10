@@ -447,6 +447,31 @@ body {
   animation: ccm-quota-shine 900ms 150ms var(--ease-out-quint) both;
 }
 
+@keyframes ccm-token-glow {
+  0% {
+    color: var(--ccm-accent);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--ccm-accent) 45%, transparent);
+  }
+}
+
+.ccm-token-glow {
+  animation: ccm-token-glow 900ms var(--ease-out-quint);
+}
+
+/* Each combo update re-keys the badge, so the pop replays while the total grows. */
+.ccm-token-delta {
+  animation: ccm-quota-delta 1.8s var(--ease-out-quint) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-token-glow {
+    animation: none;
+  }
+  .ccm-token-delta {
+    animation: ccm-quota-fade 1.8s linear forwards;
+  }
+}
+
 /* list transitions (TransitionGroup name="ccm-list") */
 .ccm-list-enter-active {
   transition:

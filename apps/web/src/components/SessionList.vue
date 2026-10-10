@@ -63,7 +63,7 @@ watch(
   () => {
     const id = ui.focusedTerminalId
     const root = listEl.value?.$el
-    if (!id || !root || ui.collapsed.includes('sessions') || !window.matchMedia('(min-width: 64rem)').matches) return
+    if (!id || !root || ui.isCollapsed('sessions')) return
     const item = [...root.querySelectorAll<HTMLElement>('[data-terminal-id]')].find((el) => el.dataset.terminalId === id)
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
     item?.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
@@ -73,17 +73,10 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
 </script>
 
 <template>
-  <section id="sessions" aria-labelledby="sessions-title" class="flex min-h-0 flex-col lg:h-full">
-    <PanelHeader
-      panel="sessions"
-      rail="lg"
-      title-id="sessions-title"
-      body-id="sessions-body"
-      :title="t('sessions.title')"
-      :meta="t('sessions.count', { n: terminals.live.length })"
-    />
+  <section id="sessions" aria-labelledby="sessions-title" class="flex h-full min-h-0 flex-col">
+    <PanelHeader panel="sessions" title-id="sessions-title" :title="t('sessions.title')" :meta="t('sessions.count', { n: terminals.live.length })" />
 
-    <div v-show="!ui.isCollapsed('sessions')" id="sessions-body">
+    <div id="sessions-body" class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
     <FavoritesList />
     <JobsList />
     <div v-if="connection.hasData && terminals.list.length > 1" class="mb-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
@@ -122,7 +115,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       ref="listEl"
       tag="ul"
       name="ccm-list"
-      class="relative grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-1"
+      class="relative grid grid-cols-1 gap-2.5"
       @pointerenter="freeze(true)"
       @pointerleave="onPointerLeave"
       @focusin="freeze(true)"

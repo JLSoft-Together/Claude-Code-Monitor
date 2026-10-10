@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Eye, EyeOff, LayoutGrid, Maximize, Minus, Plus, X } from 'lucide-vue-next'
+import { Eye, EyeOff, LayoutGrid, Maximize, Minus, PanelLeft, PanelRight, Plus, X } from 'lucide-vue-next'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
@@ -12,6 +12,7 @@ import { useUiStore } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
+import KeyHint from './KeyHint.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
@@ -170,14 +171,18 @@ watch(
   () => ui.layoutRequest,
   () => syncNodes(true),
 )
-// Collapsing a side panel resizes the canvas after the 200ms grid transition.
+// Pinned panels and the session bar change the canvas size; floating panels do not.
 let resizeTimer: number | undefined
 watch(
-  () => ui.collapsed.join(','),
+  () => [ui.panels.sessions.open && ui.panels.sessions.pinned, ui.panels.activity.open && ui.panels.activity.pinned, ui.barMin].join(','),
   () => {
     window.clearTimeout(resizeTimer)
     resizeTimer = window.setTimeout(() => syncNodes(true), 240)
   },
+)
+watch(
+  () => ui.fitRequest,
+  () => void fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }),
 )
 watch(
   () => ui.focusRequest,
@@ -221,61 +226,23 @@ onNodeDragStop(({ nodes }) => {
   for (const n of nodes) ui.setNodePos(n.id, n.position)
 })
 
-const controls = computed(() => [
+const TOOL =
+  'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+
+const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
   { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },
   { key: 'zoomOut', label: t('map.zoomOut'), icon: Minus, run: () => zoomOut({ duration: 150 }) },
-  { key: 'fit', label: t('map.fit'), icon: Maximize, run: () => fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }) },
+  { key: 'fit', label: t('map.fit'), icon: Maximize, hint: 'F', run: () => ui.requestFit() },
   { key: 'reset', label: t('map.reset'), icon: LayoutGrid, run: () => ui.resetLayout() },
 ])
 </script>
 
 <template>
   <section :aria-labelledby="`${FLOW_ID}-title`" class="flex min-h-0 flex-col">
-    <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
-      <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink" :title="scoped ? undefined : t('map.multiSelectHint')">{{ t('map.title') }}</h2>
-      <div class="flex items-center gap-0.5" role="toolbar" :aria-label="t('map.title')">
-        <button
-          v-if="picked.size"
-          type="button"
-          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-raised px-2 text-xs text-ink transition-colors hover:text-accent"
-          :aria-label="t('map.clearPicked')"
-          :title="t('map.clearPicked')"
-          @click="clearPicked()"
-        >
-          <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
-          <X :size="15" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-          :class="settings.hideFinished ? 'bg-raised text-ink' : 'text-ink-muted'"
-          :aria-pressed="settings.hideFinished"
-          :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-          :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-          :disabled="!hasNodes"
-          @click="settings.toggleHideFinished()"
-        >
-          <component :is="settings.hideFinished ? EyeOff : Eye" :size="17" aria-hidden="true" />
-          <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
-        </button>
-        <button
-          v-for="c in controls"
-          :key="c.key"
-          type="button"
-          class="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-          :aria-label="c.label"
-          :title="c.label"
-          :disabled="!hasNodes"
-          @click="c.run()"
-        >
-          <component :is="c.icon" :size="17" aria-hidden="true" />
-        </button>
-      </div>
-    </div>
-
+    <h2 :id="`${FLOW_ID}-title`" class="sr-only">{{ t('map.title') }}</h2>
     <div
       ref="canvas"
-      class="relative min-h-[440px] flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:min-h-0"
+      class="relative min-h-0 flex-1 overflow-hidden bg-surface"
       role="region"
       :aria-label="t('map.ariaLabel')"
     >
@@ -303,7 +270,74 @@ const controls = computed(() => [
         <p>{{ t('map.empty') }}</p>
       </div>
 
-      <AgentDetails />
+      <div class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
+        <button
+          type="button"
+          :class="[TOOL, ui.isCollapsed('sessions') ? '' : 'invisible']"
+          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :aria-label="t('map.showSessions')"
+          :title="t('map.showSessions')"
+          aria-keyshortcuts="S"
+          @click="ui.togglePanel('sessions')"
+        >
+          <PanelLeft :size="16" aria-hidden="true" /><span class="hidden sm:inline">{{ ui.sessionTab ? t('panel.session') : t('sessions.title') }}</span><KeyHint keys="S" />
+        </button>
+
+        <div class="pointer-events-auto flex flex-wrap items-center justify-center gap-0.5 rounded-lg border border-line bg-surface/95 p-0.5 shadow-sm" role="toolbar" :aria-label="t('map.title')">
+          <button
+            v-if="picked.size"
+            type="button"
+            :class="TOOL"
+            class="bg-raised text-ink"
+            :aria-label="t('map.clearPicked')"
+            :title="t('map.clearPicked')"
+            @click="clearPicked()"
+          >
+            <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
+            <X :size="15" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            :class="[TOOL, settings.hideFinished ? 'bg-raised text-ink' : '']"
+            :aria-pressed="settings.hideFinished"
+            :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+            :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+            :disabled="!hasNodes"
+            @click="settings.toggleHideFinished()"
+          >
+            <component :is="settings.hideFinished ? EyeOff : Eye" :size="16" aria-hidden="true" />
+            <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
+          </button>
+          <button
+            v-for="c in controls"
+            :key="c.key"
+            type="button"
+            :class="TOOL"
+            :aria-label="c.label"
+            :title="c.label"
+            :aria-keyshortcuts="c.hint"
+            :disabled="!hasNodes"
+            @click="c.run()"
+          >
+            <component :is="c.icon" :size="16" aria-hidden="true" />
+            <KeyHint v-if="c.hint" :keys="c.hint" />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          :class="[TOOL, ui.isCollapsed('activity') ? '' : 'invisible']"
+          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :aria-label="t('map.showActivity')"
+          :title="t('map.showActivity')"
+          aria-keyshortcuts="A"
+          @click="ui.togglePanel('activity')"
+        >
+          <span class="hidden sm:inline">{{ t('activity.title') }}</span><KeyHint keys="A" /><PanelRight :size="16" aria-hidden="true" />
+        </button>
+      </div>
+
+      <AgentDetails :flow-id="FLOW_ID" />
     </div>
   </section>
 </template>

@@ -163,10 +163,9 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <section aria-labelledby="activity-title" class="flex min-h-0 flex-col">
-    <PanelHeader panel="activity" rail="xl" title-id="activity-title" body-id="activity-body" :title="t('activity.title')" />
+  <section aria-labelledby="activity-title" class="flex h-full min-h-0 flex-col">
+    <PanelHeader panel="activity" title-id="activity-title" :title="t('activity.title')" />
     <div
-      v-show="!ui.isCollapsed('activity')"
       id="activity-body"
       ref="body"
       class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-xl border border-line bg-surface"

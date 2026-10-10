@@ -66,7 +66,7 @@ function onTabKey(e: KeyboardEvent): void {
 
 <template>
   <header class="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur-sm">
-    <div class="mx-auto flex max-w-[1800px] flex-wrap items-center gap-x-6 gap-y-3 xl:flex-nowrap px-4 py-3 sm:px-6">
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 xl:flex-nowrap px-4 py-3 sm:px-6">
       <div class="flex min-w-0 shrink-0 items-center gap-3">
         <ArtImage name="logo" class="size-9 shrink-0" />
         <div class="flex min-w-0 flex-col">

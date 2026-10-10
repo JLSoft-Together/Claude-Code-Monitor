@@ -1,144 +1,118 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useShortcuts } from '../composables/useShortcuts'
 import { useConnectionStore } from '../stores/connection'
-import { useUiStore } from '../stores/ui'
+import { useTerminalsStore } from '../stores/terminals'
+import { useUiStore, type Panel } from '../stores/ui'
 import ActivityFeed from './ActivityFeed.vue'
 import AwaySummary from './AwaySummary.vue'
 import AgentMap from './AgentMap.vue'
-import MetricsStrip from './MetricsStrip.vue'
+import PanelHeader from './PanelHeader.vue'
 import PanelSplitter from './PanelSplitter.vue'
-import WaitingQueue from './WaitingQueue.vue'
+import SessionBar from './SessionBar.vue'
+import SessionCard from './SessionCard.vue'
 import SessionList from './SessionList.vue'
-import SessionTabs from './SessionTabs.vue'
-import SessionView from './SessionView.vue'
+import WaitingQueue from './WaitingQueue.vue'
 
 const { t } = useI18n()
 const connection = useConnectionStore()
+const terminals = useTerminalsStore()
 const ui = useUiStore()
+useShortcuts()
 
-const RAIL = 48
-const GAP = 16
 const MAP_MIN = 360
+const FLOAT_INSET = 8
 
-const sessionsOpen = computed(() => !ui.isCollapsed('sessions'))
-const activityOpen = computed(() => !ui.isCollapsed('activity'))
-
-type Breakpoint = 'sm' | 'lg' | 'xl'
-const bp = ref<Breakpoint>('sm')
-const grid = ref<HTMLElement | null>(null)
-const gridWidth = ref(0)
+const stage = ref<HTMLElement | null>(null)
+const stageWidth = ref(0)
 const dragging = ref(false)
-
-// Tailwind v4 defaults: lg = 64rem, xl = 80rem.
-const lgQuery = window.matchMedia('(min-width: 64rem)')
-const xlQuery = window.matchMedia('(min-width: 80rem)')
-const readBp = () => (bp.value = xlQuery.matches ? 'xl' : lgQuery.matches ? 'lg' : 'sm')
-const observer = new ResizeObserver(([entry]) => (gridWidth.value = entry?.contentRect.width ?? 0))
-
-onMounted(() => {
-  readBp()
-  lgQuery.addEventListener('change', readBp)
-  xlQuery.addEventListener('change', readBp)
-})
-watch(grid, (el, old) => {
+const observer = new ResizeObserver(([entry]) => (stageWidth.value = entry?.contentRect.width ?? 0))
+watch(stage, (el, old) => {
   if (old) observer.unobserve(old)
   if (el) observer.observe(el)
 })
-onBeforeUnmount(() => {
-  lgQuery.removeEventListener('change', readBp)
-  xlQuery.removeEventListener('change', readBp)
-  observer.disconnect()
-})
+onBeforeUnmount(() => observer.disconnect())
 
-watch(
-  () => ui.focusRequest,
-  () => {
-    const el = grid.value
-    if (!el || bp.value === 'sm') return
-    const rect = el.getBoundingClientRect()
-    if (rect.bottom <= window.innerHeight + 1) return
-    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' })
-  },
-)
+const tabTerminal = computed(() => (ui.sessionTab ? terminals.byId[ui.sessionTab] : undefined))
 
-const sessionsW = computed(() => (sessionsOpen.value ? ui.panelSize.sessions : RAIL))
-const activityW = computed(() => (activityOpen.value ? ui.panelSize.activity : RAIL))
-const activityH = computed(() => ui.panelSize.activityHeight)
+const pinnedWidth = (p: Panel) => (ui.panels[p].open && ui.panels[p].pinned ? ui.panelSize[p] : 0)
+function widthOf(p: Panel): number {
+  const max = ui.panels[p].pinned ? stageWidth.value - MAP_MIN : stageWidth.value - 2 * FLOAT_INSET
+  return Math.max(0, Math.min(ui.panelSize[p], max))
+}
+/** Keeps at least MAP_MIN px of map beside pinned panels; a floating panel only has to fit the stage. */
+function maxFor(p: Panel): number {
+  const other: Panel = p === 'sessions' ? 'activity' : 'sessions'
+  return ui.panels[p].pinned ? Math.max(0, stageWidth.value - pinnedWidth(other) - MAP_MIN) : Math.max(0, stageWidth.value - 2 * FLOAT_INSET)
+}
 
-/** Keeps at least MAP_MIN px for the Agent Map between the side panels. */
-const maxFor = (other: number) => Math.max(0, gridWidth.value - other - (bp.value === 'xl' ? 2 : 1) * GAP - MAP_MIN)
-
-const gridStyle = computed(() => {
-  if (bp.value === 'sm') return {}
-  const s = `${sessionsW.value}px`
-  if (bp.value === 'xl') return { gridTemplateColumns: `${s} minmax(0,1fr) ${activityW.value}px` }
-  return {
-    gridTemplateColumns: `${s} minmax(0,1fr)`,
-    gridTemplateRows: activityOpen.value ? `minmax(0,1fr) ${activityH.value}px` : 'minmax(0,1fr) auto',
-  }
-})
+const PANEL_BASE = 'flex min-h-0 flex-col bg-canvas p-3'
+const PANEL_FLOAT = 'absolute inset-y-2 z-20 rounded-xl border border-line-strong shadow-xl'
+function panelClass(p: Panel): string {
+  const { pinned } = ui.panels[p]
+  if (p === 'sessions') return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-r border-line' : `${PANEL_FLOAT} left-2`}`
+  return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-l border-line' : `${PANEL_FLOAT} right-2`}`
+}
 </script>
 
 <template>
   <main
-    class="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 px-4 py-4 sm:px-6"
+    class="flex h-[calc(100dvh-var(--ccm-header-h,4.5rem))] min-h-[420px] w-full flex-col overflow-hidden"
     :class="connection.state !== 'connected' && connection.hasData ? 'opacity-90' : ''"
   >
-    <SessionTabs />
-    <AwaySummary />
-    <SessionView v-if="ui.sessionTab" :key="ui.sessionTab" :terminal-id="ui.sessionTab" />
-    <template v-else>
-    <WaitingQueue data-tour="waiting" />
-    <MetricsStrip data-tour="metrics" />
-    <div
-      ref="grid"
-      class="relative grid grid-cols-[minmax(0,1fr)] gap-4 lg:h-[calc(100dvh-var(--ccm-header-h,4.5rem)-2rem)] lg:min-h-[560px] lg:scroll-mt-[calc(var(--ccm-header-h,4.5rem)+1rem)] xl:grid-rows-1"
-      :class="dragging ? 'select-none' : 'transition-[grid-template-columns,grid-template-rows] duration-200 ease-out motion-reduce:transition-none'"
-      :style="gridStyle"
-    >
-      <div data-tour="sessions" class="min-w-0 lg:row-span-2 lg:min-h-0 xl:row-span-1" :class="sessionsOpen ? 'lg:overflow-y-auto lg:pr-1' : ''">
-        <SessionList />
-      </div>
-      <AgentMap data-tour="map" class="min-h-[480px] min-w-0 lg:min-h-0" />
-      <ActivityFeed data-tour="activity" class="min-w-0 lg:col-start-2 lg:max-h-none lg:min-h-0 xl:col-start-3" :class="activityOpen ? 'max-h-[440px]' : ''" />
+    <SessionBar v-if="ui.barDock === 'top'" data-tour="metrics" />
+    <div class="flex shrink-0 flex-col gap-2 px-3 pt-2 empty:hidden">
+      <AwaySummary />
+      <WaitingQueue v-if="!ui.sessionTab" data-tour="waiting" class="ccm-scroll max-h-40 overflow-y-auto" />
+    </div>
 
-      <template v-if="bp !== 'sm'">
+    <div ref="stage" class="relative flex min-h-0 flex-1" :class="dragging ? 'select-none' : ''">
+      <aside
+        v-show="ui.panels.sessions.open"
+        data-tour="sessions"
+        :class="panelClass('sessions')"
+        :style="{ width: `${widthOf('sessions')}px` }"
+      >
+        <SessionList v-if="!ui.sessionTab" />
+        <section v-else-if="tabTerminal" aria-labelledby="session-panel-title" class="flex h-full min-h-0 flex-col">
+          <PanelHeader panel="sessions" title-id="session-panel-title" :title="t('panel.session')" />
+          <div class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
+            <SessionCard :terminal="tabTerminal" />
+          </div>
+        </section>
         <PanelSplitter
-          v-if="sessionsOpen"
           v-model:dragging="dragging"
           size="sessions"
           axis="x"
           :sign="1"
           :label="t('sessions.title')"
-          :max="maxFor(bp === 'xl' ? activityW : 0)"
-          class="inset-y-0"
-          :style="{ left: `${sessionsW + GAP / 2 - 8}px` }"
+          :max="maxFor('sessions')"
+          class="inset-y-0 -right-2"
         />
+      </aside>
+
+      <AgentMap :key="ui.sessionTab ?? 'all'" :terminal-id="ui.sessionTab" data-tour="map" class="min-w-0 flex-1" />
+
+      <aside
+        v-show="ui.panels.activity.open"
+        data-tour="activity"
+        :class="panelClass('activity')"
+        :style="{ width: `${widthOf('activity')}px` }"
+      >
+        <ActivityFeed :key="ui.sessionTab ?? 'all'" :terminal-id="ui.sessionTab" />
         <PanelSplitter
-          v-if="activityOpen && bp === 'xl'"
           v-model:dragging="dragging"
           size="activity"
           axis="x"
           :sign="-1"
           :label="t('activity.title')"
-          :max="maxFor(sessionsW)"
-          class="inset-y-0"
-          :style="{ right: `${activityW + GAP / 2 - 8}px` }"
+          :max="maxFor('activity')"
+          class="inset-y-0 -left-2"
         />
-        <PanelSplitter
-          v-if="activityOpen && bp === 'lg'"
-          v-model:dragging="dragging"
-          size="activityHeight"
-          axis="y"
-          :sign="-1"
-          :label="t('activity.title')"
-          class="right-0"
-          :style="{ left: `${sessionsW + GAP}px`, bottom: `${activityH + GAP / 2 - 8}px` }"
-        />
-      </template>
+      </aside>
     </div>
-    </template>
+
+    <SessionBar v-if="ui.barDock === 'bottom'" data-tour="metrics" />
   </main>
 </template>

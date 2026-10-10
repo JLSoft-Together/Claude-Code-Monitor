@@ -9,6 +9,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
+import KeyHint from './KeyHint.vue'
 import StatusIcon from './StatusIcon.vue'
 
 const { t } = useI18n()
@@ -75,72 +76,69 @@ function close(id: string): void {
 </script>
 
 <template>
-  <nav
-    class="sticky z-20 -mx-4 border-b border-line bg-canvas/95 px-4 backdrop-blur-sm sm:-mx-6 sm:px-6"
-    :style="{ top: 'var(--ccm-header-h, 4.5rem)' }"
+  <div
+    ref="strip"
+    role="tablist"
     :aria-label="t('tabs.label')"
+    class="ccm-scroll flex min-w-0 items-center gap-1 overflow-x-auto py-1"
+    @keydown="onKey"
   >
+    <button
+      type="button"
+      role="tab"
+      :aria-selected="ui.sessionTab === null"
+      :tabindex="ui.sessionTab === null ? 0 : -1"
+      aria-keyshortcuts="0"
+      class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors"
+      :class="ui.sessionTab === null ? 'border-accent bg-accent-soft font-semibold text-ink' : 'border-transparent text-ink-muted hover:bg-raised hover:text-ink'"
+      @click="select(null)"
+    >
+      <LayoutDashboard :size="15" aria-hidden="true" />
+      {{ t('tabs.all') }}
+      <span class="rounded-full bg-raised px-1.5 text-2xs text-ink-muted tabular">{{ liveCount }}</span>
+      <span v-if="waitingCount" class="rounded-full bg-st-waiting-soft px-1.5 text-2xs font-semibold text-st-waiting tabular" :title="t('tabs.waiting', { n: waitingCount })">
+        {{ waitingCount }}
+      </span>
+      <KeyHint keys="0" />
+    </button>
     <div
-      ref="strip"
-      role="tablist"
-      :aria-label="t('tabs.label')"
-      class="ccm-scroll -mb-px flex items-end gap-1 overflow-x-auto pt-2"
-      @keydown="onKey"
+      v-for="(tab, i) in tabs"
+      :key="tab.id"
+      class="group/tab flex h-8 max-w-[220px] min-w-[110px] shrink-0 items-center rounded-md border transition-colors"
+      :class="[
+        ui.sessionTab === tab.id ? (tab.waiting ? 'border-st-waiting bg-st-waiting-soft' : 'border-accent bg-accent-soft') : 'border-transparent hover:bg-raised',
+        tab.waiting && ui.sessionTab !== tab.id ? 'bg-st-waiting-soft/60' : '',
+        tab.ended ? 'opacity-60' : '',
+      ]"
     >
       <button
         type="button"
         role="tab"
-        :aria-selected="ui.sessionTab === null"
-        :tabindex="ui.sessionTab === null ? 0 : -1"
-        class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-t-lg border border-b-0 px-3.5 text-sm transition-colors"
-        :class="ui.sessionTab === null ? 'border-line bg-surface font-semibold text-ink' : 'border-transparent text-ink-muted hover:bg-raised hover:text-ink'"
-        @click="select(null)"
+        :aria-selected="ui.sessionTab === tab.id"
+        :tabindex="ui.sessionTab === tab.id ? 0 : -1"
+        :aria-keyshortcuts="i < 9 ? String(i + 1) : undefined"
+        :title="tab.title"
+        class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-1.5 pl-2.5 text-left text-sm"
+        :class="ui.sessionTab === tab.id ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink'"
+        @click="select(tab.id)"
       >
-        <LayoutDashboard :size="15" aria-hidden="true" />
-        {{ t('tabs.all') }}
-        <span class="rounded-full bg-raised px-1.5 text-2xs text-ink-muted tabular">{{ liveCount }}</span>
-        <span v-if="waitingCount" class="rounded-full bg-st-waiting-soft px-1.5 text-2xs font-semibold text-st-waiting tabular" :title="t('tabs.waiting', { n: waitingCount })">
-          {{ waitingCount }}
-        </span>
+        <StatusIcon :status="tab.status" :size="14" class="shrink-0" />
+        <span class="min-w-0 flex-1 truncate">{{ tab.title }}</span>
+        <span class="sr-only">{{ t(tab.meta.labelKey) }}</span>
+        <span v-if="tab.waited" class="shrink-0 text-2xs font-semibold text-st-waiting tabular">{{ tab.waited }}</span>
+        <KeyHint v-if="i < 9" :keys="String(i + 1)" />
       </button>
-      <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="group/tab relative flex h-10 max-w-[240px] min-w-[120px] shrink-0 items-center rounded-t-lg border border-b-0 transition-colors"
-        :class="[
-          ui.sessionTab === tab.id ? 'border-line bg-surface' : 'border-transparent hover:bg-raised',
-          tab.waiting && ui.sessionTab !== tab.id ? 'bg-st-waiting-soft/60' : '',
-          tab.ended ? 'opacity-60' : '',
-        ]"
+      <button
+        v-if="tab.ended"
+        type="button"
+        tabindex="-1"
+        class="mr-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-raised hover:text-st-error"
+        :aria-label="t('terminal.dismiss', { title: tab.title })"
+        :title="t('terminal.dismiss', { title: tab.title })"
+        @click="close(tab.id)"
       >
-        <span v-if="ui.sessionTab === tab.id" class="absolute inset-x-2 top-0 h-0.5 rounded-full" :class="tab.waiting ? 'bg-st-waiting' : 'bg-accent'" aria-hidden="true" />
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="ui.sessionTab === tab.id"
-          :tabindex="ui.sessionTab === tab.id ? 0 : -1"
-          :title="tab.title"
-          class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 pr-1.5 pl-3 text-left text-sm"
-          :class="ui.sessionTab === tab.id ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink'"
-          @click="select(tab.id)"
-        >
-          <StatusIcon :status="tab.status" :size="14" class="shrink-0" />
-          <span class="min-w-0 flex-1 truncate">{{ tab.title }}</span>
-          <span class="sr-only">{{ t(tab.meta.labelKey) }}</span>
-          <span v-if="tab.waited" class="shrink-0 text-2xs font-semibold text-st-waiting tabular">{{ tab.waited }}</span>
-        </button>
-        <button
-          v-if="tab.ended"
-          type="button"
-          tabindex="-1"
-          class="mr-1.5 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-raised hover:text-st-error"
-          :aria-label="t('terminal.dismiss', { title: tab.title })"
-          :title="t('terminal.dismiss', { title: tab.title })"
-          @click="close(tab.id)"
-        >
-          <X :size="13" aria-hidden="true" />
-        </button>
-      </div>
+        <X :size="13" aria-hidden="true" />
+      </button>
     </div>
-  </nav>
+  </div>
 </template>

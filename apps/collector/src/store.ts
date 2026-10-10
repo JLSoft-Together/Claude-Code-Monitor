@@ -1,5 +1,6 @@
 import {
   PROTOCOL_VERSION,
+  contextUsedPct,
   SUPPORTED_CLAUDE_VERSION,
   type ActivityEvent,
   type Agent,
@@ -94,7 +95,8 @@ export class MonitorStore implements UsageSink {
   contextPct(terminalId: string): number | null {
     for (const a of this.agents.values()) {
       if (a.terminalId !== terminalId || a.role !== 'main') continue
-      return a.contextTokens !== undefined && a.contextWindow ? (a.contextTokens / a.contextWindow) * 100 : null
+      if (a.contextPct !== undefined) return a.contextPct
+      return a.contextTokens !== undefined && a.contextWindow ? contextUsedPct(a.contextTokens, a.contextWindow) : null
     }
     return null
   }
