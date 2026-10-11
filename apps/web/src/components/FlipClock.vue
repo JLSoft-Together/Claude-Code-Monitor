@@ -36,7 +36,7 @@ const label = computed(() => `${parts.value.time.join(':')} - ${parts.value.day}
         <FlipChar :value="pair[0]!" /><FlipChar :value="pair[1]!" />
       </template>
     </span>
-    <span class="inline-flex items-center gap-1.5 text-ink-muted" aria-hidden="true">
+    <span class="hidden items-center gap-1.5 text-ink-muted 3xl:inline-flex" aria-hidden="true">
       <span class="text-ink-faint">-</span>
       <FlipChar :value="parts.day" />
       <span class="text-ink-faint">-</span>

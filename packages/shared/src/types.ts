@@ -11,6 +11,9 @@ export type AgentStatus =
 
 export type AgentRole = 'main' | 'subagent'
 
+/** Which CLI produced the session / agent; absent means Claude Code. */
+export type Provider = 'claude' | 'codex'
+
 export interface TerminalSession {
   id: string
   processId?: number
@@ -25,8 +28,12 @@ export interface TerminalSession {
   entrypoint?: string
 
   cwd?: string
+  provider?: Provider
   claudeSessionId?: string
   claudeVersion?: string
+  /** Codex thread id (rollout file name) and CLI version, for Codex sessions. */
+  codexSessionId?: string
+  codexVersion?: string
 
   rawStatus?: string
   status: TerminalStatus
@@ -53,6 +60,7 @@ export interface Agent {
   terminalId: string
 
   role: AgentRole
+  provider?: Provider
   name?: string
   type?: string
   description?: string
@@ -149,6 +157,8 @@ export interface MonitorSnapshot {
   favorites?: Favorite[]
   jobs?: BackgroundJob[]
   limits?: PlanLimits
+  /** Codex account rate limits (latest `token_count` in a Codex rollout). */
+  codexLimits?: PlanLimits
   response?: ResponseStats
   /** Model id → official display name from Claude Code's model catalog. */
   modelNames?: Record<string, string>
@@ -222,6 +232,8 @@ export interface PlanLimits {
   fiveHour?: LimitWindow
   sevenDay?: LimitWindow
   updatedAt: string
+  /** Codex only: plan name reported with the limits (`plus`, `pro`, …). */
+  plan?: string
 }
 
 /** Today's wait → reply times, measured from registry status changes (waiting → busy). */
@@ -336,6 +348,7 @@ export interface Diagnostics {
   dataDir: string
   watchers: { sessions: boolean; projects: boolean }
   verifyProcesses: boolean
+  codex?: { home: string; watching: boolean; threads: number; processes: number }
   sessions: { live: number; ended: number }
   statusLine: { reports: number; lastAt?: string }
   usage?: UsageScan
@@ -363,6 +376,7 @@ export type MonitorEvent =
   | { type: 'favorite.rejected'; payload: { dir: string; reason: FavoriteRejectReason } }
   | { type: 'jobs.updated'; payload: { jobs: BackgroundJob[] } }
   | { type: 'limits.updated'; payload: PlanLimits }
+  | { type: 'codexLimits.updated'; payload: PlanLimits }
   | { type: 'response.updated'; payload: ResponseStats }
   | { type: 'models.updated'; payload: { modelNames: Record<string, string> } }
   | { type: 'terminal.focusResult'; payload: { terminalId: string; result: FocusWindowResult } }

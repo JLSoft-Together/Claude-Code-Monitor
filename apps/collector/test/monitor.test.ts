@@ -44,6 +44,8 @@ describe('Monitor with fixture claude root', () => {
 
   const config = (): CollectorConfig => ({
     claudeRoot: root,
+    codexHome: root,
+    codex: false,
     host: '127.0.0.1',
     port: 0,
     toast: false,

@@ -56,6 +56,7 @@ export class MonitorStore implements UsageSink {
   private readonly toolActivity: ActivityEvent[] = []
   private jobs: BackgroundJob[] = []
   private limits: PlanLimits | null = null
+  private codexLimits: PlanLimits | null = null
   private response: ResponseStats | null = null
   private modelNames: Record<string, string> = {}
   statusLineCommand?: string
@@ -253,6 +254,12 @@ export class MonitorStore implements UsageSink {
     this.emit({ type: 'limits.updated', payload: this.limits })
   }
 
+  setCodexLimits(limits: PlanLimits): void {
+    if (JSON.stringify(limits) === JSON.stringify(this.codexLimits)) return
+    this.codexLimits = clean({ ...limits })
+    this.emit({ type: 'codexLimits.updated', payload: this.codexLimits })
+  }
+
   setResponse(stats: ResponseStats): void {
     if (JSON.stringify(stats) === JSON.stringify(this.response)) return
     this.response = clean({ ...stats })
@@ -281,6 +288,7 @@ export class MonitorStore implements UsageSink {
       favorites: [...this.favorites],
       jobs: [...this.jobs],
       limits: this.limits ?? undefined,
+      codexLimits: this.codexLimits ?? undefined,
       response: this.response ?? undefined,
       modelNames: { ...this.modelNames },
       statusLineCommand: this.statusLineCommand,

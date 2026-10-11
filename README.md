@@ -1,6 +1,8 @@
-# Claude Code Monitor
+# Agent Monitor
 
-Dashboard local, realtime cho mọi session Claude Code CLI đang chạy trên Windows (macOS: bản desktop `.dmg`): session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí.
+Dashboard local, realtime cho mọi session Claude Code CLI đang chạy trên Windows (macOS: bản desktop `.dmg`), kèm các lần Codex CLI do chúng gọi: session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí.
+
+Tên cũ: **Claude Code Monitor**. Mã nội bộ giữ nguyên (`appId` `dev.ccm.monitor`, thư mục data `ccm`, biến `CCM_*`), nên bản cài cũ cập nhật thẳng, không mất cài đặt.
 
 - Chỉ đọc file local của Claude Code: không gọi API, không gửi prompt, **không tốn thêm token**.
 - Chỉ bind `127.0.0.1`. Không đưa nội dung prompt, tham số tool, env hay secret ra dashboard.
@@ -14,7 +16,7 @@ Dashboard local, realtime cho mọi session Claude Code CLI đang chạy trên W
 
 ## Chạy
 
-**Cách dễ nhất:** bấm đúp `Claude-Code-Monitor.bat`. Trang cài đặt tự kiểm Node.js, `npm install`, build rồi mở dashboard. Giữ cửa sổ bat mở trong lúc dùng, đóng là tắt.
+**Cách dễ nhất:** bấm đúp `Agent-Monitor.bat`. Trang cài đặt tự kiểm Node.js, `npm install`, build rồi mở dashboard. Giữ cửa sổ bat mở trong lúc dùng, đóng là tắt. `Claude-Code-Monitor.bat` (tên cũ) vẫn chạy được; lần chạy đầu tự đổi lối tắt cũ sang `Agent-Monitor.lnk`.
 
 Thủ công:
 
@@ -39,13 +41,14 @@ App Electron đóng gói sẵn collector + web: người dùng cuối **không c
 
 - Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, Mở trong trình duyệt, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
 - Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray.
+- Đã cài bản tên cũ (Claude Code Monitor): chạy Setup mới để cập nhật đè, cùng thư mục cài; "Chạy cùng Windows" tự trỏ sang exe mới.
 - Nếu đã có collector chạy ở port `4317` (ví dụ đang mở bằng bat), app dùng luôn collector đó, không khởi động cái thứ hai; đóng bat thì app tự bật collector riêng sau vài giây.
 
 Build:
 
 ```powershell
 npm install
-npm run dist:win    # → apps/desktop/release/: Claude-Code-Monitor-Setup-<ver>.exe (NSIS) + Claude-Code-Monitor-Portable-<ver>.exe
+npm run dist:win    # → apps/desktop/release/: Agent-Monitor-Setup-<ver>.exe (NSIS) + Agent-Monitor-Portable-<ver>.exe
 npm run desktop     # chạy thử bản dev, không đóng gói
 ```
 
@@ -61,12 +64,12 @@ Cùng app Electron, đóng gói `.dmg` cho Apple Silicon (`arm64`) và Intel (`x
 
 ```bash
 npm ci
-npm run dist:mac    # → apps/desktop/release/: Claude-Code-Monitor-<ver>-arm64.dmg + Claude-Code-Monitor-<ver>-x64.dmg
+npm run dist:mac    # → apps/desktop/release/: Agent-Monitor-<ver>-arm64.dmg + Agent-Monitor-<ver>-x64.dmg
 ```
 
 Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc push tag `v*`). Workflow build DMG trên `macos-latest` và exe trên `windows-latest`, tải về ở mục *Artifacts* của lần chạy.
 
-- App ký **ad-hoc**, chưa notarize (chưa có Apple Developer ID). Lần đầu mở: kéo app vào **Applications**, mở → bị chặn → **System Settings → Privacy & Security → Open Anyway**. Hoặc: `xattr -dr com.apple.quarantine "/Applications/Claude Code Monitor.app"`.
+- App ký **ad-hoc**, chưa notarize (chưa có Apple Developer ID). Lần đầu mở: kéo app vào **Applications**, mở → bị chặn → **System Settings → Privacy & Security → Open Anyway**. Hoặc: `xattr -dr com.apple.quarantine "/Applications/Agent Monitor.app"`. Đã cài bản tên cũ thì xoá `Claude Code Monitor.app` sau khi chép bản mới.
 - Chạy từ ổ DMG / Downloads thì app hỏi chuyển vào Applications (đường dẫn app nằm trong lệnh status line).
 - Icon ở menu bar thay cho tray; Cmd W ẩn cửa sổ, bấm icon Dock để mở lại, Cmd Q thoát.
 - Data: `~/Library/Application Support/ccm`. Status line bridge chép ra `.../ccm/bin/`; máy không có `node` thì dùng `statusline-bridge.sh` chạy chính app (`ELECTRON_RUN_AS_NODE=1`).
@@ -74,6 +77,7 @@ Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc pu
 ## Tính năng chính
 
 - **Giám sát**: hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới terminal, hoãn nhắc), Agent Map main → subagent, luồng hoạt động.
+- **Codex CLI**: lần `codex exec` / plugin Codex do Claude Code gọi hiện thành node con (badge Codex) dưới đúng agent đã gọi; Codex chạy riêng ở terminal khác là session riêng; chip giới hạn Codex 5h / tuần trên header. Chi tiết: `docs/codex-integration.md`.
 - **Thống kê**: token theo ngày / model / project, chi phí ước tính, tỉ lệ cache.
 - **Lịch sử**: thời gian làm việc / chờ của từng session trong ngày, xuất recap Markdown.
 - **Ctrl K**: tìm session, thư mục yêu thích, chạy lệnh nhanh.
@@ -103,6 +107,8 @@ Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. T
 | `CCM_PORT` | `4317` | Port collector |
 | `CCM_STALE_TTL_MIN` | `120` | Phút giữ session đã tắt |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Thư mục data Claude Code |
+| `CODEX_HOME` | `~/.codex` | Thư mục data Codex CLI |
+| `CCM_CODEX` | `1` | `0` = không theo dõi Codex |
 | `CCM_DATA_DIR` | Windows `%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` hoặc `~/.local/share/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
 | `CCM_WEB_DIST` | `apps/web/dist` | Web đã build |
 | `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ kiểm PID (dùng với data giả) |

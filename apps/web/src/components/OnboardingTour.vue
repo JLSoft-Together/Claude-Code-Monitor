@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-vue-next'
 import { TOUR_STEPS, markTourDone, tourDone } from '../lib/tour'
 import { useUiStore } from '../stores/ui'
+import ArtImage from './ArtImage.vue'
 
 const { t } = useI18n()
 const ui = useUiStore()
@@ -177,6 +178,7 @@ onBeforeUnmount(() => {
               <X :size="17" aria-hidden="true" />
             </button>
           </div>
+          <ArtImage v-if="step.id === 'welcome'" name="tour-welcome" class="mx-auto w-36 max-w-full py-1" />
           <p id="tour-body" class="text-sm leading-relaxed text-ink-muted">{{ t(`tour.steps.${step.id}.body`) }}</p>
           <p v-if="step.target && !spot && step.absent" class="rounded-lg bg-raised px-3 py-2 text-xs text-ink-muted">
             {{ t(`tour.steps.${step.id}.absent`) }}

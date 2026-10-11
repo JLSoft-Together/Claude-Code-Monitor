@@ -24,6 +24,8 @@ import { ResponseTracker } from './response'
 import { latestLimits, StatusLineReader } from './statusline'
 import type { MonitorStore } from './store'
 import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints } from './tracker'
+import { CodexMonitor } from './codex/monitor'
+import type { ClaudeTarget } from './codex/link'
 
 const SESSION_ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
@@ -92,6 +94,8 @@ export class Monitor {
   private readonly history: SessionHistory
   private readonly timeline: StatusTimeline
   private readonly notes: AliasStore
+  /** Codex sessions live in their own monitor; session actions on `codex:` ids are delegated to it. */
+  codex: CodexMonitor | null = null
 
   constructor(
     private readonly config: CollectorConfig,
@@ -229,6 +233,7 @@ export class Monitor {
 
   stop(): void {
     this.stopped = true
+    this.codex?.stop()
     for (const w of this.watchers) w.close()
     for (const t of this.timers) clearInterval(t)
     for (const t of this.syncTimers.values()) clearTimeout(t)
@@ -329,7 +334,7 @@ export class Monitor {
     if (sessionChanged) {
       drafts.push({ kind: 'session.cleared', terminalId: tracker.terminalId, data: { title } })
       for (const agent of this.store.agentsOf(tracker.terminalId)) {
-        if (agent.role !== 'main') this.store.removeAgent(agent.id)
+        if (agent.role !== 'main' && agent.provider !== 'codex') this.store.removeAgent(agent.id)
       }
     }
     this.pushActivity(drafts)
@@ -408,9 +413,22 @@ export class Monitor {
     return true
   }
 
+  /** Live Claude sessions, for linking Codex runs to the session (and agent) that launched them. */
+  claudeTargets(): ClaudeTarget[] {
+    return [...this.trackers.values()].map((t) => ({
+      terminalId: t.terminalId,
+      pid: t.record.pid,
+      cwd: t.record.cwd,
+      mainAgentId: t.mainAgentId,
+      ended: t.ended,
+      lastActivityAt: this.store.getTerminal(t.terminalId)?.lastActivityAt,
+      codexCalls: t.codexCalls(),
+    }))
+  }
+
   /** Returns how many ended sessions were removed. */
   dismissEnded(terminalId?: string): number {
-    let removed = 0
+    let removed = this.codex?.dismissEnded(terminalId) ?? 0
     for (const tracker of [...this.trackers.values()]) {
       if (!tracker.ended || (terminalId !== undefined && tracker.terminalId !== terminalId)) continue
       this.forget(tracker)
@@ -495,7 +513,7 @@ export class Monitor {
   private recordOf(tracker: SessionTracker): SessionRecord | null {
     const terminal = this.store.getTerminal(tracker.terminalId)
     if (!terminal?.endedAt) return null
-    const agents = this.store.agentsOf(tracker.terminalId)
+    const agents = this.store.agentsOf(tracker.terminalId).filter((a) => a.provider !== 'codex')
     const main = agents.find((a) => a.role === 'main')
     const totals = this.timeline.totals(tracker.terminalId)
     let input = 0
@@ -537,7 +555,7 @@ export class Monitor {
 
   /** Opens the tracked session's own cwd; the client only names the session. */
   async openFolder(terminalId: string, app: OpenApp, reply: Reply): Promise<void> {
-    const cwd = this.trackers.get(terminalId)?.record.cwd
+    const cwd = CodexMonitor.isCodexTerminal(terminalId) ? this.codex?.cwdOf(terminalId) : this.trackers.get(terminalId)?.record.cwd
     const open = this.deps.openFolder
     let result: OpenResult
     if (!cwd) result = 'notFound'
@@ -562,6 +580,7 @@ export class Monitor {
       dataDir: this.config.dataDir,
       watchers: { sessions: this.sessionsWatched, projects: this.projectsWatched },
       verifyProcesses: this.config.verifyProcesses,
+      codex: this.codex?.diagnostics(),
       sessions: { live, ended },
       statusLine: { reports: this.statusReports.count, lastAt: this.statusReports.lastAt },
     }
@@ -613,11 +632,12 @@ export class Monitor {
     let outcome: FocusWindowResult = 'failed'
     const run = async () => {
       const tracker = this.trackers.get(terminalId)
+      const pid = CodexMonitor.isCodexTerminal(terminalId) ? this.codex?.pidOf(terminalId) : tracker && !tracker.ended ? tracker.record.pid : undefined
       const focus = this.deps.focusWindow
       let result: FocusWindowResult
-      if (!tracker || tracker.ended) result = 'notFound'
+      if (pid === undefined) result = 'notFound'
       else if (!focus) result = 'unsupported'
-      else result = await focus(tracker.record.pid).catch((): FocusWindowResult => 'failed')
+      else result = await focus(pid).catch((): FocusWindowResult => 'failed')
       if (reply) reply({ type: 'terminal.focusResult', payload: { terminalId, result } })
       else this.store.focusResult(terminalId, result)
       outcome = result
@@ -644,7 +664,7 @@ export class Monitor {
     const agents = tracker.buildAgents(terminal)
     const ids = new Set(agents.map((a) => a.id))
     for (const agent of this.store.agentsOf(tracker.terminalId)) {
-      if (!ids.has(agent.id)) this.store.removeAgent(agent.id)
+      if (!ids.has(agent.id) && agent.provider !== 'codex') this.store.removeAgent(agent.id)
     }
     for (const agent of agents) this.store.upsertAgent(agent)
   }

@@ -7,12 +7,14 @@ import { effortLabel, modelLabel } from '../lib/model'
 import { isQuiet, statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
 import { MAIN_WIDTH, SUB_WIDTH } from '../lib/layout'
+import { contextPctOf, isCodex } from '../lib/provider'
 import { bootNodeDelay } from '../lib/motion'
 import { useAgentsStore } from '../stores/agents'
 import { useExtrasStore } from '../stores/extras'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusIcon from './StatusIcon.vue'
 import TokenCount from './TokenCount.vue'
 
@@ -29,6 +31,7 @@ const highlighted = inject<ComputedRef<Set<string> | null>>('ccm-highlight')
 const agent = computed(() => agents.byId[props.data.agentId])
 const popDelay = bootNodeDelay()
 const isMain = computed(() => agent.value?.role === 'main')
+const codex = computed(() => isCodex(agent.value))
 const meta = computed(() => statusMeta(agent.value?.status))
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
 const selected = computed(() => ui.selectedAgentId === props.data.agentId)
@@ -50,7 +53,9 @@ watch(
 const title = computed(() => {
   const a = agent.value
   if (!a) return ''
-  return isMain.value ? displayTitle(terminal.value) || a.name || a.id : a.type ?? a.name ?? t('agent.subagent')
+  if (isMain.value) return displayTitle(terminal.value) || a.name || a.id
+  if (codex.value) return a.name ?? t('agent.codexRun')
+  return a.type ?? a.name ?? t('agent.subagent')
 })
 
 const subtitle = computed(() => {
@@ -192,7 +197,8 @@ onBeforeUnmount(() => stop?.())
         <span class="min-w-0 flex-1 font-semibold" :class="[isMain ? 'text-base' : 'text-sm', sized ? 'break-words' : 'truncate']" :title="title">
           {{ title }}
         </span>
-        <span v-if="isMain" class="shrink-0 rounded-md bg-raised px-1.5 py-px text-2xs font-medium text-ink-muted">
+        <ProviderBadge v-if="codex" :mode="isMain ? (terminal?.entrypoint ?? agent.type) : agent.type" :variant="isMain ? 'full' : 'short'" />
+        <span v-else-if="isMain" class="shrink-0 rounded-md bg-raised px-1.5 py-px text-2xs font-medium text-ink-muted">
           {{ t('agent.main') }}
         </span>
       </div>
@@ -227,7 +233,7 @@ onBeforeUnmount(() => stop?.())
         compact
         :tokens="agent.contextTokens"
         :window="agent.contextWindow"
-        :pct="agent.contextPct"
+        :pct="contextPctOf(agent)"
       />
       <Handle type="source" :position="Position.Bottom" />
       <span

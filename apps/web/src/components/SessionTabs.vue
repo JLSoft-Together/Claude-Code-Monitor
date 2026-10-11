@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LayoutDashboard, X } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
+import { isCodex } from '../lib/provider'
 import { statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
@@ -10,6 +11,7 @@ import { useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import KeyHint from './KeyHint.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusIcon from './StatusIcon.vue'
 
 const { t } = useI18n()
@@ -27,6 +29,8 @@ const tabs = computed(() =>
       title: displayTitle(x) || x.id,
       status: x.status,
       ended: x.status === 'stale',
+      codex: isCodex(x),
+      mode: x.entrypoint,
       waiting,
       waited: waiting ? duration(x.statusSince, now.value) : null,
       meta: statusMeta(x.status),
@@ -155,6 +159,7 @@ function close(id: string): void {
         @click="select(tab.id)"
       >
         <StatusIcon :status="tab.status" :size="14" class="shrink-0" />
+        <ProviderBadge v-if="tab.codex" variant="icon" :mode="tab.mode" />
         <span class="min-w-0 flex-1 truncate">{{ tab.title }}</span>
         <span class="sr-only">{{ t(tab.meta.labelKey) }}</span>
         <span v-if="tab.waited" class="shrink-0 text-2xs font-semibold text-st-waiting tabular">{{ tab.waited }}</span>

@@ -2,7 +2,7 @@ import type en from './en'
 
 const vi: typeof en = {
   app: {
-    title: 'Claude Code Monitor',
+    title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',
   },
   nav: {
@@ -137,6 +137,23 @@ const vi: typeof en = {
     session: 'Session',
     none: '—',
     close: 'Đóng chi tiết',
+    codexRun: 'Lượt chạy Codex',
+    version: 'Phiên bản',
+  },
+  provider: {
+    claude: 'Claude',
+    codex: 'Codex',
+    codexTitle: 'Codex CLI',
+    mode: { exec: 'exec', tui: 'terminal', plugin: 'plugin', subagent: 'agent con', 'app-server': 'app server' },
+    modeTitle: {
+      exec: 'Lượt chạy Codex bằng codex exec',
+      tui: 'Codex tương tác trong terminal',
+      plugin: 'Do plugin Codex trong Claude Code khởi chạy',
+      subagent: 'Do một agent Codex khác tạo ra',
+      'app-server': 'Thread của Codex app server',
+    },
+    tokensTitle: 'Lượt chạy Codex từ session này: {n}. Input {input}, output {output}, cache đọc {cache}. Không tính vào tổng của Claude.',
+    version: 'Codex {v}',
   },
   map: {
     showSessions: 'Hiện Sessions',
@@ -196,6 +213,10 @@ const vi: typeof en = {
     agent_completed: 'Subagent {name} completed',
     agent_failed: 'Subagent {name} lỗi',
     agent_cancelled: 'Subagent {name} đã dừng',
+    codex_started: 'Codex {name} bắt đầu',
+    codex_completed: 'Codex {name} completed',
+    codex_failed: 'Codex {name} lỗi',
+    codex_cancelled: 'Codex {name} đã dừng',
     tool_started: '{agent} chạy {tool}',
     tool_failed: '{agent} — {tool} lỗi',
     unknownTool: 'một tool',
@@ -512,10 +533,13 @@ const vi: typeof en = {
     fullAround: 'hết ~{at} ({in})',
     safe: 'Đủ dùng tới lúc reset',
     staleNote: 'Hiện không có session nào gửi số liệu',
+    codexTitle: 'Giới hạn dùng Codex',
+    codexStaleNote: 'Hiện không có lượt chạy Codex nào gửi số liệu',
+    planLabel: 'Gói',
     dur: { dh: '{d} ngày {h} giờ', hm: '{h} giờ {m} phút', m: '{m} phút' },
+    durShort: { dh: '{d}d {h}h', hm: '{h}h {m}m', m: '{m}m' },
     forecastFull: '~{rate}%/giờ: chạm 100% khoảng {at} ({in})',
     forecastSafe: '~{rate}%/giờ: không chạm giới hạn trước khi reset',
-    forecastShort: 'hết ~{at}',
     title: 'Giới hạn gói',
     fiveHour: '5h',
     sevenDay: 'Weekly',
@@ -632,7 +656,9 @@ const vi: typeof en = {
     statusLineHint: 'Giới hạn gói và chi phí session cần status line bridge (xem Cài đặt).',
     usage: { idle: 'Chưa chạy', scanning: 'Đang quét {done}/{total} file', ready: 'Đã lập chỉ mục {total} file' },
     dataDirHint: 'Cache thống kê, yêu thích, lịch sử và dòng thời gian nằm ở đây.',
-    row: { collector: 'Collector', claudeRoot: 'Thư mục Claude', sessions: 'Session', version: 'Phiên bản Claude Code', statusLine: 'Status line bridge', usage: 'Quét thống kê', dataDir: 'Thư mục dữ liệu' },
+    codexValue: 'Đang theo dõi {threads} thread, {processes} process Codex',
+    codexDetail: 'Đọc file rollout của Codex trong {home}. Đặt CODEX_HOME để dùng thư mục khác.',
+    row: { collector: 'Collector', claudeRoot: 'Thư mục Claude', sessions: 'Session', version: 'Phiên bản Claude Code', statusLine: 'Status line bridge', usage: 'Quét thống kê', codex: 'Codex', dataDir: 'Thư mục dữ liệu' },
     level: { ok: 'Ổn', warn: 'Cần xem', off: 'Chưa hoạt động' },
   },
   compact: {
@@ -656,8 +682,8 @@ const vi: typeof en = {
     skip: 'Bỏ qua hướng dẫn',
     steps: {
       welcome: {
-        title: 'Chào mừng tới Claude Code Monitor',
-        body: 'Trang này theo dõi mọi session Claude Code đang chạy trên máy và cho biết session nào đang cần chủ nhân. Nó chỉ đọc file trên máy: không gõ gì vào Claude, không gọi API, không tốn token. Xem nhanh một phút nhé?',
+        title: 'Chào mừng tới Agent Monitor',
+        body: 'Trang này theo dõi mọi session Claude Code đang chạy trên máy, cả các lần Codex CLI do chúng gọi, và cho biết session nào đang cần chủ nhân. Nó chỉ đọc file trên máy: không gõ gì vào agent, không gọi API, không tốn token. Xem nhanh một phút nhé?',
       },
       tabs: {
         title: 'Ba màn chính',

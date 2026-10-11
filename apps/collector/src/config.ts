@@ -5,6 +5,8 @@ import { defaultDataDir } from './datadir'
 
 export interface CollectorConfig {
   claudeRoot: string
+  codexHome: string
+  codex: boolean
   host: string
   port: number
   staleTtlMs: number
@@ -33,6 +35,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
   const statusLineBridge = env.CCM_STATUSLINE_BRIDGE || fromHere('../../../scripts/statusline-bridge.mjs')
   return {
     claudeRoot: env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+    codexHome: env.CODEX_HOME || path.join(os.homedir(), '.codex'),
+    codex: env.CCM_CODEX !== '0',
     host: '127.0.0.1',
     port: intFromEnv(env.CCM_PORT, 4317),
     staleTtlMs: intFromEnv(env.CCM_STALE_TTL_MIN, 120) * 60_000,

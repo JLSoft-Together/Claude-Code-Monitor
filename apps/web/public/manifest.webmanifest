@@ -1,7 +1,7 @@
 {
-  "name": "Claude Code Monitor",
-  "short_name": "CC Monitor",
-  "description": "Local dashboard for running Claude Code sessions",
+  "name": "Agent Monitor",
+  "short_name": "Agent Monitor",
+  "description": "Local dashboard for running Claude Code and Codex CLI sessions",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

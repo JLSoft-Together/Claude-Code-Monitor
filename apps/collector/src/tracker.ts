@@ -373,6 +373,12 @@ export class SessionTracker {
     })
   }
 
+  codexCalls(): { agentId: string; at: string }[] {
+    const out = this.main.codexCalls.map((at) => ({ agentId: this.mainAgentId, at }))
+    for (const e of this.subagents.values()) for (const at of e.state.codexCalls) out.push({ agentId: e.agentId, at })
+    return out
+  }
+
   buildTerminal(): TerminalSession {
     const r = this.record
     const mapped = mapRegistryStatus(r.status)

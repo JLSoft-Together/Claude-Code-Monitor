@@ -5,6 +5,7 @@ import type { TerminalSession } from '@ccm/shared'
 import { AlarmClock, AppWindow, BellOff, BellRing, Hand, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { statusMeta } from '../lib/status'
+import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { LONG_WAIT_MS } from '../composables/useNotifications'
 import { useConnectionStore } from '../stores/connection'
@@ -12,6 +13,8 @@ import { useExtrasStore } from '../stores/extras'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
+import ArtImage from './ArtImage.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusIcon from './StatusIcon.vue'
 
 const { t, locale } = useI18n()
@@ -38,6 +41,8 @@ interface Row {
   since: number
   job: boolean
   canJump: boolean
+  codex?: boolean
+  mode?: string
 }
 
 function row(x: TerminalSession): Row {
@@ -54,6 +59,8 @@ function row(x: TerminalSession): Row {
     since,
     job: false,
     canJump: !!x.processId,
+    codex: isCodex(x),
+    mode: x.entrypoint,
   }
 }
 
@@ -178,6 +185,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
           >
             <StatusIcon :status="r.status" :size="17" />
             <span class="min-w-0 flex-1 truncate text-base font-medium">{{ r.title }}</span>
+            <ProviderBadge v-if="r.codex" variant="short" :mode="r.mode" />
             <span v-if="r.detail" class="hidden max-w-[18ch] truncate text-sm text-ink-muted sm:inline">{{ r.detail }}</span>
             <span class="shrink-0 text-sm" :class="statusMeta(r.status).text">{{ t(statusMeta(r.status).labelKey) }}</span>
             <span v-if="r.elapsed" class="w-[8ch] shrink-0 text-right text-sm text-ink-muted tabular">{{ r.elapsed }}</span>
@@ -187,6 +195,9 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
       </TransitionGroup>
     </section>
 
-    <p v-if="!terminals.live.length" class="py-8 text-center text-base text-ink-muted">{{ t('compact.empty') }}</p>
+    <div v-if="!terminals.live.length" class="flex flex-col items-center gap-3 py-8 text-center">
+      <ArtImage name="all-quiet" class="w-32 max-w-full" />
+      <p class="text-base text-ink-muted">{{ t('compact.empty') }}</p>
+    </div>
   </main>
 </template>

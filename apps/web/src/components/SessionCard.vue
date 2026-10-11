@@ -8,6 +8,7 @@ import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } fro
 import { modeMeta } from '../lib/mode'
 import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
+import { contextPctOf, isCodex } from '../lib/provider'
 import { statusMeta } from '../lib/status'
 import { useBump } from '../composables/useBump'
 import { displayTitle, isAutoNamed } from '../lib/title'
@@ -21,6 +22,7 @@ import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
 import SubagentCounts from './SubagentCounts.vue'
 import TokenCount from './TokenCount.vue'
@@ -43,7 +45,8 @@ const ended = computed(() => props.terminal.status === 'stale')
 const main = computed(() => agents.mainOf(props.terminal.id))
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
-const autoNamed = computed(() => isAutoNamed(props.terminal))
+const codex = computed(() => isCodex(props.terminal))
+const autoNamed = computed(() => !codex.value && isAutoNamed(props.terminal))
 
 const flash = ref(0)
 watch(
@@ -75,12 +78,16 @@ const detail = computed(() => {
   return null
 })
 
-const tokens = computed(() => {
+// A Claude session's total stays Claude-only; Codex runs it started are summed separately (other provider, other quota).
+function sumTokens(codexAgents: boolean) {
   let input = 0
   let output = 0
   let cache = 0
+  let runs = 0
   let any = false
   for (const a of agents.byTerminal[props.terminal.id] ?? []) {
+    if (isCodex(a) !== codexAgents) continue
+    if (codexAgents) runs++
     if (a.totalTokens === undefined) continue
     any = true
     input += a.inputTokens ?? 0
@@ -88,14 +95,20 @@ const tokens = computed(() => {
     cache += a.cacheReadTokens ?? 0
   }
   if (!any) return null
-  return {
-    total: input + output,
-    title: t('terminal.tokensTitle', {
-      input: fullNumber(input, locale.value),
-      output: fullNumber(output, locale.value),
-      cache: fullNumber(cache, locale.value),
-    }),
-  }
+  return { total: input + output, input, output, cache, runs }
+}
+const tokens = computed(() => {
+  const sum = sumTokens(codex.value)
+  if (!sum) return null
+  const counts = { input: fullNumber(sum.input, locale.value), output: fullNumber(sum.output, locale.value), cache: fullNumber(sum.cache, locale.value) }
+  return { total: sum.total, title: t('terminal.tokensTitle', counts) }
+})
+const codexTokens = computed(() => {
+  if (codex.value) return null
+  const sum = sumTokens(true)
+  if (!sum) return null
+  const counts = { input: fullNumber(sum.input, locale.value), output: fullNumber(sum.output, locale.value), cache: fullNumber(sum.cache, locale.value) }
+  return { label: compactNumber(sum.total, locale.value), title: t('provider.tokensTitle', { n: sum.runs, ...counts }) }
 })
 
 const starred = computed(() => favorites.has(props.terminal.cwd))
@@ -190,7 +203,7 @@ const costBump = useBump(() => cost.value)
 const context = computed(() => {
   const m = main.value
   if (ended.value || m?.contextTokens === undefined || !m.contextWindow) return null
-  return { tokens: m.contextTokens, window: m.contextWindow, pct: m.contextPct }
+  return { tokens: m.contextTokens, window: m.contextWindow, pct: contextPctOf(m) }
 })
 
 const versionWarning = computed(() => {
@@ -305,6 +318,7 @@ function clearAlias(): void {
       >
         {{ title }}
       </button>
+      <ProviderBadge v-if="codex" class="mt-1" :mode="terminal.entrypoint" />
       <span
         v-if="terminal.kind && terminal.kind !== 'interactive'"
         class="shrink-0 rounded-md border border-line px-1.5 py-px font-mono text-2xs text-ink-muted"
@@ -350,7 +364,7 @@ function clearAlias(): void {
         <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
       </button>
       <button
-        v-if="terminal.cwd"
+        v-if="terminal.cwd && !codex"
         type="button"
         class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised"
         :class="starred ? 'text-st-waiting' : 'text-ink-faint hover:text-ink'"
@@ -362,6 +376,7 @@ function clearAlias(): void {
         <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
       </button>
       <button
+        v-if="!codex"
         type="button"
         class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised hover:text-ink"
         :class="terminal.note ? 'text-accent' : 'text-ink-faint'"
@@ -372,6 +387,7 @@ function clearAlias(): void {
         <StickyNote :size="15" aria-hidden="true" />
       </button>
       <button
+        v-if="!codex"
         type="button"
         class="relative z-10 -my-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
         :aria-label="t('terminal.rename')"
@@ -541,6 +557,7 @@ function clearAlias(): void {
       <div class="flex flex-wrap gap-x-3 gap-y-0.5 tabular">
         <dd v-if="terminal.processId">{{ t('terminal.process', { pid: terminal.processId }) }}</dd>
         <dd v-if="terminal.shell">{{ terminal.shell }}</dd>
+        <dd v-if="terminal.codexVersion">{{ t('provider.version', { v: terminal.codexVersion }) }}</dd>
         <dd v-if="timeLine">{{ timeLine }}</dd>
       </div>
     </dl>
@@ -550,7 +567,10 @@ function clearAlias(): void {
       <span v-if="terminal.compactions" class="inline-flex items-center gap-1" :title="t('terminal.compactionsTitle')">
         <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
       </span>
-      <span v-if="tokens || cost" class="ml-auto inline-flex items-center gap-2 tabular">
+      <span v-if="tokens || cost || codexTokens" class="ml-auto inline-flex items-center gap-2 tabular">
+        <span v-if="codexTokens" class="inline-flex items-center gap-1 text-codex" :title="codexTokens.title">
+          <ProviderBadge variant="icon" />{{ codexTokens.label }}
+        </span>
         <span v-if="cost" :key="costBump" class="text-ink-muted" :class="costBump ? 'ccm-tick' : ''" :title="t('terminal.costTitle')">{{ cost }}</span>
         <TokenCount v-if="tokens" class="font-medium text-ink" :title="tokens.title" :value="tokens.total" />
       </span>

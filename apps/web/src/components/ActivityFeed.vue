@@ -5,6 +5,7 @@ import { ListFilter, X } from 'lucide-vue-next'
 import type { ActivityEvent } from '@ccm/shared'
 import { clockTime, compactNumber } from '../lib/format'
 import { modeMeta } from '../lib/mode'
+import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useActivityStore } from '../stores/activity'
 import { useAgentsStore } from '../stores/agents'
@@ -12,8 +13,10 @@ import { ACTIVITY_PAGE_SIZES, useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import AppSelect from './AppSelect.vue'
+import ArtImage from './ArtImage.vue'
 import Pager from './Pager.vue'
 import PanelHeader from './PanelHeader.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusIcon from './StatusIcon.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
@@ -53,7 +56,14 @@ function terminalTitle(e: ActivityEvent): string {
 function agentName(e: ActivityEvent): string {
   const a = e.agentId ? agents.byId[e.agentId] : undefined
   if (a?.role === 'main') return a.name ?? terminalTitle(e)
+  if (isCodex(a)) return a?.name ?? t('agent.codexRun')
   return a?.type ?? e.data?.agentType ?? terminalTitle(e)
+}
+
+function fromCodex(e: ActivityEvent): boolean {
+  if (e.data?.agentType === 'codex') return true
+  const a = e.agentId ? agents.byId[e.agentId] : undefined
+  return a ? isCodex(a) : isCodex(e.terminalId ? terminals.byId[e.terminalId] : undefined)
 }
 
 function message(e: ActivityEvent): string {
@@ -68,6 +78,7 @@ function message(e: ActivityEvent): string {
     case 'agent.completed':
     case 'agent.failed':
     case 'agent.cancelled':
+      if (d.agentType === 'codex') return t(`activity.codex_${e.kind.slice('agent.'.length)}`, { name: d.description ?? agentName(e) })
       return t(`activity.${e.kind.replace('.', '_')}`, { name: d.agentType ?? agentName(e) })
     case 'terminal.compacted':
       return t('activity.terminal_compacted', {
@@ -118,6 +129,7 @@ watch(
 )
 
 function secondary(e: ActivityEvent): string | null {
+  if (e.kind.startsWith('agent.') && e.data?.agentType === 'codex') return terminalTitle(e)
   if (e.kind.startsWith('agent.') && e.data?.description) return e.data.description
   if (e.kind.startsWith('tool.')) return terminalTitle(e)
   return null
@@ -158,7 +170,7 @@ watch(page, () => body.value?.scrollTo({ top: 0 }))
 const rows = computed(() =>
   filtered.value
     .slice(page.value * settings.activityPageSize, (page.value + 1) * settings.activityPageSize)
-    .map((e) => ({ e, text: message(e), sub: secondary(e) })),
+    .map((e) => ({ e, text: message(e), sub: secondary(e), codex: fromCodex(e) })),
 )
 </script>
 
@@ -199,10 +211,13 @@ const rows = computed(() =>
           {{ t('activity.filterSession') }}
         </button>
       </div>
-      <p v-if="rows.length === 0" class="px-4 py-6 text-sm text-ink-muted">{{ scopeId ? t('activity.emptyFiltered') : t('activity.empty') }}</p>
+      <div v-if="rows.length === 0" class="flex flex-col items-center gap-3 px-4 py-8 text-center">
+        <ArtImage name="empty-activity" class="w-36 max-w-full" />
+        <p class="text-sm text-ink-muted">{{ scopeId ? t('activity.emptyFiltered') : t('activity.empty') }}</p>
+      </div>
       <TransitionGroup v-else tag="ol" name="ccm-list" class="relative divide-y divide-line" aria-live="off">
         <li
-          v-for="{ e, text, sub } in rows"
+          v-for="{ e, text, sub, codex } in rows"
           :key="e.id"
           class="grid grid-cols-[auto_auto_1fr] items-start gap-x-3 px-3.5 py-2.5 text-sm"
           :class="[e.kind === 'tool.started' ? 'text-ink-muted' : 'text-ink', fresh.has(e.id) ? 'ccm-highlight' : '']"
@@ -210,7 +225,9 @@ const rows = computed(() =>
           <time :datetime="e.at" class="pt-0.5 font-mono text-2xs text-ink-faint tabular">{{ clockTime(e.at, locale) }}</time>
           <StatusIcon :status="ICON_STATUS[e.kind] ?? 'unknown'" :size="14" :animate="false" class="mt-1" />
           <div class="min-w-0">
-            <p class="truncate" :title="text">{{ text }}</p>
+            <p class="flex min-w-0 items-center gap-1.5" :title="text">
+              <ProviderBadge v-if="codex" variant="icon" /><span class="truncate">{{ text }}</span>
+            </p>
             <p v-if="sub" class="truncate text-xs text-ink-faint" :title="sub">{{ sub }}</p>
           </div>
         </li>

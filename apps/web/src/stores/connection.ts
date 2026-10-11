@@ -150,6 +150,9 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'limits.updated':
           extras.setLimits(event.payload)
           break
+        case 'codexLimits.updated':
+          extras.setCodexLimits(event.payload)
+          break
         case 'response.updated':
           extras.setResponse(event.payload)
           break

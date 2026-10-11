@@ -1,6 +1,6 @@
 export default {
   app: {
-    title: 'Claude Code Monitor',
+    title: 'Agent Monitor',
     skipToContent: 'Skip to content',
   },
   nav: {
@@ -135,6 +135,23 @@ export default {
     session: 'Session',
     none: '—',
     close: 'Close details',
+    codexRun: 'Codex run',
+    version: 'Version',
+  },
+  provider: {
+    claude: 'Claude',
+    codex: 'Codex',
+    codexTitle: 'Codex CLI',
+    mode: { exec: 'exec', tui: 'terminal', plugin: 'plugin', subagent: 'subagent', 'app-server': 'app server' },
+    modeTitle: {
+      exec: 'Codex run started with codex exec',
+      tui: 'Interactive Codex in a terminal',
+      plugin: 'Started by the Codex plugin in Claude Code',
+      subagent: 'Spawned by another Codex agent',
+      'app-server': 'Thread of a Codex app server',
+    },
+    tokensTitle: 'Codex runs from this session: {n}. Input {input}, output {output}, cache read {cache}. Not included in the Claude total.',
+    version: 'Codex {v}',
   },
   map: {
     showSessions: 'Show Sessions',
@@ -194,6 +211,10 @@ export default {
     agent_completed: 'Subagent {name} completed',
     agent_failed: 'Subagent {name} failed',
     agent_cancelled: 'Subagent {name} stopped',
+    codex_started: 'Codex run {name} started',
+    codex_completed: 'Codex run {name} completed',
+    codex_failed: 'Codex run {name} failed',
+    codex_cancelled: 'Codex run {name} stopped',
     tool_started: '{agent} ran {tool}',
     tool_failed: '{agent} — {tool} failed',
     unknownTool: 'a tool',
@@ -510,10 +531,13 @@ export default {
     fullAround: 'full ~{at} ({in})',
     safe: 'Fine until reset',
     staleNote: 'No session is reporting right now',
+    codexTitle: 'Codex usage limits',
+    codexStaleNote: 'No Codex run is reporting right now',
+    planLabel: 'Plan',
     dur: { dh: '{d}d {h}h', hm: '{h}h {m}m', m: '{m}m' },
+    durShort: { dh: '{d}d {h}h', hm: '{h}h {m}m', m: '{m}m' },
     forecastFull: 'At ~{rate}%/h: 100% around {at} ({in})',
     forecastSafe: 'At ~{rate}%/h: no limit before the reset',
-    forecastShort: 'full ~{at}',
     title: 'Plan usage limits',
     fiveHour: '5h',
     sevenDay: 'Weekly',
@@ -630,7 +654,9 @@ export default {
     statusLineHint: 'Plan limits and session cost need the status line bridge (see Settings).',
     usage: { idle: 'Not started', scanning: 'Scanning {done} of {total} files', ready: '{total} files indexed' },
     dataDirHint: 'Usage cache, favorites, history and timeline live here.',
-    row: { collector: 'Collector', claudeRoot: 'Claude folder', sessions: 'Sessions', version: 'Claude Code version', statusLine: 'Status line bridge', usage: 'Usage scan', dataDir: 'Data folder' },
+    codexValue: '{threads} threads tracked, {processes} Codex processes',
+    codexDetail: 'Reads Codex rollout files in {home}. Set CODEX_HOME to use another folder.',
+    row: { collector: 'Collector', claudeRoot: 'Claude folder', sessions: 'Sessions', version: 'Claude Code version', statusLine: 'Status line bridge', usage: 'Usage scan', codex: 'Codex', dataDir: 'Data folder' },
     level: { ok: 'OK', warn: 'Needs attention', off: 'Not active' },
   },
   compact: {
@@ -654,8 +680,8 @@ export default {
     skip: 'Skip the guide',
     steps: {
       welcome: {
-        title: 'Welcome to Claude Code Monitor',
-        body: 'This page watches every Claude Code session running on this machine and tells you which one needs you. It only reads local files: it never types into Claude, never calls the API and costs no tokens. Take a one-minute tour?',
+        title: 'Welcome to Agent Monitor',
+        body: 'This page watches every Claude Code session running on this machine, plus the Codex CLI runs they start, and tells you which one needs you. It only reads local files: it never types into an agent, never calls an API and costs no tokens. Take a one-minute tour?',
       },
       tabs: {
         title: 'Three views',

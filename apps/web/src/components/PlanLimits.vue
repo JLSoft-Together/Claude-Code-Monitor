@@ -1,29 +1,34 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, CircleAlert, Gauge, OctagonAlert, RotateCcw, TrendingUp } from 'lucide-vue-next'
-import type { LimitWindow } from '@ccm/shared'
+import { Asterisk, CircleAlert, Gauge, Hexagon, OctagonAlert, RotateCcw, TrendingUp } from 'lucide-vue-next'
+import type { LimitWindow, Provider } from '@ccm/shared'
 import { now, relativeTime } from '../lib/format'
 import { useExtrasStore } from '../stores/extras'
 import { useCountUp } from '../composables/useCountUp'
 
+const props = withDefaults(defineProps<{ provider?: Provider }>(), { provider: 'claude' })
 const { t, locale } = useI18n()
 const extras = useExtrasStore()
+const codex = computed(() => props.provider === 'codex')
+const limits = computed(() => (codex.value ? extras.codexLimits : extras.limits))
+const heading = computed(() => t(codex.value ? 'limits.codexTitle' : 'limits.title'))
 
-// Status line reports go quiet when no session is open; older numbers are shown dimmed rather than as current.
+// Reports go quiet when no session (or Codex run) is open; older numbers are shown dimmed rather than as current.
 const STALE_MS = 30 * 60_000
 
 const clockFormat = computed(() => new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }))
 const resetFormat = computed(() => new Intl.DateTimeFormat(locale.value, { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }))
 
-function countdown(ms: number): string {
+function countdown(ms: number, short = false): string {
   const min = Math.max(1, Math.round(ms / 60_000))
   const d = Math.floor(min / 1440)
   const h = Math.floor((min % 1440) / 60)
   const m = min % 60
-  if (d > 0) return t('limits.dur.dh', { d, h })
-  if (h > 0) return t('limits.dur.hm', { h, m })
-  return t('limits.dur.m', { m })
+  const unit = short ? 'limits.durShort' : 'limits.dur'
+  if (d > 0) return t(`${unit}.dh`, { d, h })
+  if (h > 0) return t(`${unit}.hm`, { h, m })
+  return t(`${unit}.m`, { m })
 }
 
 function view(key: 'fiveHour' | 'sevenDay', w: LimitWindow | undefined) {
@@ -43,6 +48,7 @@ function view(key: 'fiveHour' | 'sevenDay', w: LimitWindow | undefined) {
     level,
     label: t(`limits.${key}Long`),
     resetsIn: hasReset ? countdown(resets - now.value) : null,
+    resetsInShort: hasReset ? countdown(resets - now.value, true) : null,
     resetAt: hasReset ? resetFormat.value.format(resets) : null,
     rate: f ? f.pctPerHour : null,
     risk,
@@ -52,20 +58,20 @@ function view(key: 'fiveHour' | 'sevenDay', w: LimitWindow | undefined) {
 }
 
 const windows = computed(() => {
-  const l = extras.limits
+  const l = limits.value
   if (!l) return []
   return [view('fiveHour', l.fiveHour), view('sevenDay', l.sevenDay)].filter((w) => w !== null)
 })
 const stale = computed(() => {
-  const at = extras.limits ? Date.parse(extras.limits.updatedAt) : NaN
+  const at = limits.value ? Date.parse(limits.value.updatedAt) : NaN
   return Number.isFinite(at) && now.value - at > STALE_MS
 })
-const updated = computed(() => relativeTime(extras.limits?.updatedAt, locale.value, now.value) ?? '')
+const updated = computed(() => relativeTime(limits.value?.updatedAt, locale.value, now.value) ?? '')
 
 type WindowKey = 'fiveHour' | 'sevenDay'
 
-const fiveLeft = computed(() => Math.max(0, 100 - Math.round(extras.limits?.fiveHour?.usedPct ?? 0)))
-const sevenLeft = computed(() => Math.max(0, 100 - Math.round(extras.limits?.sevenDay?.usedPct ?? 0)))
+const fiveLeft = computed(() => Math.max(0, 100 - Math.round(limits.value?.fiveHour?.usedPct ?? 0)))
+const sevenLeft = computed(() => Math.max(0, 100 - Math.round(limits.value?.sevenDay?.usedPct ?? 0)))
 const shown: Record<WindowKey, ReturnType<typeof useCountUp>> = {
   fiveHour: useCountUp(fiveLeft, 700),
   sevenDay: useCountUp(sevenLeft, 700),
@@ -83,8 +89,8 @@ function track(key: WindowKey, source: () => number | undefined): void {
     changes[key].n++
   })
 }
-track('fiveHour', () => (extras.limits?.fiveHour ? fiveLeft.value : undefined))
-track('sevenDay', () => (extras.limits?.sevenDay ? sevenLeft.value : undefined))
+track('fiveHour', () => (limits.value?.fiveHour ? fiveLeft.value : undefined))
+track('sevenDay', () => (limits.value?.sevenDay ? sevenLeft.value : undefined))
 
 const LEVEL = {
   ok: { bar: 'bg-accent', text: 'text-ink', icon: Gauge },
@@ -120,70 +126,70 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="windows.length" ref="root" class="relative">
+  <div v-if="windows.length" ref="root" class="relative flex">
     <button
       ref="trigger"
       type="button"
-      class="flex cursor-pointer items-stretch gap-1 rounded-xl border border-line bg-surface p-1 text-left transition-colors hover:border-ink-faint"
-      :class="stale ? 'opacity-60' : ''"
-      :aria-label="t('limits.title')"
+      class="flex cursor-pointer items-stretch gap-1.5 rounded-[9px] px-1.5 py-1 text-left transition-colors hover:bg-raised"
+      :class="[stale ? 'opacity-60' : '', open ? 'bg-raised' : '']"
+      :aria-label="heading"
       :aria-expanded="open"
       aria-haspopup="dialog"
       @click="open = !open"
     >
-      <span
-        v-for="(w, i) in windows"
-        :key="w.key"
-        class="relative flex w-[88px] flex-col gap-1 rounded-lg px-1.5 py-1 sm:w-[156px] sm:px-2"
-        :class="i > 0 ? 'border-l border-line' : ''"
-      >
-        <span
-          v-if="changes[w.key].n"
-          :key="`flash-${changes[w.key].n}`"
-          class="ccm-quota-flash pointer-events-none absolute inset-0 rounded-lg"
-          :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
-          aria-hidden="true"
-        />
-        <span
-          v-if="changes[w.key].n"
-          :key="`delta-${changes[w.key].n}`"
-          class="ccm-quota-delta pointer-events-none absolute -top-2 right-1 inline-flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 text-2xs font-semibold tabular shadow-sm"
-          :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
-          aria-hidden="true"
-        >
-          <RotateCcw v-if="changes[w.key].delta > 0" :size="10" aria-hidden="true" />{{ changes[w.key].delta > 0 ? '+' : '−' }}{{ Math.abs(changes[w.key].delta) }}%
-        </span>
-        <span class="flex items-baseline justify-between gap-2">
-          <span class="inline-flex items-center gap-1 text-2xs text-ink-muted">
-            <span :key="w.level" class="inline-flex" :class="changes[w.key].n ? 'ccm-pop' : ''">
-              <component :is="LEVEL[w.level].icon" :size="12" :class="[LEVEL[w.level].text, w.level === 'critical' ? 'ccm-pulse' : '']" aria-hidden="true" />
-            </span>{{ w.label }}
-          </span>
-          <span :key="changes[w.key].n" class="ccm-tick text-sm font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%<span class="ml-1 hidden text-2xs font-normal text-ink-faint sm:inline">{{ t('limits.leftWord') }}</span></span>
-        </span>
-        <span class="relative h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden="true">
-          <span
-            class="block h-full origin-left rounded-full transition-[transform,background-color] duration-700 ease-out-quint"
-            :class="LEVEL[w.level].bar"
-            :style="{ transform: `scaleX(${w.left / 100})` }"
-          />
-          <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
-        </span>
-        <span v-if="w.risk" class="hidden items-center gap-1 truncate sm:inline-flex text-2xs font-medium text-st-waiting tabular">
-          <TrendingUp :size="12" class="shrink-0" aria-hidden="true" />{{ t('limits.forecastShort', { at: w.fullAt }) }}
-        </span>
-        <span v-else class="hidden truncate text-2xs sm:block text-ink-faint tabular">{{ w.resetsIn ? t('limits.resetsIn', { in: w.resetsIn }) : ' ' }}</span>
+      <span class="flex flex-col items-center justify-center gap-0.5 px-0.5 text-2xs font-medium" :class="codex ? 'text-codex' : 'text-accent'" aria-hidden="true">
+        <component :is="codex ? Hexagon : Asterisk" :size="14" :stroke-width="2.25" /><span class="hidden 3xl:inline">{{ t(codex ? 'provider.codex' : 'provider.claude') }}</span>
       </span>
-      <ChevronDown :size="14" class="self-center text-ink-faint transition-transform" :class="open ? 'rotate-180' : ''" aria-hidden="true" />
+      <span class="grid grid-cols-[auto_44px_auto] items-center gap-x-2 gap-y-0.5 sm:grid-cols-[auto_56px_auto_auto]">
+        <span v-for="w in windows" :key="w.key" class="relative col-span-full grid grid-cols-subgrid items-center rounded-md py-0.5">
+          <span
+            v-if="changes[w.key].n"
+            :key="`flash-${changes[w.key].n}`"
+            class="ccm-quota-flash pointer-events-none absolute inset-0 rounded-md"
+            :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
+            aria-hidden="true"
+          />
+          <span
+            v-if="changes[w.key].n"
+            :key="`delta-${changes[w.key].n}`"
+            class="ccm-quota-delta pointer-events-none absolute -top-2.5 right-0 inline-flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 text-2xs font-semibold tabular shadow-sm"
+            :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
+            aria-hidden="true"
+          >
+            <RotateCcw v-if="changes[w.key].delta > 0" :size="10" aria-hidden="true" />{{ changes[w.key].delta > 0 ? '+' : '−' }}{{ Math.abs(changes[w.key].delta) }}%
+          </span>
+          <span class="text-2xs whitespace-nowrap text-ink-muted">{{ t(`limits.${w.key}`) }}</span>
+          <span class="relative h-1.5 overflow-hidden rounded-full bg-line" aria-hidden="true">
+            <span
+              class="block h-full origin-left rounded-full transition-[transform,background-color] duration-700 ease-out-quint"
+              :class="LEVEL[w.level].bar"
+              :style="{ transform: `scaleX(${w.left / 100})` }"
+            />
+            <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
+          </span>
+          <span :key="changes[w.key].n" class="ccm-tick inline-flex items-center justify-end gap-0.5 text-xs font-semibold whitespace-nowrap tabular" :class="LEVEL[w.level].text">
+            <component :is="LEVEL[w.level].icon" v-if="w.level !== 'ok'" :size="11" :class="w.level === 'critical' ? 'ccm-pulse' : ''" aria-hidden="true" />
+            <TrendingUp v-else-if="w.risk" :size="11" class="text-st-waiting" aria-hidden="true" />{{ Math.round(shown[w.key].value) }}%
+          </span>
+          <span
+            class="hidden items-center gap-1 text-2xs whitespace-nowrap text-ink-faint tabular sm:inline-flex"
+            :title="w.resetsIn ? `${t('limits.resetsIn', { in: w.resetsIn })} (${w.resetAt})` : undefined"
+          >
+            <RotateCcw :size="10" aria-hidden="true" />{{ w.resetsInShort ?? '—' }}
+          </span>
+        </span>
+      </span>
     </button>
 
     <div
       v-if="open"
       role="dialog"
-      :aria-label="t('limits.title')"
+      :aria-label="heading"
       class="ccm-pop fixed inset-x-4 top-20 z-40 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] rounded-xl border border-line bg-surface p-4 shadow-lg"
     >
-      <p class="text-sm font-semibold text-ink">{{ t('limits.title') }}</p>
+      <p class="flex items-center gap-1.5 text-sm font-semibold text-ink">
+        <Hexagon v-if="codex" :size="14" :stroke-width="2.25" class="text-codex" aria-hidden="true" />{{ heading }}
+      </p>
       <section v-for="w in windows" :key="w.key" class="mt-4 first-of-type:mt-3">
         <div class="flex items-baseline justify-between gap-3">
           <span class="text-sm text-ink-muted">{{ w.label }}</span>
@@ -215,7 +221,7 @@ onBeforeUnmount(() => {
         </dl>
       </section>
       <p class="mt-4 border-t border-line pt-3 text-2xs text-ink-faint">
-        {{ t('limits.updated', { ago: updated }) }}<template v-if="stale">. {{ t('limits.staleNote') }}</template>
+        <template v-if="limits?.plan">{{ t('limits.planLabel') }}: {{ limits.plan }}. </template>{{ t('limits.updated', { ago: updated }) }}<template v-if="stale">. {{ t(codex ? 'limits.codexStaleNote' : 'limits.staleNote') }}</template>
       </p>
     </div>
   </div>

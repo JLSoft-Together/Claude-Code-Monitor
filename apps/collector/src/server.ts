@@ -108,7 +108,7 @@ export interface FocusPageText {
 export function focusPage(terminalId: string | null, key: string, text: FocusPageText): string {
   const data = JSON.stringify({ t: terminalId, k: key, opened: text.opened }).replaceAll('<', '\\u003c')
   const opening = text.opening.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-  return `<!doctype html><meta charset="utf-8"><title>Claude Code Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p id="m">${opening}</p><script>
+  return `<!doctype html><meta charset="utf-8"><title>Agent Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p id="m">${opening}</p><script>
 const d = ${data}
 if (!d.t) location.replace('/')
 else fetch('/focus', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: d.t, k: d.k }) })
@@ -124,7 +124,7 @@ else fetch('/focus', { method: 'POST', headers: { 'content-type': 'application/j
 
 export function snoozePage(text: string): string {
   const safe = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-  return `<!doctype html><meta charset="utf-8"><title>Claude Code Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p>${safe}</p><script>window.close()</script>`
+  return `<!doctype html><meta charset="utf-8"><title>Agent Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p>${safe}</p><script>window.close()</script>`
 }
 
 function readBody(req: IncomingMessage, limit: number): Promise<string | null> {

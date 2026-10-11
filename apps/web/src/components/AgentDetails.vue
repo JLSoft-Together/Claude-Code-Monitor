@@ -4,11 +4,13 @@ import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
 import { compactNumber, fullNumber, now, relativeTime } from '../lib/format'
+import { codexMode, isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import KeyHint from './KeyHint.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
 
 const props = defineProps<{ flowId: string }>()
@@ -20,13 +22,25 @@ const ui = useUiStore()
 const agent = computed(() => (ui.selectedAgentId ? agents.byId[ui.selectedAgentId] : undefined))
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
 const terminalTitle = computed(() => displayTitle(terminal.value))
+const codex = computed(() => isCodex(agent.value))
+const heading = computed(() => {
+  const a = agent.value
+  if (!a) return ''
+  if (a.role === 'main') return terminalTitle.value
+  return codex.value ? (a.name ?? t('agent.codexRun')) : (a.type ?? a.name ?? '')
+})
+const eyebrow = computed(() => (agent.value?.role === 'main' ? t('agent.main') : codex.value ? t('agent.codexRun') : t('agent.subagent')))
 
 const rows = computed(() => {
   const a = agent.value
   if (!a) return []
   const out: { label: string; value: string; title?: string; mono?: boolean }[] = []
   out.push({ label: t('agent.session'), value: terminalTitle.value || '—' })
-  if (a.role === 'subagent') {
+  if (codex.value) {
+    const mode = codexMode(a.role === 'main' ? (terminal.value?.entrypoint ?? a.type) : a.type)
+    out.push({ label: t('agent.type'), value: mode ? `${t('provider.codex')} · ${t(`provider.mode.${mode}`)}` : t('provider.codex') })
+    if (terminal.value?.codexVersion) out.push({ label: t('agent.version'), value: terminal.value.codexVersion, mono: true })
+  } else if (a.role === 'subagent') {
     out.push({ label: t('agent.type'), value: a.type ?? '—', mono: true })
     if (a.description) out.push({ label: t('agent.currentTask'), value: a.description })
   }
@@ -101,7 +115,7 @@ const origin = computed(() => {
       class="absolute z-10 rounded-xl border border-accent bg-surface shadow-lg shadow-black/10"
       :class="place ? '' : 'top-3 right-3 w-[300px] max-w-[calc(100%-24px)]'"
       :style="[place?.style, { transformOrigin: origin }]"
-      :aria-label="agent.role === 'main' ? t('agent.main') : t('agent.subagent')"
+      :aria-label="eyebrow"
     >
       <span
         v-if="place?.side"
@@ -113,13 +127,12 @@ const origin = computed(() => {
       <div class="ccm-scroll max-h-[inherit] overflow-y-auto p-4">
       <div class="flex items-start gap-2">
         <div class="min-w-0 flex-1">
-          <p class="text-2xs font-medium text-ink-faint">
-            {{ agent.role === 'main' ? t('agent.main') : t('agent.subagent') }}
-          </p>
-          <h3 class="truncate text-base font-semibold" :title="agent.role === 'main' ? terminalTitle : agent.type">
-            {{ agent.role === 'main' ? terminalTitle : agent.type ?? agent.name }}
-          </h3>
-          <StatusBadge :status="agent.status" class="mt-1" />
+          <p class="text-2xs font-medium text-ink-faint">{{ eyebrow }}</p>
+          <h3 class="truncate text-base font-semibold" :title="heading">{{ heading }}</h3>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <StatusBadge :status="agent.status" />
+            <ProviderBadge v-if="codex" variant="short" :mode="agent.type" />
+          </div>
         </div>
         <button
           type="button"

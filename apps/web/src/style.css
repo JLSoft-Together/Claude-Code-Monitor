@@ -7,6 +7,9 @@
   --font-sans: 'Google Sans', 'Google Sans Text', system-ui, sans-serif;
   --font-mono: 'Google Sans Code', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
+  /* Width where the header row fits its optional extras (clock date, provider names, connection label). */
+  --breakpoint-3xl: 110rem;
+
   --color-canvas: var(--ccm-canvas);
   --color-surface: var(--ccm-surface);
   --color-raised: var(--ccm-raised);
@@ -33,6 +36,7 @@
   --color-series-output: var(--ccm-cat-2);
   --color-series-write: var(--ccm-cat-3);
   --color-series-read: var(--ccm-cat-4);
+  --color-codex: var(--ccm-cat-7);
 
   --text-2xs: 0.75rem;
   --text-2xs--line-height: 1.05rem;
@@ -664,6 +668,11 @@ body {
   animation: ccm-dash 900ms linear infinite;
 }
 
+/* hand-off into another CLI keeps the Codex hue even while running, so the boundary stays visible in a busy tree */
+.vue-flow__edge.ccm-edge-codex .vue-flow__edge-path {
+  stroke: var(--ccm-cat-7);
+}
+
 @keyframes ccm-dash {
   to {
     stroke-dashoffset: -22;
@@ -753,18 +762,6 @@ body {
 @keyframes ccm-caret {
   50% {
     opacity: 0;
-  }
-}
-@keyframes ccm-sip {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  30% {
-    transform: rotate(-14deg) translateY(-1px);
-  }
-  60% {
-    transform: rotate(6deg);
   }
 }
 

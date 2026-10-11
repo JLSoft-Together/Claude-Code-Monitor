@@ -5,6 +5,7 @@ import { CHILD_INDENT, columnsFor, computeLayout, COLUMN_WIDTH, treeOrder, visib
 import { useActivityStore, ACTIVITY_LIMIT, TOOL_ACTIVITY_LIMIT } from './activity'
 import { useAgentsStore } from './agents'
 import { useConnectionStore } from './connection'
+import { useExtrasStore } from './extras'
 import { useTerminalsStore } from './terminals'
 
 const terminal = (id: string, over: Partial<TerminalSession> = {}): TerminalSession => ({
@@ -55,6 +56,18 @@ describe('connection message handling', () => {
 
     conn.onMessage(msg(8, [{ type: 'agent.updated', payload: { id: 'a1', status: 'teleporting' as never } }]))
     expect(agents.byId.a1?.status).toBe('unknown')
+  })
+
+  it('keeps Codex limits apart from Claude plan limits', () => {
+    const conn = useConnectionStore()
+    const extras = useExtrasStore()
+    const codexLimits = { fiveHour: { usedPct: 12 }, updatedAt: '2026-10-11T10:00:00.000Z', plan: 'plus' }
+    conn.onMessage(msg(1, [{ type: 'snapshot', payload: snapshot({ codexLimits }) }]))
+    expect(extras.codexLimits?.plan).toBe('plus')
+    expect(extras.limits).toBeNull()
+    conn.onMessage(msg(2, [{ type: 'codexLimits.updated', payload: { ...codexLimits, fiveHour: { usedPct: 40 } } }]))
+    expect(extras.codexLimits?.fiveHour?.usedPct).toBe(40)
+    expect(extras.limits).toBeNull()
   })
 
   it('ignores events after a seq gap until a new snapshot arrives', () => {

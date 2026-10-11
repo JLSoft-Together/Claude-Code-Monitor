@@ -35,11 +35,11 @@ writeFileSync(
   path.join(STAGE, 'package.json'),
   JSON.stringify(
     {
-      name: 'claude-code-monitor',
-      productName: 'Claude Code Monitor',
+      name: 'agent-monitor',
+      productName: 'Agent Monitor',
       version: pkg.version,
       description: pkg.description,
-      author: 'Claude Code Monitor',
+      author: 'Agent Monitor',
       main: 'main.cjs',
     },
     null,

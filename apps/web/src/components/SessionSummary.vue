@@ -7,6 +7,7 @@ import { formatUsd } from '../lib/attention'
 import { duration, fullNumber, now } from '../lib/format'
 import { effortLabel, modelLabel } from '../lib/model'
 import { openAppKey } from '../lib/platform'
+import { contextPctOf, isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
 import { useConnectionStore } from '../stores/connection'
@@ -15,6 +16,7 @@ import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import CountNum from './CountNum.vue'
 import KeyHint from './KeyHint.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
 import SubagentCounts from './SubagentCounts.vue'
 
@@ -49,7 +51,7 @@ const model = computed(() => {
 const context = computed(() => {
   const m = main.value
   if (ended.value || m?.contextTokens === undefined || !m.contextWindow) return null
-  return { tokens: m.contextTokens, window: m.contextWindow, pct: m.contextPct }
+  return { tokens: m.contextTokens, window: m.contextWindow, pct: contextPctOf(m) }
 })
 const branch = computed(() => {
   const b = props.terminal.gitBranch
@@ -76,6 +78,7 @@ function open(app: OpenApp): void {
     <div class="flex min-w-0 shrink items-center gap-2">
       <StatusBadge :status="terminal.status" />
       <span class="min-w-0 truncate text-sm font-semibold text-ink" :title="title">{{ title }}</span>
+      <ProviderBadge v-if="isCodex(terminal)" :mode="terminal.entrypoint" />
       <span v-if="elapsed" class="shrink-0 tabular">{{ elapsed }}</span>
     </div>
     <span v-if="detail" class="min-w-0 truncate" :title="detail">{{ detail }}</span>

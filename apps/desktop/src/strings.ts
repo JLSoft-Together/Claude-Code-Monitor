@@ -1,5 +1,5 @@
 const en = {
-  appName: 'Claude Code Monitor',
+  appName: 'Agent Monitor',
   loading: 'Starting the monitor…',
   loadingHint: 'Local server on 127.0.0.1',
   errorTitle: 'The monitor could not start',
@@ -22,7 +22,7 @@ const en = {
 }
 
 const vi: typeof en = {
-  appName: 'Claude Code Monitor',
+  appName: 'Agent Monitor',
   loading: 'Đang khởi động monitor…',
   loadingHint: 'Server nội bộ trên 127.0.0.1',
   errorTitle: 'Không khởi động được monitor',

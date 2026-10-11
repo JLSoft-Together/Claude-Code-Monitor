@@ -180,7 +180,10 @@ const edges = computed<Edge[]>(() =>
       source: a.parentId!,
       target: a.id,
       type: 'smoothstep',
-      class: [a.status === 'working' ? 'ccm-edge-hot' : '', freshEdges.value.has(`${a.parentId}->${a.id}`) ? 'ccm-edge-new' : ''].join(' ').trim() || undefined,
+      class:
+        [a.status === 'working' ? 'ccm-edge-hot' : '', a.provider === 'codex' ? 'ccm-edge-codex' : '', freshEdges.value.has(`${a.parentId}->${a.id}`) ? 'ccm-edge-new' : '']
+          .join(' ')
+          .trim() || undefined,
       selectable: false,
       pathOptions: { borderRadius: 6 },
     })),
