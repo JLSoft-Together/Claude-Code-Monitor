@@ -1,6 +1,6 @@
 {
   "name": "@ccm/desktop",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "description": "Agent Monitor desktop app (Windows, macOS)",
   "scripts": {
