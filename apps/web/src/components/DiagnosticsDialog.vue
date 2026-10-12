@@ -32,6 +32,7 @@ const rows = computed(() => {
   const supported = connection.supportedClaudeVersion
   const mismatch = supported ? versions.filter((v) => v !== supported) : []
   const usage = d.usage
+  const codex = d.codex
   return [
     { key: 'collector', level: 'ok' as Level, value: t('diag.collectorValue', { ago: ago(d.startedAt), clients: d.clients }), detail: `${d.platform}, Node ${d.node}` },
     {
@@ -64,6 +65,16 @@ const rows = computed(() => {
       value: usage ? t(`diag.usage.${usage.state}`, { done: usage.filesDone, total: usage.filesTotal }) : '—',
       detail: '',
     },
+    ...(codex
+      ? [
+          {
+            key: 'codex',
+            level: (codex.watching ? 'ok' : 'off') as Level,
+            value: codex.watching ? t('diag.codexValue', { threads: codex.threads, processes: codex.processes }) : t('diag.notFound'),
+            detail: t('diag.codexDetail', { home: codex.home }),
+          },
+        ]
+      : []),
     { key: 'dataDir', level: 'ok' as Level, value: d.dataDir, detail: t('diag.dataDirHint') },
   ]
 })

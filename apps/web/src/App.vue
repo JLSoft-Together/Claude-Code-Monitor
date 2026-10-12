@@ -14,6 +14,7 @@ import RecapDialog from './components/RecapDialog.vue'
 import DiagnosticsDialog from './components/DiagnosticsDialog.vue'
 import OnboardingTour from './components/OnboardingTour.vue'
 import BreakToast from './components/BreakToast.vue'
+import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import CompactView from './components/CompactView.vue'
 import MonitorView from './components/MonitorView.vue'
 import UsageView from './components/usage/UsageView.vue'
@@ -61,5 +62,6 @@ onBeforeUnmount(() => headerObserver.disconnect())
     <DiagnosticsDialog />
     <OnboardingTour />
     <BreakToast />
+    <ShortcutsDialog />
   </div>
 </template>

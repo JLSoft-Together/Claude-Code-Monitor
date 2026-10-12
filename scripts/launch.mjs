@@ -14,7 +14,8 @@ const APP_URL = `http://127.0.0.1:${APP_PORT}`
 const NO_OPEN = process.argv.includes('--no-open')
 const LOG_LIMIT = 400
 const IS_WIN = process.platform === 'win32'
-const LNK_NAME = 'Claude-Code-Monitor.lnk'
+const LNK_NAME = 'Agent-Monitor.lnk'
+const LEGACY_LNK_NAME = 'Claude-Code-Monitor.lnk'
 const SHORTCUT_KINDS = { desktop: { args: '', style: '1' }, startup: { args: '--no-open', style: '7' } }
 
 const steps = [
@@ -200,7 +201,7 @@ const SHORTCUT_PS = [
   "if ($env:CCM_LNK_ACTION -eq 'folders') { @{ desktop = [Environment]::GetFolderPath('Desktop'); startup = [Environment]::GetFolderPath('Startup') } | ConvertTo-Json -Compress; exit }",
   '$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:CCM_LNK_PATH)',
   '$s.TargetPath = $env:CCM_LNK_TARGET; $s.Arguments = $env:CCM_LNK_ARGS; $s.WorkingDirectory = $env:CCM_LNK_DIR',
-  "$s.IconLocation = $env:CCM_LNK_ICON + ',0'; $s.Description = 'Claude Code Monitor'; $s.WindowStyle = [int]$env:CCM_LNK_STYLE; $s.Save()",
+  "$s.IconLocation = $env:CCM_LNK_ICON + ',0'; $s.Description = 'Agent Monitor'; $s.WindowStyle = [int]$env:CCM_LNK_STYLE; $s.Save()",
 ].join('\n')
 
 function powershell(env) {
@@ -222,7 +223,7 @@ function createShortcut(file, { args, style }) {
   return powershell({
     CCM_LNK_ACTION: 'create',
     CCM_LNK_PATH: file,
-    CCM_LNK_TARGET: path.join(ROOT, 'Claude-Code-Monitor.bat'),
+    CCM_LNK_TARGET: path.join(ROOT, 'Agent-Monitor.bat'),
     CCM_LNK_ARGS: args,
     CCM_LNK_DIR: ROOT,
     CCM_LNK_ICON: path.join(ROOT, 'scripts', 'assets', 'ccm.ico'),
@@ -238,9 +239,23 @@ async function initShortcuts() {
     const local = path.join(ROOT, LNK_NAME)
     if (!existsSync(local)) await createShortcut(local, SHORTCUT_KINDS.desktop)
     folders = JSON.parse(await powershell({ CCM_LNK_ACTION: 'folders' }))
+    await migrateShortcuts()
     pushState()
   } catch (err) {
     log(`shortcut: ${errText(err)}`)
+  }
+}
+
+// Shortcuts made before the rename to Agent Monitor; the old .bat name stays only as a forwarder.
+async function migrateShortcuts() {
+  const legacyLocal = path.join(ROOT, LEGACY_LNK_NAME)
+  if (existsSync(legacyLocal)) unlinkSync(legacyLocal)
+  for (const kind of Object.keys(SHORTCUT_KINDS)) {
+    const legacy = folders?.[kind] ? path.join(folders[kind], LEGACY_LNK_NAME) : null
+    if (!legacy || !existsSync(legacy)) continue
+    await createShortcut(shortcutPath(kind), SHORTCUT_KINDS[kind])
+    unlinkSync(legacy)
+    log(`Moved ${legacy} -> ${LNK_NAME}`)
   }
 }
 
@@ -302,7 +317,7 @@ function listen(port) {
   })
   server.listen(port, '127.0.0.1', () => {
     const setupUrl = `http://127.0.0.1:${server.address().port}`
-    console.log(`Claude Code Monitor setup: ${setupUrl}`)
+    console.log(`Agent Monitor setup: ${setupUrl}`)
     openBrowser(setupUrl)
     void pipeline()
     void initShortcuts()
@@ -321,7 +336,7 @@ const PAGE = String.raw`<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Claude Code Monitor · Setup</title>
+<title>Agent Monitor · Setup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -407,7 +422,7 @@ pre {
   <header>
     <svg viewBox="0 0 128 128" fill="none" aria-hidden="true"><path d="M64 14a50 50 0 1 0 50 50" stroke="var(--accent)" stroke-width="8" stroke-linecap="round"/><path d="M64 17a47 47 0 0 1 43 28" stroke="var(--ink)" stroke-width="8" stroke-linecap="round"/><path d="m48 53 15 11-15 11M67 76h14" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M64 35v7m0 44v7m-22-29h7m30 0h7m-38-15 5 5m22 22 5 5m0-32-5 5m-22 22-5 5" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/></svg>
     <div>
-      <h1>Claude Code Monitor</h1>
+      <h1>Agent Monitor</h1>
       <p class="sub" id="sub"></p>
     </div>
     <button class="theme" id="theme" type="button"></button>
@@ -445,7 +460,7 @@ const I18N = {
     errTitle: 'Something went wrong', retry: 'Try again', log: 'Show log',
     foot: 'Keep the launcher window open while you use the dashboard. Closing it stops the monitor.',
     dark: 'Switch to dark theme', light: 'Switch to light theme',
-    linksTitle: 'Shortcuts', linksBody: 'Claude-Code-Monitor.lnk in the project folder opens the monitor with its own icon. Also add one to:',
+    linksTitle: 'Shortcuts', linksBody: 'Agent-Monitor.lnk in the project folder opens the monitor with its own icon. Also add one to:',
     lnkDesktop: 'Desktop', lnkStartup: 'Start with Windows (minimized, no browser tab)',
   },
   vi: {
@@ -461,7 +476,7 @@ const I18N = {
     errTitle: 'Có lỗi xảy ra', retry: 'Thử lại', log: 'Xem log',
     foot: 'Giữ cửa sổ launcher mở trong lúc dùng dashboard. Đóng cửa sổ đó sẽ tắt monitor.',
     dark: 'Chuyển sang giao diện tối', light: 'Chuyển sang giao diện sáng',
-    linksTitle: 'Lối tắt', linksBody: 'Claude-Code-Monitor.lnk trong thư mục project mở monitor với icon riêng. Thêm lối tắt vào:',
+    linksTitle: 'Lối tắt', linksBody: 'Agent-Monitor.lnk trong thư mục project mở monitor với icon riêng. Thêm lối tắt vào:',
     lnkDesktop: 'Màn hình Desktop', lnkStartup: 'Chạy cùng Windows (thu nhỏ, không mở tab trình duyệt)',
   },
 }

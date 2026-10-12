@@ -49,12 +49,39 @@ function initialSessionTab(): string | null {
   }
 }
 
-function initialCollapsed(): Panel[] {
+export interface PanelState {
+  open: boolean
+  pinned: boolean
+}
+export type BarDock = 'top' | 'bottom'
+
+function initialPanels(): Record<Panel, PanelState> {
+  const out: Record<Panel, PanelState> = { sessions: { open: true, pinned: true }, activity: { open: false, pinned: false } }
   try {
-    const raw = JSON.parse(localStorage.getItem('ccm.collapsed') ?? '[]')
-    return Array.isArray(raw) ? raw.filter((p): p is Panel => p === 'sessions' || p === 'activity') : []
+    const raw = JSON.parse(localStorage.getItem('ccm.panels') ?? 'null') as Record<string, Partial<PanelState>> | null
+    if (!raw) {
+      // Users of the old grid keep the Sessions column collapsed if they had collapsed it.
+      const old: unknown = JSON.parse(localStorage.getItem('ccm.collapsed') ?? '[]')
+      if (Array.isArray(old) && old.includes('sessions')) out.sessions.open = false
+      return out
+    }
+    for (const key of ['sessions', 'activity'] as Panel[]) {
+      const v = raw[key]
+      if (typeof v?.open === 'boolean') out[key].open = v.open
+      if (typeof v?.pinned === 'boolean') out[key].pinned = v.pinned
+    }
   } catch {
-    return []
+    return out
+  }
+  return out
+}
+
+function initialBar(): { dock: BarDock; min: boolean } {
+  try {
+    const raw = JSON.parse(localStorage.getItem('ccm.bar') ?? '{}') as { dock?: unknown; min?: unknown }
+    return { dock: raw.dock === 'top' ? 'top' : 'bottom', min: raw.min === true }
+  } catch {
+    return { dock: 'bottom', min: false }
   }
 }
 
@@ -133,7 +160,13 @@ export const useUiStore = defineStore('ui', () => {
     if (id && activityTerminalId.value && id !== activityTerminalId.value) activityTerminalId.value = id
   })
   const layoutRequest = ref(0)
-  const collapsed = ref<Panel[]>(initialCollapsed())
+  const panels = ref(initialPanels())
+  const savedBar = initialBar()
+  const barDock = ref<BarDock>(savedBar.dock)
+  const barMin = ref(savedBar.min)
+  const fitRequest = ref(0)
+  const shortcutsOpen = ref(false)
+  const keyPress = ref<{ keys: string; n: number } | null>(null)
   const panelSize = ref(initialSizes())
   const nodeSizes = ref<Record<string, NodeSize>>(savedMap.sizes)
   const nodeResized = ref(0)
@@ -201,9 +234,21 @@ export const useUiStore = defineStore('ui', () => {
     }
   })
 
-  watch(collapsed, (value) => {
+  watch(
+    panels,
+    (value) => {
+      try {
+        localStorage.setItem('ccm.panels', JSON.stringify(value))
+      } catch {
+        return
+      }
+    },
+    { deep: true },
+  )
+
+  watch([barDock, barMin], ([dock, min]) => {
     try {
-      localStorage.setItem('ccm.collapsed', JSON.stringify(value))
+      localStorage.setItem('ccm.bar', JSON.stringify({ dock, min }))
     } catch {
       return
     }
@@ -227,11 +272,43 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function isCollapsed(panel: Panel): boolean {
-    return collapsed.value.includes(panel)
+    return !panels.value[panel].open
   }
 
   function togglePanel(panel: Panel): void {
-    collapsed.value = isCollapsed(panel) ? collapsed.value.filter((p) => p !== panel) : [...collapsed.value, panel]
+    panels.value[panel].open = !panels.value[panel].open
+  }
+
+  function togglePanelPin(panel: Panel): void {
+    panels.value[panel] = { open: true, pinned: !panels.value[panel].pinned }
+  }
+
+  /** Closes panels floating over the map; returns whether any was open. */
+  function closeFloating(): boolean {
+    let closed = false
+    for (const p of Object.values(panels.value)) {
+      if (p.open && !p.pinned) {
+        p.open = false
+        closed = true
+      }
+    }
+    return closed
+  }
+
+  function toggleBar(): void {
+    barMin.value = !barMin.value
+  }
+
+  function toggleBarDock(): void {
+    barDock.value = barDock.value === 'top' ? 'bottom' : 'top'
+  }
+
+  function requestFit(): void {
+    fitRequest.value++
+  }
+
+  function pressKey(keys: string): void {
+    keyPress.value = { keys, n: (keyPress.value?.n ?? 0) + 1 }
   }
 
   function setView(value: View): void {
@@ -329,9 +406,20 @@ export const useUiStore = defineStore('ui', () => {
     timelineWindow,
     compact,
     toggleCompact,
-    collapsed,
+    panels,
     isCollapsed,
     togglePanel,
+    togglePanelPin,
+    closeFloating,
+    barDock,
+    barMin,
+    toggleBar,
+    toggleBarDock,
+    fitRequest,
+    requestFit,
+    shortcutsOpen,
+    keyPress,
+    pressKey,
     panelSize,
     setPanelSize,
     savePanelSizes,

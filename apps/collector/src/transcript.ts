@@ -1,7 +1,7 @@
 import type { CacheTtl } from '@ccm/shared'
 
 export type Signal =
-  | { k: 'tool_use'; id: string; name: string; at?: string }
+  | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true }
   | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string }
   | { k: 'turn_end'; at?: string }
   | { k: 'assistant_end'; at?: string }
@@ -22,6 +22,14 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
 
 const MAX_ENUM = 120
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell'])
+const CODEX_COMMAND_RE = /\bcodex\b/i
+const MAX_CODEX_CALLS = 20
+
+// Only a yes/no leaves this function: the command text itself is never stored.
+function mentionsCodex(name: string, input: unknown): boolean {
+  return SHELL_TOOLS.has(name) && isObj(input) && typeof input.command === 'string' && CODEX_COMMAND_RE.test(input.command)
+}
 
 const NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/g
 
@@ -88,7 +96,7 @@ export function extractSignals(rec: unknown): Signal[] {
     if (Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (isObj(b) && b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string') {
-          out.push({ k: 'tool_use', id: b.id, name: b.name, at })
+          out.push({ k: 'tool_use', id: b.id, name: b.name, at, ...(mentionsCodex(b.name, b.input) ? { codex: true as const } : {}) })
         }
       }
     }
@@ -143,6 +151,8 @@ export interface UsageTotals {
 
 export class TranscriptState {
   readonly openTools = new Map<string, string>()
+  /** When shell calls that mention codex were made, newest last (links Codex runs to the agent that started them). */
+  readonly codexCalls: string[] = []
   private readonly usage = new Map<string, UsageTotals>()
   model?: string
   effort?: string
@@ -188,6 +198,10 @@ export class TranscriptState {
         case 'tool_use':
           this.openTools.set(s.id, s.name)
           this.ended = false
+          if (s.codex && s.at) {
+            this.codexCalls.push(s.at)
+            if (this.codexCalls.length > MAX_CODEX_CALLS) this.codexCalls.shift()
+          }
           break
         case 'tool_result':
           this.openTools.delete(s.toolUseId)

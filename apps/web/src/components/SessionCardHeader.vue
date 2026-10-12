@@ -6,11 +6,13 @@ import type { TerminalSession } from '@ccm/shared'
 import { openAppKey } from '../lib/platform'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
+import { isCodex } from '../lib/provider'
 import { displayTitle, isAutoNamed } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import ProviderBadge from './ProviderBadge.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
 const emit = defineEmits<{ note: [] }>()
@@ -24,7 +26,8 @@ const settings = useSettingsStore()
 const ended = computed(() => props.terminal.status === 'stale')
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
-const autoNamed = computed(() => isAutoNamed(props.terminal))
+const codex = computed(() => isCodex(props.terminal))
+const autoNamed = computed(() => !codex.value && isAutoNamed(props.terminal))
 
 const starred = computed(() => favorites.has(props.terminal.cwd))
 const starLabel = computed(() => t(starred.value ? 'favorites.unstar' : 'favorites.star'))
@@ -95,6 +98,7 @@ function clearAlias(): void {
     >
       {{ title }}
     </button>
+    <ProviderBadge v-if="codex" class="mt-1" :mode="terminal.entrypoint" />
     <span
       v-if="terminal.kind && terminal.kind !== 'interactive'"
       class="shrink-0 rounded-md border border-line px-1.5 py-px font-mono text-2xs text-ink-muted"
@@ -140,7 +144,7 @@ function clearAlias(): void {
       <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
     </button>
     <button
-      v-if="terminal.cwd"
+      v-if="terminal.cwd && !codex"
       type="button"
       class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised"
       :class="starred ? 'text-st-waiting' : 'text-ink-faint hover:text-ink'"
@@ -152,6 +156,7 @@ function clearAlias(): void {
       <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
     </button>
     <button
+      v-if="!codex"
       type="button"
       class="relative z-10 -my-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised hover:text-ink"
       :class="terminal.note ? 'text-accent' : 'text-ink-faint'"
@@ -162,6 +167,7 @@ function clearAlias(): void {
       <StickyNote :size="15" aria-hidden="true" />
     </button>
     <button
+      v-if="!codex"
       type="button"
       class="relative z-10 -my-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
       :aria-label="t('terminal.rename')"

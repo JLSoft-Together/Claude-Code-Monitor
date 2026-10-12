@@ -8,6 +8,7 @@ import { useConnectionStore } from '../../stores/connection'
 import { useExtrasStore } from '../../stores/extras'
 import { useHistoryStore } from '../../stores/history'
 import { useUiStore } from '../../stores/ui'
+import ArtImage from '../ArtImage.vue'
 import Pager from '../Pager.vue'
 import TimelineChart from './TimelineChart.vue'
 
@@ -113,9 +114,10 @@ const rangeLabel = computed(() => {
         </label>
       </div>
       <p v-if="!history.loaded" class="px-5 py-8 text-center text-sm text-ink-muted">{{ t('history.loading') }}</p>
-      <p v-else-if="!rows.length" class="px-5 py-8 text-center text-sm text-ink-muted">
-        {{ query ? t('history.noMatch') : t('history.empty') }}
-      </p>
+      <div v-else-if="!rows.length" class="flex flex-col items-center gap-3 px-5 py-8 text-center">
+        <ArtImage :name="query ? 'empty-project-search' : 'empty-history'" class="w-40 max-w-full" />
+        <p class="text-sm text-ink-muted">{{ query ? t('history.noMatch') : t('history.empty') }}</p>
+      </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full table-fixed text-sm">
           <colgroup>

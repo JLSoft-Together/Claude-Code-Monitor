@@ -2,10 +2,10 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Gauge, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
-import { contextLevel, type ContextLevel } from '@ccm/shared'
+import { contextLevel, contextRawPct, contextUsedPct, type ContextLevel } from '@ccm/shared'
 import { compactNumber, fullNumber } from '../lib/format'
 
-const props = withDefaults(defineProps<{ tokens: number; window: number; compact?: boolean }>(), { compact: false })
+const props = withDefaults(defineProps<{ tokens: number; window: number; pct?: number; compact?: boolean }>(), { compact: false, pct: undefined })
 
 const { t, locale } = useI18n()
 
@@ -16,7 +16,7 @@ const LEVEL: Record<ContextLevel, { bar: string; text: string; icon: typeof Gaug
   critical: { bar: 'bg-st-error', text: 'text-st-error', icon: OctagonAlert },
 }
 
-const pct = computed(() => Math.min(100, (props.tokens / props.window) * 100))
+const pct = computed(() => props.pct ?? contextUsedPct(props.tokens, props.window))
 const level = computed(() => contextLevel(pct.value))
 const view = computed(() => LEVEL[level.value])
 const pctLabel = computed(() => `${Math.round(pct.value)}%`)
@@ -26,6 +26,7 @@ const tooltip = computed(() =>
     pct: pctLabel.value,
     used: fullNumber(props.tokens, locale.value),
     window: fullNumber(props.window, locale.value),
+    raw: `${Math.round(contextRawPct(props.tokens, props.window))}%`,
   }),
 )
 </script>

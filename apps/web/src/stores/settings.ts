@@ -63,6 +63,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const sound = ref(read('ccm.sound') === '1')
   const stuckMinutes = ref((STUCK_CHOICES as readonly number[]).includes(Number(read('ccm.stuckMin'))) ? Number(read('ccm.stuckMin')) : 10)
   const hideTools = ref(read('ccm.hideTools') === '1')
+  const keyHints = ref(read('ccm.keyHints') !== '0')
   const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
@@ -81,6 +82,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(sound, (value) => persist('ccm.sound', value ? '1' : '0'))
   watch(stuckMinutes, (value) => persist('ccm.stuckMin', String(value)))
   watch(hideTools, (value) => persist('ccm.hideTools', value ? '1' : '0'))
+  watch(keyHints, (value) => persist('ccm.keyHints', value ? '1' : '0'))
   watch(breakReminder, (value) => persist('ccm.breakReminder', value ? '1' : '0'))
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
@@ -178,6 +180,7 @@ export const useSettingsStore = defineStore('settings', () => {
     stuckMinutes,
     breakReminder,
     hideTools,
+    keyHints,
     pinned,
     activityPageSize,
     dailyBudget,

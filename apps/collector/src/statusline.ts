@@ -11,11 +11,18 @@ export interface StatusLineRecord {
   at: string
   costUsd?: number
   contextWindow?: number
+  /** Claude Code's own used percent of the full window. */
+  contextPct?: number
+  bufferPct?: number
   fiveHour?: LimitWindow
   sevenDay?: LimitWindow
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+const pct = (v: unknown): number | undefined => {
+  const n = num(v)
+  return n !== undefined && n >= 0 && n <= 100 ? n : undefined
+}
 
 function windowOf(v: unknown): LimitWindow | undefined {
   if (typeof v !== 'object' || v === null) return undefined
@@ -36,6 +43,8 @@ export function parseStatusLine(text: string): StatusLineRecord | null {
       at: raw.at,
       costUsd: num(raw.costUsd),
       contextWindow: contextWindow !== undefined && contextWindow >= 1_000 && contextWindow <= 100_000_000 ? Math.round(contextWindow) : undefined,
+      contextPct: pct(raw.contextPct),
+      bufferPct: pct(raw.bufferPct),
       fiveHour: windowOf(raw.fiveHour),
       sevenDay: windowOf(raw.sevenDay),
     }

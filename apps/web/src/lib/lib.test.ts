@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Agent, TerminalSession } from '@ccm/shared'
 import { cacheState, quietFor } from './attention'
 import { effortLabel, modelLabel } from './model'
+import { codexMode, contextPctOf, isCodex } from './provider'
 import { sortSessions } from './sessionSort'
 
 const term = (id: string, patch: Partial<TerminalSession> = {}): TerminalSession => ({ id, title: id, status: 'working', ...patch })
@@ -55,5 +56,27 @@ describe('model labels', () => {
     expect(effortLabel('high', (k) => `T:${k}`)).toBe('T:effort.high')
     expect(effortLabel('ultra', (k) => k)).toBe('ultra')
     expect(effortLabel(undefined, (k) => k)).toBeNull()
+  })
+
+  it('passes raw GPT ids through', () => {
+    expect(modelLabel('gpt-6-luna', 258_400)).toBe('gpt-6-luna')
+  })
+})
+
+describe('provider', () => {
+  it('never applies the Claude auto-compact buffer to Codex agents', () => {
+    const base = { contextTokens: 50_000, contextWindow: 200_000 }
+    expect(contextPctOf({ ...base, provider: 'codex' })).toBe(25)
+    expect(contextPctOf(base)).toBeCloseTo(29.94, 1)
+    expect(contextPctOf({ ...base, provider: 'codex', contextPct: 31 })).toBe(31)
+    expect(contextPctOf({ provider: 'codex' })).toBeUndefined()
+  })
+
+  it('recognizes Codex modes', () => {
+    expect(isCodex({ provider: 'codex' })).toBe(true)
+    expect(isCodex({})).toBe(false)
+    expect(codexMode('exec')).toBe('exec')
+    expect(codexMode('app-server')).toBe('app-server')
+    expect(codexMode('weird')).toBeNull()
   })
 })

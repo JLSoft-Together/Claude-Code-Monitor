@@ -15,6 +15,9 @@ import { ResponseTracker } from './response'
 import { isCollectorAt, isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
 import { MonitorStore } from './store'
 import { UsageIndex } from './usage'
+import { CodexMonitor } from './codex/monitor'
+import { listCodexProcesses } from './codex/processes'
+import { isPidAlive } from './process'
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -37,6 +40,17 @@ async function main(): Promise<void> {
   await notes.load()
   const dismissedJobs = new JsonFile(path.join(config.dataDir, 'dismissed-jobs.json'), 500)
   const monitor = new Monitor(config, store, undefined, aliases, favorites, response, { limitHistory, history, timeline, notes, dismissedJobs })
+  const codexLimitHistory = new LimitHistory(path.join(config.dataDir, 'codex-limit-history.json'))
+  await codexLimitHistory.load()
+  if (config.codex) {
+    monitor.codex = new CodexMonitor(
+      { codexHome: config.codexHome, staleTtlMs: config.staleTtlMs, reconcileMs: config.reconcileMs, verifyMs: config.processVerifyMs, verifyProcesses: config.verifyProcesses },
+      store,
+      () => monitor.claudeTargets(),
+      { listProcesses: () => listCodexProcesses(), isPidAlive, now: () => Date.now() },
+      codexLimitHistory,
+    )
+  }
   const usage = new UsageIndex(path.join(config.claudeRoot, 'projects'), path.join(config.dataDir, 'usage-index.json'), store)
   monitor.onProjectFile = (file) => usage.notify(file)
   const repoRoots = new RepoRoots()
@@ -66,6 +80,7 @@ async function main(): Promise<void> {
   toastTimer.unref()
 
   await monitor.start()
+  await monitor.codex?.start()
   const server = await startServer({
     host: config.host,
     port: config.port,
@@ -174,7 +189,7 @@ async function main(): Promise<void> {
   })
   await usage.start()
 
-  console.log(`[collector] watching ${config.claudeRoot}`)
+  console.log(`[collector] watching ${config.claudeRoot}${config.codex ? ` + ${config.codexHome}` : ''}`)
   console.log(`[collector] data dir ${config.dataDir}`)
   console.log(`[collector] dashboard http://${config.host}:${config.port}  websocket ws://${config.host}:${config.port}/ws`)
 
@@ -185,7 +200,7 @@ async function main(): Promise<void> {
     clearInterval(toastTimer)
     monitor.stop()
     server.close()
-    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), history.save(), timeline.save(), dismissedJobs.flush()]).finally(() => process.exit(0))
+    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), codexLimitHistory.save(), history.save(), timeline.save(), dismissedJobs.flush()]).finally(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)

@@ -11,12 +11,12 @@ import {
   FolderOpen,
   GraduationCap,
   History,
+  Keyboard,
   Languages,
   ListFilter,
   Minimize2,
   Moon,
   Search,
-  SearchX,
   Settings2,
   Stethoscope,
   Trash2,
@@ -25,12 +25,14 @@ import {
 } from 'lucide-vue-next'
 import { shortPath } from '../lib/format'
 import { statusMeta } from '../lib/status'
+import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
+import ArtImage from './ArtImage.vue'
 import StatusIcon from './StatusIcon.vue'
 
 type Group = 'sessions' | 'favorites' | 'nav' | 'actions' | 'prefs' | 'help'
@@ -79,12 +81,13 @@ const items = computed<Item[]>(() => {
     .map((x) => {
       const title = displayTitle(x)
       const live = x.status !== 'stale'
+      const provider = isCodex(x) ? t('provider.codex') : null
       return {
         id: `s:${x.id}`,
         group: 'sessions' as const,
         label: title,
-        sub: [t(statusMeta(x.status).labelKey), x.gitBranch, shortPath(x.cwd)].filter(Boolean).join(' · '),
-        hay: fold(`${title} ${x.title} ${x.cwd ?? ''} ${x.gitBranch ?? ''} ${x.status}`),
+        sub: [provider, t(statusMeta(x.status).labelKey), x.gitBranch, shortPath(x.cwd)].filter(Boolean).join(' · '),
+        hay: fold(`${title} ${x.title} ${x.cwd ?? ''} ${x.gitBranch ?? ''} ${x.status} ${provider ?? ''}`),
         status: x.status,
         run: () => {
           ui.setView('monitor')
@@ -116,9 +119,11 @@ const items = computed<Item[]>(() => {
     { id: 'c:notify', group: 'prefs', label: t('settings.notifyEnable'), icon: Bell, on: settings.notifyEnabled, run: () => void settings.toggleNotifications() },
     { id: 'c:sound', group: 'prefs', label: t('settings.sound'), icon: Volume2, on: settings.sound, run: () => (settings.sound = !settings.sound) },
     { id: 'c:theme', group: 'prefs', label: t('palette.darkTheme'), icon: Moon, on: settings.theme === 'dark', run: () => settings.toggleTheme() },
+    { id: 'c:keyHints', group: 'prefs', label: t('keys.hints'), icon: Keyboard, on: settings.keyHints, run: () => (settings.keyHints = !settings.keyHints) },
     { id: 'c:tools', group: 'prefs', label: t('palette.toolsPref'), icon: ListFilter, on: !settings.hideTools, run: () => (settings.hideTools = !settings.hideTools) },
     { id: 'c:lang', group: 'prefs', label: t('palette.language'), sub: settings.locale === 'vi' ? 'Tiếng Việt → English' : 'English → Tiếng Việt', icon: Languages, run: () => settings.toggleLocale() },
     { id: 'c:settings', group: 'help', label: t('palette.openSettings'), icon: Settings2, run: () => (ui.settingsOpen = true) },
+    { id: 'c:keys', group: 'help', label: t('keys.title'), sub: '?', icon: Keyboard, run: () => (ui.shortcutsOpen = true) },
     { id: 'c:tour', group: 'help', label: t('tour.open'), icon: GraduationCap, run: () => (ui.tourOpen = true) },
     { id: 'c:diag', group: 'help', label: t('diag.title'), icon: Stethoscope, run: () => (ui.diagnosticsOpen = true) },
   ]
@@ -316,7 +321,7 @@ const HINTS = [
 
           <div id="palette-list" ref="list" role="listbox" :aria-label="t('palette.title')" class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3">
             <div v-if="!filtered.length" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
-              <SearchX :size="28" class="text-ink-faint" aria-hidden="true" />
+              <ArtImage name="empty-project-search" class="w-28" />
               <p class="text-sm font-medium">{{ query ? t('palette.emptyFor', { q: query }) : t('palette.empty') }}</p>
               <p class="max-w-[36ch] text-xs text-ink-faint">{{ t('palette.emptyHint') }}</p>
               <button

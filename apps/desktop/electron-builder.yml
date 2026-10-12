@@ -1,6 +1,6 @@
 appId: dev.ccm.monitor
-productName: Claude Code Monitor
-copyright: Claude Code Monitor
+productName: Agent Monitor
+copyright: Agent Monitor
 directories:
   app: stage
   output: release
@@ -41,7 +41,7 @@ mac:
   identity: '-'
   hardenedRuntime: false
 dmg:
-  artifactName: Claude-Code-Monitor-${version}-${arch}.${ext}
+  artifactName: Agent-Monitor-${version}-${arch}.${ext}
 win:
   icon: ../../scripts/assets/ccm.ico
   target:
@@ -55,7 +55,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Claude Code Monitor
-  artifactName: Claude-Code-Monitor-Setup-${version}.${ext}
+  shortcutName: Agent Monitor
+  artifactName: Agent-Monitor-Setup-${version}.${ext}
 portable:
-  artifactName: Claude-Code-Monitor-Portable-${version}.${ext}
+  artifactName: Agent-Monitor-Portable-${version}.${ext}

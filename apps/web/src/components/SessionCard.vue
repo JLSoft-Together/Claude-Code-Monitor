@@ -8,6 +8,7 @@ import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } fro
 import { modeMeta } from '../lib/mode'
 import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
+import { contextPctOf, isCodex } from '../lib/provider'
 import { statusMeta } from '../lib/status'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
@@ -20,7 +21,10 @@ import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
+import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
+import SubagentCounts from './SubagentCounts.vue'
+import TokenCount from './TokenCount.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
 
@@ -34,10 +38,9 @@ const snooze = useSnoozeStore()
 const meta = computed(() => statusMeta(props.terminal.status))
 const ended = computed(() => props.terminal.status === 'stale')
 const main = computed(() => agents.mainOf(props.terminal.id))
-const subs = computed(() => (agents.byTerminal[props.terminal.id] ?? []).filter((a) => a.role === 'subagent'))
-const subsWorking = computed(() => subs.value.filter((a) => a.status === 'working').length)
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
+const codex = computed(() => isCodex(props.terminal))
 
 const flash = ref(0)
 watch(
@@ -69,12 +72,16 @@ const detail = computed(() => {
   return null
 })
 
-const tokens = computed(() => {
+// A Claude session's total stays Claude-only; Codex runs it started are summed separately (other provider, other quota).
+function sumTokens(codexAgents: boolean) {
   let input = 0
   let output = 0
   let cache = 0
+  let runs = 0
   let any = false
   for (const a of agents.byTerminal[props.terminal.id] ?? []) {
+    if (isCodex(a) !== codexAgents) continue
+    if (codexAgents) runs++
     if (a.totalTokens === undefined) continue
     any = true
     input += a.inputTokens ?? 0
@@ -82,14 +89,20 @@ const tokens = computed(() => {
     cache += a.cacheReadTokens ?? 0
   }
   if (!any) return null
-  return {
-    label: t('terminal.tokens', { total: compactNumber(input + output) }),
-    title: t('terminal.tokensTitle', {
-      input: fullNumber(input, locale.value),
-      output: fullNumber(output, locale.value),
-      cache: fullNumber(cache, locale.value),
-    }),
-  }
+  return { total: input + output, input, output, cache, runs }
+}
+const tokens = computed(() => {
+  const sum = sumTokens(codex.value)
+  if (!sum) return null
+  const counts = { input: fullNumber(sum.input, locale.value), output: fullNumber(sum.output, locale.value), cache: fullNumber(sum.cache, locale.value) }
+  return { total: sum.total, title: t('terminal.tokensTitle', counts) }
+})
+const codexTokens = computed(() => {
+  if (codex.value) return null
+  const sum = sumTokens(true)
+  if (!sum) return null
+  const counts = { input: fullNumber(sum.input, locale.value), output: fullNumber(sum.output, locale.value), cache: fullNumber(sum.cache, locale.value) }
+  return { label: compactNumber(sum.total, locale.value), title: t('provider.tokensTitle', { n: sum.runs, ...counts }) }
 })
 
 const mode = computed(() => modeMeta(props.terminal.permissionMode))
@@ -139,7 +152,7 @@ const costBump = useBump(() => cost.value)
 const context = computed(() => {
   const m = main.value
   if (ended.value || m?.contextTokens === undefined || !m.contextWindow) return null
-  return { tokens: m.contextTokens, window: m.contextWindow }
+  return { tokens: m.contextTokens, window: m.contextWindow, pct: contextPctOf(m) }
 })
 
 const { active: noting, draft: noteDraft, failed: noteFailed, input: noteInput, start: beginNote, commit, cancel: cancelNote } = useInlineEdit()
@@ -255,7 +268,7 @@ function commitNote(): void {
       <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
     </p>
 
-    <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" />
+    <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" :pct="context.pct" />
 
     <dl class="mt-3 space-y-1 text-xs text-ink-muted">
       <div v-if="terminal.cwd" class="flex min-w-0 items-center gap-2">
@@ -280,22 +293,22 @@ function commitNote(): void {
       <div class="flex flex-wrap gap-x-3 gap-y-0.5 tabular">
         <dd v-if="terminal.processId">{{ t('terminal.process', { pid: terminal.processId }) }}</dd>
         <dd v-if="terminal.shell">{{ terminal.shell }}</dd>
+        <dd v-if="terminal.codexVersion">{{ t('provider.version', { v: terminal.codexVersion }) }}</dd>
         <dd v-if="timeLine">{{ timeLine }}</dd>
       </div>
     </dl>
 
     <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs text-ink-muted">
-      <span>
-        {{ t('terminal.subagentCount', subs.length) }}<template v-if="subsWorking > 0">
-          · <span class="text-st-working">{{ t('terminal.subagentWorking', { count: subsWorking }) }}</span></template
-        >
-      </span>
+      <SubagentCounts :terminal-id="terminal.id" />
       <span v-if="terminal.compactions" class="inline-flex items-center gap-1" :title="t('terminal.compactionsTitle')">
         <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
       </span>
-      <span v-if="tokens || cost" class="ml-auto inline-flex items-center gap-2 tabular">
+      <span v-if="tokens || cost || codexTokens" class="ml-auto inline-flex items-center gap-2 tabular">
+        <span v-if="codexTokens" class="inline-flex items-center gap-1 text-codex" :title="codexTokens.title">
+          <ProviderBadge variant="icon" />{{ codexTokens.label }}
+        </span>
         <span v-if="cost" :key="costBump" class="text-ink-muted" :class="costBump ? 'ccm-tick' : ''" :title="t('terminal.costTitle')">{{ cost }}</span>
-        <span v-if="tokens" class="font-medium text-ink" :title="tokens.title">{{ tokens.label }}</span>
+        <TokenCount v-if="tokens" class="font-medium text-ink" :title="tokens.title" :value="tokens.total" />
       </span>
     </div>
   </article>

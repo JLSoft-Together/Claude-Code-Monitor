@@ -10,6 +10,7 @@ import { errorPage, loadingPage, RETRY_URL } from './pages'
 import { stringsFor, type Strings } from './strings'
 
 const APP_ID = 'dev.ccm.monitor'
+const LEGACY_EXE = 'Claude Code Monitor.exe'
 const IS_MAC = process.platform === 'darwin'
 const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
 const ORIGIN = `http://127.0.0.1:${PORT}`
@@ -169,6 +170,14 @@ function openAppWindow(url: string): void {
 // macOS registers the bundle itself (no path/args), so a login start there shows the window.
 const loginOptions = (): Electron.Settings => (IS_MAC ? {} : { path: PORTABLE_EXE ?? process.execPath, args: ['--hidden'] })
 
+// The exe name follows productName: a login entry made before the rename to Agent Monitor (same registry value
+// name = APP_ID, same install folder on update) still points at the removed old exe.
+function repairLoginItem(): void {
+  if (IS_MAC || !app.isPackaged || PORTABLE_EXE) return
+  const legacy = { path: path.join(path.dirname(process.execPath), LEGACY_EXE), args: ['--hidden'] }
+  if (app.getLoginItemSettings(legacy).openAtLogin) app.setLoginItemSettings({ ...loginOptions(), openAtLogin: true })
+}
+
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
     { label: t.trayOpen, click: showMain },
@@ -263,6 +272,7 @@ async function ready(): Promise<void> {
     logFile: path.join(app.getPath('logs'), 'collector.log'),
     onFatal: showError,
   })
+  repairLoginItem()
   createTray()
   mainWindow = createMainWindow()
   await boot()
@@ -292,7 +302,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(ready)
     .catch((err: unknown) => {
-      dialog.showErrorBox('Claude Code Monitor', err instanceof Error ? err.message : String(err))
+      dialog.showErrorBox('Agent Monitor', err instanceof Error ? err.message : String(err))
       app.exit(1)
     })
 }

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, Sun } from 'lucide-vue-next'
 import { now, relativeTime } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
+import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type View } from '../stores/ui'
 import FlipClock from './FlipClock.vue'
@@ -13,6 +14,7 @@ import SettingsMenu from './SettingsMenu.vue'
 
 const { t, locale } = useI18n()
 const connection = useConnectionStore()
+const extras = useExtrasStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
 
@@ -22,7 +24,7 @@ const tabs = computed(() => [
   { id: 'history' as View, label: t('nav.history'), icon: History },
 ])
 const titleChars = computed(() => [...t('app.title')])
-// Brand words ("Claude Code") take the accent; the last word stays in ink.
+// Brand words ("Agent") take the accent; the last word stays in ink.
 const accentUntil = computed(() => t('app.title').lastIndexOf(' '))
 
 const activeIndex = computed(() => tabs.value.findIndex((x) => x.id === ui.view))
@@ -47,6 +49,12 @@ const lastUpdate = computed(() => {
   const ago = relativeTime(connection.lastEventAt, locale.value, now.value)
   return ago ? t('connection.lastUpdate', { ago }) : t('connection.never')
 })
+const connectionTitle = computed(() =>
+  connection.state !== 'connected' && connection.hasData ? t('connection.stale') : `${connectionView.value.label}. ${lastUpdate.value}`,
+)
+
+const showClaudeLimits = computed(() => !!(extras.limits?.fiveHour || extras.limits?.sevenDay))
+const showCodexLimits = computed(() => !!(extras.codexLimits?.fiveHour || extras.codexLimits?.sevenDay))
 
 function toggleTheme(): void {
   const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
@@ -66,7 +74,7 @@ function onTabKey(e: KeyboardEvent): void {
 
 <template>
   <header class="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur-sm">
-    <div class="mx-auto flex max-w-[1800px] flex-wrap items-center gap-x-6 gap-y-3 xl:flex-nowrap px-4 py-3 sm:px-6">
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
       <div class="flex min-w-0 shrink-0 items-center gap-3">
         <ArtImage name="logo" class="size-9 shrink-0" />
         <div class="flex min-w-0 flex-col">
@@ -91,7 +99,7 @@ function onTabKey(e: KeyboardEvent): void {
         data-tour="tabs"
         role="tablist"
         :aria-label="t('nav.label')"
-        class="relative order-3 grid w-full grid-cols-3 rounded-xl border border-line bg-surface p-1 sm:order-none sm:w-auto"
+        class="relative order-3 grid w-full shrink-0 grid-cols-3 rounded-xl border border-line bg-surface p-1 sm:order-none sm:w-auto"
       >
         <span
           class="absolute inset-y-1 left-1 w-[calc((100%-8px)/3)] rounded-lg bg-accent-soft transition-transform duration-300 ease-out-quint"
@@ -115,84 +123,90 @@ function onTabKey(e: KeyboardEvent): void {
         </button>
       </div>
 
-      <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5 xl:flex-nowrap">
-        <PlanLimits class="mr-1 sm:mr-3" data-tour="limits" />
+      <!-- wrap-reverse: when the row runs out of room the quota cluster drops below the controls instead of overlapping the tabs. -->
+      <div class="flex flex-1 flex-wrap-reverse items-center justify-end gap-x-4 gap-y-2">
         <div
-          class="mr-2 flex shrink-0 items-center gap-2 text-xs whitespace-nowrap"
-          role="status"
-          aria-live="polite"
-          :title="connection.state !== 'connected' && connection.hasData ? t('connection.stale') : undefined"
+          v-if="showClaudeLimits || showCodexLimits"
+          data-tour="limits"
+          class="flex flex-wrap items-stretch gap-0.5 rounded-xl border border-line bg-surface p-0.5 sm:flex-nowrap"
         >
-          <span class="inline-flex items-center gap-1.5 font-medium" :class="connectionView.cls">
-            <span v-if="connectionView.glyph === 'live'" class="relative flex size-2.5">
-              <span class="absolute inset-0 rounded-full bg-current opacity-60 motion-safe:animate-ping" />
-              <span class="relative size-2.5 rounded-full bg-current" />
-            </span>
-            <svg v-else width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8" />
-              <path v-if="connectionView.glyph === 'half'" d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" />
-            </svg>
-            <span class="grid">
-              <span v-for="l in connectionLabels" :key="l" class="col-start-1 row-start-1" :class="l === connectionView.label ? '' : 'invisible'" :aria-hidden="l !== connectionView.label">{{ l }}</span>
-            </span>
-          </span>
-          <span class="hidden w-40 truncate text-ink-faint tabular 2xl:inline-block" :title="lastUpdate">{{ lastUpdate }}</span>
+          <PlanLimits v-if="showClaudeLimits" />
+          <span v-if="showClaudeLimits && showCodexLimits" class="my-1.5 hidden w-px shrink-0 bg-line sm:block" aria-hidden="true" />
+          <PlanLimits v-if="showCodexLimits" provider="codex" />
         </div>
 
-        <button
-          type="button"
-          class="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-raised hover:text-ink"
-          :class="ui.compact ? 'text-accent' : 'text-ink-muted'"
-          :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
-          :title="ui.compact ? t('compact.exitTitle') : t('compact.enterTitle')"
-          :aria-pressed="ui.compact"
-          data-tour="compact"
-          @click="ui.toggleCompact()"
-        >
-          <Maximize2 v-if="ui.compact" :size="17" aria-hidden="true" />
-          <Minimize2 v-else :size="17" aria-hidden="true" />
-          <span v-if="ui.compact" class="hidden sm:inline">{{ t('compact.exit') }}</span>
-        </button>
-        <button
-          type="button"
-          class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-          data-tour="palette"
-          :aria-label="t('palette.open')"
-          :title="t('palette.open')"
-          aria-keyshortcuts="Control+K"
-          @click="ui.paletteOpen = true"
-        >
-          <Search :size="17" aria-hidden="true" />
-          <kbd class="hidden rounded border border-line px-1 font-mono text-2xs text-ink-faint lg:inline">Ctrl K</kbd>
-        </button>
-        <button
-          type="button"
-          class="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-          :aria-label="t('settings.language') + ': ' + t('settings.switchLanguage')"
-          @click="settings.toggleLocale()"
-        >
-          <Languages :size="17" aria-hidden="true" />
-          <span>{{ settings.locale === 'en' ? 'VI' : 'EN' }}</span>
-        </button>
-        <button
-          type="button"
-          class="inline-flex size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-          :aria-label="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
-          :title="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
-          @click="toggleTheme"
-        >
-          <Transition
-            mode="out-in"
-            enter-active-class="transition duration-200 ease-out"
-            enter-from-class="opacity-0 rotate-[-60deg] scale-75"
-            leave-active-class="transition duration-100 ease-in"
-            leave-to-class="opacity-0 rotate-[60deg] scale-75"
+        <div class="flex flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
+          <div class="mr-1 flex shrink-0 items-center px-1 text-xs whitespace-nowrap" role="status" aria-live="polite" :title="connectionTitle">
+            <span class="inline-flex items-center gap-1.5 font-medium" :class="connectionView.cls">
+              <span v-if="connectionView.glyph === 'live'" class="relative flex size-2.5">
+                <span class="absolute inset-0 rounded-full bg-current opacity-60 motion-safe:animate-ping" />
+                <span class="relative size-2.5 rounded-full bg-current" />
+              </span>
+              <svg v-else width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path v-if="connectionView.glyph === 'half'" d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" />
+              </svg>
+              <span class="grid" :class="connection.state === 'connected' ? 'sr-only 3xl:not-sr-only' : ''">
+                <span v-for="l in connectionLabels" :key="l" class="col-start-1 row-start-1" :class="l === connectionView.label ? '' : 'invisible'" :aria-hidden="l !== connectionView.label">{{ l }}</span>
+              </span>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-raised hover:text-ink"
+            :class="ui.compact ? 'text-accent' : 'text-ink-muted'"
+            :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
+            :title="ui.compact ? t('compact.exitTitle') : t('compact.enterTitle')"
+            :aria-pressed="ui.compact"
+            data-tour="compact"
+            @click="ui.toggleCompact()"
           >
-            <Sun v-if="settings.theme === 'dark'" key="sun" :size="18" aria-hidden="true" />
-            <Moon v-else key="moon" :size="18" aria-hidden="true" />
-          </Transition>
-        </button>
-        <SettingsMenu />
+            <Maximize2 v-if="ui.compact" :size="17" aria-hidden="true" />
+            <Minimize2 v-else :size="17" aria-hidden="true" />
+            <span v-if="ui.compact" class="hidden sm:inline">{{ t('compact.exit') }}</span>
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+            data-tour="palette"
+            :aria-label="t('palette.open')"
+            :title="t('palette.open')"
+            aria-keyshortcuts="Control+K"
+            @click="ui.paletteOpen = true"
+          >
+            <Search :size="17" aria-hidden="true" />
+            <kbd class="hidden rounded border border-line px-1 font-mono text-2xs text-ink-faint 2xl:inline">Ctrl K</kbd>
+          </button>
+          <button
+            type="button"
+            class="hidden h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink 2xl:inline-flex"
+            :aria-label="t('settings.language') + ': ' + t('settings.switchLanguage')"
+            @click="settings.toggleLocale()"
+          >
+            <Languages :size="17" aria-hidden="true" />
+            <span>{{ settings.locale === 'en' ? 'VI' : 'EN' }}</span>
+          </button>
+          <button
+            type="button"
+            class="hidden size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink 2xl:inline-flex"
+            :aria-label="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
+            :title="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
+            @click="toggleTheme"
+          >
+            <Transition
+              mode="out-in"
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 rotate-[-60deg] scale-75"
+              leave-active-class="transition duration-100 ease-in"
+              leave-to-class="opacity-0 rotate-[60deg] scale-75"
+            >
+              <Sun v-if="settings.theme === 'dark'" key="sun" :size="18" aria-hidden="true" />
+              <Moon v-else key="moon" :size="18" aria-hidden="true" />
+            </Transition>
+          </button>
+          <SettingsMenu />
+        </div>
       </div>
     </div>
     <div

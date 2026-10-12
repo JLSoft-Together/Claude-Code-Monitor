@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { CONTEXT_THRESHOLDS, inQuietHours, remindersDue, type TerminalSession, type TerminalStatus, type ToastKind } from '@ccm/shared'
 import { quietFor } from '../lib/attention'
 import { duration, now } from '../lib/format'
+import { contextPctOf } from '../lib/provider'
 import { playChime } from '../lib/sound'
 import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
@@ -237,7 +238,7 @@ export function useNotifications(): void {
     () =>
       terminals.live.map((x) => {
         const main = agents.mainOf(x.id)
-        const pct = main?.contextTokens !== undefined && main.contextWindow ? (main.contextTokens / main.contextWindow) * 100 : 0
+        const pct = (main && contextPctOf(main)) ?? 0
         return [x.id, pct] as const
       }),
     (list) => {

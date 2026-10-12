@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-MVP phases 1–7 implemented. `PLAN.md` is the **source of truth** for scope; `docs/claude-code-integration.md` documents the verified Claude Code data sources.
+MVP phases 1–7 implemented. `PLAN.md` is the **source of truth** for scope; `docs/claude-code-integration.md` documents the verified Claude Code data sources, `docs/codex-integration.md` the Codex CLI ones (v16 scope extension, `.planning/PLAN-v16-codex.md`).
 
 ## Commands
 
@@ -20,13 +20,13 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm run dist:mac` — same → `.dmg` arm64 + x64; **macOS only** (or GitHub Actions workflow `desktop`)
 - `node scripts/demo-fixture.mjs --sessions=5 --subagents=3` — fake Claude root for load/UI testing; run collector with `CLAUDE_CONFIG_DIR=<printed root> CCM_VERIFY_PROCESSES=0`
 
-Collector env: `CLAUDE_CONFIG_DIR`, `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`: usage cache + aliases).
+Collector env: `CLAUDE_CONFIG_DIR`, `CODEX_HOME` (`~/.codex`), `CCM_CODEX=0` (tắt Codex), `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`: usage cache + aliases).
 
 Deviations from `PLAN.md` are allowed only when a discovered Claude Code limitation forces them, and must be documented in `docs/claude-code-integration.md`.
 
 ## What this is
 
-A local-only, Windows-first dashboard (macOS/Linux supported for monitoring; desktop `.dmg` for macOS) that observes running Claude Code CLI sessions (target version **2.1.289**) across multiple terminals and shows sessions, terminal titles, and the main-agent → sub-agent hierarchy in realtime.
+**Agent Monitor** (renamed from Claude Code Monitor on 2026-10-11; repo folder, npm package names `@ccm/*`, `appId` `dev.ccm.monitor`, data dir `ccm`, `CCM_*` env and `ccm.*` storage keys keep the old prefix on purpose so installs update in place). A local-only, Windows-first dashboard (macOS/Linux supported for monitoring; desktop `.dmg` for macOS) that observes running Claude Code CLI sessions (target version **2.1.289**) — plus Codex CLI runs (**0.162.0**), shown under the Claude agent that launched them — across multiple terminals and shows sessions, terminal titles, and the main-agent → sub-agent hierarchy in realtime.
 
 Core principle: **Observe → Normalize → Broadcast → Render**. Monitoring must never send prompts to Claude Code, call the Claude API, or spawn another LLM agent — zero additional token cost.
 

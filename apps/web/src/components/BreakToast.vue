@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CupSoda, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import ArtImage from './ArtImage.vue'
 
 const { t, locale } = useI18n()
 const ui = useUiStore()
@@ -47,9 +48,7 @@ function turnOff(): void {
       class="fixed right-4 bottom-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-4 shadow-lg"
     >
       <div class="flex items-start gap-3">
-        <span class="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent" aria-hidden="true">
-          <CupSoda :size="20" class="motion-safe:animate-[ccm-sip_1.6s_ease-in-out_2]" />
-        </span>
+        <ArtImage name="break" class="w-16 shrink-0 pt-0.5" />
         <div class="min-w-0 flex-1">
           <h2 id="break-title" class="text-sm font-semibold">{{ t('breaks.title') }}</h2>
           <p class="mt-1 text-sm leading-relaxed text-ink-muted">{{ t('breaks.body', { n: BREAK_MINUTES }) }}</p>

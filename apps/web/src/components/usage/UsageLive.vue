@@ -2,9 +2,11 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { compactNumber, fullNumber } from '../../lib/format'
+import { isCodex } from '../../lib/provider'
 import { displayTitle } from '../../lib/title'
 import { useAgentsStore } from '../../stores/agents'
 import { useTerminalsStore } from '../../stores/terminals'
+import ProviderBadge from '../ProviderBadge.vue'
 import StatusIcon from '../StatusIcon.vue'
 
 const { t, locale } = useI18n()
@@ -13,7 +15,8 @@ const agents = useAgentsStore()
 
 const rows = computed(() =>
   terminals.live.map((term) => {
-    const list = agents.byTerminal[term.id] ?? []
+    // Codex runs started from a Claude session use another quota; the row stays one provider.
+    const list = (agents.byTerminal[term.id] ?? []).filter((a) => isCodex(a) === isCodex(term))
     let input = 0
     let output = 0
     let cache = 0
@@ -23,7 +26,7 @@ const rows = computed(() =>
       cache += a.cacheReadTokens ?? 0
     }
     const main = list.find((a) => a.role === 'main')
-    return { term, title: displayTitle(term), model: main?.model, agents: list.length, input, output, cache, total: input + output }
+    return { term, codex: isCodex(term), title: displayTitle(term), model: main?.model, agents: list.length, input, output, cache, total: input + output }
   }),
 )
 </script>
@@ -52,6 +55,7 @@ const rows = computed(() =>
               <span class="flex min-w-0 items-center gap-2">
                 <StatusIcon :status="row.term.status" :size="14" />
                 <span class="truncate font-medium" :title="row.title">{{ row.title }}</span>
+                <ProviderBadge v-if="row.codex" variant="short" :mode="row.term.entrypoint" />
                 <span v-if="row.agents > 1" class="shrink-0 text-xs text-ink-faint">{{ t('usage.agentCount', { n: row.agents }) }}</span>
               </span>
             </th>

@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-export type ArtName = 'logo' | 'empty-sessions' | 'empty-favorites' | 'empty-project-search' | 'empty-stats' | 'agent-map-bg'
+export type ArtName =
+  | 'logo'
+  | 'empty-sessions'
+  | 'empty-favorites'
+  | 'empty-project-search'
+  | 'empty-stats'
+  | 'agent-map-bg'
+  | 'empty-activity'
+  | 'empty-history'
+  | 'all-quiet'
+  | 'break'
+  | 'tour-welcome'
 
 const props = defineProps<{ name: ArtName }>()
 

@@ -4,15 +4,17 @@ import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { ChartGantt, Eye, EyeOff, LayoutGrid, Maximize, Minus, Network, Plus, X } from 'lucide-vue-next'
+import { ChartGantt, Eye, EyeOff, LayoutGrid, Maximize, Minus, Network, PanelLeft, PanelRight, Plus, X } from 'lucide-vue-next'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type MapView } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
+import { nextMapIsSwitch, reducedMotion } from '../lib/motion'
 import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
+import KeyHint from './KeyHint.vue'
 import ToolTimeline from './ToolTimeline.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
@@ -31,6 +33,7 @@ const picked = ref<Set<string>>(new Set())
 const hasNodes = ref(false)
 let didInitialFit = false
 let pendingFit = false
+const flyIn = nextMapIsSwitch()
 
 const highlighted = computed(() => (ui.selectedAgentId ? agents.lineage(ui.selectedAgentId) : null))
 provide('ccm-highlight', highlighted)
@@ -143,6 +146,34 @@ async function autoFit(duration = 0): Promise<void> {
 
 const nodeIds = computed(() => new Set(getNodes.value.map((n) => n.id)))
 
+function measureEdges(ids: string[]): void {
+  for (const id of ids) {
+    const path = canvas.value?.querySelector<SVGPathElement>(`.vue-flow__edge[data-id="${CSS.escape(id)}"] .vue-flow__edge-path`)
+    if (path) path.style.setProperty('--ccm-edge-len', String(Math.ceil(path.getTotalLength()) + 1))
+  }
+}
+
+// Edges that appear after the first render draw themselves from parent to child.
+const EDGE_DRAW_MS = 700
+const freshEdges = ref<Set<string>>(new Set())
+let knownEdges: Set<string> | null = null
+function trackEdges(ids: string[]): void {
+  if (!knownEdges) {
+    knownEdges = new Set(ids)
+    return
+  }
+  const born = ids.filter((id) => !knownEdges!.has(id))
+  knownEdges = new Set(ids)
+  if (!born.length) return
+  freshEdges.value = new Set([...freshEdges.value, ...born])
+  void nextTick(() => requestAnimationFrame(() => measureEdges(born)))
+  window.setTimeout(() => {
+    const next = new Set(freshEdges.value)
+    for (const id of born) next.delete(id)
+    freshEdges.value = next
+  }, EDGE_DRAW_MS)
+}
+
 const edges = computed<Edge[]>(() =>
   shownList.value
     .filter((a) => a.parentId && visibility.value.visible.has(a.parentId) && nodeIds.value.has(a.id) && nodeIds.value.has(a.parentId))
@@ -151,10 +182,19 @@ const edges = computed<Edge[]>(() =>
       source: a.parentId!,
       target: a.id,
       type: 'smoothstep',
-      class: a.status === 'working' ? 'ccm-edge-hot' : undefined,
+      class:
+        [a.status === 'working' ? 'ccm-edge-hot' : '', a.provider === 'codex' ? 'ccm-edge-codex' : '', freshEdges.value.has(`${a.parentId}->${a.id}`) ? 'ccm-edge-new' : '']
+          .join(' ')
+          .trim() || undefined,
       selectable: false,
       pathOptions: { borderRadius: 6 },
     })),
+)
+
+watch(
+  () => edges.value.map((e) => e.id),
+  (ids) => trackEdges(ids),
+  { immediate: true },
 )
 
 // First sync waits for <VueFlow> to mount: nodes added during setup are dropped when it initializes (remount after a tab switch).
@@ -172,14 +212,18 @@ watch(
   () => ui.layoutRequest,
   () => syncNodes(true),
 )
-// Collapsing a side panel resizes the canvas after the 200ms grid transition.
+// Pinned panels and the session bar change the canvas size; floating panels do not.
 let resizeTimer: number | undefined
 watch(
-  () => ui.collapsed.join(','),
+  () => [ui.panels.sessions.open && ui.panels.sessions.pinned, ui.panels.activity.open && ui.panels.activity.pinned, ui.barMin].join(','),
   () => {
     window.clearTimeout(resizeTimer)
     resizeTimer = window.setTimeout(() => syncNodes(true), 240)
   },
+)
+watch(
+  () => ui.fitRequest,
+  () => void fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }),
 )
 watch(
   () => ui.focusRequest,
@@ -206,8 +250,20 @@ watch(
 onNodesInitialized(() => {
   if (!pendingFit) return
   pendingFit = false
-  void autoFit()
+  void autoFit().then(() => (flyIn ? flyToFit() : undefined))
 })
+
+/** After a tab switch the camera eases in toward the tree instead of cutting to it. */
+async function flyToFit(): Promise<void> {
+  const box = canvas.value
+  if (!box || reducedMotion()) return
+  const target = getViewport()
+  const k = 0.82
+  const cx = box.clientWidth / 2
+  const cy = box.clientHeight / 2
+  await setViewport({ x: cx - (cx - target.x) * k, y: cy - (cy - target.y) * k, zoom: target.zoom * k })
+  await setViewport(target, { duration: 420 })
+}
 
 watch(
   () => ui.selectedAgentId && !visibility.value.visible.has(ui.selectedAgentId),
@@ -235,10 +291,13 @@ onNodeDragStop(({ nodes }) => {
   for (const n of nodes) ui.setNodePos(n.id, n.position)
 })
 
-const controls = computed(() => [
+const TOOL =
+  'ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+
+const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
   { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },
   { key: 'zoomOut', label: t('map.zoomOut'), icon: Minus, run: () => zoomOut({ duration: 150 }) },
-  { key: 'fit', label: t('map.fit'), icon: Maximize, run: () => fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }) },
+  { key: 'fit', label: t('map.fit'), icon: Maximize, hint: 'F', run: () => ui.requestFit() },
   { key: 'reset', label: t('map.reset'), icon: LayoutGrid, run: () => ui.resetLayout() },
 ])
 
@@ -258,82 +317,10 @@ function onViewKey(event: KeyboardEvent): void {
 
 <template>
   <section :aria-labelledby="`${FLOW_ID}-title`" class="flex min-h-0 flex-col">
-    <div class="mb-3 flex items-center justify-between gap-2 px-0.5">
-      <h2 :id="`${FLOW_ID}-title`" class="text-sm font-semibold text-ink" :title="scoped ? undefined : t('map.multiSelectHint')">{{ t('map.title') }}</h2>
-      <div class="flex min-w-0 flex-wrap items-center justify-end gap-0.5" role="toolbar" :aria-label="t('map.title')">
-        <div class="mr-1 inline-flex rounded-md bg-raised p-0.5" role="radiogroup" :aria-label="t('tools.view.label')" @keydown="onViewKey">
-          <button
-            v-for="v in views"
-            :key="v.key"
-            type="button"
-            role="radio"
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors hover:text-ink"
-            :class="ui.mapView === v.key ? 'bg-surface text-ink' : 'text-ink-muted'"
-            :aria-checked="ui.mapView === v.key"
-            :tabindex="ui.mapView === v.key ? 0 : -1"
-            @click="ui.mapView = v.key"
-          >
-            <component :is="v.icon" :size="15" aria-hidden="true" />
-            <span>{{ v.label }}</span>
-          </button>
-        </div>
-        <div v-if="ui.mapView === 'timeline'" class="inline-flex items-center gap-0.5" role="group" :aria-label="t('tools.window')">
-          <button
-            v-for="w in WINDOWS"
-            :key="w"
-            type="button"
-            class="inline-flex h-9 cursor-pointer items-center rounded-md px-2 text-xs tabular-nums transition-colors hover:bg-raised hover:text-ink"
-            :class="ui.timelineWindow === w ? 'bg-raised text-ink' : 'text-ink-muted'"
-            :aria-pressed="ui.timelineWindow === w"
-            @click="ui.timelineWindow = w"
-          >
-            {{ t('tools.minutes', { n: w }) }}
-          </button>
-        </div>
-        <template v-else>
-          <button
-            v-if="picked.size"
-            type="button"
-            class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-raised px-2 text-xs text-ink transition-colors hover:text-accent"
-            :aria-label="t('map.clearPicked')"
-            :title="t('map.clearPicked')"
-            @click="clearPicked()"
-          >
-            <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
-            <X :size="15" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            class="mr-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-            :class="settings.hideFinished ? 'bg-raised text-ink' : 'text-ink-muted'"
-            :aria-pressed="settings.hideFinished"
-            :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-            :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-            :disabled="!hasNodes"
-            @click="settings.toggleHideFinished()"
-          >
-            <component :is="settings.hideFinished ? EyeOff : Eye" :size="17" aria-hidden="true" />
-            <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
-          </button>
-          <button
-            v-for="c in controls"
-            :key="c.key"
-            type="button"
-            class="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-            :aria-label="c.label"
-            :title="c.label"
-            :disabled="!hasNodes"
-            @click="c.run()"
-          >
-            <component :is="c.icon" :size="17" aria-hidden="true" />
-          </button>
-        </template>
-      </div>
-    </div>
-
+    <h2 :id="`${FLOW_ID}-title`" class="sr-only">{{ t('map.title') }}</h2>
     <div
       ref="canvas"
-      class="relative min-h-[440px] flex-1 overflow-hidden rounded-xl border border-line bg-surface lg:min-h-0"
+      class="relative min-h-0 flex-1 overflow-hidden bg-surface"
       role="region"
       :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
     >
@@ -363,7 +350,104 @@ function onViewKey(event: KeyboardEvent): void {
         <p>{{ t('map.empty') }}</p>
       </div>
 
-      <AgentDetails v-if="ui.mapView === 'map'" />
+      <div class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
+        <button
+          type="button"
+          :class="[TOOL, ui.isCollapsed('sessions') ? '' : 'invisible']"
+          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :aria-label="t('map.showSessions')"
+          :title="t('map.showSessions')"
+          aria-keyshortcuts="S"
+          @click="ui.togglePanel('sessions')"
+        >
+          <PanelLeft :size="16" aria-hidden="true" /><span class="hidden sm:inline">{{ ui.sessionTab ? t('panel.session') : t('sessions.title') }}</span><KeyHint keys="S" />
+        </button>
+
+        <div class="pointer-events-auto flex flex-wrap items-center justify-center gap-0.5 rounded-lg border border-line bg-surface/95 p-0.5 shadow-sm" role="toolbar" :aria-label="t('map.title')">
+          <div class="inline-flex rounded-md bg-raised p-0.5" role="radiogroup" :aria-label="t('tools.view.label')" @keydown="onViewKey">
+            <button
+              v-for="v in views"
+              :key="v.key"
+              type="button"
+              role="radio"
+              class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors hover:text-ink"
+              :class="ui.mapView === v.key ? 'bg-surface text-ink' : 'text-ink-muted'"
+              :aria-checked="ui.mapView === v.key"
+              :tabindex="ui.mapView === v.key ? 0 : -1"
+              @click="ui.mapView = v.key"
+            >
+              <component :is="v.icon" :size="15" aria-hidden="true" />
+              <span>{{ v.label }}</span>
+            </button>
+          </div>
+          <template v-if="ui.mapView === 'timeline'">
+            <button
+              v-for="w in WINDOWS"
+              :key="w"
+              type="button"
+              :class="[TOOL, 'tabular-nums', ui.timelineWindow === w ? 'bg-raised text-ink' : '']"
+              :aria-pressed="ui.timelineWindow === w"
+              @click="ui.timelineWindow = w"
+            >
+              {{ t('tools.minutes', { n: w }) }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              v-if="picked.size"
+              type="button"
+              :class="TOOL"
+              class="bg-raised text-ink"
+              :aria-label="t('map.clearPicked')"
+              :title="t('map.clearPicked')"
+              @click="clearPicked()"
+            >
+              <span class="tabular-nums">{{ t('map.picked', { n: picked.size }) }}</span>
+              <X :size="15" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              :class="[TOOL, settings.hideFinished ? 'bg-raised text-ink' : '']"
+              :aria-pressed="settings.hideFinished"
+              :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+              :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
+              :disabled="!hasNodes"
+              @click="settings.toggleHideFinished()"
+            >
+              <component :is="settings.hideFinished ? EyeOff : Eye" :size="16" aria-hidden="true" />
+              <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
+            </button>
+            <button
+              v-for="c in controls"
+              :key="c.key"
+              type="button"
+              :class="TOOL"
+              :aria-label="c.label"
+              :title="c.label"
+              :aria-keyshortcuts="c.hint"
+              :disabled="!hasNodes"
+              @click="c.run()"
+            >
+              <component :is="c.icon" :size="16" aria-hidden="true" />
+              <KeyHint v-if="c.hint" :keys="c.hint" />
+            </button>
+          </template>
+        </div>
+
+        <button
+          type="button"
+          :class="[TOOL, ui.isCollapsed('activity') ? '' : 'invisible']"
+          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :aria-label="t('map.showActivity')"
+          :title="t('map.showActivity')"
+          aria-keyshortcuts="A"
+          @click="ui.togglePanel('activity')"
+        >
+          <span class="hidden sm:inline">{{ t('activity.title') }}</span><KeyHint keys="A" /><PanelRight :size="16" aria-hidden="true" />
+        </button>
+      </div>
+
+      <AgentDetails v-if="ui.mapView === 'map'" :flow-id="FLOW_ID" />
     </div>
   </section>
 </template>
