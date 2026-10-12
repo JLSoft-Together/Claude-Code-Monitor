@@ -204,7 +204,8 @@ Only `spawnDepth = 1` observed. Nested subagents (depth ≥ 2) — file location
 - Collector (`process.ts`): `ps -o pid=,ppid=,lstart= -p <pids>` + `ps -o pid=,comm= -p <ppids>` (shell name), same env, no shell. `ps` exit 1 without stderr = some pids gone (parsed); missing `ps` / bad option / timeout → `null` (TTL only). Match = equal strings after collapsing spaces; a `procStart` that is not lstart-shaped keeps the session.
 - Data dir (`datadir.ts`, mirrored in `statusline-bridge.mjs`): macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` or `~/.local/share/ccm`.
 - Open folder: macOS `/usr/bin/open`, Linux `xdg-open`; VS Code via `code` on PATH, macOS fallback `open -a "<...>/Visual Studio Code.app"`.
-- Still Windows-only (`unsupported`): window focus, folder picker, launch from favorites, system toast.
+- macOS (since 2026-10-09, §11k/§11n): window focus (`focus-mac.ts`: exact tab by tty for Terminal.app / iTerm2, app-only `open -a` for JetBrains and other `.app` hosts), alerts (dock badge + bounce, desktop app only), launch from favorites (Terminal.app / iTerm2) and the folder picker (`choose folder`).
+- Still unsupported on Linux (`unsupported`): window focus, folder picker, launch from favorites, system toast. On macOS the collector alone (no desktop app) has no toast.
 
 ---
 
@@ -375,6 +376,12 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 3. **PATH.** Finder/Dock launches get launchd's minimal PATH, so `main.ts` merges `$SHELL -ilc` PATH (5 s timeout) before forking the collector: `node` (bridge command), `git`, `code`, `claude` resolve like in Terminal.
 4. **Bridge without node.** `statusline-bridge.sh` (`ELECTRON_RUN_AS_NODE=1 exec <app exe>`), chmod 755. The exe path is baked in, so the app offers `moveToApplicationsFolder()` when run from the DMG / Downloads (translocated).
 5. **Shell.** App menu (app / edit / window roles) for Cmd C/V/Q/W; menu bar icon `ccmTrayTemplate.png`; `activate` reopens the window; login item without `path/args` (opens shown, `--hidden` is Windows only); no AUMID / balloon.
+6. **Alerts, focus, launch (2026-10-09; live results in §11n).**
+   - Alerts: the desktop app sets `CCM_TOAST_BACKEND=electron`; with `process.parentPort` the collector posts `{type:'toast.show',tag,title,persistent}` / `{type:'toast.hide',tag}` (no body, no url). `attention.ts` bounces the dock (`critical`) on a new tag, sets the badge to the number of persistent alerts, settles on window focus, clears on quit and when the collector exits. Settings Test bounces without a badge. Native notifications are refused for ad-hoc apps (§11n), so badge + bounce stay until Developer ID signing.
+   - Waiting labels: `permission prompt` + `ExitPlanMode` = "Needs plan approval"; with another tool = "Needs approval: <tool>"; `input needed` = "Asking you"; unknown values shown raw (`waitReason()` in shared, `waitDisplay` in web).
+   - Focus results: `ok`, `appOnly` (info), `denied` (-1743), `notFound` (no tab on that tty, no fallback). Bundles must be absolute paths; at most 8 ancestors are walked. Verified live: Terminal ok, iTerm2 ok, WebStorm appOnly.
+   - Launch: `osascript -e SCRIPT dir cmd` (argv only; cmd is `claude` or `claude --continue`). Terminal.app `do script` opens a new window; iTerm2 (by bundle id) a new window with the default profile. The dir goes through `quoted form of`; dirs with control characters are refused because `do script` / `write text` type the line into the shell's line editor, where `^U` and similar bypass quoting. Timeout 60 s (covers the consent prompt). Picker: `choose folder`, 10 min, `-128` = cancelled. Errors `activity.launchError.{denied,notInstalled,failed}`. Verified with the dir `a b'c`. The terminal choice is `ccm.launchTerminal` in localStorage.
+   - **Automation permission.** The first use per target app (Terminal, iTerm2) shows the macOS consent prompt. If denied, the user re-enables it in System Settings → Privacy & Security → Automation.
 
 ## 11l. Port clash with OpenTelemetry (2026-10-09)
 
@@ -385,6 +392,24 @@ Plan `.planning/PLAN-v13-macos-dmg.md`. Same app as §11j with these differences
 A span is one tool call: `tool_use.id` in an assistant message paired with `tool_result.tool_use_id` in a later user message. Start and end are the transcript line timestamps; outcome is `ok`, `error` (`is_error`) or `interrupted` (a `turn_end` closes every span still open for that agent). Only the tool name (cut to 80 chars) and timestamps are read: inputs, outputs and results are never stored or sent. Subagent transcripts never contain `system/turn_duration`, so the collector also closes spans as `interrupted` when a subagent resolves to a finished status (at its `completedAt`) and when the session ends (at the end time); otherwise they would stay open until the tracker is dropped.
 
 Limits: 2000 spans per session, spans older than 2 h are dropped. Spans are recorded during catch-up of existing transcripts too, but `tool.span` is broadcast only for changes seen live. The dashboard fetches history with `toolSpans.get` (optional `terminalId`, optional ISO `since`, max 40 chars) and gets one `toolSpans.data` reply; an unknown `terminalId` returns an empty list.
+
+## 11n. Waiting reasons and macOS automation (verified 2026-10-09, macOS 15, Claude Code 2.1.289)
+
+Registry `waitingFor` observed live (1 s poll of `sessions/<pid>.json`), matched to the open `tool_use` in the transcript (tool names and timestamps only):
+
+| `waitingFor` | Open tool | Meaning |
+|---|---|---|
+| `input needed` | `AskUserQuestion` | Claude is asking the user |
+| `permission prompt` | `Bash` | tool permission |
+| `permission prompt` | `ExitPlanMode` | plan approval |
+
+A read-only command (`ls ~`) ran without a prompt (`busy → idle`). `sandbox request`, `worker request`, `dialog open` were not observed; they stay as documented in §3.
+
+macOS process tree for a Terminal.app session: `claude (ttys006) → -zsh → login → /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal` (3 hops; login shells show a leading `-`; Terminal.app lives under `/System/Applications/Utilities`, so match the bundle name, not `/Applications`). JetBrains: `claude (ttys003) → /bin/zsh → /Applications/WebStorm.app/Contents/MacOS/webstorm`. `sdk-cli` sessions run under `bun` with no tty and no `.app` ancestor.
+
+AppleScript `tell application "Terminal"` → `tabs of windows` → `tty of t is "/dev/ttysNNN"` → `set selected`, `set index of window to 1`, `activate` selects the right tab (`ok`); an unknown tty returns `notFound`. No Automation prompt appeared for a host that already had the permission; a new app identity will be asked once.
+
+Native notifications: an Electron `Notification` from the dev binary (`com.github.Electron`) fails with `UNErrorDomain error 1` (notifications not allowed) without any permission dialog, and the installed ad-hoc signed app (`dev.ccm.monitor`, `Signature=adhoc`) shows no prompt either; neither appears in `com.apple.ncprefs`. Native macOS notifications therefore need a Developer ID signature. The desktop app uses a dock badge and `dock.bounce('critical')` instead, which need no permission.
 
 ## 12. Open items
 

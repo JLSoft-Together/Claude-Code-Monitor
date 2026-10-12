@@ -8,7 +8,8 @@ import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
 import { JsonFile } from './json-file'
 import { SnoozeStore } from './snooze'
-import { TEXT, Toaster } from './toast'
+import { defaultToastDeps, TEXT, Toaster } from './toast'
+import { electronToastDeps } from './toast-electron'
 import { Monitor } from './monitor'
 import { RepoRoots } from './repo'
 import { ResponseTracker } from './response'
@@ -63,13 +64,18 @@ async function main(): Promise<void> {
   const snoozes = new SnoozeStore(path.join(config.dataDir, 'snooze.json'))
   await snoozes.load()
   store.setSnoozes(snoozes.all())
-  const toaster = new Toaster({ supported: config.toast, port: config.port, file: path.join(config.dataDir, 'notify.json') })
+  const hostPort = (process as unknown as { parentPort?: { postMessage: (msg: unknown) => void } }).parentPort
+  const electronToast = config.toastBackend === 'electron' && hostPort !== undefined
+  const toaster = new Toaster(
+    { supported: config.toast && (config.toastBackend !== 'electron' || electronToast), port: config.port, file: path.join(config.dataDir, 'notify.json') },
+    electronToast ? { ...defaultToastDeps, ...electronToastDeps((m) => hostPort.postMessage(m)) } : defaultToastDeps,
+  )
   await toaster.load()
   toaster.snoozed = (t) => snoozes.isSnoozed(t)
   store.setNotify(toaster.settings())
   const observe = () => {
     if (snoozes.prune(store.terminalList())) store.setSnoozes(snoozes.all())
-    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id) })
+    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id) })
   }
   store.subscribe(observe)
   void toaster.refreshHealth().then(() => store.setNotify(toaster.settings()))
@@ -157,7 +163,7 @@ async function main(): Promise<void> {
           void monitor.stopJob(message.jobId)
           break
         case 'favorite.open':
-          void monitor.openFavorite(message.dir, message.mode)
+          void monitor.openFavorite(message.dir, message.mode, message.terminalApp)
           break
         case 'client.presence':
           toaster.setPresence(ctx.clientId, message.attentive, message.locale)

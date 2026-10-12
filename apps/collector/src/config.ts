@@ -21,6 +21,7 @@ export interface CollectorConfig {
   statusLineBridge: string
   statusLineCommand: string
   toast: boolean
+  toastBackend: 'powershell' | 'electron' | null
 }
 
 function intFromEnv(value: string | undefined, fallback: number): number {
@@ -31,7 +32,8 @@ function intFromEnv(value: string | undefined, fallback: number): number {
 // The desktop bundle is CJS without import.meta, so repo-relative fallbacks resolve only when the env var is missing.
 const fromHere = (rel: string): string => path.resolve(path.dirname(fileURLToPath(import.meta.url)), rel)
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): CollectorConfig {
+  const toastBackend = env.CCM_TOAST === '0' ? null : platform === 'win32' ? 'powershell' : env.CCM_TOAST_BACKEND === 'electron' ? 'electron' : null
   const statusLineBridge = env.CCM_STATUSLINE_BRIDGE || fromHere('../../../scripts/statusline-bridge.mjs')
   return {
     claudeRoot: env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
@@ -49,7 +51,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     statusLineBridge,
     statusLineCommand: env.CCM_STATUSLINE_COMMAND || `node "${statusLineBridge.replaceAll('\\', '/')}"`,
     devOriginPorts: [intFromEnv(env.CCM_DEV_ORIGIN_PORT, 5173)],
-    toast: process.platform === 'win32' && env.CCM_TOAST !== '0',
+    toast: toastBackend !== null,
+    toastBackend,
     dataDir: env.CCM_DATA_DIR || defaultDataDir(env, process.platform, os.homedir()),
   }
 }

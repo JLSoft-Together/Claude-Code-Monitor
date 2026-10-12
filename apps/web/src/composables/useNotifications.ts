@@ -6,6 +6,7 @@ import { duration, now } from '../lib/format'
 import { contextPctOf } from '../lib/provider'
 import { playChime } from '../lib/sound'
 import { displayTitle } from '../lib/title'
+import { waitDisplay } from '../lib/wait'
 import { useAgentsStore } from '../stores/agents'
 import { useAttentionStore } from '../stores/attention'
 import { useConnectionStore } from '../stores/connection'
@@ -114,8 +115,11 @@ export function useNotifications(): void {
   }
 
   const nameOf = (x: TerminalSession) => displayTitle(x) || x.id
-  const waitingBody = (x: TerminalSession) =>
-    x.waitingFor ? t('notify.waitingBody', { reason: x.waitingFor }) : t('notify.waitingBodyGeneric')
+  const waitingBody = (x: TerminalSession) => {
+    const w = waitDisplay(x.waitingFor, agents.mainOf(x.id)?.currentTool, t)
+    if (!w) return t('notify.waitingBodyGeneric')
+    return w.reason === 'other' ? t('notify.waitingBody', { reason: w.text }) : w.text
+  }
 
   const prevStatus = new Map<string, TerminalStatus>()
   watch(

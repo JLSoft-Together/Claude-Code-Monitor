@@ -103,6 +103,11 @@ export class MonitorStore implements UsageSink {
     return null
   }
 
+  currentToolOf(terminalId: string): string | undefined {
+    for (const a of this.agents.values()) if (a.terminalId === terminalId && a.role === 'main') return a.currentTool
+    return undefined
+  }
+
   jobList(): readonly BackgroundJob[] {
     return this.jobs
   }

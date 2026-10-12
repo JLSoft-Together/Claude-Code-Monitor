@@ -132,6 +132,24 @@ describe('Toaster', () => {
     expect(c.open).toBe('Open terminal')
   })
 
+  it('labels permission and question waits, with the open tool when known', () => {
+    const perm = term('a', 'waiting', { waitingFor: 'permission prompt' })
+    expect(toastContent(perm, 'en', 'http://x', 'Bash').body).toBe('Needs approval: Bash')
+    expect(toastContent(perm, 'en', 'http://x').body).toBe('Needs approval')
+    expect(toastContent(perm, 'en', 'http://x', 'ExitPlanMode').body).toBe('Plan needs approval')
+    expect(toastContent(perm, 'vi', 'http://x', 'Bash').body).toBe('Cần duyệt: Bash')
+    expect(toastContent(term('a', 'waiting', { waitingFor: 'input needed' }), 'en', 'http://x').body).toBe('Asking you')
+    expect(toastContent(term('a', 'waiting', { waitingFor: 'foo' }), 'en', 'http://x').body).toBe('Waiting for foo')
+  })
+
+  it('uses toolOf from observe for the waiting toast body', async () => {
+    const { toaster, shown, flush } = setup()
+    toaster.observe({ terminals: [term('a', 'working')], toolOf: () => 'Bash' })
+    toaster.observe({ terminals: [term('a', 'waiting', { waitingFor: 'permission prompt' })], toolOf: () => 'Bash' })
+    await flush()
+    expect(shown[0]?.body).toContain('Bash')
+  })
+
   it('reminds every 5 minutes while still waiting, at most 3 times', async () => {
     const { shown, flush, advance, see, nowMs } = setup()
     const since = new Date(T0).toISOString()

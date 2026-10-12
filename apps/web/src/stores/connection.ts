@@ -315,7 +315,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const reorderFavorites = (dirs: string[]): boolean => request({ type: 'favorite.reorder', dirs })
   const addFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.add', dir, label })
   const renameFavorite = (dir: string, label: string | null): boolean => request({ type: 'favorite.rename', dir, label })
-  const openFavorite = (dir: string, mode: LaunchMode): boolean => request({ type: 'favorite.open', dir, mode })
+  const openFavorite = (dir: string, mode: LaunchMode): boolean => request({ type: 'favorite.open', dir, mode, terminalApp: ui.launchTerminal })
   const dismissEnded = (terminalId?: string): boolean => request({ type: 'terminal.dismiss', terminalId })
   const dismissJobs = (jobId?: string): boolean => request({ type: 'job.dismiss', jobId })
   const stopJob = (jobId: string): boolean => request({ type: 'job.stop', jobId })

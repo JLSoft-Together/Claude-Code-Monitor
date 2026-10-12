@@ -29,3 +29,5 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (reuse or fork collector) 
 - Fatal/restart: exit code 3 (`PORT_IN_USE_EXIT`, mirrors collector `server.ts`) → `FatalReason` `port-in-use`, no restart, `strings.ts` `portInUse(port)`. Other child exit while not stopping → restart up to 3 times; then `onFatal` → error page with log tail + retry. Boot waits `/health` up to 30 s (timeout → fatal). Retry = `boot()` → `start()` resets restart count.
 - Quit only via tray (`window-all-closed` no-op); `before-quit` waits `host.stop()` once (`stopped` flag).
 - External collector (bat) is never stopped by the app.
+- `src/attention.ts` `createAttention(dock)` (macOS only, `main.ts` sets `CCM_TOAST_BACKEND=electron`): collector `toast.show|hide` via `CollectorHost` `onMessage` → new tag bounces dock (critical), badge = `badgeCount`; `browser-window-focus` → `settle()` (cancel bounces, drop non-persistent tags); `before-quit` → `clear()`.
+- `CollectorHost` `onMessage` feeds `attention.handle`; `onExit` (child exit, before respawn/fatal) → `attention.clear()` so the badge never outlives the collector.

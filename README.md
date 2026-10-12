@@ -10,7 +10,7 @@ Tên cũ: **Claude Code Monitor**. Mã nội bộ giữ nguyên (`appId` `dev.cc
 ## Yêu cầu
 
 - Windows 10 / 11, Node.js `20.19+` hoặc `22.12+`
-- macOS: bản desktop `.dmg` (không cần Node). Theo dõi đầy đủ; nhảy tới terminal, chọn thư mục bằng hộp thoại, mở Claude mới từ Yêu thích và toast hệ thống hiện **chỉ có trên Windows**
+- macOS: bản desktop `.dmg` (không cần Node). Theo dõi đầy đủ; nhảy tới terminal (đúng tab với Terminal.app / iTerm2, chỉ mở app với IDE khác), chọn thư mục, mở Claude mới từ Yêu thích đều dùng được. Cảnh báo là badge + nảy Dock của app desktop (chưa có thông báo hệ thống; toast chỉ có trên Windows)
 - Claude Code CLI `2.1.289` (version khác vẫn chạy, có cảnh báo)
 - Không bắt buộc: Git (đếm thay đổi chưa commit), VS Code (nút mở thư mục)
 
@@ -71,6 +71,7 @@ Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc pu
 
 - App ký **ad-hoc**, chưa notarize (chưa có Apple Developer ID). Lần đầu mở: kéo app vào **Applications**, mở → bị chặn → **System Settings → Privacy & Security → Open Anyway**. Hoặc: `xattr -dr com.apple.quarantine "/Applications/Agent Monitor.app"`. Đã cài bản tên cũ thì xoá `Claude Code Monitor.app` sau khi chép bản mới.
 - Chạy từ ổ DMG / Downloads thì app hỏi chuyển vào Applications (đường dẫn app nằm trong lệnh status line).
+- Lần đầu nhảy tới terminal hoặc mở phiên mới, macOS hỏi quyền **Automation** cho Terminal / iTerm2; nếu đã từ chối: **System Settings → Privacy & Security → Automation**.
 - Icon ở menu bar thay cho tray; Cmd W ẩn cửa sổ, bấm icon Dock để mở lại, Cmd Q thoát.
 - Data: `~/Library/Application Support/ccm`. Status line bridge chép ra `.../ccm/bin/`; máy không có `node` thì dùng `statusline-bridge.sh` chạy chính app (`ELECTRON_RUN_AS_NODE=1`).
 
@@ -112,7 +113,8 @@ Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. T
 | `CCM_DATA_DIR` | Windows `%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` hoặc `~/.local/share/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
 | `CCM_WEB_DIST` | `apps/web/dist` | Web đã build |
 | `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ kiểm PID (dùng với data giả) |
-| `CCM_TOAST` | `1` | `0` = tắt Windows toast |
+| `CCM_TOAST` | `1` | `0` = tắt toast / cảnh báo hệ thống |
+| `CCM_TOAST_BACKEND` | tự chọn | `electron` = gửi cảnh báo cho app desktop (badge + nảy Dock, app tự đặt trên macOS) |
 | `CCM_STATUSLINE_BRIDGE` | `scripts/statusline-bridge.mjs` | Đường dẫn bridge (bản desktop tự đặt) |
 | `CCM_STATUSLINE_COMMAND` | `node "<bridge>"` | Lệnh status line hiện trong Cài đặt (bản desktop tự đặt) |
 

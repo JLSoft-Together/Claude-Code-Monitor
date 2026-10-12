@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { AlarmClock, AppWindow, BellOff, BellRing, Hand, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { displayTitle } from '../lib/title'
+import { waitDisplay } from '../lib/wait'
+import { useAgentsStore } from '../stores/agents'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
@@ -13,6 +15,7 @@ import { LONG_WAIT_MS } from '../composables/useNotifications'
 
 const { t, locale } = useI18n()
 const snooze = useSnoozeStore()
+const agents = useAgentsStore()
 const clock = computed(() => new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }))
 
 function toggleSnooze(id: string): void {
@@ -37,11 +40,14 @@ const queue = computed(() =>
       const since = x.statusSince ? Date.parse(x.statusSince) : NaN
       const waitedMs = Number.isFinite(since) ? now.value - since : null
       const until = snooze.until(x, now.value)
+      const wait = waitDisplay(x.waitingFor, agents.mainOf(x.id)?.currentTool, t)
       return {
         snoozedUntil: until === null ? null : clock.value.format(until),
         id: x.id,
         title: displayTitle(x),
-        reason: x.waitingFor,
+        reason: wait?.text,
+        icon: wait && wait.reason !== 'other' ? wait.icon : null,
+        raw: wait?.reason === 'other',
         waited: x.statusSince ? duration(x.statusSince, now.value) : null,
         long: waitedMs !== null && waitedMs >= LONG_WAIT_MS,
         since: Number.isFinite(since) ? since : Number.MAX_SAFE_INTEGER,
@@ -57,7 +63,9 @@ const queue = computed(() =>
           snoozedUntil: null as string | null,
           id: `job:${j.id}`,
           title: j.name ?? j.id,
-          reason: t('jobs.blockedReason'),
+          reason: t('jobs.blockedReason') as string | undefined,
+          icon: null,
+          raw: false,
           waited: j.stateSince ? duration(j.stateSince, now.value) : null,
           long: waitedMs !== null && waitedMs >= LONG_WAIT_MS,
           since: Number.isFinite(since) ? since : Number.MAX_SAFE_INTEGER,
@@ -94,13 +102,16 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
               :type="item.job ? undefined : 'button'"
               class="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border bg-surface px-3 text-sm transition-colors hover:border-st-waiting"
               :class="[item.long && !item.snoozedUntil ? 'border-st-error/50' : 'border-line', item.job ? 'cursor-default' : 'cursor-pointer', item.job ? '' : 'rounded-r-none']"
-              :title="item.reason ? t('terminal.waitingFor', { reason: item.reason }) : undefined"
+              :title="item.reason ? (item.raw ? t('terminal.waitingFor', { reason: item.reason }) : item.reason) : undefined"
               :aria-label="t('waiting.focus', { title: item.title, waited: item.waited ?? '—' })"
               @click="item.job ? undefined : ui.focusTerminal(item.id)"
             >
               <span v-if="item.job" class="shrink-0 rounded-md bg-raised px-1.5 text-2xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
               <span class="min-w-0 truncate font-medium">{{ item.title }}</span>
-              <span v-if="item.reason" class="hidden max-w-[16ch] truncate text-xs text-ink-muted sm:inline">{{ item.reason }}</span>
+              <span v-if="item.reason" class="hidden max-w-[22ch] items-center gap-1 text-xs text-ink-muted sm:inline-flex">
+                <component :is="item.icon" v-if="item.icon" :size="13" class="shrink-0" aria-hidden="true" />
+                <span class="truncate">{{ item.reason }}</span>
+              </span>
               <span v-if="item.snoozedUntil" class="inline-flex shrink-0 items-center gap-1 text-xs text-ink-muted tabular">
                 <BellOff :size="13" aria-hidden="true" />{{ item.snoozedUntil }}
               </span>
@@ -129,7 +140,7 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
               v-if="item.canJump"
               type="button"
               class="-ml-px inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-l-none rounded-r-lg border border-line bg-surface text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
-              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' ? 'border-st-error text-st-error' : ''"
+              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' && ui.windowResult.result !== 'appOnly' ? 'border-st-error text-st-error' : ''"
               :aria-label="t('terminal.jump', { title: item.title })"
               :title="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' ? t(`terminal.jumpError.${ui.windowResult.result}`) : t('terminal.jumpTitle')"
               @click="jump(item.id)"

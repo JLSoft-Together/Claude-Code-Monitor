@@ -2,12 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Phân loại trạng thái chờ (cần duyệt / đang hỏi). Trên app desktop macOS: thông báo native bấm vào để tới đúng terminal, Jump/WaitingQueue hoạt động, mở session và chọn thư mục từ Favorites.
+**Goal:** Phân loại trạng thái chờ (cần duyệt / đang hỏi). Trên app desktop macOS: badge + nảy icon trên dock khi có session cần bạn, Jump/WaitingQueue tới đúng terminal, mở session và chọn thư mục từ Favorites.
 
 **Architecture:**
 - **C1:** hàm thuần `waitReason` trong shared, dùng cho nhãn ở web và nội dung toast.
 - **C2a:** `focus-mac.ts` đi ngược cây `ps` để tìm `.app` chủ và tty, rồi chọn tab bằng AppleScript (Terminal/iTerm2) hoặc `open -a` (các app khác).
-- **C2b:** thêm backend `ToastDeps` thứ hai, gửi `toast.*` qua `parentPort` sang `notifier.ts` của Electron. Notifier hiện `Notification` native; khi người dùng bấm thì gọi lại `POST /focus` sẵn có.
+- **C2b:** thêm backend `ToastDeps` thứ hai, gửi `toast.*` qua `parentPort` sang `attention.ts` của Electron, nơi cập nhật badge trên dock và nảy icon. (Thông báo native bị macOS từ chối với app ký ad-hoc — kết quả Task 1.)
 - **C3:** nhánh darwin cho `launcher.ts` / `folder-pick.ts` qua `osascript` với `on run argv`.
 
 **Tech Stack:** Node + TS (collector), Electron 44 (desktop), Vue 3 + Pinia + vue-i18n (web), Vitest.
@@ -32,12 +32,12 @@
 1. **Đường dẫn có dấu cách, nháy đơn hoặc `$(…)`** khi launch: thư mục phải mở đúng và không thực thi gì. Test ở Task 6 (`launchArgs keeps the dir as a separate argv item`), và bước kiểm thủ công dùng thư mục `a b'c`.
 2. **Session không có tty** (`sdk-cli` qua bun) hoặc không có `.app` tổ tiên: trả `notFound`, không crash và không `open -a` lung tung. Test ở Task 3 (`hostOf returns null without an .app ancestor`).
 3. **Người dùng từ chối quyền Automation:** trả `denied` kèm hướng dẫn, không phải `failed` chung chung. Test ở Task 3 / Task 6 (ánh xạ `-1743`).
-4. **Collector mượn từ `.bat` trên mac** (không có `parentPort`): toast vẫn `unsupported`, không ném lỗi. Test ở Task 4 (`config enables toast only for win32 or the electron backend`) và wiring trong `index.ts`.
+4. **Collector mượn từ `.bat` trên mac** (không có `parentPort`): báo hiệu vẫn `unsupported`, không ném lỗi. Test ở Task 4 (`config enables toast only for win32 or the electron backend`) và wiring trong `index.ts`.
 5. **`waitingFor` lạ** (Claude Code thêm chuỗi mới): UI giữ nguyên chuỗi gốc, không gán nhầm "Cần duyệt". Test ở Task 2 (`waitReason maps unknown strings to other`).
 
 ---
 
-### Task 1: Kiểm chứng trên máy này (controller cùng người dùng, không giao subagent)
+### Task 1: Kiểm chứng trên máy này (controller cùng người dùng, không giao subagent) — ĐÃ CHẠY 2026-10-09
 
 **Files:**
 - Modify: `docs/claude-code-integration.md` (mục mới `## 11n. Waiting reasons and macOS automation (2026-10-09)` trước `## 12. Open items`)
@@ -71,12 +71,12 @@
   export function waitDisplay(waitingFor: string | undefined, tool: string | undefined, t: (k: string, p?: Record<string, unknown>) => string): WaitDisplay | null  // null khi không có waitingFor
   ```
   Icon: `ShieldQuestion` (permission), `MessageCircleQuestion` (question), icon chờ hiện có của từng component cho `other` (lấy từ `StatusIcon`/`Hourglass` như hiện tại; `waitDisplay` trả `Hourglass` cho `other`).
-  i18n: `wait.permission`, `wait.permissionTool {tool}`, `wait.question`.
+  i18n: `wait.permission`, `wait.permissionTool {tool}`, `wait.plan`, `wait.question`. `permission` + tool `ExitPlanMode` → `wait.plan` ("Cần duyệt plan"), không hiện tên tool nội bộ.
 
 - [ ] **Step 1: Test lỗi.**
   - `waitReason maps documented values`: `'permission prompt'`, `' Permission Prompt '`, `'sandbox request'`, `'worker request'` → `permission`; `'input needed'`, `'dialog open'` → `question`.
   - `waitReason maps unknown strings to other`: `'something new'`, `''`, `undefined` → `other`.
-  - `waitDisplay` dùng tool khi có; `other` trả text gốc.
+  - `waitDisplay` dùng tool khi có; tool `ExitPlanMode` → `wait.plan`; `other` trả text gốc.
   - Toast body cho session `permission prompt` có tool đang mở thì chứa nhãn "Needs approval: Bash" (en). Lấy tool từ `store` (main agent `currentTool`) qua `observe` input mới `toolOf(id)`, cùng kiểu với `contextPct`.
 - [ ] **Step 2:** Chạy → FAIL.
 - [ ] **Step 3: Implement.** Bảng phân loại lấy từ kết quả Task 1. Các component thay `t('terminal.waitingFor', { reason })` bằng `waitDisplay(...)` (icon + text). Chuỗi `other` giữ nguyên định dạng cũ.
@@ -142,45 +142,48 @@
   ```ts
   // shared notify.ts
   export type ToastMessage =
-    | { type: 'toast.show'; tag: string; title: string; body: string; persistent: boolean; focus: { t: string; k: string }; snooze?: { t: string; k: string; m: number; label: string } }
+    | { type: 'toast.show'; tag: string; title: string; persistent: boolean }
     | { type: 'toast.hide'; tag: string }
-  export function parseToastMessage(data: unknown): ToastMessage | null   // tag 1..200, string fields, m số nguyên > 0
+  export function parseToastMessage(data: unknown): ToastMessage | null   // tag 1..200 ký tự, title string, persistent boolean
+  export function badgeCount(entries: Iterable<{ persistent: boolean }>): number
   // collector
   export function electronToastDeps(post: (msg: ToastMessage) => void, now?: () => number): ToastDeps
   // config: thêm `toastBackend: 'powershell' | 'electron' | null` (null = unsupported); `toast` giữ nghĩa supported
   ```
-  `focus.t/k` tách từ `ToastContent.url` (`/focus?k=&t=`), `snooze.*` tách từ `snoozeUrl`. URL không parse được thì trả `show` → `false`.
 
 - [ ] **Step 1: Test lỗi.**
   - `parseToastMessage` nhận message hợp lệ và từ chối các message thiếu, sai kiểu hoặc tag dài 201 ký tự.
-  - `electronToastDeps.show` post đúng message (kèm `snooze` khi có `snoozeUrl`); `hide` post `toast.hide`.
+  - `badgeCount` chỉ đếm `persistent`.
+  - `electronToastDeps.show` post `{type:'toast.show', tag, title, persistent}` (không mang body/url); `hide` post `toast.hide`.
   - `config enables toast only for win32 or the electron backend`: dùng `loadConfig` với env và platform giả lập. Nếu `loadConfig` chưa nhận platform thì thêm tham số `platform = process.platform`.
 - [ ] **Step 2:** Chạy → FAIL.
 - [ ] **Step 3: Implement.** Trong `index.ts`: nếu `config.toastBackend === 'electron'` và có `process.parentPort` thì `new Toaster({...}, { ...defaultToastDeps, ...electronToastDeps((m) => parentPort.postMessage(m)) })`. Nếu thiếu `parentPort` thì coi như unsupported.
 - [ ] **Step 4:** Chạy test focused + toàn bộ suite + typecheck → PASS.
-- [ ] **Step 5:** Commit `feat(collector): route system notifications to the desktop app on macOS`.
+- [ ] **Step 5:** Commit `feat(collector): route system alerts to the desktop app on macOS`.
 
-### Task 5: C2b phía desktop, `notifier.ts`
+### Task 5: C2b phía desktop, `attention.ts` (badge + nảy icon)
 
 **Files:**
-- Create: `apps/desktop/src/notifier.ts`
-- Modify: `apps/desktop/src/collector-host.ts` (option `onMessage`, `child.on('message', …)`), `apps/desktop/src/main.ts` (env `CCM_TOAST_BACKEND` trên darwin, nối notifier)
-- Modify: `apps/web/src/i18n/{en,vi}.ts`: các nhãn "Windows toast" trong SettingsMenu viết trung tính ("System notifications" / "Thông báo hệ thống")
+- Create: `apps/desktop/src/attention.ts`
+- Modify: `apps/desktop/src/collector-host.ts` (option `onMessage`, `child.on('message', …)`), `apps/desktop/src/main.ts` (env `CCM_TOAST_BACKEND=electron` chỉ trên darwin, nối attention, `browser-window-focus` → huỷ nảy)
+- Modify: `apps/web/src/i18n/{en,vi}.ts`: các nhãn "Windows toast" trong SettingsMenu viết trung tính ("System alerts" / "Báo hiệu hệ thống"); mô tả trên mac nói rõ là badge + nảy icon dock
 
 **Interfaces:**
-- Consumes: `parseToastMessage`, `ToastMessage` (Task 4); `POST /focus {t,k}` → `{ result }` (đã có); `GET /snooze?k&t&m` (đã có).
+- Consumes: `parseToastMessage`, `badgeCount`, `ToastMessage` (Task 4).
 - Produces:
   ```ts
-  export interface Notifier { handle(data: unknown): void; closeAll(): void }
-  export function createNotifier(opts: { port: number; onFallback: (terminalId: string) => void }): Notifier
+  export interface Attention { handle(data: unknown): void; settle(): void; clear(): void }
+  export function createAttention(dock: { setBadge(text: string): void; bounce(type: 'critical'): number; cancelBounce(id: number): void }): Attention
+  // handle: toast.show tag mới → bounce('critical') (giữ id); show/hide → setBadge(String(badgeCount) hoặc '')
+  // settle(): cancelBounce khi app được focus; clear(): xoá hết (quit)
   // CollectorHostOptions += onMessage?: (data: unknown) => void
   ```
-  Click: `fetch(POST /focus)`; nếu `result` ∉ {`ok`, `appOnly`} → `onFallback(t)`. Main làm `showMain()` + `mainWindow.loadURL(`${ORIGIN}/?focus=${encodeURIComponent(t)}`)`. Action → `fetch(GET /snooze?…)`. `closeAll()` khi quit.
+  `createAttention` nhận `app.dock` (inject được) nên lõi không phụ thuộc Electron runtime.
 
-- [ ] **Step 1:** Implement. Notifier chạy trong Electron runtime nên không có unit test; phần kiểm tra message đã được test ở Task 4.
+- [ ] **Step 1:** Implement.
 - [ ] **Step 2:** `npm run typecheck` sạch.
-- [ ] **Step 3: Kiểm thủ công** (controller cùng người dùng): `npm run desktop`, gây ra một session `waiting` → thông báo hiện. Bấm vào thì tới đúng tab Terminal, hoặc WebStorm được đưa lên trước. Thử nút Snooze nếu Task 1 xác nhận action hiện được (nếu không thì bỏ `actions`). Đóng app thì không còn thông báo nào treo.
-- [ ] **Step 4:** Commit `feat(desktop): show native macOS notifications that open the right terminal`.
+- [ ] **Step 3: Kiểm thủ công** (controller cùng người dùng): `npm run desktop`; gây ra một session `waiting` khi dashboard không được focus → icon dock nảy, badge = 1; focus app → ngừng nảy; session hết chờ → badge biến mất; bấm Jump trong WaitingQueue → đúng tab Terminal. Nút "Test" trong Cài đặt → nảy + badge tạm.
+- [ ] **Step 4:** Commit `feat(desktop): dock badge and bounce for sessions that need you on macOS`.
 
 ### Task 6: C3, launcher và chọn thư mục trên macOS
 
@@ -220,10 +223,10 @@
 ### Task 7: Tài liệu + code index + kiểm thử tổng
 
 **Files:**
-- Modify: `docs/claude-code-integration.md` §7b (bảng nền tảng), §11k (thông báo native, quyền Automation, kết quả Task 1/5/6)
+- Modify: `docs/claude-code-integration.md` §7b (bảng nền tảng), §11k (badge/nảy dock, quyền Automation, kết quả Task 1/5/6)
 - Modify: `.code_index/{collector,web,desktop,protocol,_meta}.md`
 
-- [ ] **Step 1:** Cập nhật docs và code index theo các module mới (`osascript.ts`, `focus-mac.ts`, `toast-electron.ts`, `notifier.ts`, `lib/wait.ts`) và các message/kiểu mới.
+- [ ] **Step 1:** Cập nhật docs và code index theo các module mới (`osascript.ts`, `focus-mac.ts`, `toast-electron.ts`, `attention.ts`, `lib/wait.ts`) và các message/kiểu mới.
 - [ ] **Step 2:** `npm run typecheck`, `npm test` → chỉ còn lỗi đã biết.
-- [ ] **Step 3: Kiểm thủ công theo tiêu chí §1 của spec** trên app desktop: thông báo → đúng tab; Jump từ SessionCard/WaitingQueue cho Terminal/iTerm2/WebStorm; nhãn "Cần duyệt: Bash" / "Đang hỏi bạn"; launch; Browse.
+- [ ] **Step 3: Kiểm thủ công theo tiêu chí §1 của spec** trên app desktop: badge/nảy dock → mở app → Jump đúng tab; Jump từ SessionCard/WaitingQueue cho Terminal/iTerm2/WebStorm; nhãn "Cần duyệt: Bash" / "Đang hỏi bạn"; launch; Browse.
 - [ ] **Step 4:** Commit `docs: macOS notifications and parity`.

@@ -23,6 +23,22 @@ export function mapRegistryStatus(raw: string | undefined): MappedTerminalStatus
   }
 }
 
+export type WaitReason = 'permission' | 'question' | 'other'
+
+export function waitReason(waitingFor?: string | null): WaitReason {
+  switch (waitingFor?.trim().toLowerCase()) {
+    case 'permission prompt':
+    case 'sandbox request':
+    case 'worker request':
+      return 'permission'
+    case 'input needed':
+    case 'dialog open':
+      return 'question'
+    default:
+      return 'other'
+  }
+}
+
 export function mapTaskNotificationStatus(raw: string | undefined): AgentStatus {
   switch (raw) {
     case 'completed':

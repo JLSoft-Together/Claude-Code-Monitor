@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TerminalSession } from '@ccm/shared'
-import { AlarmClock, AppWindow, BellOff, BellRing, Hand, LoaderCircle } from 'lucide-vue-next'
+import { AlarmClock, AppWindow, BellOff, BellRing, Hand, Info, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { statusMeta } from '../lib/status'
 import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
+import { waitDisplay } from '../lib/wait'
+import { useAgentsStore } from '../stores/agents'
 import { LONG_WAIT_MS } from '../composables/useNotifications'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -20,6 +22,7 @@ import StatusIcon from './StatusIcon.vue'
 const { t, locale } = useI18n()
 const terminals = useTerminalsStore()
 const extras = useExtrasStore()
+const agents = useAgentsStore()
 const snooze = useSnoozeStore()
 const connection = useConnectionStore()
 const ui = useUiStore()
@@ -35,6 +38,7 @@ interface Row {
   title: string
   status: string
   detail?: string
+  icon?: Component | null
   elapsed: string | null
   long: boolean
   snoozedUntil: string | null
@@ -48,11 +52,13 @@ interface Row {
 function row(x: TerminalSession): Row {
   const since = sinceMs(x.statusSince)
   const until = snooze.until(x, now.value)
+  const wait = x.status === 'waiting' ? waitDisplay(x.waitingFor, agents.mainOf(x.id)?.currentTool, t) : null
   return {
     id: x.id,
     title: displayTitle(x),
     status: x.status,
-    detail: x.status === 'waiting' ? x.waitingFor : x.gitBranch,
+    detail: x.status === 'waiting' ? wait?.text : x.gitBranch,
+    icon: wait && wait.reason !== 'other' ? wait.icon : null,
     elapsed: duration(x.statusSince, now.value),
     long: x.status === 'waiting' && now.value - since >= LONG_WAIT_MS,
     snoozedUntil: until === null ? null : clock.value.format(until),
@@ -110,6 +116,7 @@ function toggleSnooze(id: string): void {
   else snooze.snooze(x, SNOOZE_CHOICES[0])
 }
 
+const jumpNote = (id: string) => ui.windowResult?.terminalId === id && ui.windowResult.result === 'appOnly'
 const jumpError = (id: string) => (ui.windowResult?.terminalId === id && ui.windowResult.result !== 'ok' ? t(`terminal.jumpError.${ui.windowResult.result}`) : null)
 const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }) : t('compact.show', { title: r.title }))
 </script>
@@ -143,8 +150,14 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
             <StatusIcon v-else status="waiting" :size="20" />
             <span class="flex min-w-0 flex-1 flex-col">
               <span class="truncate text-lg font-semibold leading-snug">{{ r.title }}</span>
-              <span v-if="r.detail" class="truncate text-sm text-ink-muted">{{ r.detail }}</span>
-              <span v-if="jumpError(r.id)" class="text-sm text-st-error">{{ jumpError(r.id) }}</span>
+              <span v-if="r.detail" class="inline-flex min-w-0 items-center gap-1 text-sm text-ink-muted">
+                <component :is="r.icon" v-if="r.icon" :size="14" class="shrink-0" aria-hidden="true" />
+                <span class="truncate">{{ r.detail }}</span>
+              </span>
+              <span v-if="jumpNote(r.id)" class="inline-flex min-w-0 items-center gap-1 text-sm text-ink-muted">
+                <Info :size="14" class="shrink-0" aria-hidden="true" />{{ t('terminal.jumpError.appOnly') }}
+              </span>
+              <span v-else-if="jumpError(r.id)" class="text-sm text-st-error">{{ jumpError(r.id) }}</span>
             </span>
             <span v-if="r.snoozedUntil" class="inline-flex shrink-0 items-center gap-1.5 text-base text-ink-muted tabular">
               <BellOff :size="16" aria-hidden="true" />{{ r.snoozedUntil }}
@@ -186,7 +199,10 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
             <StatusIcon :status="r.status" :size="17" />
             <span class="min-w-0 flex-1 truncate text-base font-medium">{{ r.title }}</span>
             <ProviderBadge v-if="r.codex" variant="short" :mode="r.mode" />
-            <span v-if="r.detail" class="hidden max-w-[18ch] truncate text-sm text-ink-muted sm:inline">{{ r.detail }}</span>
+            <span v-if="r.detail" class="hidden max-w-[22ch] items-center gap-1 text-sm text-ink-muted sm:inline-flex">
+              <component :is="r.icon" v-if="r.icon" :size="14" class="shrink-0" aria-hidden="true" />
+              <span class="truncate">{{ r.detail }}</span>
+            </span>
             <span class="shrink-0 text-sm" :class="statusMeta(r.status).text">{{ t(statusMeta(r.status).labelKey) }}</span>
             <span v-if="r.elapsed" class="w-[8ch] shrink-0 text-right text-sm text-ink-muted tabular">{{ r.elapsed }}</span>
             <LoaderCircle v-if="ui.focusingWindow === r.id" :size="16" class="shrink-0 animate-spin text-ink-muted" aria-hidden="true" />

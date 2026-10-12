@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
 import { defaultDataDir } from '../../collector/src/datadir'
+import { createAttention, type Attention } from './attention'
 import { installBridge } from './bridge'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
@@ -25,6 +26,7 @@ const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process
 
 let t: Strings
 let host: CollectorHost
+let attention: Attention | null = null
 let mainWindow: BrowserWindow | null = null
 let compactWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -245,6 +247,7 @@ function collectorEnv(): NodeJS.ProcessEnv {
     CCM_WEB_DIST: resource('web', 'apps/web/dist'),
     CCM_STATUSLINE_BRIDGE: bridge.script,
     CCM_STATUSLINE_COMMAND: bridge.command,
+    ...(IS_MAC ? { CCM_TOAST_BACKEND: 'electron' } : {}),
   }
 }
 
@@ -263,6 +266,10 @@ async function ready(): Promise<void> {
     if (await offerMoveToApplications(t)) return
     adoptLoginShellPath()
   }
+  if (IS_MAC && app.dock) {
+    attention = createAttention(app.dock)
+    app.on('browser-window-focus', () => attention?.settle())
+  }
   lockPermissions()
   for (const dir of [DATA_DIR, app.getPath('logs')]) if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   host = new CollectorHost({
@@ -271,6 +278,8 @@ async function ready(): Promise<void> {
     env: collectorEnv(),
     logFile: path.join(app.getPath('logs'), 'collector.log'),
     onFatal: showError,
+    onMessage: (data) => attention?.handle(data),
+    onExit: () => attention?.clear(),
   })
   repairLoginItem()
   createTray()
@@ -291,6 +300,7 @@ if (!app.requestSingleInstanceLock()) {
   let stopping: Promise<void> | null = null
   app.on('before-quit', (event) => {
     quitting = true
+    attention?.clear()
     if (stopped || !host) return
     event.preventDefault()
     stopping ??= host.stop().finally(() => {

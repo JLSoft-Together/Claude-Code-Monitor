@@ -20,7 +20,7 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm run dist:mac` — same → `.dmg` arm64 + x64; **macOS only** (or GitHub Actions workflow `desktop`)
 - `node scripts/demo-fixture.mjs --sessions=5 --subagents=3` — fake Claude root for load/UI testing; run collector with `CLAUDE_CONFIG_DIR=<printed root> CCM_VERIFY_PROCESSES=0`
 
-Collector env: `CLAUDE_CONFIG_DIR`, `CODEX_HOME` (`~/.codex`), `CCM_CODEX=0` (tắt Codex), `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt Windows toast), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`: usage cache + aliases).
+Collector env: `CLAUDE_CONFIG_DIR`, `CODEX_HOME` (`~/.codex`), `CCM_CODEX=0` (tắt Codex), `CCM_PORT`, `CCM_STALE_TTL_MIN` (120), `CCM_WEB_DIST`, `CCM_VERIFY_PROCESSES=0`, `CCM_TOAST=0` (tắt toast / alert), `CCM_TOAST_BACKEND=electron` (desktop macOS: alert → dock badge/bounce), `CCM_DATA_DIR` (`%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`: usage cache + aliases).
 
 Deviations from `PLAN.md` are allowed only when a discovered Claude Code limitation forces them, and must be documented in `docs/claude-code-integration.md`.
 

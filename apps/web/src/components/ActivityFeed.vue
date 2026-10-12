@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ListFilter, X } from 'lucide-vue-next'
-import type { ActivityEvent } from '@ccm/shared'
+import { waitReason, type ActivityEvent } from '@ccm/shared'
 import { clockTime, compactNumber } from '../lib/format'
 import { modeMeta } from '../lib/mode'
 import { isCodex } from '../lib/provider'
@@ -73,6 +73,9 @@ function message(e: ActivityEvent): string {
     case 'terminal.renamed':
       return t('activity.terminal_renamed', { from: d.from ?? '—', to: d.to ?? '—' })
     case 'terminal.status':
+      if (waitReason(d.waitingFor) !== 'other') {
+        return t('activity.terminal_wait', { title: terminalTitle(e), label: t(waitReason(d.waitingFor) === 'question' ? 'wait.question' : 'wait.permission') })
+      }
       return t('activity.terminal_status', { title: terminalTitle(e), reason: d.waitingFor ?? '—' })
     case 'agent.started':
     case 'agent.completed':
@@ -96,7 +99,9 @@ function message(e: ActivityEvent): string {
       return t(`activity.${e.kind.replace('.', '_')}`, {
         title: d.title ?? '—',
         mode: t(d.mode === 'continue' ? 'favorites.continue' : 'favorites.openNew'),
-        error: t(d.error === 'notFound' ? 'favorites.errorNotFound' : 'favorites.errorFailed'),
+        error: t(
+          d.error === 'notFound' ? 'favorites.errorNotFound' : d.error && te(`activity.launchError.${d.error}`) ? `activity.launchError.${d.error}` : 'favorites.errorFailed',
+        ),
       })
     case 'job.stopped':
       return t(d.error === 'notRunning' ? 'activity.job_notRunning' : 'activity.job_stopped', { title: d.title ?? '—' })

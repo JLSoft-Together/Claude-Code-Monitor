@@ -21,6 +21,7 @@ import {
   type QuietHours,
   type TerminalSession,
   type TerminalStatus,
+  waitReason,
   type ToastHealth,
   type ToastKind,
   type ToastState,
@@ -122,7 +123,7 @@ export const defaultToastDeps: ToastDeps = { show: showToast, hide: hideToast, n
 
 interface Texts {
   waitingTitle: (name: string) => string
-  waitingBody: (reason?: string) => string
+  waitingBody: (reason?: string, tool?: string) => string
   reminderTitle: (name: string, minutes: number) => string
   doneTitle: (name: string) => string
   doneBody: string
@@ -148,7 +149,12 @@ interface Texts {
 export const TEXT: Record<ToastLocale, Texts> = {
   en: {
     waitingTitle: (name) => `${name} needs you`,
-    waitingBody: (reason) => (reason ? `Waiting for ${reason}` : 'Claude is waiting for your input'),
+    waitingBody: (reason, tool) => {
+      const kind = waitReason(reason)
+      if (kind === 'question') return 'Asking you'
+      if (kind === 'permission') return tool === 'ExitPlanMode' ? 'Plan needs approval' : tool ? `Needs approval: ${tool}` : 'Needs approval'
+      return reason ? `Waiting for ${reason}` : 'Claude is waiting for your input'
+    },
     reminderTitle: (name, minutes) => `${name} still needs you (${minutes} min)`,
     doneTitle: (name) => `${name} finished`,
     doneBody: 'Claude finished replying',
@@ -176,7 +182,12 @@ export const TEXT: Record<ToastLocale, Texts> = {
   },
   vi: {
     waitingTitle: (name) => `${name} đang chờ chủ nhân`,
-    waitingBody: (reason) => (reason ? `Đang chờ ${reason}` : 'Claude đang chờ chủ nhân trả lời'),
+    waitingBody: (reason, tool) => {
+      const kind = waitReason(reason)
+      if (kind === 'question') return 'Đang hỏi bạn'
+      if (kind === 'permission') return tool === 'ExitPlanMode' ? 'Cần duyệt plan' : tool ? `Cần duyệt: ${tool}` : 'Cần duyệt'
+      return reason ? `Đang chờ ${reason}` : 'Claude đang chờ chủ nhân trả lời'
+    },
     reminderTitle: (name, minutes) => `${name} vẫn đang chờ chủ nhân (${minutes} phút)`,
     doneTitle: (name) => `${name} đã xong`,
     doneBody: 'Claude đã trả lời xong',
@@ -210,12 +221,12 @@ export function toastTag(key: string): string {
 
 const nameOf = (t: TerminalSession) => (t.alias || t.title || t.id).slice(0, 80)
 
-export function toastContent(terminal: TerminalSession, locale: ToastLocale, url: string): ToastContent {
+export function toastContent(terminal: TerminalSession, locale: ToastLocale, url: string, tool?: string): ToastContent {
   const text = TEXT[locale]
   return {
     tag: toastTag(`waiting:${terminal.id}`),
     title: text.waitingTitle(nameOf(terminal)),
-    body: text.waitingBody(terminal.waitingFor?.slice(0, 120)),
+    body: text.waitingBody(terminal.waitingFor?.slice(0, 120), tool),
     url,
     open: text.open,
     dismiss: text.dismiss,
@@ -231,6 +242,7 @@ export interface ToastSnapshot {
   jobs?: readonly BackgroundJob[]
   limits?: PlanLimits | null
   contextPct?: (terminalId: string) => number | null
+  toolOf?: (terminalId: string) => string | undefined
 }
 
 export interface NotifyPatch {
@@ -392,10 +404,10 @@ export class Toaster {
       }
       if (before !== 'waiting') {
         this.reminded.set(episode, 0)
-        this.showWaiting(t, nowMs)
+        this.showWaiting(t, nowMs, snap.toolOf?.(t.id))
         continue
       }
-      this.remind(t, episode, nowMs)
+      this.remind(t, episode, nowMs, snap.toolOf?.(t.id))
     }
     for (const id of [...this.prev.keys()]) {
       if (alive.has(id)) continue
@@ -445,16 +457,16 @@ export class Toaster {
     return this.state === 'on' && this.kinds[kind] && !this.attentive && !inQuietHours(this.quiet, new Date(this.deps.now()))
   }
 
-  private showWaiting(t: TerminalSession, nowMs: number): void {
+  private showWaiting(t: TerminalSession, nowMs: number, tool?: string): void {
     if (!this.can('waiting') || this.snoozed(t)) return
     if (nowMs - (this.lastAt.get(t.id) ?? -Infinity) < TOAST_THROTTLE_MS) return
     this.lastAt.set(t.id, nowMs)
-    const content = { ...toastContent(t, this.localeValue, this.linkFor(t.id)), ...this.snoozeAction(t.id) }
+    const content = { ...toastContent(t, this.localeValue, this.linkFor(t.id), tool), ...this.snoozeAction(t.id) }
     this.shown.set(`waiting:${t.id}`, content.tag)
     void this.queue(content.tag, () => this.deps.show(content))
   }
 
-  private remind(t: TerminalSession, episode: string, nowMs: number): void {
+  private remind(t: TerminalSession, episode: string, nowMs: number, tool?: string): void {
     const due = remindersDue(t.statusSince, nowMs)
     const sent = this.reminded.get(episode)
     if (sent === undefined) {
@@ -469,7 +481,7 @@ export class Toaster {
     this.lastAt.set(t.id, nowMs)
     this.show(`waiting:${t.id}`, {
       title: text.reminderTitle(nameOf(t), Math.max(1, Math.round((nowMs - since) / 60_000))),
-      body: text.waitingBody(t.waitingFor?.slice(0, 120)),
+      body: text.waitingBody(t.waitingFor?.slice(0, 120), tool),
       url: this.linkFor(t.id),
       open: text.open,
       persistent: true,

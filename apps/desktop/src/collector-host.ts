@@ -7,6 +7,8 @@ export interface CollectorHostOptions {
   env: NodeJS.ProcessEnv
   logFile: string
   onFatal: (reason: FatalReason) => void
+  onMessage?: (data: unknown) => void
+  onExit?: () => void
 }
 
 export type FatalReason = { kind: 'exited'; code: number | null } | { kind: 'timeout' } | { kind: 'port-in-use' }
@@ -118,8 +120,12 @@ export class CollectorHost {
     }
     child.stdout?.on('data', onData)
     child.stderr?.on('data', onData)
+    child.on('message', (data: unknown) => this.opts.onMessage?.(data))
     child.on('exit', (code) => {
-      if (this.child === child) this.child = null
+      if (this.child === child) {
+        this.child = null
+        this.opts.onExit?.()
+      }
       this.lastExit = code
       this.write(`collector exited (code ${code})`)
       if (this.stopping) return
