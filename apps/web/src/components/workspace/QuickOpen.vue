@@ -6,9 +6,10 @@ import { fuzzyFilter, highlightRuns, parseQuickOpen, type FuzzyHit } from '../..
 import { retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { listFiles, type FileList } from '../../lib/preview'
+import { hasScripts } from '../../lib/projects'
 
 const props = defineProps<{ open: boolean; root: string | null }>()
-const emit = defineEmits<{ close: []; open: [target: { path: string; line?: number; split: boolean }] }>()
+const emit = defineEmits<{ close: []; open: [target: { path: string; line?: number; split: boolean }]; scripts: [query: string] }>()
 
 const { t } = useI18n()
 const RECENT_KEY = 'ccm.workspace.quickOpenRecent'
@@ -91,7 +92,14 @@ watch(
   { immediate: true },
 )
 
-watch(query, () => (active.value = 0))
+watch(query, (q) => {
+  active.value = 0
+  // VS Code habit: a leading > switches to commands, here the scripts menu.
+  if (hasScripts && q.startsWith('>')) {
+    emit('scripts', q.slice(1).trimStart())
+    emit('close')
+  }
+})
 
 const joinRoot = (root: string, rel: string): string => {
   const sep = root.includes('\\') ? '\\' : '/'
@@ -232,6 +240,7 @@ const HINTS = computed(() => [
             <span v-for="h in HINTS" :key="h.key" class="inline-flex items-center gap-1.5">
               <kbd class="rounded-inner bg-fill px-1.5 py-px font-sans text-ink-muted">{{ h.keys }}</kbd>{{ t(`workspace.quickOpen.hints.${h.key}`) }}
             </span>
+            <span v-if="hasScripts" class="inline-flex items-center gap-1.5"><kbd class="rounded-inner bg-fill px-1.5 py-px font-sans text-ink-muted">&gt;</kbd>{{ t('workspace.scripts.quickHint') }}</span>
             <span v-if="files?.truncated" class="ml-auto">{{ t('workspace.quickOpen.truncated', { n: files.files.length }) }}</span>
           </div>
         </div>

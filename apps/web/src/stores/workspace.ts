@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { isAgentSessionId, isPtyPreset, type PtyPreset } from '@ccm/shared'
 import { isLayout, leaves, neighbor, removeLeaf, setRatio as setTreeRatio, splitLeaf, type FocusDir, type LayoutNode, type SplitDir } from '../lib/splitLayout'
+import type { SavedLayout } from '../lib/projects'
 import { dirKey } from './favorites'
 
 export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
@@ -54,6 +55,9 @@ export interface Pane {
   branch?: string
   /** A command was entered in this shell: closing it may stop a dev server or build the monitor cannot see. */
   ranCommand?: boolean
+  /** Script line started from the scripts menu: names the row; typed once (`pendingCommand`) when the shell is ready. */
+  command?: string
+  pendingCommand?: string
   state: PaneState
   exitCode?: number
   error?: string
@@ -186,6 +190,7 @@ interface SavedPane extends ViewFields {
   resume?: string
   agentSessionId?: string
   ranCommand?: boolean
+  command?: string
 }
 
 interface Saved {
@@ -205,7 +210,7 @@ function loadSaved(): Saved {
     const panes = list
       .map((p) => cleanPane(p))
       .filter((p): p is SavedPane => !!p && (!isTerm(p) || !!p.sessionId))
-      .map((p) => ({ ...p, resume: agentId(p.resume), agentSessionId: agentId(p.agentSessionId), ranCommand: p.ranCommand === true || undefined }))
+      .map((p) => ({ ...p, resume: agentId(p.resume), agentSessionId: agentId(p.agentSessionId), ranCommand: p.ranCommand === true || undefined, command: typeof p.command === 'string' ? p.command.slice(0, 300) : undefined }))
     const known = new Set(panes.map((p) => p.key))
     const rawTabs = Array.isArray(raw) ? panes.map((p) => ({ key: `t${p.key}`, root: { pane: p.key }, focus: p.key })) : (raw.tabs ?? [])
     const tabs: Tab[] = []
@@ -261,7 +266,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     () => {
       const kept = panes.value.filter((p) => !isTerm(p) || (p.sessionId && p.state !== 'gone'))
       const data: Saved = {
-        panes: kept.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, sessionId: p.sessionId, resume: p.resume, agentSessionId: p.agentSessionId, ranCommand: p.ranCommand, ...viewOf(p) })),
+        panes: kept.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, sessionId: p.sessionId, resume: p.resume, agentSessionId: p.agentSessionId, ranCommand: p.ranCommand, command: p.command, ...viewOf(p) })),
         tabs: tabs.value,
         active: activeKey.value,
       }
@@ -416,6 +421,67 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return open(preset, cwd, sessionId)
   }
 
+  /** New shell in `dir` that types `run` + Enter once its prompt is up: only ever from the user picking a script. */
+  function runScript(dir: string, run: string, opts: { split?: Placement } = {}): Pane {
+    addPane('shell', dir)
+    const pane = panes.value[panes.value.length - 1]!
+    pane.command = run
+    pane.pendingCommand = run
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /**
+   * Adds a saved layout's tabs. Browser / file panes already open stay where they are (their leaf is dropped);
+   * agents resume only when the layout stored session ids.
+   */
+  function openLayout(layout: Pick<SavedLayout, 'panes' | 'tabs'>): number {
+    let first: string | null = null
+    let reused: string | null = null
+    for (const tab of layout.tabs) {
+      const keys = new Map<string, string>()
+      let root: LayoutNode | null = tab.root
+      for (const id of leaves(tab.root)) {
+        const spec = layout.panes[id]
+        const same =
+          spec?.kind === 'browser' && spec.url
+            ? panes.value.find((p) => p.kind === 'browser' && p.url === spec.url)
+            : spec?.kind === 'file'
+              ? panes.value.find((p) => p.kind === 'file' && sameDir(p.path, spec.path))
+              : undefined
+        if (!spec || same) {
+          reused ??= same?.key ?? null
+          root = root && removeLeaf(root, id)
+          continue
+        }
+        const pane =
+          spec.kind === 'term'
+            ? addPane(spec.preset ?? 'shell', spec.cwd, spec.resume)
+            : spec.kind === 'browser'
+              ? addView({ kind: 'browser', url: spec.url ?? '' }, spec.cwd)
+              : spec.kind === 'file'
+                ? addView({ kind: 'file', path: spec.path, line: spec.line }, spec.cwd)
+                : addView({ kind: 'changes' }, spec.cwd)
+        keys.set(id, pane.key)
+      }
+      if (!root) continue
+      const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
+      const mapped = remap(root)
+      const focus = (tab.focus && keys.get(tab.focus)) || leaves(mapped)[0]!
+      tabs.value.push({ key: newKey('t'), root: mapped, focus })
+      first ??= focus
+    }
+    const target = first ?? reused
+    if (target) activate(target)
+    return first ? tabs.value.length : 0
+  }
+
+  /** Last output / input per pane in this window: the sidebar's age when no monitor session is linked. Not persisted. */
+  const lastSeen = ref<Record<string, number>>({})
+  function touch(key: string, at = Date.now()): void {
+    lastSeen.value[key] = at
+  }
+
   function restoreLast(): void {
     const snap = last.value
     last.value = null
@@ -442,7 +508,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const i = panes.value.findIndex((p) => p.key === key)
     if (i < 0) return
     panes.value.splice(i, 1)
-    const t = tabs.value.findIndex((tab) => leaves(tab.root).includes(key))
+    delete lastSeen.value[key]
+    const t =tabs.value.findIndex((tab) => leaves(tab.root).includes(key))
     const tab = tabs.value[t]
     if (!tab) return
     const root = removeLeaf(tab.root, key)
@@ -562,6 +629,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resumeSession,
     restoreLast,
     dismissLast,
+    runScript,
+    openLayout,
+    lastSeen,
+    touch,
     split,
     update,
     remove,

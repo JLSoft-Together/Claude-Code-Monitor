@@ -1,5 +1,6 @@
 import type en from './en'
 import viewer from './workspace-viewer'
+import tier2 from './workspace-tier2'
 
 const vi: typeof en = {
   app: {
@@ -15,6 +16,7 @@ const vi: typeof en = {
   },
   workspace: {
     ...viewer.vi,
+    ...tier2.vi,
     tabs: 'Terminal',
     new: 'Mới',
     newLabel: 'Tab mới',
@@ -93,7 +95,6 @@ const vi: typeof en = {
       toggle: 'Ẩn hoặc hiện danh sách dự án',
       home: 'Thư mục home',
       waiting: '{n} đang chờ bạn',
-      newIn: '{preset} mới trong {name}',
     },
     attention: {
       waiting: 'Đang chờ bạn',

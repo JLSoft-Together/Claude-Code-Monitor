@@ -4,6 +4,7 @@ import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell
 import { discardFile, discardHunk, diff as changesDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
 import { electronClipboardImage, writeClipboardImage, type ClipboardImageDeps } from './clipboardImage'
 import { readFileForView } from './files'
+import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { GrantStore } from './grants'
 import { FileListCache } from './listFiles'
@@ -49,7 +50,7 @@ export interface PreviewIpcDeps {
   server: PreviewServer
   watcher: RootWatcher
   /** Folders the page may read/serve from: live pane cwds. Picked files add their folder on top. */
-  getRoots: () => readonly string[] | Promise<readonly string[]>
+  getRoots: (fresh?: boolean) => readonly string[] | Promise<readonly string[]>
   shell: Pick<Shell, 'openExternal' | 'showItemInFolder' | 'openPath'>
   dialog: Pick<Dialog, 'showOpenDialog'>
   getWindow: () => BrowserWindow | null
@@ -72,6 +73,7 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:capture-guest', 'ccm:forget-grants',
+  'ccm:project-root', 'ccm:scripts',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -89,11 +91,11 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   const hooked = new WeakSet<WebContents>()
   const asking = new Map<string, Promise<boolean>>()
 
-  const allowedRoots = async (): Promise<string[]> => realRoots([...(await deps.getRoots()), ...grants.list()])
+  const allowedRoots = async (fresh = false): Promise<string[]> => realRoots([...(await deps.getRoots(fresh)), ...grants.list()])
 
-  async function allowedPath(p: unknown): Promise<{ real: string; roots: string[] } | null> {
+  async function allowedPath(p: unknown, fresh = false): Promise<{ real: string; roots: string[] } | null> {
     if (typeof p !== 'string' || !path.isAbsolute(p)) return null
-    const roots = await allowedRoots()
+    const roots = await allowedRoots(fresh)
     const real = await realOrNull(p)
     return real && rootOf(real, roots) ? { real, roots } : null
   }
@@ -341,6 +343,25 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     } catch {
       return false
     }
+  })
+
+  // Git toplevel of an allowed folder (else the folder itself): groups sidebar rows and roots the scripts menu.
+  ipcMain.handle('ccm:project-root', async (event, dir: unknown) => {
+    if (!isAppFrame(event)) return null
+    // A pane spawned a moment ago is missing from the cached census: re-ask once before giving up.
+    const ok = (await allowedPath(dir)) ?? (await allowedPath(dir, true))
+    if (!ok) return null
+    const top = await toplevel(ok.real)
+    if ('error' in top) return { root: ok.real, repo: false }
+    repos.set(rootKey(top.root), { root: top.root, from: ok.real })
+    return { root: top.root, repo: true }
+  })
+
+  ipcMain.handle('ccm:scripts', async (event, dir: unknown) => {
+    if (!isAppFrame(event)) return null
+    const real = (await repoOf(dir)) ?? (await allowedPath(dir))?.real
+    if (!real || !(await fs.stat(real).catch(() => null))?.isDirectory()) return null
+    return detectScripts(real).catch(() => null)
   })
 
   ipcMain.handle('ccm:forget-grants', (event) => {

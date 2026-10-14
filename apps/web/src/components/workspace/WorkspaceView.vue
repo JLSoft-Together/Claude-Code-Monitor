@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, ChevronDown, History, PanelLeft, Plus, X } from 'lucide-vue-next'
+import { BellRing, ChevronDown, History, LayoutTemplate, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
+import { useProjectRoots } from '../../composables/useProjectRoots'
+import { captureLayout } from '../../lib/layouts'
+import { hasLayouts, hasScripts, listLayouts, rememberScript, type SavedLayout } from '../../lib/projects'
+import { folderName, projectOf } from '../../lib/sidebarRows'
+import { createStartGuard } from '../../lib/startGuard'
+import { dirKey } from '../../stores/favorites'
 import type { LinkOpenOptions, LinkTarget } from '../../lib/fileLinks'
 import { shortPath } from '../../lib/format'
 import { changesStatus, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
@@ -19,6 +25,8 @@ import LaunchPicker from './LaunchPicker.vue'
 import BrowserPane from './BrowserPane.vue'
 import ChangesPane from './ChangesPane.vue'
 import FilePane from './FilePane.vue'
+import LayoutsDialog from './LayoutsDialog.vue'
+import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
@@ -132,12 +140,16 @@ function openChangesTab(): void {
 
 const quickOpen = ref(false)
 const quickRoot = ref<string | null>(null)
+// Focus before Quick open: `>` hands over to Scripts, whose own opener (the Quick open input) is gone when it closes.
+let quickReturn: HTMLElement | null = null
+const scriptsReturn = ref<HTMLElement | null>(null)
 
 /** Root = git toplevel of the focused pane's folder (ls-files from a sub-folder lists only that sub-folder). */
 async function openQuick(): Promise<void> {
   const pane = workspace.active
   const cwd = pane?.kind === 'changes' ? (pane.root ?? pane.cwd) : pane && workCwd(pane)
   quickRoot.value = cwd ?? null
+  if (!quickOpen.value) quickReturn = document.activeElement as HTMLElement | null
   quickOpen.value = true
   if (!cwd) return
   const status = await changesStatus(cwd)
@@ -159,13 +171,140 @@ function insertFromBrowser(browserKey: string, text: string | null): void {
   const res = workspace.resolveAgentPane(browserKey)
   if ('pane' in res) return deliver(res.pane.key, text)
   if (res.choices.length === 1) return deliver(res.choices[0]!.key, text)
-  if (!res.choices.length) {
-    agentNotice.value = t('workspace.handoff.noTarget')
-    if (noticeTimer) clearTimeout(noticeTimer)
-    noticeTimer = setTimeout(() => (agentNotice.value = null), 4000)
-    return
-  }
+  if (!res.choices.length) return showNotice(t('workspace.handoff.noTarget'))
   agentChoices.value = { from: browserKey, text, panes: res.choices }
+}
+
+function showNotice(text: string): void {
+  agentNotice.value = text
+  if (noticeTimer) clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => (agentNotice.value = null), 4000)
+}
+
+const { rootOf, resolve } = useProjectRoots()
+
+/** Project folder of a pane: git toplevel (worktrees fold into their repo), else its own folder. */
+function paneProject(pane: Pane): string | null {
+  return pane.cwd ? projectOf(rootOf(pane.cwd) ?? pane.cwd) : null
+}
+
+const activeProject = computed(() => (workspace.active ? paneProject(workspace.active) : null))
+
+const scripts = ref<{ dirs: string[]; query?: string } | null>(null)
+let scriptsSeq = 0
+
+/** Pane's current folder first (a sub-package), then its project root. */
+async function openScripts(dirs: string[], query?: string): Promise<void> {
+  const given = dirs.filter(Boolean)
+  const run = ++scriptsSeq
+  scripts.value = { dirs: given, query }
+  const roots = await Promise.all(given.map((d) => resolve(d)))
+  if (run === scriptsSeq && scripts.value && roots.some((r) => !given.some((d) => dirKey(d) === dirKey(r)))) scripts.value = { dirs: [...given, ...roots], query }
+}
+
+function openScriptsForActive(query?: string): void {
+  closeMenu(false)
+  const pane = workspace.active
+  const dir = pane ? workCwd(pane) : undefined
+  void openScripts(dir ? [dir] : [], query)
+}
+
+function scriptsFromQuick(query: string): void {
+  scriptsReturn.value = quickReturn
+  openScriptsForActive(query)
+}
+
+function closeScripts(): void {
+  scripts.value = null
+  scriptsReturn.value = null
+}
+
+function runScript(target: { dir: string; run: string; split: boolean }): void {
+  rememberScript(target.dir, target.run)
+  const key = workspace.activeKey
+  withViewTransition(() => workspace.runScript(target.dir, target.run, target.split && key ? { split: { key, dir: 'row' } } : {}))
+}
+
+type LayoutsTarget = { root: string; name: string; mode: 'save' | 'manage' }
+const layoutsFor = ref<LayoutsTarget | null>(null)
+// Kept while the dialog animates out.
+const lastLayouts = ref<LayoutsTarget>({ root: '', name: '', mode: 'save' })
+
+function showLayouts(root: string, name: string, mode: 'save' | 'manage'): void {
+  closeMenu(false)
+  layoutsFor.value = lastLayouts.value = { root, name, mode }
+}
+
+function captureFor(opts: { name: string; resume: boolean; id?: string; openOnStart?: boolean }) {
+  const root = lastLayouts.value.root
+  if (!root) return null
+  const key = dirKey(root)
+  const inProject = (p: Pane): boolean => {
+    const project = paneProject(p)
+    return !!project && dirKey(project) === key
+  }
+  return captureLayout(workspace.tabs, workspace.panes, inProject, { ...opts, project: root })
+}
+
+function openLayout(layout: SavedLayout): void {
+  withViewTransition(() => {
+    const added = adoptNew(() => workspace.openLayout(layout))
+    showNotice(added ? t('workspace.layouts.opened', { name: layout.name }) : t('workspace.layouts.alreadyOpen', { name: layout.name }))
+  })
+}
+
+function restoreLast(): void {
+  adoptNew(() => workspace.restoreLast())
+}
+
+// "Open on start": the first terminal opened in a project during this window's life brings its start layout along.
+const START_KEY = 'ccm.workspace.startedProjects'
+const startGuard = createStartGuard(readStarted(), (list) => {
+  try {
+    sessionStorage.setItem(START_KEY, JSON.stringify(list.slice(-200)))
+  } catch {
+    // per window only
+  }
+})
+function readStarted(): string[] {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(START_KEY) ?? '[]') as unknown
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Panes made by `change` (restore, a layout) are not anyone's first terminal, and their projects count as started. */
+function adoptNew<T>(change: () => T): T {
+  const before = new Set(workspace.panes.map((p) => p.key))
+  const result = change()
+  const made = workspace.panes.filter((p) => !before.has(p.key))
+  startGuard.adopt(made.map((p) => p.key))
+  const dirs = new Set(made.filter(isTerm).map((p) => p.cwd).filter((d): d is string => !!d))
+  for (const dir of dirs)
+    void resolve(dir).then((root) => {
+      const project = projectOf(root)
+      if (project) startGuard.mark(dirKey(project))
+    })
+  return result
+}
+
+startGuard.adopt(workspace.panes.map((p) => p.key))
+watch(
+  () => workspace.panes.filter((p) => isTerm(p) && p.state === 'running').map((p) => p.key),
+  (keys) => {
+    for (const key of keys) if (startGuard.take(key)) void checkStart(key)
+  },
+)
+
+async function checkStart(paneKey: string): Promise<void> {
+  const pane = paneOf(paneKey)
+  if (!hasLayouts || !pane?.cwd) return
+  const root = projectOf(await resolve(pane.cwd))
+  if (!root || !startGuard.claim(dirKey(root))) return
+  const start = (await listLayouts(root)).find((l) => l.openOnStart)
+  if (start && paneOf(paneKey)) openLayout(start)
 }
 
 function deliver(paneKey: string, text: string | null): void {
@@ -215,6 +354,9 @@ function clearSeenAttention(): void {
   if (pane?.attention && props.visible && document.hasFocus()) workspace.update(pane.key, { attention: undefined })
 }
 watch(() => [props.visible, workspace.activeKey, workspace.active?.attention], clearSeenAttention)
+
+const MENU_ROW =
+  'group/row flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none'
 
 const GAP = 8
 // 24 columns of 13px mono plus the well padding: narrower panes stop being usable for an agent TUI.
@@ -508,8 +650,13 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="flex h-[calc(100dvh-var(--ccm-header-h,52px))] min-h-0 w-full gap-3 px-3 pt-2 pb-3 sm:px-4">
-    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-56 shrink-0 md:block">
-      <WorkspaceSidebar />
+    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 md:block">
+      <WorkspaceSidebar
+        @scripts="(root) => openScripts([root])"
+        @save-layout="(root, name) => showLayouts(root, name, 'save')"
+        @manage-layouts="(root, name) => showLayouts(root, name, 'manage')"
+        @open-layout="openLayout"
+      />
     </aside>
     <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
     <div v-if="workspace.tabs.length" class="flex min-w-0 items-center gap-2">
@@ -616,6 +763,14 @@ onBeforeUnmount(() => {
             :aria-label="t('workspace.launch.title')"
           >
             <LaunchPicker ref="menuPicker" :cwd="contextCwd" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" @changes="openChangesTab" />
+            <div v-if="activeProject && (hasScripts || hasLayouts)" class="mt-1.5 flex flex-col border-t border-line pt-1.5">
+              <button v-if="hasScripts" type="button" :class="MENU_ROW" data-menu="scripts" @click="openScriptsForActive()">
+                <Play :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.scripts.open') }}
+              </button>
+              <button v-if="hasLayouts" type="button" :class="MENU_ROW" data-menu="save-layout" :title="activeProject" @click="showLayouts(activeProject, folderName(activeProject), 'save')">
+                <LayoutTemplate :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.layouts.save') }}
+              </button>
+            </div>
           </div>
         </Transition>
       </div>
@@ -636,7 +791,7 @@ onBeforeUnmount(() => {
               <template v-if="lastSummary.agents"> · {{ t('workspace.restore.agents', { n: lastSummary.agents }, lastSummary.agents) }}</template>
             </p>
           </div>
-          <button type="button" class="ccm-btn ccm-btn-primary shrink-0" @click="workspace.restoreLast()">{{ t('workspace.restore.action') }}</button>
+          <button type="button" class="ccm-btn ccm-btn-primary shrink-0" @click="restoreLast()">{{ t('workspace.restore.action') }}</button>
           <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.restore.dismiss')" :aria-label="t('workspace.restore.dismiss')" @click="workspace.dismissLast()">
             <X :size="14" aria-hidden="true" />
           </button>
@@ -662,6 +817,7 @@ onBeforeUnmount(() => {
           @split="(choice) => splitActive(undefined, choice, pane.key)"
           @close="closePanes([pane.key])"
           @open-link="(target, opts) => openLink(pane, target, opts)"
+          @scripts="openScripts([workCwd(pane)!])"
         />
         <!-- Viewer panes carry their own toolbar; the wrapper only places, focuses and rings them. -->
         <div
@@ -775,7 +931,25 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
-    <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" />
+    <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
+    <ScriptsDialog
+      :open="!!scripts"
+      :dirs="scripts?.dirs ?? []"
+      :query="scripts?.query"
+      :return-to="scriptsReturn"
+      @close="closeScripts"
+      @focus-lost="focusActivePane"
+      @run="runScript"
+    />
+    <LayoutsDialog
+      :open="!!layoutsFor"
+      :root="lastLayouts.root"
+      :name="lastLayouts.name"
+      :mode="lastLayouts.mode"
+      :capture="captureFor"
+      @close="layoutsFor = null"
+      @open="openLayout"
+    />
 
     <Teleport to="body">
       <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">

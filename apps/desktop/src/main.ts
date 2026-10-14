@@ -14,6 +14,7 @@ import { hardenWebviews, PREVIEW_PARTITION, registerPreviewIpc, type PreviewIpc 
 import { PreviewServer } from './preview/server'
 import { RootWatcher } from './preview/watch'
 import { GrantStore, GRANTS_FILE } from './preview/grants'
+import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { PtySupervisor } from './pty/supervisor'
 import { stringsFor, type Strings } from './strings'
 
@@ -51,6 +52,7 @@ let hiddenNoticeShown = false
 const preview = new PreviewServer()
 const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
+let disposeLayouts: (() => void) | null = null
 const ROOTS_TTL_MS = 2_000
 let rootsCache: { at: number; dirs: string[] } | null = null
 
@@ -69,8 +71,8 @@ const isAppFrame = (event: Electron.IpcMainInvokeEvent): boolean => {
 }
 
 /** Preview roots = start + current (after `cd`) folders of live embedded terminals; a census timeout keeps the last answer. */
-async function paneRoots(): Promise<string[]> {
-  if (rootsCache && Date.now() - rootsCache.at < ROOTS_TTL_MS) return rootsCache.dirs
+async function paneRoots(fresh = false): Promise<string[]> {
+  if (!fresh && rootsCache && Date.now() - rootsCache.at < ROOTS_TTL_MS) return rootsCache.dirs
   const census = ptys ? await ptys.census() : []
   if (census) rootsCache = { at: Date.now(), dirs: [...new Set(census.flatMap((s) => (s.liveCwd ? [s.cwd, s.liveCwd] : [s.cwd])))] }
   return rootsCache?.dirs ?? []
@@ -79,6 +81,8 @@ async function paneRoots(): Promise<string[]> {
 function stopPreview(): Promise<void> {
   previewIpc?.dispose()
   previewIpc = null
+  disposeLayouts?.()
+  disposeLayouts = null
   previewWatch.closeAll()
   return preview.close()
 }
@@ -489,6 +493,7 @@ async function ready(): Promise<void> {
       return response === 0
     },
   })
+  disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
   ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {
     const frame = event.senderFrame
     if (!frame || frame.parent || !isAppUrl(frame.url) || (action !== 'copy' && action !== 'save')) return null

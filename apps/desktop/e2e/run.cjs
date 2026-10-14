@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { OUT } = require('./cdp.cjs')
 let failed = 0
-for (const name of ['p2', 'p3', 'p4', 'p5', 'p6', 'csp', 'desktop-only', 'split', 'browser', 'tabs-cwd']) {
+for (const name of ['p2', 'p3', 'p4', 'p5', 'p6', 'csp', 'desktop-only', 'split', 'browser', 'tabs-cwd', 'tier2']) {
   const res = spawnSync(process.execPath, [path.join(__dirname, `${name}.cjs`), ...process.argv.slice(2)], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' })
   process.stdout.write(`\n# ${name}\n${res.stdout}`)
   failed += (res.stdout.match(/^FAIL /gm) ?? []).length

@@ -1,4 +1,5 @@
 import viewer from './workspace-viewer'
+import tier2 from './workspace-tier2'
 
 export default {
   app: {
@@ -14,6 +15,7 @@ export default {
   },
   workspace: {
     ...viewer.en,
+    ...tier2.en,
     tabs: 'Terminals',
     new: 'New',
     newLabel: 'New tab',
@@ -92,7 +94,6 @@ export default {
       toggle: 'Show or hide projects',
       home: 'Home folder',
       waiting: '{n} waiting for you | {n} waiting for you',
-      newIn: 'New {preset} in {name}',
     },
     attention: {
       waiting: 'Waiting for you',

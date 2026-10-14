@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, CircleCheck, CircleDot, Columns2, GitBranch, LoaderCircle, RotateCw, X } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck, CircleDot, Columns2, GitBranch, LoaderCircle, Play, RotateCw, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -21,6 +21,7 @@ import { useAgentsStore } from '../../stores/agents'
 import { useSettingsStore } from '../../stores/settings'
 import { useTerminalsStore } from '../../stores/terminals'
 import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
+import { hasScripts } from '../../lib/projects'
 import { useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
 import DevServerChip from './DevServerChip.vue'
@@ -31,7 +32,7 @@ import SplitMenu from './SplitMenu.vue'
 import WorktreeMenu from './WorktreeMenu.vue'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean }>()
-const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>] }>()
+const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>]; scripts: [] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
@@ -57,6 +58,16 @@ const dev = new DevServerDetector()
 const decoder = new TextDecoder('utf-8')
 // Bulk output (cat of a big file, replay) is never a dev server banner.
 const DEV_CHUNK_MAX = 64 * 1024
+
+// The sidebar age needs 'recently active', not every chunk: one store write per pane every few seconds at most.
+const TOUCH_MS = 5000
+let touchedAt = 0
+function touch(): void {
+  const at = Date.now()
+  if (at - touchedAt < TOUCH_MS) return
+  touchedAt = at
+  workspace.touch(props.pane.key, at)
+}
 
 function feedDev(bytes: Uint8Array): void {
   if (bytes.length > DEV_CHUNK_MAX) return
@@ -138,9 +149,22 @@ let reportedCwd: string | null = null
 
 /** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
 function onShellCwd(dir: string | null): void {
+  sendPending()
   if (!dir || dir === reportedCwd) return
   reportedCwd = dir
   conn?.reportCwd(dir)
+}
+
+// Typed at the first prompt (its cwd report), or after a grace period for shells without the prompt hook.
+const PENDING_GRACE_MS = 4000
+let pendingTimer: ReturnType<typeof setTimeout> | null = null
+function sendPending(): void {
+  if (pendingTimer) clearTimeout(pendingTimer)
+  pendingTimer = null
+  const cmd = props.pane.pendingCommand
+  if (!cmd || !conn?.isOpen || props.pane.state !== 'running') return
+  workspace.update(props.pane.key, { pendingCommand: undefined, ranCommand: true })
+  conn.write(`${cmd}\r`)
 }
 
 const sessionTitle = computed(() => session.value?.alias || session.value?.title || '')
@@ -251,6 +275,7 @@ function onMessage(msg: PtyServerMessage): void {
       if (props.pane.cwd && !msg.replay) workspace.remember(msg.cwd)
       workspace.update(key, { sessionId: msg.id, pid: msg.pid || undefined, cwd: msg.cwd, state: 'running', error: undefined })
       if (term) conn?.resize(term.cols, term.rows)
+      if (props.pane.pendingCommand && !msg.replay) pendingTimer = setTimeout(sendPending, PENDING_GRACE_MS)
       if (props.visible && props.focused) term?.focus()
       break
     case 'pid':
@@ -283,6 +308,7 @@ async function connect(start: PtyStart): Promise<void> {
   conn = new PtyConnection({
     onOutput: (bytes) => {
       term?.write(bytes)
+      touch()
       feedDev(bytes)
     },
     onMessage,
@@ -364,6 +390,7 @@ onMounted(() => {
   )
   term.onData((data) => {
     conn?.write(data)
+    touch()
     if (props.pane.preset === 'shell' && !props.pane.ranCommand && data.includes('\r')) workspace.update(props.pane.key, { ranCommand: true })
   })
   term.onBinary((data) => conn?.writeBinary(data))
@@ -423,6 +450,7 @@ watch(
 // Leaving the view only detaches; a pane gone from the store was closed, so its process goes too.
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  if (pendingTimer) clearTimeout(pendingTimer)
   window.removeEventListener('resize', dropMenus)
   linkProvider?.dispose()
   if (!workspace.panes.some((p) => p.key === props.pane.key)) killSession()
@@ -489,6 +517,18 @@ onBeforeUnmount(() => {
       </button>
       <button v-else type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.restart')" :aria-label="t('workspace.restart')" @click="restart">
         <RotateCw :size="14" aria-hidden="true" />
+      </button>
+      <button
+        v-if="hasScripts && cwd"
+        type="button"
+        class="ccm-btn-plain shrink-0"
+        data-scripts
+        :title="t('workspace.scripts.open')"
+        :aria-label="t('workspace.scripts.open')"
+        aria-haspopup="dialog"
+        @click="emit('scripts')"
+      >
+        <Play :size="14" aria-hidden="true" />
       </button>
       <button
         ref="splitButton"

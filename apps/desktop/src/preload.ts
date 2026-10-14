@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   listFiles: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:list-files', root),
   clipboardImage: (pngDataUrl: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image', pngDataUrl),
   captureGuest: (webContentsId: number): Promise<unknown> => ipcRenderer.invoke('ccm:capture-guest', webContentsId),
+  projectRoot: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir),
+  scripts: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:scripts', dir),
+  layoutsList: (project: string): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-list', project),
+  layoutsSave: (layout: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-save', layout),
+  layoutsDelete: (project: string, id: string): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-delete', project, id),
+  layoutsStart: (project: string, id: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-start', project, id),
   /** Workspace chords pressed while a <webview> guest has focus; the page re-dispatches them. */
   onForwardKey: (handler: (key: unknown) => void): (() => void) => subscribe('ccm:forward-key', handler),
 })

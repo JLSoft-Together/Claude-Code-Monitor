@@ -7,7 +7,8 @@ import { Globe } from 'lucide-vue-next'
 import type { SplitChoice } from '../../stores/workspace'
 import PresetIcon from './PresetIcon.vue'
 
-const props = defineProps<{ anchor: DOMRect; current: PtyPreset | null; trigger?: HTMLElement | null }>()
+/** `title`: menu heading instead of "Open next to it" (sidebar: new tab in a project). */
+const props = defineProps<{ anchor: DOMRect; current: PtyPreset | null; trigger?: HTMLElement | null; title?: string }>()
 const emit = defineEmits<{ pick: [choice: SplitChoice]; close: [] }>()
 
 const { t } = useI18n()
@@ -64,8 +65,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
 </script>
 
 <template>
-  <div ref="root" class="ccm-menu fixed z-50 flex flex-col p-1" :style="style" role="menu" :aria-label="t('workspace.splitMenu.title')" @keydown="onKey" @focusout="onFocusOut">
-    <p class="px-2 pb-1 pt-1.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.splitMenu.title') }}</p>
+  <div ref="root" class="ccm-menu fixed z-50 flex flex-col p-1" :style="style" role="menu" :aria-label="title ?? t('workspace.splitMenu.title')" @keydown="onKey" @focusout="onFocusOut">
+    <p class="px-2 pb-1 pt-1.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ title ?? t('workspace.splitMenu.title') }}</p>
     <button
       v-for="preset in PRESETS"
       :key="preset"
@@ -78,7 +79,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
       <Globe v-if="preset === 'browser'" :size="15" class="shrink-0 text-agent-browser group-focus-visible:text-on-accent" aria-hidden="true" />
       <PresetIcon v-else :preset="preset" :size="15" class="shrink-0 group-focus-visible:text-on-accent" />
       <span class="flex-1 truncate">{{ preset === 'browser' ? t('workspace.open.browser') : t(`workspace.preset.${preset}`) }}</span>
-      <span v-if="preset === current" class="shrink-0 text-2xs text-ink-faint group-focus-visible:text-on-accent">{{ isMac ? '⌘D' : 'Alt+Shift+D' }}</span>
+      <span v-if="preset === current && !title" class="shrink-0 text-2xs text-ink-faint group-focus-visible:text-on-accent">{{ isMac ? '⌘D' : 'Alt+Shift+D' }}</span>
     </button>
   </div>
 </template>
