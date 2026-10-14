@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   ptyEndpoint: (): Promise<unknown> => ipcRenderer.invoke('ccm:pty-endpoint'),
   pickFolder: (near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder', near),
   setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),
+  setAppearance: (look: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:appearance', look),
+  zoomApp: (action: 'in' | 'out' | 'reset' | 'get'): Promise<unknown> => ipcRenderer.invoke('ccm:zoom', action),
+  statusLineState: (): Promise<unknown> => ipcRenderer.invoke('ccm:statusline-state'),
+  enableStatusLine: (): Promise<unknown> => ipcRenderer.invoke('ccm:statusline-enable'),
+  grantFolder: (): Promise<unknown> => ipcRenderer.invoke('ccm:grant-folder'),
   logs: (action: 'copy' | 'save', report: string): Promise<unknown> => ipcRenderer.invoke('ccm:logs', action, report),
   /** Toast click: the page answers whether a workspace pane holds that session. */
   onFocus: (handler: (terminalId: string) => boolean): void => {

@@ -442,6 +442,15 @@ Probe: `claude` in a node-pty (110×36) rendered by `@xterm/headless`; image put
 
 Privacy: the screen is read in the page only, for the pane's own prompt; nothing reaches the collector, logs or storage. Tray items (names, paths, thumbnails ≤ 96 px) live in memory and are dropped with the pane. Inserting an image replaces the system clipboard; the UI says so.
 
+## 11q. Quick setup writes `statusLine` into Claude's settings.json (v27, desktop only, 2026-10-14)
+
+The status line bridge (§ plan limits) needs a `statusLine` entry in Claude Code's `settings.json`. Until v27 the app only showed a snippet to paste. The first-run quick setup (`QuickSetup.vue`) can now write it; this is the only place the app writes Claude Code's configuration files itself (the v28 Extensions tab changes config only through the `claude` CLI, §11r). Monitoring itself is unchanged (no prompts, no API calls).
+
+- File: `$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json` (`apps/desktop/src/statusline.ts` `claudeSettingsFile`).
+- Read only to classify (`readStatusLine`): `ours` (command contains `statusline-bridge`), `other`, `none` (no key / no file), `unreadable` (not plain JSON, e.g. comments; the app never rewrites it and falls back to the snippet).
+- Write only from IPC `ccm:statusline-enable` after a **native confirm** that shows the exact `statusLine` JSON and the file path; the page cannot write by itself.
+- `other`: the old command is kept and run after the bridge: `<bridge> --chain-b64 <base64 of the old command>` (base64 survives every shell's quoting; `scripts/statusline-bridge.mjs` decodes it, `--chain "<cmd>"` still works). Other fields of the old `statusLine` (e.g. `padding`) and every other key are preserved.
+- The previous file is copied to `settings.json.ccm-backup`; the new one is written to a temp file and renamed. Claude Code reads it for new sessions.
 ## 12. Open items
 
 | Item | State |

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FolderX, GraduationCap, Send, Settings2, Stethoscope, X } from 'lucide-vue-next'
+import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Stethoscope, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { retireOverlay } from '../lib/motion'
@@ -13,12 +13,15 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useTipsStore } from '../stores/tips'
 import { useUiStore } from '../stores/ui'
-import { hasTerminals } from '../lib/desktop'
+import { desktop, hasTerminals } from '../lib/desktop'
+import { CODE_SIZE_MAX, CODE_SIZE_MIN } from '../lib/fonts'
+import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ThemePicker from './ui/ThemePicker.vue'
+import FontPicker from './ui/FontPicker.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -34,6 +37,44 @@ async function onForgetGrants(): Promise<void> {
   grantsForgotten.value = await forgetGrants()
   if (grantsForgotten.value) setTimeout(() => (grantsForgotten.value = false), 4000)
 }
+// App zoom lives in the main process (Chromium level); read once per open, then follow the HUD.
+const appZoom = ref<number | null>(null)
+watch(zoomHud, (h) => {
+  if (h?.kind === 'app') appZoom.value = h.value
+})
+const steppers = computed(() => [
+  {
+    id: 'codesize',
+    label: t('fonts.size'),
+    hint: t(isMac ? 'fonts.sizeHintMac' : 'fonts.sizeHint'),
+    value: t('fonts.px', { n: settings.codeFontSize }),
+    canDown: settings.codeFontSize > CODE_SIZE_MIN,
+    canUp: settings.codeFontSize < CODE_SIZE_MAX,
+    step: (d: -1 | 0 | 1) => stepCodeSize(settings, d),
+  },
+  ...(desktop?.zoomApp && appZoom.value !== null
+    ? [
+        {
+          id: 'appzoom',
+          label: t('fonts.zoom'),
+          hint: t(isMac ? 'fonts.zoomHintMac' : 'fonts.zoomHint'),
+          value: `${appZoom.value}%`,
+          // Chromium levels -3…+3 ≈ 58%…173%.
+          canDown: appZoom.value > 58,
+          canUp: appZoom.value < 173,
+          step: (d: -1 | 0 | 1) => void zoomApp(d === 0 ? 'reset' : d > 0 ? 'in' : 'out'),
+        },
+      ]
+    : []),
+])
+const openFontLicenses = (): void => void window.open('/fonts-LICENSES.txt', '_blank')
+const helpItems = computed<{ key: string; icon: Component; label: string; hint: string; run: () => void }[]>(() => [
+  { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
+  ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace') }] : []),
+  { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },
+  ...(desktop ? [{ key: 'setup', icon: ListChecks, label: t('setup.open'), hint: t('setup.openHint'), run: () => (ui.setupOpen = true) }] : []),
+  { key: 'fonts', icon: FileText, label: t('fonts.licenses'), hint: t('fonts.licensesHint'), run: openFontLicenses },
+])
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
@@ -166,6 +207,7 @@ watch(
   () => ui.settingsOpen,
   async (open) => {
     if (open) {
+      void desktop?.zoomApp?.('get').then((pct) => (appZoom.value = typeof pct === 'number' ? pct : null))
       restoreFocus = document.activeElement as HTMLElement | null
       await nextTick()
       closeButton.value?.focus()
@@ -264,6 +306,37 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
               </div>
               <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="tipsOn" :label="t('tips.setting')" :hint="t('tips.settingHint')" class="px-3" />
+            </div>
+          </section>
+
+          <section aria-labelledby="set-text" class="mt-6">
+            <h3 id="set-text" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('fonts.section') }}</h3>
+            <div class="ccm-group">
+              <FontPicker kind="code" />
+              <div v-for="row in steppers" :key="row.id" class="flex items-center gap-3 px-3 py-2">
+                <div class="min-w-0 flex-1">
+                  <p :id="`set-${row.id}`" class="text-sm">{{ row.label }}</p>
+                  <p class="mt-0.5 text-2xs text-ink-faint">{{ row.hint }}</p>
+                </div>
+                <div class="flex shrink-0 items-center gap-0.5" role="group" :aria-labelledby="`set-${row.id}`" :data-stepper="row.id">
+                  <button type="button" class="ccm-btn-plain size-7" :aria-label="t('fonts.smaller')" :title="t('fonts.smaller')" :disabled="!row.canDown" @click="row.step(-1)">
+                    <Minus :size="14" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="ccm-btn-plain h-7 min-w-14 justify-center px-1.5 text-sm tabular"
+                    :title="t('fonts.reset')"
+                    :aria-label="`${row.value} · ${t('fonts.reset')}`"
+                    @click="row.step(0)"
+                  >
+                    {{ row.value }}
+                  </button>
+                  <button type="button" class="ccm-btn-plain size-7" :aria-label="t('fonts.larger')" :title="t('fonts.larger')" :disabled="!row.canUp" @click="row.step(1)">
+                    <Plus :size="14" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <FontPicker kind="ui" />
             </div>
           </section>
 
@@ -459,11 +532,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             <h3 id="set-help" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
             <div class="ccm-group overflow-hidden">
               <button
-                v-for="h in [
-                  { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
-                  ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace' as const) }] : []),
-                  { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },
-                ]"
+                v-for="h in helpItems"
                 :key="h.key"
                 type="button"
                 class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill"

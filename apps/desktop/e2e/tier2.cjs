@@ -30,7 +30,7 @@ const HOME = path.basename(os.homedir())
   const groupNames = () => evaluate(`[...${NAV}.querySelectorAll('section h3')].map((h) => h.textContent.trim())`)
   try {
     await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
     await cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

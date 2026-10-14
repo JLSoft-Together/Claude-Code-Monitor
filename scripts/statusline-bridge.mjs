@@ -95,7 +95,9 @@ process.stdin.on('end', async () => {
     // A broken bridge must never break the user's status line.
   }
   const i = process.argv.indexOf('--chain')
-  const command = i >= 0 ? process.argv.slice(i + 1).join(' ') : ''
+  const b = process.argv.indexOf('--chain-b64')
+  // --chain-b64: written by the app's quick setup (base64 survives any shell's quoting).
+  const command = b >= 0 ? Buffer.from(process.argv[b + 1] ?? '', 'base64').toString('utf8') : i >= 0 ? process.argv.slice(i + 1).join(' ') : ''
   if (command && (await chain(command, raw))) return
   process.stdout.write(defaultLine(input))
 })

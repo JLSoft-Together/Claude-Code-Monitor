@@ -12,6 +12,7 @@ import type { IDisposable } from '@xterm/xterm'
 import type { PtyServerMessage } from '@ccm/shared'
 import { DevServerDetector, rememberDevUrl } from '../../lib/devServer'
 import { createFileLinkProvider, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
+import { fontEntry, fontStack, SYSTEM_MONO } from '../../lib/fonts'
 import { shortPath } from '../../lib/format'
 import { contextPctOf } from '../../lib/provider'
 import { retireOverlay } from '../../lib/motion'
@@ -222,6 +223,20 @@ function setRenderer(on: boolean): void {
     webgl.dispose()
     webgl = null
   }
+}
+
+// xterm measures the cell when the option changes: the face has to be loaded first or it measures the fallback.
+async function applyCodeFont(): Promise<void> {
+  const { codeFont: id, codeFontSize: size } = settings
+  const entry = fontEntry('code', id)
+  if (entry.family) await document.fonts.load(`${size}px '${entry.family}'`).catch(() => undefined)
+  if (!term || id !== settings.codeFont || size !== settings.codeFontSize) return
+  const family = fontStack(entry)
+  if (term.options.fontFamily === family && term.options.fontSize === size) return
+  term.options.fontFamily = family
+  term.options.fontSize = size
+  term.clearTextureAtlas()
+  refit()
 }
 
 function refit(): void {
@@ -463,8 +478,9 @@ onMounted(() => {
     allowProposedApi: true,
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontFamily: 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace',
-    fontSize: 13,
+    // The chosen face may still be loading; applyCodeFont swaps it in once it is.
+    fontFamily: SYSTEM_MONO,
+    fontSize: settings.codeFontSize,
     lineHeight: 1.25,
     scrollback: 5000,
     smoothScrollDuration: 0,
@@ -505,6 +521,7 @@ onMounted(() => {
   term.textarea?.addEventListener('focus', () => workspace.activate(props.pane.key))
   setRenderer(props.visible)
   refit()
+  void applyCodeFont()
   search = new SearchAddon({ highlightLimit: 1000 })
   term.loadAddon(search)
   searchAddon.value = search
@@ -557,6 +574,8 @@ watch(
     if (term) term.options.theme = theme()
   },
 )
+
+watch(() => [settings.codeFont, settings.codeFontSize] as const, () => void applyCodeFont())
 
 // Leaving the view only detaches; a pane gone from the store was closed, so its process goes too.
 onBeforeUnmount(() => {
@@ -687,7 +706,7 @@ onBeforeUnmount(() => {
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
       <div class="size-full overflow-hidden rounded-card p-2 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
-        <div ref="host" class="size-full" :title="linkHint" />
+        <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
       <TermFind v-if="findOpen" ref="find" :addon="searchAddon" class="absolute top-1 right-2 z-10" @close="closeFind" />
       <span

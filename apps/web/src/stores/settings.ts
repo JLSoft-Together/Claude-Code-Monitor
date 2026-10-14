@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
+import { readLook } from '../lib/appearance'
 import { desktop } from '../lib/desktop'
+import { clampCodeSize, CODE_SIZE_DEFAULT, fontEntry, fontStack, isFontId } from '../lib/fonts'
 import { applyTheme, isThemeId, themeMeta, toggleTarget, type ThemeId } from '../lib/themes'
 
 export type Theme = ThemeId
@@ -68,6 +70,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
   const dailyBudget = ref(Number.isFinite(budgetRaw) && budgetRaw > 0 ? budgetRaw : 0)
+  const codeFont = ref(isFontId('code', read('ccm.font.code')) ? read('ccm.font.code')! : 'system')
+  const uiFont = ref(isFontId('ui', read('ccm.font.ui')) ? read('ccm.font.ui')! : 'system')
+  const codeFontSize = ref(read('ccm.font.codeSize') === null ? CODE_SIZE_DEFAULT : clampCodeSize(Number(read('ccm.font.codeSize'))))
   const activityPageSize = ref(ACTIVITY_PAGE_SIZES.includes(Number(read('ccm.activityPage'))) ? Number(read('ccm.activityPage')) : 50)
 
   watch(hideFinished, (value) => persist('ccm.hideFinished', value ? '1' : '0'))
@@ -92,10 +97,39 @@ export const useSettingsStore = defineStore('settings', () => {
     (value) => {
       applyTheme(document.documentElement, value)
       persist('ccm.theme', value)
-      void desktop?.setWindowBackground?.(themeMeta(value).swatch[0])
+      const look = desktop?.setAppearance ? readLook() : null
+      if (look) void desktop!.setAppearance!(look)
+      else void desktop?.setWindowBackground?.(themeMeta(value).swatch[0])
     },
     { flush: 'sync', immediate: true },
   )
+
+  // Tailwind v4 reads --font-mono / --font-sans through var(), so every font-mono / font-sans text follows.
+  watch(
+    [codeFont, uiFont, codeFontSize],
+    ([code, ui, size]) => {
+      const style = document.documentElement.style
+      style.setProperty('--font-mono', fontStack(fontEntry('code', code)))
+      style.setProperty('--font-sans', fontStack(fontEntry('ui', ui)))
+      style.setProperty('--ccm-code-size', `${size}px`)
+      persist('ccm.font.code', code)
+      persist('ccm.font.ui', ui)
+      persist('ccm.font.codeSize', String(size))
+    },
+    { immediate: true },
+  )
+
+  function setCodeFont(id: string): void {
+    if (isFontId('code', id)) codeFont.value = id
+  }
+
+  function setUiFont(id: string): void {
+    if (isFontId('ui', id)) uiFont.value = id
+  }
+
+  function stepCodeSize(delta: number): void {
+    codeFontSize.value = delta === 0 ? CODE_SIZE_DEFAULT : clampCodeSize(codeFontSize.value + delta)
+  }
 
   watch(
     locale,
@@ -174,6 +208,12 @@ export const useSettingsStore = defineStore('settings', () => {
     pinned,
     activityPageSize,
     dailyBudget,
+    codeFont,
+    uiFont,
+    codeFontSize,
+    setCodeFont,
+    setUiFont,
+    stepCodeSize,
     togglePin,
     prunePins,
     toggleTheme,

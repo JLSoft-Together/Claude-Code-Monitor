@@ -2,10 +2,12 @@ import type en from './en'
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
+import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 
 const vi: typeof en = {
   ...v25.vi,
+  ...v27.vi,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',
@@ -451,7 +453,7 @@ const vi: typeof en = {
     subtitle: 'Dùng ở tab Monitor khi không gõ trong ô nhập.',
     hints: 'Hiện gợi ý phím trên nút',
     hintsHint: 'Nhãn phím nhỏ cạnh nút tương ứng. Bấm H để bật/tắt.',
-    group: { panels: 'Panel và thanh', map: 'Map và tab', workspace: 'Workspace', help: 'Trợ giúp' },
+    group: { panels: 'Panel và thanh', map: 'Map và tab', workspace: 'Workspace', view: 'Thu phóng và cỡ chữ', help: 'Trợ giúp' },
     workspaceNote: 'Dùng ở tab Workspace, kể cả khi đang gõ trong terminal.',
     item: {
       sessions: 'Hiện/ẩn Sessions',
@@ -478,6 +480,9 @@ const vi: typeof en = {
       wsQuickOpen: 'Mở nhanh tệp trong dự án',
       wsExplorer: 'Hiện cây thư mục (Explorer)',
       wsFind: 'Tìm trong terminal đang chọn',
+      zoomApp: 'Phóng to, thu nhỏ app, về 100%',
+      zoomCode: 'Cỡ chữ code: lớn hơn, nhỏ hơn, mặc định',
+      zoomWheel: 'Trên vùng code: cỡ chữ. Chỗ khác: zoom app',
     },
   },
   wait: {

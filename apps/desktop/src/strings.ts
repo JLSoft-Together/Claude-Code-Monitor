@@ -27,6 +27,16 @@ const en = {
   accessDetail: 'The link points outside the folders of your open terminals. Allowing lets the browser and file tabs read this folder until the app quits.',
   accessAllow: 'Allow',
   accessDeny: 'Cancel',
+  statusLineTitle: 'Turn on the status line bridge?',
+  statusLineDetail: (file: string, json: string, chained: boolean) =>
+    `Agent Monitor will set this in ${file}${chained ? ' (your current status line keeps running after the bridge)' : ''}:
+
+${json}
+
+The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up.`,
+  statusLineConfirm: 'Turn on',
+  statusLineCancel: 'Cancel',
+  grantTitle: 'Choose your projects folder',
 }
 
 const vi: typeof en = {
@@ -58,6 +68,16 @@ const vi: typeof en = {
   accessDetail: 'Liên kết trỏ ra ngoài thư mục của các terminal đang mở. Cho phép thì tab trình duyệt và tab file đọc được thư mục này tới khi thoát app.',
   accessAllow: 'Cho phép',
   accessDeny: 'Huỷ',
+  statusLineTitle: 'Bật status line bridge?',
+  statusLineDetail: (file, json, chained) =>
+    `Agent Monitor sẽ ghi vào ${file}${chained ? ' (status line hiện tại của bạn vẫn chạy sau bridge)' : ''}:
+
+${json}
+
+Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Claude mới sẽ dùng cấu hình này.`,
+  statusLineConfirm: 'Bật',
+  statusLineCancel: 'Huỷ',
+  grantTitle: 'Chọn thư mục chứa các project',
 }
 
 export type Strings = typeof en

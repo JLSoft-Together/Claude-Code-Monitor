@@ -15,6 +15,9 @@ import DiagnosticsDialog from './components/DiagnosticsDialog.vue'
 import OnboardingTour from './components/OnboardingTour.vue'
 import BreakToast from './components/BreakToast.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
+import QuickSetup from './components/QuickSetup.vue'
+import ZoomHud from './components/ZoomHud.vue'
+import { useWheelZoom } from './composables/useWheelZoom'
 import CompactView from './components/CompactView.vue'
 import MonitorView from './components/MonitorView.vue'
 import UsageView from './components/usage/UsageView.vue'
@@ -32,6 +35,7 @@ const ui = useUiStore()
 useSettingsStore()
 useNotifications()
 useBreakReminder()
+useWheelZoom()
 useAwayStore().install()
 
 // Windows toast buttons reach the app through agent-monitor://; a session running in a pane opens that pane.
@@ -107,8 +111,10 @@ onBeforeUnmount(() => {
     <CommandPalette />
     <RecapDialog />
     <DiagnosticsDialog />
+    <QuickSetup />
     <OnboardingTour />
     <BreakToast />
     <ShortcutsDialog />
+    <ZoomHud />
   </div>
 </template>

@@ -147,12 +147,17 @@ function offerTour(view: string): void {
   window.clearTimeout(offerTimer)
   if (!id || tourDone(id)) return
   offerTimer = window.setTimeout(() => {
-    if (!ui.tourOpen && !ui.compact && ui.view === view && !tourDone(id)) ui.tourOpen = id
+    if (!ui.tourOpen && !ui.setupOpen && !ui.compact && ui.view === view && !tourDone(id)) ui.tourOpen = id
   }, id === 'monitor' ? 800 : 600)
 }
 watch(
   () => ui.view,
   (view) => mounted && offerTour(view),
+)
+// Quick setup goes first on a fresh install; the guide follows once it is closed.
+watch(
+  () => ui.setupOpen,
+  (open) => mounted && !open && offerTour(ui.view),
 )
 onBeforeUnmount(() => {
   window.removeEventListener('resize', measure)

@@ -200,6 +200,8 @@ export const useUiStore = defineStore('ui', () => {
   const diagnosticsOpen = ref(false)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
+  /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
+  const setupOpen = ref(false)
   const settingsOpen = ref(false)
   const breakDue = ref<{ at: number; minutes: number } | null>(null)
   const focusingWindow = ref<string | null>(null)
@@ -459,6 +461,7 @@ export const useUiStore = defineStore('ui', () => {
     recapOpen,
     diagnosticsOpen,
     tourOpen,
+    setupOpen,
     settingsOpen,
     breakDue,
     openRecap,

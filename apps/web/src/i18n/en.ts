@@ -1,10 +1,12 @@
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
+import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 
 export default {
   ...v25.en,
+  ...v27.en,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Skip to content',
@@ -450,7 +452,7 @@ export default {
     subtitle: 'Work on the Monitor tab when you are not typing in a field.',
     hints: 'Show key hints on buttons',
     hintsHint: 'Small key badges next to the buttons they trigger. Press H to toggle.',
-    group: { panels: 'Panels and bar', map: 'Map and tabs', workspace: 'Workspace', help: 'Help' },
+    group: { panels: 'Panels and bar', map: 'Map and tabs', workspace: 'Workspace', view: 'Zoom and text size', help: 'Help' },
     workspaceNote: 'Work on the Workspace tab, also while a terminal has focus.',
     item: {
       sessions: 'Show or hide Sessions',
@@ -477,6 +479,9 @@ export default {
       wsQuickOpen: 'Go to file in the project',
       wsExplorer: 'Show the file explorer',
       wsFind: 'Find in the focused terminal',
+      zoomApp: 'Zoom the app in, out, back to 100%',
+      zoomCode: 'Code text size: larger, smaller, default',
+      zoomWheel: 'Over code: text size. Elsewhere: app zoom',
     },
   },
   wait: {

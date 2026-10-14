@@ -331,6 +331,12 @@ body {
   backdrop-filter: saturate(180%) blur(24px);
 }
 
+/* xterm draws no ligatures; the rest of the code text matches it whatever font is picked (Settings → Text). */
+.font-mono,
+.ccm-no-liga {
+  font-variant-ligatures: none;
+}
+
 /* shiki css-variables theme (lib/highlight.ts) → the active theme's syn-* tokens; FilePane + DiffView. */
 .ccm-code {
   --shiki-foreground: var(--ccm-syn-var);

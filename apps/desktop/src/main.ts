@@ -4,8 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
 import { defaultDataDir } from '../../collector/src/datadir'
+import { HEX_COLOR, isZoomAction, nextZoom, parseLook, readAppearance, writeAppearance, zoomPercent, type Appearance } from './appearance'
 import { createAttention, type Attention } from './attention'
-import { installBridge } from './bridge'
+import { installBridge, type BridgeInstall } from './bridge'
 import { maskLog } from './log-mask'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
@@ -17,6 +18,7 @@ import { RootWatcher } from './preview/watch'
 import { GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { PtySupervisor } from './pty/supervisor'
+import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
 
 const APP_ID = 'dev.ccm.monitor'
@@ -56,6 +58,8 @@ const preview = new PreviewServer()
 const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
+let bridge: BridgeInstall | null = null
+const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
 let rootsCache: { at: number; dirs: string[] } | null = null
 
@@ -122,6 +126,9 @@ function harden(contents: WebContents): void {
     event.preventDefault()
     openExternal(url)
   })
+  contents.on('did-finish-load', () => {
+    if (isAppUrl(contents.getURL())) contents.setZoomLevel(saved().zoom ?? 0)
+  })
   contents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return
     const key = input.key.toLowerCase()
@@ -131,9 +138,10 @@ function harden(contents: WebContents): void {
       else contents.reload()
     }
     else if (key === 'f12' || (mod && input.shift && key === 'i')) contents.toggleDevTools()
-    else if (mod && (key === '=' || key === '+')) contents.setZoomLevel(contents.getZoomLevel() + 0.5)
-    else if (mod && key === '-') contents.setZoomLevel(contents.getZoomLevel() - 0.5)
-    else if (mod && key === '0') contents.setZoomLevel(0)
+    // Alt+Ctrl/⌘ +/-/0 is the page's own code-size shortcut.
+    else if (mod && !input.alt && (key === '=' || key === '+')) zoom(contents, 'in')
+    else if (mod && !input.alt && key === '-') zoom(contents, 'out')
+    else if (mod && !input.alt && key === '0') zoom(contents, 'reset')
     else return
     event.preventDefault()
   })
@@ -164,31 +172,34 @@ function saveBounds(win: BrowserWindow): void {
   }
 }
 
-// Canvas colour of the theme picked in the page, so a new window does not flash the OS-default grey.
+// Theme colours + zoom picked in the page, so a new window / the startup screen do not flash the OS-default grey.
 const appearanceFile = (): string => path.join(app.getPath('userData'), 'appearance.json')
-const HEX_COLOR = /^#[0-9a-f]{6}$/i
-let windowBackground: string | null | undefined
+let appearance: Appearance | undefined
 
-function savedBackground(): string | null {
-  if (windowBackground !== undefined) return windowBackground
-  try {
-    const bg = (JSON.parse(readFileSync(appearanceFile(), 'utf8')) as { background?: unknown }).background
-    windowBackground = typeof bg === 'string' && HEX_COLOR.test(bg) ? bg : null
-  } catch {
-    windowBackground = null
-  }
-  return windowBackground
+function saved(): Appearance {
+  appearance ??= readAppearance(appearanceFile())
+  return appearance
+}
+
+const savedBackground = (): string | null => saved().look?.canvas ?? saved().background ?? null
+
+function saveAppearance(patch: Partial<Appearance>): void {
+  appearance = { ...saved(), ...patch }
+  writeAppearance(appearanceFile(), appearance)
 }
 
 function setWindowBackground(color: string): void {
-  if (color === savedBackground()) return
-  windowBackground = color
+  if (color === saved().background) return
   for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(color)
-  try {
-    writeFileSync(appearanceFile(), JSON.stringify({ background: color }))
-  } catch {
-    // Only the next launch's first frame depends on it.
-  }
+  saveAppearance({ background: color })
+}
+
+// Chromium zoom is per origin and not kept across runs: every app page gets the saved level on load.
+function zoom(contents: WebContents, action: 'in' | 'out' | 'reset'): number {
+  const level = nextZoom(saved().zoom ?? 0, action)
+  if (level !== (saved().zoom ?? 0)) saveAppearance({ zoom: level })
+  contents.setZoomLevel(level)
+  return zoomPercent(level)
 }
 
 function baseWindow(options: Electron.BrowserWindowConstructorOptions, prefs: Electron.WebPreferences = {}): BrowserWindow {
@@ -306,7 +317,7 @@ function fatalMessage(reason: FatalReason): string {
 function showError(reason: FatalReason): void {
   if (!mainWindow || quitting || showingError) return
   showingError = true
-  mainWindow.loadURL(errorPage(t, fatalMessage(reason), host.tail)).catch(() => undefined)
+  mainWindow.loadURL(errorPage(t, fatalMessage(reason), host.tail, saved().look)).catch(() => undefined)
   showMain()
 }
 
@@ -353,7 +364,7 @@ function boot(): Promise<void> {
     if (!mainWindow) return
     showingError = false
     try {
-      await mainWindow.loadURL(loadingPage(t)).catch(() => undefined)
+      await mainWindow.loadURL(loadingPage(t, saved().look, app.getVersion())).catch(() => undefined)
       await host.start()
       if (DEV_URL) await waitForDevServer(DEV_URL)
       if (!showingError) await mainWindow.loadURL(`${PAGE_ORIGIN}/`)
@@ -366,7 +377,7 @@ function boot(): Promise<void> {
 
 function collectorEnv(): NodeJS.ProcessEnv {
   const portable = PORTABLE_EXE !== undefined
-  const bridge = installBridge(resource('bridge/statusline-bridge.mjs', 'scripts/statusline-bridge.mjs'), DATA_DIR, process.execPath, portable || !app.isPackaged)
+  bridge = installBridge(resource('bridge/statusline-bridge.mjs', 'scripts/statusline-bridge.mjs'), DATA_DIR, process.execPath, portable || !app.isPackaged)
   return {
     ...process.env,
     CCM_PORT: String(PORT),
@@ -518,7 +529,56 @@ async function ready(): Promise<void> {
     setWindowBackground(color)
     return true
   })
+  ipcMain.handle('ccm:appearance', (event, raw: unknown) => {
+    const look = isAppFrame(event) ? parseLook(raw) : null
+    if (!look) return false
+    if (JSON.stringify(look) !== JSON.stringify(saved().look)) {
+      for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(look.canvas)
+      saveAppearance({ look, background: look.canvas })
+    }
+    return true
+  })
+  ipcMain.handle('ccm:zoom', (event, action: unknown) => {
+    if (!isAppFrame(event)) return null
+    if (action === 'get') return zoomPercent(saved().zoom ?? 0)
+    return isZoomAction(action) ? zoom(event.sender, action) : null
+  })
+  ipcMain.handle('ccm:statusline-state', (event) => (isAppFrame(event) ? readStatusLine(claudeSettings()).state : null))
+  // The page only asks; the native confirm shows the exact change and is the consent.
+  ipcMain.handle('ccm:statusline-enable', async (event) => {
+    if (!isAppFrame(event) || !bridge) return 'failed'
+    const command = bridge.command
+    const file = claudeSettings()
+    const read = readStatusLine(file)
+    if (read.state === 'ours' || read.state === 'unreadable') return read.state
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const opts: Electron.MessageBoxOptions = {
+      type: 'question',
+      message: t.statusLineTitle,
+      detail: t.statusLineDetail(file, JSON.stringify({ statusLine: plannedStatusLine(read, command) }, null, 2), read.state === 'other'),
+      buttons: [t.statusLineConfirm, t.statusLineCancel],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }
+    const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+    if (response !== 0) return 'cancelled'
+    // Re-read: the file may have changed while the dialog was open.
+    return writeStatusLine(file, readStatusLine(file), command)
+  })
   // Native picker so a folder for a terminal comes from the user, not from page script.
+  // Quick setup: a whole projects folder (e.g. D:\Code) readable by the browser / file tabs, picked natively.
+  ipcMain.handle('ccm:grant-folder', async (event) => {
+    if (!isAppFrame(event)) return null
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const opts: Electron.OpenDialogOptions = { title: t.grantTitle, properties: ['openDirectory'] }
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    const folder = res.canceled ? null : (res.filePaths[0] ?? null)
+    // A whole drive / filesystem root is never granted.
+    if (!folder || path.dirname(folder) === folder) return null
+    previewIpc?.grant(folder)
+    return folder
+  })
   ipcMain.handle('ccm:pick-folder', async (event, near: unknown) => {
     if (!isAppFrame(event)) return null
     const win = BrowserWindow.fromWebContents(event.sender)

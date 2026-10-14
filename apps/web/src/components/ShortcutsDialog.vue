@@ -2,10 +2,10 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
-import { hasTerminals } from '../lib/desktop'
+import { desktop, hasTerminals } from '../lib/desktop'
 import { isMac } from '../lib/platform'
 import { retireOverlay } from '../lib/motion'
-import { SHORTCUTS, workspaceShortcuts, type Shortcut } from '../lib/shortcuts'
+import { SHORTCUTS, viewShortcuts, workspaceShortcuts, type Shortcut } from '../lib/shortcuts'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -22,6 +22,7 @@ const groups = computed(() => {
     items: SHORTCUTS.filter((s: Shortcut) => s.group === g),
   }))
   if (hasTerminals) list.splice(2, 0, { id: 'workspace', items: workspaceShortcuts(isMac) })
+  if (desktop) list.splice(list.length - 1, 0, { id: 'view', items: viewShortcuts(isMac) })
   return list
 })
 

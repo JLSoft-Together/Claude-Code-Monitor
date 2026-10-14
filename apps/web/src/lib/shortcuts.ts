@@ -1,7 +1,7 @@
 export interface Shortcut {
   id: string
   keys: string[]
-  group: 'panels' | 'map' | 'help' | 'workspace'
+  group: 'panels' | 'map' | 'help' | 'workspace' | 'view'
 }
 
 export const SHORTCUTS: Shortcut[] = [
@@ -50,6 +50,22 @@ export function workspaceShortcuts(mac: boolean): Shortcut[] {
     { id: 'wsExplorer', keys: ['Ctrl', 'Shift', 'E'], group },
     { id: 'wsFind', keys: ['Ctrl', 'Shift', 'F'], group },
   ]
+}
+
+/** App zoom and code size (useWheelZoom + the main process). */
+export function viewShortcuts(mac: boolean): Shortcut[] {
+  const group = 'view' as const
+  return mac
+    ? [
+        { id: 'zoomApp', keys: ['⌘', '+', '−', '0'], group },
+        { id: 'zoomCode', keys: ['⌥', '⌘', '+', '−', '0'], group },
+        { id: 'zoomWheel', keys: ['⌃', 'Scroll'], group },
+      ]
+    : [
+        { id: 'zoomApp', keys: ['Ctrl', '+', '−', '0'], group },
+        { id: 'zoomCode', keys: ['Ctrl', 'Alt', '+', '−', '0'], group },
+        { id: 'zoomWheel', keys: ['Ctrl', 'Wheel'], group },
+      ]
 }
 
 /** One workspace chord as text: "Ctrl+Shift+T", or "⌘T" on macOS. */

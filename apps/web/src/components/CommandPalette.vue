@@ -3,6 +3,10 @@ import { modeOf, THEMES } from '../lib/themes'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  AArrowDown,
+  AArrowUp,
+  ListChecks,
+  Type,
   Activity,
   AppWindow,
   Bell,
@@ -27,7 +31,9 @@ import {
   Lightbulb,
 } from 'lucide-vue-next'
 import { retireOverlay, withViewTransition } from '../lib/motion'
-import { hasTerminals } from '../lib/desktop'
+import { desktop, hasTerminals } from '../lib/desktop'
+import { visibleFonts } from '../lib/fonts'
+import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
 import { shortPath } from '../lib/format'
 import { statusMeta } from '../lib/status'
@@ -134,6 +140,18 @@ const items = computed<Item[]>(() => {
       on: settings.theme === th.id,
       run: () => withViewTransition(() => settings.setTheme(th.id)),
     })),
+    ...(['code', 'ui'] as const).flatMap((kind) =>
+      visibleFonts(kind, desktop?.platform).map((f) => ({
+        id: `c:font:${kind}:${f.id}`,
+        group: 'prefs' as const,
+        label: t(kind === 'code' ? 'fonts.paletteCode' : 'fonts.paletteUi', { name: f.id === 'system' ? t('fonts.system') : f.name }),
+        icon: Type,
+        on: (kind === 'code' ? settings.codeFont : settings.uiFont) === f.id,
+        run: () => (kind === 'code' ? settings.setCodeFont(f.id) : settings.setUiFont(f.id)),
+      })),
+    ),
+    { id: 'c:codeLarger', group: 'prefs', label: t('fonts.paletteLarger'), sub: t('fonts.px', { n: settings.codeFontSize }), icon: AArrowUp, run: () => stepCodeSize(settings, 1) },
+    { id: 'c:codeSmaller', group: 'prefs', label: t('fonts.paletteSmaller'), sub: t('fonts.px', { n: settings.codeFontSize }), icon: AArrowDown, run: () => stepCodeSize(settings, -1) },
     { id: 'c:keyHints', group: 'prefs', label: t('keys.hints'), icon: Keyboard, on: settings.keyHints, run: () => (settings.keyHints = !settings.keyHints) },
     { id: 'c:tools', group: 'prefs', label: t('palette.toolsPref'), icon: ListFilter, on: !settings.hideTools, run: () => (settings.hideTools = !settings.hideTools) },
     { id: 'c:lang', group: 'prefs', label: t('palette.language'), sub: settings.locale === 'vi' ? 'Tiếng Việt → English' : 'English → Tiếng Việt', icon: Languages, run: () => settings.toggleLocale() },
@@ -147,6 +165,7 @@ const items = computed<Item[]>(() => {
         ]
       : []),
     { id: 'c:diag', group: 'help', label: t('diag.title'), icon: Stethoscope, run: () => (ui.diagnosticsOpen = true) },
+    ...(desktop ? [{ id: 'c:setup', group: 'help' as const, label: t('setup.open'), sub: t('setup.openHint'), icon: ListChecks, run: () => (ui.setupOpen = true) }] : []),
   ]
   return [...sessions, ...favs, ...commands.map((c) => ({ ...c, hay: fold(`${c.label} ${c.sub ?? ''}`) }))]
 })

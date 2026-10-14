@@ -364,7 +364,8 @@ const lineCount = computed(() => lines.value.length)
 .code {
   color: var(--shiki-foreground);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--ccm-code-size, 13px);
+  font-variant-ligatures: none;
   line-height: 1.5;
   tab-size: 4;
 }
@@ -429,7 +430,7 @@ const lineCount = computed(() => lines.value.length)
 /* Rendered Markdown reads as a document on the dark well, same ink as the code view. */
 .md {
   color: var(--ccm-well-ink);
-  font-size: 14px;
+  font-size: calc(var(--ccm-code-size, 13px) + 1px);
   line-height: 1.6;
 }
 .md :deep(h1),
