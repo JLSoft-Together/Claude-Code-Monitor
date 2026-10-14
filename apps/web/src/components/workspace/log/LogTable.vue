@@ -180,10 +180,10 @@ defineExpose({ focus: () => scroller.value?.focus() })
               <Tag v-if="l.kind === 'tag'" :size="10" class="shrink-0" aria-hidden="true" />
               <span class="truncate">{{ l.kind === 'head' ? t('workspace.log.table.head') : labelText(l) }}</span>
             </span>
-            <span class="min-w-0 truncate" :title="v.c.subject">{{ v.c.subject }}</span>
+            <span class="min-w-0 truncate" :title="v.c.subject" data-log-subject>{{ v.c.subject }}</span>
           </span>
-          <span class="hidden w-32 shrink-0 truncate text-ink-muted @[20rem]:block" :title="`${v.c.author} <${v.c.email}>`">{{ v.c.author }}</span>
-          <span class="hidden w-32 shrink-0 truncate text-right text-ink-muted tabular @[26rem]:block" :title="fullFmt.format(v.c.time * 1000)">{{ dateFmt.format(v.c.time * 1000) }}</span>
+          <span class="hidden w-32 min-w-0 shrink truncate text-ink-muted @[24rem]:block" :title="`${v.c.author} <${v.c.email}>`">{{ v.c.author }}</span>
+          <span class="hidden w-32 min-w-0 shrink truncate text-right text-ink-muted tabular @[34rem]:block" :title="fullFmt.format(v.c.time * 1000)">{{ dateFmt.format(v.c.time * 1000) }}</span>
         </div>
       </div>
       <p v-if="loadingMore" class="py-1 text-center text-2xs text-ink-faint">{{ t('workspace.log.table.loadingMore') }}</p>

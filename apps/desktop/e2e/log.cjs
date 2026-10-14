@@ -74,7 +74,36 @@ async function run(app) {
   await waitFor(`document.querySelector('[data-log-details]').textContent.includes('main')`, 8000, 'contains').catch(() => {})
   check('"In N branches" lists main', await evaluate(`document.querySelector('[data-log-details]').textContent.includes('main')`))
   await shot('log-02-details')
-  check('narrow pane keeps the selected subject readable and clear of author/date', await evaluate(`(() => { const row = document.querySelector('[data-log-table] [data-commit][aria-selected=true]'); const s = [...row.querySelectorAll('span[title]')].find((e) => e.textContent.trim() === 'Merge feature/x'); if (!s) return false; const r = s.getBoundingClientRect(); const cells = [...row.children].filter((c) => c !== s.parentElement && c.tagName === 'SPAN' && c.getBoundingClientRect().width > 0); return r.width > 40 && cells.every((c) => c.getBoundingClientRect().left >= r.right - 1) && row.scrollWidth <= row.clientWidth + 1 })()`))
+  // Fixed table widths: columns must fit or hide, never clip.
+  const atWidth = (w) => evaluate(`(async () => {
+    const wrap = document.querySelector('[data-log-table]').parentElement
+    wrap.style.flex = 'none'; wrap.style.width = '${w}px'
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const row = document.querySelector('[data-log-table] [data-commit][aria-selected=true]')
+    const rr = row.getBoundingClientRect()
+    const subject = row.querySelector('[data-log-subject]').getBoundingClientRect()
+    const cells = [...row.children].filter((c) => c.getBoundingClientRect().width > 0)
+    const vis = (i) => cells.length > i
+    const spans = [...row.children].filter((c) => c.tagName === 'SPAN' && c.getBoundingClientRect().width > 0 && !c.contains(row.querySelector('[data-log-subject]')))
+    return {
+      subject: subject.width,
+      cols: spans.length,
+      fits: row.scrollWidth <= row.clientWidth + 1 && cells.every((c) => c.getBoundingClientRect().right <= rr.right + 1) && spans.every((c) => c.getBoundingClientRect().left >= subject.right - 1),
+      title: row.title,
+      pills: Math.max(0, ...[...row.querySelectorAll('[data-ref-pill]')].map((p) => p.getBoundingClientRect().width)),
+    }
+  })()`)
+  const w300 = await atWidth(300)
+  check('300px: author and date hidden, subject readable', w300.cols === 0 && w300.subject > 40 && w300.fits, JSON.stringify(w300))
+  await shot('log-02b-300')
+  const w460 = await atWidth(460)
+  check('460px: author shown, date hidden, nothing clipped', w460.cols === 1 && w460.subject > 40 && w460.fits, JSON.stringify(w460))
+  await shot('log-02c-460')
+  const w640 = await atWidth(640)
+  check('640px: author and date shown, nothing clipped', w640.cols === 2 && w640.subject > 40 && w640.fits, JSON.stringify(w640))
+  await shot('log-02d-640')
+  check('row title carries author email and date; pills <= 96px', w640.title.includes('e2e@local') && w640.pills > 0 && w640.pills <= 96, w640.title)
+  await evaluate(`(() => { const wrap = document.querySelector('[data-log-table]').parentElement; wrap.style.flex = ''; wrap.style.width = '' })()`)
 
   // Diff of one file, Esc back.
   await evaluate(`document.querySelector('[data-log-file="b.txt"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)

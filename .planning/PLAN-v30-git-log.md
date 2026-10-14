@@ -11,6 +11,7 @@ Seeing what an agent committed (and on which branch) without leaving the app. Pl
 - Web pure/composable: `lib/commitGraph.ts` (incremental lane assignment, `MAX_LANES = 30`, wider lanes drawn in the last column), `lib/gitRefs.ts` (refs tree), `lib/logQuery.ts` (filters to query, graph vs flat), `lib/diffOpts.ts` (diff options shared by Changes and Log), `composables/useGitLog.ts` (paging, race-safe loads, refresh).
 - Components `components/workspace/log/*`: `LogPane` (columns, resizers, per-file diff with F7 / `[ ]` / Esc), `LogRefsTree` (roving tabindex), `LogFilterBar` + `LogFilterMenu` (text/hash with regex + match case, Branch, User, Date, Paths), `LogTable` (virtual rows, graph cell, ref pills, context menu with copy hash), `LogGraphCell`, `LogCommitDetails` ("In N branches" on demand), `LogCommitFiles` (tree, roving tabindex).
 - Pane kind `log` (`openLog`, layouts, PaneIcon `GitGraph`). Entry points: Changes toolbar (`data-changes-log`), Explorer › Changes header, Ctrl+K, `+` new-tab menu (`LaunchPicker`). i18n `i18n/workspace-log.ts` (en + vi) merged into `workspace.log`.
+- Narrow panes: the table is a container; author hides below 24rem and date below 34rem, both shrink with an ellipsis, the message column keeps a minimum width and ref pills truncate inside it.
 - Graph is drawn with no filter or only the Branch filter; User / Date / Text / Paths give a flat list (dots only).
 
 ## Rulings (deviations from the spec)
@@ -22,4 +23,4 @@ Seeing what an agent committed (and on which branch) without leaving the app. Pl
 Any write operation, stash list, remote fetch, blame, compare two commits, graph of other repos, editing.
 
 ## Tests
-`lib/commitGraph.test.ts`, `lib/gitRefs.test.ts`, `lib/logQuery.test.ts`, `composables/useGitLog.test.ts`, `stores/workspace.test.ts` (openLog), desktop log parser / args / real-repo tests, E2E `apps/desktop/e2e/log.cjs` (13 checks; also in `run.cjs`).
+`lib/commitGraph.test.ts`, `lib/gitRefs.test.ts`, `lib/logQuery.test.ts`, `composables/useGitLog.test.ts`, `stores/workspace.test.ts` (openLog), desktop log parser / args / real-repo tests, E2E `apps/desktop/e2e/log.cjs` (17 checks, narrow-pane widths 300 / 460 / 640 px; also in `run.cjs`).
