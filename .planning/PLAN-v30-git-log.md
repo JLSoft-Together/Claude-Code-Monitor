@@ -17,10 +17,11 @@ Seeing what an agent committed (and on which branch) without leaving the app. Pl
 ## Rulings (deviations from the spec)
 - Lane colours use the categorical `model-1..8` tokens, not `agent-*`: `.planning/COLOR-SYSTEM.md` reserves `agent-*` for agent kinds.
 - `TermPane` has no context menu, so the spec's "terminal context menu" entry became a row in the `+` new-tab menu.
+- The denied state reuses `AccessPrompt` (as the Browser and File panes do). A failed page query (incomplete regex, timeout) keeps the refs tree and filter bar mounted and shows the error with Clear filters / Retry in the table area (`useGitLog.pageError`); only refs-level failures (`useGitLog.error`) replace the whole pane.
 - Local ref pill `accent` / `accent-ink`, remote `ink-muted`, tag `warning`, file kinds `diff-*` via `KIND_CLASS`.
 
 ## Out of scope
 Any write operation, stash list, remote fetch, blame, compare two commits, graph of other repos, editing.
 
 ## Tests
-`lib/commitGraph.test.ts`, `lib/gitRefs.test.ts`, `lib/logQuery.test.ts`, `composables/useGitLog.test.ts`, `stores/workspace.test.ts` (openLog), desktop log parser / args / real-repo tests, E2E `apps/desktop/e2e/log.cjs` (17 checks, narrow-pane widths 300 / 460 / 640 px; also in `run.cjs`).
+`lib/commitGraph.test.ts`, `lib/gitRefs.test.ts`, `lib/logQuery.test.ts`, `composables/useGitLog.test.ts`, `stores/workspace.test.ts` (openLog), desktop log parser / args / real-repo tests, E2E `apps/desktop/e2e/log.cjs` (19 checks, incl. a bad-regex recovery case, narrow-pane widths 300 / 460 / 640 px; also in `run.cjs`).
