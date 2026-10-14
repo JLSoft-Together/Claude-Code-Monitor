@@ -38,7 +38,7 @@ function label(r: RefRow): string {
 
 function onKey(e: KeyboardEvent): void {
   const list = rows.value
-  const at = list.findIndex((r) => r.id === focusId.value)
+  const at = list.findIndex((r) => r.id === tabId.value)
   const go = (i: number): void => {
     const r = list[Math.max(0, Math.min(list.length - 1, i))]
     if (!r) return
@@ -78,6 +78,7 @@ function onKey(e: KeyboardEvent): void {
         :style="{ paddingLeft: `${6 + r.depth * 14}px` }"
         :title="r.kind === 'ref' ? r.name : undefined"
         :data-ref="r.kind === 'ref' ? r.ref : undefined"
+        @focus="focusId = r.id"
         @click="focusId = r.id; activate(r)"
       >
         <ChevronRight v-if="r.kind !== 'ref' && !(r.kind === 'section' && r.section === 'head')" :size="12" class="shrink-0 text-ink-faint transition-transform" :class="r.expanded ? 'rotate-90' : ''" aria-hidden="true" />

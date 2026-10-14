@@ -34,7 +34,7 @@ const vi: typeof en = {
     newLabel: 'Tab mới',
     close: 'Đóng terminal',
     closeTab: 'Đóng tab',
-    newHint: 'Tab mới: terminal, trình duyệt, file hoặc thay đổi ({keys})',
+    newHint: 'Tab mới: terminal, trình duyệt, file, thay đổi hoặc log ({keys})',
     splitPane: 'Chia đôi terminal',
     splitMenu: { title: 'Mở bên cạnh' },
     resize: 'Đổi kích thước terminal',

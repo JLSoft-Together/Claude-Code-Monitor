@@ -47,7 +47,12 @@ const copy = (s: string): void => void navigator.clipboard.writeText(s).catch(()
           {{ ok.hash.slice(0, 8) }}<Copy :size="11" aria-hidden="true" />
         </button>
         <span class="text-ink">{{ ok.author }}</span>
-        <a class="truncate text-accent-ink" :href="`mailto:${ok.email}`" :title="ok.email">&lt;{{ ok.email }}&gt;</a>
+        <span v-if="ok.email" class="inline-flex min-w-0 items-center gap-0.5">
+          <span class="truncate" :title="ok.email">&lt;{{ ok.email }}&gt;</span>
+          <button type="button" class="ccm-btn-plain size-5 shrink-0 p-0" :title="t('workspace.log.details.copyEmail')" :aria-label="t('workspace.log.details.copyEmail')" data-log-copy-email @click="copy(ok.email)">
+            <Copy :size="11" aria-hidden="true" />
+          </button>
+        </span>
         <span>{{ t('workspace.log.details.on', { date: fmt.format(ok.authorTime * 1000) }) }}</span>
       </p>
       <p v-if="ok.committer !== ok.author || ok.commitTime !== ok.authorTime" class="mt-1 text-2xs text-ink-faint">

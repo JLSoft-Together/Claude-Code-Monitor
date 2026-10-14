@@ -33,7 +33,7 @@ export default {
     newLabel: 'New tab',
     close: 'Close terminal',
     closeTab: 'Close tab',
-    newHint: 'New tab: terminal, browser, file or changes ({keys})',
+    newHint: 'New tab: terminal, browser, file, changes or log ({keys})',
     splitPane: 'Split terminal',
     splitMenu: { title: 'Open next to it' },
     resize: 'Resize terminals',

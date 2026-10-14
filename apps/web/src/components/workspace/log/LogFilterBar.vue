@@ -22,12 +22,16 @@ function change(patch: Partial<LogFilters>): void {
 
 const branchOptions = computed(() => {
   const r = props.refs
-  const all = [{ id: '', label: t('workspace.log.filter.allBranches'), checked: !props.filters.branch }]
+  const all = [
+    { id: '', label: t('workspace.log.filter.allBranches'), checked: !props.filters.branch },
+    { id: 'HEAD', label: t('workspace.log.refs.head'), checked: props.filters.branch === 'HEAD' },
+  ]
   if (!r) return all
   const refsList = [...r.local, ...r.remotes.flatMap((g) => g.refs), ...r.tags]
   return [...all, ...refsList.map((x) => ({ id: x.ref, label: x.name, checked: props.filters.branch === x.ref }))]
 })
-const branchValue = computed(() => branchOptions.value.find((o) => o.checked)?.label ?? '')
+// A ref the tree picked that has no option (refs not loaded yet): show its short name rather than an empty button.
+const branchValue = computed(() => branchOptions.value.find((o) => o.checked)?.label ?? props.filters.branch?.replace(/^refs\/(heads|remotes|tags)\//, '') ?? '')
 
 const userOptions = computed(() => {
   const me = props.refs?.me
@@ -95,7 +99,7 @@ async function onPath(id: string): Promise<void> {
     </label>
     <LogFilterMenu :label="t('workspace.log.filter.branch')" :value="branchValue" :active="!!filters.branch" :options="branchOptions" data-log-filter="branch" @pick="(id) => change({ branch: id || null })" />
     <LogFilterMenu :label="t('workspace.log.filter.user')" :value="filters.author ?? ''" :active="!!filters.author" :options="userOptions" data-log-filter="user" @pick="(id) => change({ author: id || null })" />
-    <LogFilterMenu :label="t('workspace.log.filter.date')" :value="t(`workspace.log.filter.dates.${filters.date}`)" :active="filters.date !== 'any'" :options="dateOptions" data-log-filter="date" @pick="(id) => change({ date: id as LogFilters['date'] })">
+    <LogFilterMenu :label="t('workspace.log.filter.date')" :value="t(`workspace.log.filter.dates.${filters.date}`)" :active="filters.date !== 'any'" :options="dateOptions" data-log-filter="date" :keep-open="['custom']" @pick="(id) => change({ date: id as LogFilters['date'] })">
       <template #extra>
         <div v-if="filters.date === 'custom'" class="flex flex-col gap-1 border-t border-line px-2 pt-1.5 pb-1">
           <label class="flex items-center justify-between gap-2 text-2xs text-ink-muted">

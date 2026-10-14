@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, ChevronDown } from 'lucide-vue-next'
 
-defineProps<{ label: string; value: string; active: boolean; options: { id: string; label: string; checked: boolean }[] }>()
+const props = defineProps<{ label: string; value: string; active: boolean; options: { id: string; label: string; checked: boolean }[]; keepOpen?: string[] }>()
 const emit = defineEmits<{ pick: [id: string] }>()
 const open = ref(false)
 const button = ref<HTMLButtonElement | null>(null)
@@ -11,6 +11,11 @@ const ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inner px-
 
 function pick(id: string): void {
   emit('pick', id)
+  if (props.keepOpen?.includes(id)) {
+    // The choice needs more input (date range): keep the menu so its extra fields can be reached.
+    void nextTick(() => menu.value?.querySelector<HTMLElement>('input, select')?.focus())
+    return
+  }
   open.value = false
   button.value?.focus()
 }
