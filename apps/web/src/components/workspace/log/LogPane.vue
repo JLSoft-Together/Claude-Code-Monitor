@@ -17,6 +17,7 @@ import LogCommitFiles from './LogCommitFiles.vue'
 import LogFilterBar from './LogFilterBar.vue'
 import LogRefsTree from './LogRefsTree.vue'
 import LogTable from './LogTable.vue'
+import AccessPrompt from '../AccessPrompt.vue'
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
 const emit = defineEmits<{ root: [root: string]; selected: []; open: [path: string, line?: number] }>()
@@ -286,7 +287,13 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
       <slot name="end" />
     </div>
 
-    <p v-if="log.error.value && !log.commits.value.length" class="grid flex-1 place-items-center p-6 text-sm text-ink-muted">{{ t(`workspace.log.error.${log.error.value}`) }}</p>
+    <div v-if="log.error.value && !log.commits.value.length" class="grid flex-1 place-items-center p-6 text-center" data-log-fatal>
+      <AccessPrompt v-if="log.error.value === 'denied'" :path="log.root.value ?? cwd" @granted="log.reload()" />
+      <div v-else class="flex flex-col items-center gap-2">
+        <p class="text-sm text-ink-muted">{{ t(`workspace.log.error.${log.error.value}`) }}</p>
+        <button type="button" class="ccm-btn" @click="log.reload()">{{ t('workspace.log.table.retry') }}</button>
+      </div>
+    </div>
 
     <div v-else class="flex min-h-0 min-w-0 flex-1">
       <template v-if="cols.refsOpen">
@@ -340,11 +347,14 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
             :loading-more="log.loadingMore.value"
             :more="log.more.value"
             :empty="empty"
+            :error="log.pageError.value"
+            :filtered="hasFilters(log.filters.value)"
             @select="log.select"
             @open="openCommit"
             @load-more="log.loadMore()"
             @menu="commitMenu"
             @clear="log.setFilters({ text: '', branch: null, author: null, date: 'any', from: '', to: '', paths: [] })"
+            @retry="log.reload()"
           />
         </div>
         <div class="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-fill" role="separator" aria-orientation="vertical" @pointerdown.prevent="drag($event, 'side')" />

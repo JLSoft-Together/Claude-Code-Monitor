@@ -209,4 +209,72 @@ describe('useGitLog', () => {
     expect(log.error.value).toBeNull()
     scope.stop()
   })
+  it('keeps refs and filters usable after a failed page, and recovers when the filter changes', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    pageImpl = async (q) => (q.text === 'fix(' ? { ok: false, error: 'failed' } : { ok: true, commits: [commit(1)], more: false })
+    log.setFilters({ text: 'fix(', regex: true })
+    await flush()
+    expect(log.pageError.value).toBe('failed')
+    expect(log.error.value).toBeNull()
+    expect(log.refs.value).not.toBeNull()
+    expect(log.commits.value).toEqual([])
+    log.setFilters({ text: 'fix' })
+    await flush()
+    expect(log.pageError.value).toBeNull()
+    expect(log.commits.value).toHaveLength(1)
+    scope.stop()
+  })
+
+  it('retries a failed page on reload without touching the filters', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    pageImpl = async () => ({ ok: false, error: 'failed' })
+    log.setFilters({ text: 'x' })
+    await flush()
+    expect(log.pageError.value).toBe('failed')
+    pageImpl = async () => ({ ok: true, commits: [commit(1)], more: false })
+    await log.reload()
+    expect(log.pageError.value).toBeNull()
+    expect(log.filters.value.text).toBe('x')
+    expect(log.commits.value).toHaveLength(1)
+    scope.stop()
+  })
+
+  it('pages from the git row count when a hash hit was injected, and dedupes appended rows', async () => {
+    pageImpl = async (q) =>
+      q.skip
+        ? { ok: true, commits: [commit(501), commit(0)], more: false }
+        : { ok: true, commits: Array.from({ length: 501 }, (_, i) => commit(i)), more: true, injected: 1 }
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    expect(log.commits.value).toHaveLength(501)
+    await log.loadMore()
+    expect(pages.at(-1)!.skip).toBe(500)
+    expect(log.commits.value.map((c) => c.hash).filter((h) => h === 'h0')).toHaveLength(1)
+    expect(log.commits.value).toHaveLength(502)
+    expect(log.rows.value).toHaveLength(502)
+    scope.stop()
+  })
+
+  it('keeps every author seen while filtered by one, until the root changes', async () => {
+    const dir = ref('/r')
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => dir.value, () => true, { debounceMs: 0 }))!
+    await flush()
+    expect(log.authors.value).toEqual(['Ann', 'Bo'])
+    pageImpl = async () => ({ ok: true, commits: [commit(1)], more: false })
+    log.setFilters({ author: 'Bo' })
+    await flush()
+    expect(log.commits.value).toHaveLength(1)
+    expect(log.authors.value).toEqual(['Ann', 'Bo'])
+    pageImpl = async () => ({ ok: true, commits: [{ ...commit(2), author: 'Cy' }], more: false })
+    dir.value = '/other'
+    await flush()
+    expect(log.authors.value).toEqual(['Cy'])
+    scope.stop()
+  })
 })

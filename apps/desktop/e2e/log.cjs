@@ -65,6 +65,16 @@ async function run(app) {
   await evaluate(`document.querySelector('[data-log-clear]').click()`)
   await waitFor(`document.querySelectorAll('[data-log-table] [data-commit]').length === 4`, 8000, 'cleared').catch(() => {})
 
+  // Regex with an incomplete pattern: git exits 128; the filter bar must stay and recover.
+  await evaluate(`document.querySelector('[data-log-pane] [aria-label="Regex"]').click()`)
+  await evaluate(`(() => { const i = document.querySelector('[data-log-text]'); i.value = 'fix('; i.dispatchEvent(new Event('input', { bubbles: true })) })()`)
+  await waitFor(`!!document.querySelector('[data-log-error]')`, 8000, 'regex error').catch(() => {})
+  check('a bad regex shows the error in the table area and keeps the filter bar', await evaluate(`!!document.querySelector('[data-log-error]') && !!document.querySelector('[data-log-text]') && !!document.querySelector('[data-log-refs]') && !!document.querySelector('[data-log-error-retry]')`))
+  await evaluate(`document.querySelector('[data-log-error-clear]').click()`)
+  await waitFor(`document.querySelectorAll('[data-log-table] [data-commit]').length === 4`, 8000, 'rows back').catch(() => {})
+  check('Clear filters on the error brings the rows back', (await evaluate(`document.querySelectorAll('[data-log-table] [data-commit]').length`)) === 4)
+  await evaluate(`document.querySelector('[data-log-pane] [aria-label="Regex"]').click()`)
+
   // Select the merge: files vs first parent + details.
   await evaluate(`[...document.querySelectorAll('[data-log-table] [data-commit]')].find((r) => r.textContent.includes('Merge feature/x')).click()`)
   await waitFor(`!!document.querySelector('[data-log-file="b.txt"]')`, 8000, 'merge files').catch(() => {})

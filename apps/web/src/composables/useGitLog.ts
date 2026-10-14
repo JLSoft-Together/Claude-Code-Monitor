@@ -11,7 +11,10 @@ export type LogLoadError = LogError | 'unavailable'
 export interface GitLog {
   root: Ref<string | null>
   refs: ShallowRef<RefsOk | null>
+  /** Refs-level failure (not a repo, no git, denied, bridge missing): the pane has nothing to show. */
   error: Ref<LogLoadError | null>
+  /** The last page query failed (bad regex, timeout): refs and filters stay usable. */
+  pageError: Ref<LogLoadError | null>
   filters: Ref<LogFilters>
   commits: ShallowRef<LogCommit[]>
   rows: ShallowRef<GraphRow[]>
@@ -43,6 +46,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
   const root = ref<string | null>(null)
   const refs = shallowRef<RefsOk | null>(null)
   const error = ref<LogLoadError | null>(null)
+  const pageError = ref<LogLoadError | null>(null)
   const filters = ref<LogFilters>(emptyFilters())
   const commits = shallowRef<LogCommit[]>([])
   const rows = shallowRef<GraphRow[]>([])
@@ -63,11 +67,17 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
   let watched: string | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  const authors = computed(() => {
-    const names = new Set<string>()
-    for (const c of commits.value) names.add(c.author)
-    return [...names].sort((a, b) => a.localeCompare(b))
-  })
+  // Every author seen for this root, so picking one does not shrink the menu to that one name.
+  const knownAuthors = shallowRef<Set<string>>(new Set())
+  const authors = computed(() => [...knownAuthors.value].sort((a, b) => a.localeCompare(b)))
+  /** Rows git itself returned for the current query: an injected hash hit does not count toward `skip`. */
+  let gitRows = 0
+
+  function noteAuthors(list: LogCommit[]): void {
+    const next = new Set(knownAuthors.value)
+    for (const c of list) next.add(c.author)
+    if (next.size !== knownAuthors.value.size) knownAuthors.value = next
+  }
 
   function applyPage(list: LogCommit[], append: boolean): void {
     if (mode.value === 'graph') {
@@ -79,6 +89,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
       rows.value = append ? [...rows.value, ...flatRows(list.length)] : flatRows(list.length)
     }
     commits.value = append ? [...commits.value, ...list] : list
+    noteAuthors(list)
   }
 
   /** 'stale' = superseded by a newer call, cwd change or dispose: the caller must touch nothing. */
@@ -91,6 +102,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
       if (!commits.value.length) refs.value = null
       return 'fail'
     }
+    error.value = null
     refs.value = res
     signature = refsSignature(res)
     if (root.value !== res.root) {
@@ -109,12 +121,14 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     if (disposed || run !== seq) return
     loading.value = false
     if (!res.ok) {
-      error.value = res.error
+      pageError.value = res.error
+      gitRows = 0
       applyPage([], false)
       more.value = false
       return
     }
-    error.value = null
+    pageError.value = null
+    gitRows = res.commits.length - (res.injected ?? 0)
     applyPage(res.commits, false)
     more.value = res.more
     if (selected.value && !res.commits.some((c) => c.hash === selected.value)) select(res.commits[0]?.hash ?? null)
@@ -132,14 +146,16 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     if (!r || !more.value || loadingMore.value || loading.value) return
     const run = seq
     loadingMore.value = true
-    const res = await logPage(r, toQuery(filters.value, now(), commits.value.length))
+    const res = await logPage(r, toQuery(filters.value, now(), gitRows))
     loadingMore.value = false
     if (disposed || run !== seq) return
     if (!res.ok) {
       more.value = false
       return
     }
-    applyPage(res.commits, true)
+    gitRows += res.commits.length
+    const seen = new Set(commits.value.map((c) => c.hash))
+    applyPage(res.commits.filter((c) => !seen.has(c.hash)), true)
     more.value = res.more
   }
 
@@ -200,8 +216,9 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
 
   async function refreshIfMoved(): Promise<void> {
     const before = signature
+    const failed = !!error.value || !!pageError.value
     if ((await loadRefs()) !== 'ok') return
-    if (signature !== before || error.value) {
+    if (signature !== before || failed) {
       cache.clear()
       await firstPage()
     }
@@ -229,6 +246,9 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     graph = emptyGraph()
     signature = ''
     error.value = null
+    pageError.value = null
+    knownAuthors.value = new Set()
+    gitRows = 0
     commits.value = []
     rows.value = []
     more.value = false
@@ -252,5 +272,5 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
 
   void reload()
 
-  return { root, refs, error, filters, commits, rows, mode, more, loading, loadingMore, selected, detail, detailLoading, authors, reload, loadMore, select, setFilters, contains, refreshIfMoved }
+  return { root, refs, error, pageError, filters, commits, rows, mode, more, loading, loadingMore, selected, detail, detailLoading, authors, reload, loadMore, select, setFilters, contains, refreshIfMoved }
 }

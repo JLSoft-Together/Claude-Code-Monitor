@@ -19,8 +19,12 @@ const props = defineProps<{
   more: boolean
   /** Why the list is empty: none = it is not, filtered = no match, repo = no commits yet. */
   empty: 'none' | 'filtered' | 'repo'
+  /** The page query failed: the filters stay usable, this area explains and offers a way out. */
+  error?: string | null
+  /** Any filter is set (the error then offers to clear them). */
+  filtered?: boolean
 }>()
-const emit = defineEmits<{ select: [hash: string]; open: [hash: string]; loadMore: []; menu: [hash: string, x: number, y: number]; clear: [] }>()
+const emit = defineEmits<{ select: [hash: string]; open: [hash: string]; loadMore: []; menu: [hash: string, x: number, y: number]; clear: []; retry: [] }>()
 const { t, locale } = useI18n()
 
 const ROW_H = 24
@@ -130,6 +134,16 @@ defineExpose({ focus: () => scroller.value?.focus() })
 <template>
   <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
     <div v-if="loading && !commits.length" class="grid flex-1 place-items-center text-xs text-ink-muted">…</div>
+    <div v-else-if="error" class="grid flex-1 place-items-center p-6 text-center" role="alert" data-log-error>
+      <div class="flex max-w-sm flex-col items-center gap-2">
+        <p class="text-sm text-ink-muted">{{ t(`workspace.log.error.${error}`) }}</p>
+        <p v-if="filtered" class="text-xs text-ink-faint">{{ t('workspace.log.table.errorHint') }}</p>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <button v-if="filtered" type="button" class="ccm-btn" data-log-error-clear @click="emit('clear')">{{ t('workspace.log.filter.clear') }}</button>
+          <button type="button" class="ccm-btn" data-log-error-retry @click="emit('retry')">{{ t('workspace.log.table.retry') }}</button>
+        </div>
+      </div>
+    </div>
     <div v-else-if="empty !== 'none'" class="grid flex-1 place-items-center p-6 text-center">
       <div class="flex flex-col items-center gap-2">
         <p class="text-sm text-ink-muted">{{ t(empty === 'repo' ? 'workspace.log.table.emptyRepo' : 'workspace.log.table.empty') }}</p>
