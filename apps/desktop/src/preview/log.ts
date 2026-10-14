@@ -1,5 +1,6 @@
-import { LOG_PAGE, type CommitFile, type CommitFileKind, type LocalRef, type LogCommit, type LogQuery, type LogRef, type RemoteGroup } from '@ccm/shared'
-import { safeRepoPath } from './changes'
+import { isHash, LOG_PAGE, type CommitDetail, type CommitFile, type CommitFileKind, type ContainsResult, type LocalRef, type LogCommit, type LogError, type LogPageResult, type LogQuery, type LogRef, type RefsResult, type RemoteGroup } from '@ccm/shared'
+import { cleanDiffOptions, diffArgs, emptyTree, MAX_DIFF_BYTES, MAX_FULL_DIFF_BYTES, parseNumstat, safeRepoPath, type ChangesDiff, type DiffOptions } from './changes'
+import { execGit, type GitExecResult } from './gitExec'
 
 export const FS = '\x1f'
 export const LOG_FORMAT = ['%H', '%P', '%an', '%ae', '%at', '%D', '%s'].join('%x1f')
@@ -100,4 +101,123 @@ export function logArgs(q: LogQuery): string[] {
   }
   args.push(...(q.branch ? [q.branch] : ['--branches', '--remotes', '--tags', 'HEAD']), '--', ...q.paths)
   return args
+}
+
+const T = { timeoutMs: 20_000 }
+const fail = (res: GitExecResult): LogError => (res.code === null && res.stderr === 'git not found' ? 'no-git' : 'failed')
+
+export async function listRefs(root: string): Promise<RefsResult> {
+  const [refs, remotes, branch, head, me] = await Promise.all([
+    execGit(root, ['for-each-ref', `--format=%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:short)%1f%(upstream:track,nobracket)`, 'refs/heads', 'refs/remotes', 'refs/tags'], T),
+    execGit(root, ['remote'], T),
+    execGit(root, ['symbolic-ref', '-q', '--short', 'HEAD'], T),
+    execGit(root, ['rev-parse', '-q', '--verify', 'HEAD'], T),
+    execGit(root, ['config', 'user.name'], T),
+  ])
+  if (refs.code !== 0) return { ok: false, error: fail(refs) }
+  const parsed = parseRefLines(refs.stdout, remotes.stdout.split('\n').filter(Boolean))
+  return {
+    ok: true,
+    root,
+    head: { branch: branch.code === 0 ? branch.stdout.trim() || null : null, hash: head.code === 0 ? head.stdout.trim() || null : null },
+    ...parsed,
+    me: me.code === 0 ? me.stdout.trim() || null : null,
+  }
+}
+
+async function resolveCommit(root: string, hash: unknown): Promise<string | LogError> {
+  if (!isHash(hash)) return 'denied'
+  const res = await execGit(root, ['rev-parse', '--verify', '-q', `${hash}^{commit}`], { maxBytes: 4096 })
+  return res.code === 0 ? res.stdout.trim() : 'missing'
+}
+
+export async function logPage(root: string, rawQuery: unknown): Promise<LogPageResult> {
+  const q = cleanLogQuery(rawQuery, root)
+  const hasHead = (await execGit(root, ['rev-parse', '-q', '--verify', 'HEAD'], { maxBytes: 4096 })).code === 0
+  if (!hasHead && !q.branch) return { ok: true, commits: [], more: false }
+  const res = await execGit(root, logArgs(q), T)
+  if (res.code !== 0 && !res.truncated) return { ok: false, error: fail(res) }
+  let commits = parseLog(res.stdout)
+  const more = commits.length > LOG_PAGE || res.truncated
+  commits = commits.slice(0, LOG_PAGE)
+  // A hash typed in the text field: that commit first, then the message matches.
+  if (q.skip === 0 && q.text && isHash(q.text)) {
+    const full = await resolveCommit(root, q.text)
+    if (full !== 'denied' && full !== 'missing') {
+      const one = await execGit(root, ['log', '-z', `--format=${LOG_FORMAT}`, '-n', '1', full, '--'], T)
+      const found = one.code === 0 ? parseLog(one.stdout)[0] : undefined
+      if (found) commits = [found, ...commits.filter((c) => c.hash !== found.hash)]
+    }
+  }
+  return { ok: true, commits, more }
+}
+
+/** First parent, or the empty tree for a root commit. */
+async function parentOf(root: string, parents: string[]): Promise<string | null> {
+  return parents[0] ?? (await emptyTree(root))
+}
+
+export async function commitDetail(root: string, hash: unknown): Promise<CommitDetail> {
+  const full = await resolveCommit(root, hash)
+  if (full === 'denied' || full === 'missing') return { ok: false, error: full }
+  const show = await execGit(root, ['show', '-s', `--format=${['%H', '%P', '%an', '%ae', '%at', '%cn', '%ce', '%ct', '%B'].join('%x1f')}`, full], T)
+  if (show.code !== 0) return { ok: false, error: fail(show) }
+  const f = show.stdout.split(FS)
+  const parents = f[1] ? f[1].split(' ') : []
+  const base = await parentOf(root, parents)
+  if (!base) return { ok: false, error: 'failed' }
+  const [names, nums] = await Promise.all([
+    execGit(root, ['diff-tree', '-r', '-z', '-M', '--name-status', base, full], T),
+    execGit(root, ['diff-tree', '-r', '-z', '-M', '--numstat', base, full], T),
+  ])
+  if (names.code !== 0) return { ok: false, error: fail(names) }
+  const counts = nums.code === 0 ? parseNumstat(nums.stdout) : new Map()
+  const all = parseNameStatus(names.stdout)
+  const files = all.slice(0, MAX_COMMIT_FILES).map((file) => ({ ...file, ...(counts.get(file.path) ?? {}) }))
+  return {
+    ok: true,
+    hash: f[0]!,
+    parents,
+    author: f[2]!,
+    email: f[3]!,
+    authorTime: Number(f[4]) || 0,
+    committer: f[5]!,
+    committerEmail: f[6]!,
+    commitTime: Number(f[7]) || 0,
+    message: f.slice(8).join(FS).replace(/\n+$/, ''),
+    files,
+    truncated: all.length > MAX_COMMIT_FILES || names.truncated,
+  }
+}
+
+export async function branchesContaining(root: string, hash: unknown): Promise<ContainsResult> {
+  const full = await resolveCommit(root, hash)
+  if (full === 'denied' || full === 'missing') return { ok: false, error: full }
+  const res = await execGit(root, ['branch', '-a', '--contains', full, '--format=%(refname:short)'], T)
+  if (res.code !== 0) return { ok: false, error: fail(res) }
+  return { ok: true, branches: res.stdout.split('\n').filter((b) => b && !b.endsWith('/HEAD')).slice(0, 500) }
+}
+
+export async function commitDiff(root: string, hash: unknown, rel: unknown, optsInput?: unknown, origRel?: unknown): Promise<ChangesDiff> {
+  const safe = safeRepoPath(root, rel)
+  const orig = origRel === undefined ? null : safeRepoPath(root, origRel)
+  if (!safe || (origRel !== undefined && !orig)) return { ok: false, error: 'denied' }
+  const full = await resolveCommit(root, hash)
+  if (full === 'denied' || full === 'missing') return { ok: false, error: full }
+  const parents = (await execGit(root, ['rev-list', '--parents', '-n', '1', full], { maxBytes: 16_384 })).stdout.trim().split(' ').slice(1)
+  const base = await parentOf(root, parents)
+  if (!base) return { ok: false, error: 'failed' }
+  const opts: Required<DiffOptions> = cleanDiffOptions(optsInput)
+  const paths = orig ? [orig.rel, safe.rel] : [safe.rel]
+  const runDiff = (o: Required<DiffOptions>, maxBytes: number) => execGit(root, ['diff', base, full, '-M', '--no-ext-diff', '--no-textconv', ...diffArgs(o), '--', ...paths], { maxBytes, timeoutMs: 20_000 })
+  let res = await runDiff(opts, opts.context === 'full' ? MAX_FULL_DIFF_BYTES : MAX_DIFF_BYTES)
+  let partial = false
+  if (res.truncated && opts.context === 'full') {
+    partial = true
+    res = await runDiff({ ...opts, context: 3 }, MAX_DIFF_BYTES)
+  }
+  if (res.code !== 0 && !res.truncated) return { ok: false, error: 'failed' }
+  if (res.truncated) return { ok: true, path: safe.rel, text: '', binary: false, tooLarge: true, untracked: false }
+  const binary = /^Binary files .* differ$/m.test(res.stdout) && !/^@@ /m.test(res.stdout)
+  return { ok: true, path: safe.rel, text: res.stdout, binary, tooLarge: false, untracked: false, ...(partial ? { partial } : {}) }
 }

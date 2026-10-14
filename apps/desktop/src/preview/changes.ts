@@ -211,11 +211,16 @@ async function hasHead(root: string): Promise<boolean> {
   return (await execGit(root, ['rev-parse', '--verify', '-q', 'HEAD'], { maxBytes: 4096 })).code === 0
 }
 
-/** HEAD, or the empty tree in a repo without commits. */
-async function baseRev(root: string): Promise<string | null> {
-  if (await hasHead(root)) return 'HEAD'
+/** Empty tree id of this repo's hash algorithm (sha1 / sha256). */
+export async function emptyTree(root: string): Promise<string | null> {
   const res = await execGit(root, ['hash-object', '-t', 'tree', '--stdin'], { input: '', maxBytes: 4096 })
   return res.code === 0 ? res.stdout.trim() : null
+}
+
+/** HEAD, or the empty tree in a repo without commits. */
+export async function baseRev(root: string): Promise<string | null> {
+  if (await hasHead(root)) return 'HEAD'
+  return emptyTree(root)
 }
 
 async function countLines(abs: string): Promise<{ added?: number; binary: boolean }> {
