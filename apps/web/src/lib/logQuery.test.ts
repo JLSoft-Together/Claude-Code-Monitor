@@ -31,3 +31,33 @@ describe('logQuery', () => {
     expect(toQuery({ ...emptyFilters(), text: '   ' }, NOW).text).toBeNull()
   })
 })
+
+describe('custom date range across DST changes', () => {
+  // Each case pins the zone where that date is a 23h or 25h day, so the check does not depend on the machine.
+  // The expected values come from calendar arithmetic, not +86400.
+  const withTZ = (tz: string, fn: () => void): void => {
+    const prev = process.env.TZ
+    process.env.TZ = tz
+    try {
+      fn()
+    } finally {
+      if (prev === undefined) delete process.env.TZ
+      else process.env.TZ = prev
+    }
+  }
+  const endOf = (y: number, m: number, d: number) => new Date(y, m - 1, d + 1).getTime() / 1000 - 1
+  const startOf = (y: number, m: number, d: number) => new Date(y, m - 1, d).getTime() / 1000
+
+  it.each([
+    ['America/New_York', '2026-03-08', 2026, 3, 8],
+    ['Europe/Paris', '2026-03-29', 2026, 3, 29],
+    ['Europe/Paris', '2026-10-25', 2026, 10, 25],
+    ['Asia/Saigon', '2026-10-02', 2026, 10, 2],
+  ])('ends and starts the range on local midnight in %s (%s)', (tz, date, y, m, d) => {
+    withTZ(tz, () => {
+      const q = toQuery({ ...emptyFilters(), date: 'custom', from: date, to: date }, NOW)
+      expect(q.until).toBe(endOf(y, m, d))
+      expect(q.since).toBe(startOf(y, m, d))
+    })
+  })
+})

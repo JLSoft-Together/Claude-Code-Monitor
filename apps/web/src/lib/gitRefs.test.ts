@@ -59,3 +59,15 @@ describe('refTree', () => {
     expect(collapsed.some((r) => r.kind === 'ref' && r.refKind === 'local')).toBe(false)
   })
 })
+
+describe('refTree tag folders', () => {
+  const tagged: RefsOk = { ...refs, tags: [{ ref: 'refs/tags/release/1.0', name: 'release/1.0', hash: 'a' }] }
+  const tagRefs = (rows: ReturnType<typeof refTree>) => rows.filter((r) => r.kind === 'ref' && r.refKind === 'tag').map((r) => (r as { ref: string }).ref)
+
+  it('hides a collapsed tag folder and shows it when a filter matches', () => {
+    const collapsed = refTree(tagged, '', new Set(['tags/release']))
+    expect(tagRefs(collapsed)).toEqual([])
+    expect(collapsed).toContainEqual(expect.objectContaining({ kind: 'folder', id: 'tags/release', expanded: false }))
+    expect(tagRefs(refTree(tagged, 'release', new Set(['tags/release'])))).toEqual(['refs/tags/release/1.0'])
+  })
+})

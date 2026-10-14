@@ -121,6 +121,6 @@ export function refTree(refs: RefsOk, filter: string, collapsed: ReadonlySet<str
     }
   })
   const tags: Leaf[] = refs.tags.filter((t) => match(t.name)).map((t) => ({ ref: t.ref, name: t.name, refKind: 'tag', current: false, tracked: false, ahead: 0, behind: 0, gone: false }))
-  section('tags', tags, () => nest(rows, tags, 'tags', 1, '', collapsed, true))
+  section('tags', tags, () => nest(rows, tags, 'tags', 1, '', collapsed, filtering))
   return rows
 }
