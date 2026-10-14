@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileWarning, GitBranch, GitCompare, RotateCw, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
+import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
+import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
-import { firstChangedLine, hunkPatch, parseUnifiedDiff, type DiffFile } from '../../lib/diff'
+import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
+import { blockPatch, changeBlocks } from '../../lib/diffBlocks'
 import { isMac } from '../../lib/platform'
 import {
   baseName,
@@ -17,22 +19,40 @@ import {
   onChangesUpdated,
   type ChangeEntry,
   type ChangesError,
+  type DiffWhitespace,
 } from '../../lib/preview'
 import DiffView from './DiffView.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 
-const props = withDefaults(defineProps<{ cwd: string; active?: boolean }>(), { active: true })
+const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
 const emit = defineEmits<{
-  /** Absolute path + first changed line (new side). */
+  /** Absolute path + line (new side). */
   open: [path: string, line?: number]
   /** Number of changed files, for the tab label "Changes (N)". */
   count: [n: number]
   /** Repo toplevel once known (the tab is keyed per worktree root). */
   root: [root: string]
+  /** `select` was applied (or cannot be): the owner clears it. */
+  selected: []
 }>()
 
 const { t } = useI18n()
-const LAYOUT_KEY = 'ccm.workspace.diffLayout'
+
+interface DiffOpts {
+  layout: 'inline' | 'split'
+  collapse: boolean
+  context: number
+  whitespace: DiffWhitespace
+  words: boolean
+}
+const OPTS_KEY = 'ccm.workspace.diffOpts'
+const OLD_LAYOUT_KEY = 'ccm.workspace.diffLayout'
+const TREE_KEY = 'ccm.workspace.changesTree'
+const CONTEXTS = [3, 5, 10]
+const WHITESPACE: DiffWhitespace[] = ['none', 'eol', 'all', 'all-blank']
+/** Past this many rows the viewer always folds unchanged runs. */
+const FORCE_COLLAPSE_LINES = 20_000
+
 const repoRoot = ref<string | null>(null)
 const branch = ref<string | null>(null)
 const entries = shallowRef<ChangeEntry[]>([])
@@ -41,40 +61,90 @@ const statusError = ref<ChangesError | null>(null)
 const loading = ref(true)
 const selected = ref<string | null>(null)
 const diffFile = shallowRef<DiffFile | null>(null)
+const partial = ref(false)
 const diffState = ref<'idle' | 'loading' | 'binary' | 'too-large' | 'empty' | 'error'>('idle')
 const diffError = ref<ChangesError | null>(null)
 const notice = ref<string | null>(null)
-const currentHunk = ref(0)
-const layout = ref<'inline' | 'split'>(readLayout())
-const pending = ref<{ entry: ChangeEntry; hunk?: number } | null>(null)
+const currentBlock = ref(0)
+const opts = ref<DiffOpts>(readOpts())
+const treeMode = ref(readLocal(TREE_KEY) === '1')
+const collapsedDirs = ref<Set<string>>(new Set())
+/** Tree cursor: `d:<group>:<path>` or `f:<path>`. */
+const cursor = ref<string | null>(null)
+const optionsOpen = ref(false)
+const pending = ref<{ entry: ChangeEntry; block?: number } | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
 const listEl = ref<HTMLElement | null>(null)
+const optionsEl = ref<HTMLElement | null>(null)
+const optionsButton = ref<HTMLButtonElement | null>(null)
 const diffView = ref<InstanceType<typeof DiffView> | null>(null)
+/** F7 at the last change arms a move to the next file (IntelliJ); any other step disarms it. */
+let armed: 1 | -1 | 0 = 0
+/** Where to land once the next file's diff is in: first or last change. */
+let landAt: 'first' | 'last' = 'first'
 let statusSeq = 0
 let diffSeq = 0
 let watched: string | null = null
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
-function readLayout(): 'inline' | 'split' {
+function readLocal(key: string): string | null {
   try {
-    return localStorage.getItem(LAYOUT_KEY) === 'split' ? 'split' : 'inline'
+    return localStorage.getItem(key)
   } catch {
-    return 'inline'
+    return null
   }
 }
-
-watch(layout, (v) => {
+function writeLocal(key: string, value: string): void {
   try {
-    localStorage.setItem(LAYOUT_KEY, v)
+    localStorage.setItem(key, value)
   } catch {
     // storage unavailable
   }
-})
+}
+
+function readOpts(): DiffOpts {
+  const base: DiffOpts = { layout: readLocal(OLD_LAYOUT_KEY) === 'split' ? 'split' : 'inline', collapse: true, context: 3, whitespace: 'none', words: true }
+  try {
+    const raw = JSON.parse(readLocal(OPTS_KEY) ?? 'null') as Partial<DiffOpts> | null
+    if (!raw || typeof raw !== 'object') return base
+    return {
+      layout: raw.layout === 'split' ? 'split' : raw.layout === 'inline' ? 'inline' : base.layout,
+      collapse: typeof raw.collapse === 'boolean' ? raw.collapse : base.collapse,
+      context: CONTEXTS.includes(raw.context as number) ? (raw.context as number) : base.context,
+      whitespace: WHITESPACE.includes(raw.whitespace as DiffWhitespace) ? (raw.whitespace as DiffWhitespace) : base.whitespace,
+      words: typeof raw.words === 'boolean' ? raw.words : base.words,
+    }
+  } catch {
+    return base
+  }
+}
+
+watch(opts, (v) => writeLocal(OPTS_KEY, JSON.stringify(v)), { deep: true })
+watch(treeMode, (v) => writeLocal(TREE_KEY, v ? '1' : '0'))
+watch(
+  () => opts.value.whitespace,
+  () => void loadDiff(true),
+)
 
 const groups = computed(() => groupChanges(entries.value))
-const ordered = computed(() => groups.value.flatMap((g) => g.items))
+/** Files in display order (tree order when grouped by folder, folded folders included): F7 / [ ] walk this. */
+const ordered = computed(() =>
+  groups.value.flatMap((g) =>
+    treeMode.value ? changesTree(g.items).flatMap((r) => (r.kind === 'file' ? [r.entry] : [])) : g.items,
+  ),
+)
+const treeGroups = computed(() =>
+  groups.value.map((g) => ({ ...g, rows: changesTree(g.items, new Set([...collapsedDirs.value].filter((k) => k.startsWith(`${g.key}:`)).map((k) => k.slice(g.key.length + 1)))) })),
+)
+const rowKey = (g: string, r: ChangesTreeRow): string => (r.kind === 'dir' ? `d:${g}:${r.path}` : `f:${r.entry.path}`)
+const visibleKeys = computed(() => treeGroups.value.flatMap((g) => g.rows.map((r) => rowKey(g.key, r))))
+
 const selectedEntry = computed(() => entries.value.find((e) => e.path === selected.value) ?? null)
-const canDiscardHunks = computed(() => selectedEntry.value?.kind === 'modified' && !!diffFile.value?.hunks.length)
+const blocks = computed(() => (diffFile.value ? changeBlocks(diffFile.value) : []))
+const lineCount = computed(() => diffFile.value?.hunks.reduce((n, h) => n + h.lines.length, 0) ?? 0)
+const collapse = computed(() => opts.value.collapse || lineCount.value > FORCE_COLLAPSE_LINES)
+const canRevert = computed(() => selectedEntry.value?.kind === 'modified' && blocks.value.length > 0)
+const revertBlocked = computed(() => (opts.value.whitespace !== 'none' ? t('workspace.diff.revertBlocked') : null))
 
 const absolute = (rel: string): string => absoluteIn(repoRoot.value ?? props.cwd, rel)
 
@@ -99,9 +169,30 @@ async function loadStatus(): Promise<void> {
   entries.value = res.entries
   truncated.value = res.truncated
   emit('count', res.entries.length)
+  if (applySelect()) return
   if (!selected.value || !res.entries.some((e) => e.path === selected.value)) selected.value = ordered.value[0]?.path ?? null
   else void loadDiff(true)
 }
+
+/** `select` prop (Show diff / Ctrl+D elsewhere) → that file, once the list is in. */
+function applySelect(): boolean {
+  const want = props.select
+  if (!want || !repoRoot.value) return false
+  const hit = entries.value.find((e) => samePath(absolute(e.path), want))
+  emit('selected')
+  if (!hit) return false
+  revealInTree(hit.path)
+  if (hit.path === selected.value) void loadDiff(true)
+  select(hit.path, true)
+  return true
+}
+
+watch(
+  () => props.select,
+  (want) => {
+    if (want && !loading.value) applySelect()
+  },
+)
 
 async function loadDiff(keepPosition = false): Promise<void> {
   const run = ++diffSeq
@@ -113,9 +204,9 @@ async function loadDiff(keepPosition = false): Promise<void> {
   }
   if (!keepPosition) {
     diffState.value = 'loading'
-    currentHunk.value = 0
+    currentBlock.value = 0
   }
-  const res = await changesDiff(repoRoot.value, entry.path)
+  const res = await changesDiff(repoRoot.value, entry.path, { context: 'full', whitespace: opts.value.whitespace })
   if (run !== diffSeq) return
   if (!res.ok) {
     diffError.value = res.error
@@ -130,8 +221,13 @@ async function loadDiff(keepPosition = false): Promise<void> {
   }
   const file = parseUnifiedDiff(res.text)[0] ?? null
   diffFile.value = file
+  partial.value = !!res.partial
   diffState.value = file?.hunks.length ? 'idle' : 'empty'
-  if (currentHunk.value >= (file?.hunks.length ?? 0)) currentHunk.value = 0
+  const total = blocks.value.length
+  if (!keepPosition && landAt === 'last') currentBlock.value = Math.max(0, total - 1)
+  landAt = 'first'
+  if (currentBlock.value >= total) currentBlock.value = Math.max(0, total - 1)
+  if (total && !keepPosition) void diffView.value?.scrollToBlock(currentBlock.value)
 }
 
 watch(selected, () => void loadDiff())
@@ -161,50 +257,168 @@ function onWindowFocus(): void {
 
 function select(path: string, focus = false): void {
   selected.value = path
+  cursor.value = `f:${path}`
+  armed = 0
   if (focus) void nextTick(() => listEl.value?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus())
 }
 
-function stepFile(dir: 1 | -1): void {
-  const list = ordered.value
-  if (!list.length) return
-  const at = list.findIndex((e) => e.path === selected.value)
-  const next = list[Math.max(0, Math.min(list.length - 1, at + dir))]
-  if (next) select(next.path, true)
+/** Opens the folders above `rel` in the tree so its row exists. */
+function revealInTree(rel: string): void {
+  if (!treeMode.value || !collapsedDirs.value.size) return
+  const next = new Set([...collapsedDirs.value].filter((k) => !rel.startsWith(`${k.slice(k.indexOf(':') + 1)}/`)))
+  if (next.size !== collapsedDirs.value.size) collapsedDirs.value = next
 }
 
-function stepHunk(dir: 1 | -1): void {
-  const total = diffFile.value?.hunks.length ?? 0
-  if (!total) return
-  currentHunk.value = Math.max(0, Math.min(total - 1, currentHunk.value + dir))
-  void diffView.value?.scrollToHunk(currentHunk.value)
+function stepFile(dir: 1 | -1, land: 'first' | 'last' = 'first'): boolean {
+  const list = ordered.value
+  if (!list.length) return false
+  const at = list.findIndex((e) => e.path === selected.value)
+  const next = list[at + dir]
+  if (!next) return false
+  landAt = land
+  revealInTree(next.path)
+  select(next.path, true)
+  return true
+}
+
+function focusBlock(i: number): void {
+  currentBlock.value = i
+  armed = 0
+}
+
+function stepBlock(dir: 1 | -1): void {
+  const total = blocks.value.length
+  const next = currentBlock.value + dir
+  if (total && next >= 0 && next < total) {
+    armed = 0
+    notice.value = null
+    currentBlock.value = next
+    void diffView.value?.scrollToBlock(next)
+    return
+  }
+  // Past the first / last change: the first press warns, the second moves to the neighbouring file.
+  if (armed === dir) {
+    armed = 0
+    notice.value = null
+    stepFile(dir, dir === 1 ? 'first' : 'last')
+    return
+  }
+  const list = ordered.value
+  const at = list.findIndex((e) => e.path === selected.value)
+  if (!list[at + dir]) return
+  armed = dir
+  notice.value = t(dir === 1 ? 'workspace.diff.nextFile' : 'workspace.diff.prevFile')
+}
+
+function moveCursor(dir: 1 | -1 | 'home' | 'end'): void {
+  const keys = visibleKeys.value
+  if (!keys.length) return
+  const at = cursor.value ? keys.indexOf(cursor.value) : -1
+  const i = dir === 'home' ? 0 : dir === 'end' ? keys.length - 1 : Math.max(0, Math.min(keys.length - 1, (at < 0 ? 0 : at) + dir))
+  focusRow(keys[i]!)
+}
+
+function focusRow(key: string): void {
+  cursor.value = key
+  if (key.startsWith('f:')) select(key.slice(2), true)
+  else void nextTick(() => listEl.value?.querySelector<HTMLElement>(`[data-row="${CSS.escape(key)}"]`)?.focus())
+}
+
+function toggleDir(group: string, path: string, open?: boolean): void {
+  const key = `${group}:${path}`
+  const next = new Set(collapsedDirs.value)
+  const isOpen = !next.has(key)
+  if (open === isOpen) return
+  if (isOpen) next.add(key)
+  else next.delete(key)
+  collapsedDirs.value = next
+}
+
+function onTreeKey(e: KeyboardEvent): boolean {
+  const key = cursor.value
+  if (!key) return false
+  const row = treeGroups.value.flatMap((g) => g.rows.map((r) => ({ g: g.key, r }))).find((x) => rowKey(x.g, x.r) === key)
+  if (!row) return false
+  if (e.key === 'ArrowRight' && row.r.kind === 'dir') {
+    if (!row.r.expanded) toggleDir(row.g, row.r.path, true)
+    else moveCursor(1)
+    return true
+  }
+  if (e.key === 'ArrowLeft') {
+    if (row.r.kind === 'dir' && row.r.expanded) {
+      toggleDir(row.g, row.r.path, false)
+      return true
+    }
+    const keys = visibleKeys.value
+    const rows = treeGroups.value.find((g) => g.key === row.g)!.rows
+    const at = rows.findIndex((r) => rowKey(row.g, r) === key)
+    for (let i = at - 1; i >= 0; i--) {
+      const r = rows[i]!
+      if (r.kind === 'dir' && r.depth < row.r.depth) {
+        focusRow(rowKey(row.g, r))
+        return true
+      }
+    }
+    return keys.length > 0
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && row.r.kind === 'dir') {
+    toggleDir(row.g, row.r.path)
+    return true
+  }
+  return false
 }
 
 function onKey(e: KeyboardEvent): void {
-  if (pending.value || e.ctrlKey || e.metaKey || e.altKey) return
+  if (pending.value) return
   const target = e.target as HTMLElement | null
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (target?.closest('input, textarea, select, [contenteditable="true"], [data-diff-options]')) return
   const key = e.key
+  if (key === 'F7' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault()
+    stepBlock(e.shiftKey ? -1 : 1)
+    return
+  }
+  if (key === 'F4' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    e.preventDefault()
+    openSelected(diffView.value?.lineOf(currentBlock.value))
+    return
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  const inList = !!listEl.value?.contains(target)
+  if (treeMode.value && inList && onTreeKey(e)) {
+    e.preventDefault()
+    return
+  }
   if (key === 'ArrowDown' || key === 'ArrowUp') {
     // Arrows keep scrolling the diff when focus is there.
-    if (!listEl.value?.contains(target) && target !== rootEl.value) return
+    if (!inList && target !== rootEl.value) return
     e.preventDefault()
-    stepFile(key === 'ArrowDown' ? 1 : -1)
+    if (treeMode.value) moveCursor(key === 'ArrowDown' ? 1 : -1)
+    else stepFile(key === 'ArrowDown' ? 1 : -1)
   } else if (key === 'j' || key === 'J' || key === 'k' || key === 'K') {
     e.preventDefault()
-    stepHunk(key.toLowerCase() === 'j' ? 1 : -1)
-  } else if (key === 'Home' || key === 'End') {
-    if (!listEl.value?.contains(target)) return
+    stepBlock(key.toLowerCase() === 'j' ? 1 : -1)
+  } else if (key === '[' || key === ']') {
     e.preventDefault()
-    const list = ordered.value
-    const pick = key === 'Home' ? list[0] : list[list.length - 1]
-    if (pick) select(pick.path, true)
+    notice.value = null
+    stepFile(key === ']' ? 1 : -1)
+  } else if (key === 'Home' || key === 'End') {
+    if (!inList) return
+    e.preventDefault()
+    if (treeMode.value) moveCursor(key === 'Home' ? 'home' : 'end')
+    else {
+      const list = ordered.value
+      const pick = key === 'Home' ? list[0] : list[list.length - 1]
+      if (pick) select(pick.path, true)
+    }
   }
 }
 
-function openSelected(): void {
+function openSelected(line?: number): void {
   const entry = selectedEntry.value
   if (!entry || entry.kind === 'deleted') return
-  emit('open', absolute(entry.path), diffFile.value ? firstChangedLine(diffFile.value) : undefined)
+  const blockLine = diffView.value?.lineOf(currentBlock.value)
+  emit('open', absolute(entry.path), line ?? blockLine)
 }
 
 const trashName = computed(() => t(`workspace.changes.trash.${isMac ? 'mac' : 'win'}`))
@@ -214,15 +428,12 @@ const confirmText = computed(() => {
   if (!p) return null
   const name = baseName(p.entry.path)
   const out: string[] = []
-  let preview: string[] = []
-  if (p.hunk !== undefined) {
-    const h = diffFile.value?.hunks[p.hunk]
-    const added = h?.lines.filter((l) => l.type === 'add').length ?? 0
-    const removed = h?.lines.filter((l) => l.type === 'del').length ?? 0
-    out.push(t('workspace.changes.confirm.lines', { added, removed }))
-    preview = (h?.lines ?? []).filter((l) => l.type === 'add' || l.type === 'del').slice(0, 12).map((l) => `${l.type === 'add' ? '+' : '−'} ${l.text}`)
+  if (p.block !== undefined) {
+    const b = blocks.value[p.block]
+    out.push(t('workspace.changes.confirm.lines', { added: b?.adds.length ?? 0, removed: b?.dels.length ?? 0 }))
+    const preview = [...(b?.dels ?? []).map((l) => `− ${l.text}`), ...(b?.adds ?? []).map((l) => `+ ${l.text}`)].slice(0, 12)
     out.push(t('workspace.changes.confirm.noUndo'))
-    return { title: t('workspace.changes.confirm.titleHunk', { name }), lines: out, preview }
+    return { title: t('workspace.diff.confirmTitle', { name }), lines: out, preview }
   }
   const e = p.entry
   if (e.kind === 'untracked') out.push(t('workspace.changes.confirm.untracked', { trash: trashName.value }))
@@ -234,13 +445,14 @@ const confirmText = computed(() => {
   }
   if (e.staged) out.push(t('workspace.changes.confirm.staged'))
   if (e.kind === 'modified') out.push(t('workspace.changes.confirm.noUndo'))
-  return { title: t('workspace.changes.confirm.titleFile', { name }), lines: out, preview }
+  return { title: t('workspace.changes.confirm.titleFile', { name }), lines: out, preview: [] as string[] }
 })
 
-function askDiscard(hunk?: number): void {
+function askDiscard(block?: number): void {
   const entry = selectedEntry.value
   if (!entry || entry.kind === 'conflict') return
-  pending.value = { entry, hunk }
+  if (block !== undefined && (revertBlocked.value || !canRevert.value)) return
+  pending.value = { entry, block }
 }
 
 async function confirmDiscard(): Promise<void> {
@@ -249,13 +461,43 @@ async function confirmDiscard(): Promise<void> {
   pending.value = null
   if (!p || !root) return
   const file = diffFile.value
-  const hunk = p.hunk !== undefined && file ? file.hunks[p.hunk] : undefined
-  const res = await changesDiscard(root, p.entry.path, hunk && file ? hunkPatch(file, hunk) : undefined)
+  const block = p.block !== undefined ? blocks.value[p.block] : undefined
+  const res = await changesDiscard(root, p.entry.path, block && file ? blockPatch(file, block) : undefined)
   if (res.ok) notice.value = null
   else if (res.error === 'failed') notice.value = t('workspace.changes.discardFailed', { detail: res.detail ?? '' })
   else notice.value = t(`workspace.changes.error.${res.error}`)
   await loadStatus()
 }
+
+function setOpt<K extends keyof DiffOpts>(key: K, value: DiffOpts[K]): void {
+  opts.value = { ...opts.value, [key]: value }
+}
+
+function onOptionsKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    optionsOpen.value = false
+    optionsButton.value?.focus()
+    return
+  }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  e.preventDefault()
+  const items = [...(optionsEl.value?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])]
+  const at = items.indexOf(document.activeElement as HTMLElement)
+  items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+}
+
+function onPointerDown(e: PointerEvent): void {
+  if (!optionsOpen.value) return
+  const target = e.target as Node
+  if (optionsEl.value?.contains(target) || optionsButton.value?.contains(target)) return
+  optionsOpen.value = false
+}
+
+watch(optionsOpen, (open) => {
+  if (open) void nextTick(() => optionsEl.value?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus())
+})
 
 watch(
   () => props.active,
@@ -274,14 +516,20 @@ watch(
   },
 )
 
+watch(treeMode, () => {
+  cursor.value = selected.value ? `f:${selected.value}` : null
+})
+
 onMounted(() => {
   window.addEventListener('focus', onWindowFocus)
+  window.addEventListener('pointerdown', onPointerDown, true)
   if (hasChanges) void loadStatus()
   else loading.value = false
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('focus', onWindowFocus)
+  window.removeEventListener('pointerdown', onPointerDown, true)
   offUpdated()
   if (refreshTimer) clearTimeout(refreshTimer)
   void setWatch(null)
@@ -289,6 +537,8 @@ onBeforeUnmount(() => {
 
 const lang = computed(() => (selectedEntry.value ? grammarFor(undefined, selectedEntry.value.path) : null))
 const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { added: e.added ?? 0, removed: e.removed ?? 0 })
+const rowTabIndex = (key: string): number => (cursor.value ? (cursor.value === key ? 0 : -1) : key === visibleKeys.value[0] ? 0 : -1)
+const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-xs text-ink outline-none hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent'
 </script>
 
 <template>
@@ -308,19 +558,109 @@ const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { 
         <span class="truncate">{{ branch }}</span>
       </span>
       <span class="min-w-0 flex-1" />
+      <button
+        type="button"
+        class="ccm-btn-plain shrink-0"
+        :aria-pressed="treeMode"
+        :title="`${t('workspace.diff.listMode')}: ${treeMode ? t('workspace.diff.tree') : t('workspace.diff.flat')}`"
+        :aria-label="t('workspace.diff.tree')"
+        data-changes-tree
+        @click="treeMode = !treeMode"
+      >
+        <ListTree :size="14" aria-hidden="true" />
+      </button>
       <div class="flex shrink-0 rounded-inner bg-fill p-0.5" role="radiogroup" :aria-label="t('workspace.changes.layout')">
         <button
           v-for="v in ['inline', 'split'] as const"
           :key="v"
           type="button"
           role="radio"
-          :aria-checked="layout === v"
+          :aria-checked="opts.layout === v"
           class="h-6 cursor-pointer rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast)"
-          :class="layout === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
-          @click="layout = v"
+          :class="opts.layout === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
+          @click="setOpt('layout', v)"
         >
           {{ t(`workspace.changes.${v}`) }}
         </button>
+      </div>
+      <div class="relative shrink-0">
+        <button
+          ref="optionsButton"
+          type="button"
+          class="ccm-btn-plain"
+          aria-haspopup="menu"
+          :aria-expanded="optionsOpen"
+          :title="t('workspace.diff.options')"
+          :aria-label="t('workspace.diff.options')"
+          data-diff-options-button
+          @click="optionsOpen = !optionsOpen"
+        >
+          <SlidersHorizontal :size="14" aria-hidden="true" />
+        </button>
+        <Transition name="ccm-menu">
+          <div
+            v-if="optionsOpen"
+            ref="optionsEl"
+            class="ccm-menu absolute top-full right-0 z-20 mt-1 flex w-64 flex-col p-1"
+            style="--ccm-origin: top right"
+            role="menu"
+            :aria-label="t('workspace.diff.options')"
+            data-diff-options
+            @keydown="onOptionsKey"
+          >
+            <button type="button" role="menuitemcheckbox" :aria-checked="opts.collapse" :class="MENU_ROW" @click="setOpt('collapse', !opts.collapse)">
+              <Check :size="13" class="shrink-0" :class="opts.collapse ? '' : 'invisible'" aria-hidden="true" />
+              {{ t('workspace.diff.collapse') }}
+            </button>
+            <p class="px-2 pt-2 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.context') }}</p>
+            <div role="group" :aria-label="t('workspace.diff.context')">
+              <button
+                v-for="n in CONTEXTS"
+                :key="n"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="opts.context === n"
+                :aria-disabled="!opts.collapse"
+                :class="[MENU_ROW, opts.collapse ? '' : 'text-ink-faint']"
+                @click="opts.collapse && setOpt('context', n)"
+              >
+                <Check :size="13" class="shrink-0" :class="opts.context === n ? '' : 'invisible'" aria-hidden="true" />
+                {{ t('workspace.diff.contextN', { n }) }}
+              </button>
+            </div>
+            <p class="px-2 pt-2 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.whitespace') }}</p>
+            <div role="group" :aria-label="t('workspace.diff.whitespace')">
+              <button
+                v-for="w in WHITESPACE"
+                :key="w"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="opts.whitespace === w"
+                :class="MENU_ROW"
+                :data-ws="w"
+                @click="setOpt('whitespace', w)"
+              >
+                <Check :size="13" class="shrink-0" :class="opts.whitespace === w ? '' : 'invisible'" aria-hidden="true" />
+                {{ t(`workspace.diff.ws.${w}`) }}
+              </button>
+            </div>
+            <p class="px-2 pt-2 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.highlight') }}</p>
+            <div role="group" :aria-label="t('workspace.diff.highlight')">
+              <button
+                v-for="w in [true, false]"
+                :key="String(w)"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="opts.words === w"
+                :class="MENU_ROW"
+                @click="setOpt('words', w)"
+              >
+                <Check :size="13" class="shrink-0" :class="opts.words === w ? '' : 'invisible'" aria-hidden="true" />
+                {{ t(`workspace.diff.hl.${w ? 'words' : 'lines'}`) }}
+              </button>
+            </div>
+          </div>
+        </Transition>
       </div>
       <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.changes.refresh')" :aria-label="t('workspace.changes.refresh')" @click="loadStatus">
         <RotateCw :size="14" aria-hidden="true" />
@@ -352,41 +692,88 @@ const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { 
       <div
         ref="listEl"
         class="ccm-scroll max-h-[38%] shrink-0 overflow-y-auto border-b border-line py-1 @2xl:max-h-none @2xl:w-64 @2xl:border-r @2xl:border-b-0"
-        role="listbox"
+        :role="treeMode ? 'tree' : 'listbox'"
         :aria-label="t('workspace.changes.files')"
       >
-        <div v-for="g in groups" :key="g.key" role="group" :aria-labelledby="`chg-${g.key}`">
+        <div v-for="g in treeGroups" :key="g.key" role="group" :aria-labelledby="`chg-${g.key}`">
           <p :id="`chg-${g.key}`" class="flex items-center gap-1.5 px-3 pb-0.5 pt-2 text-2xs font-semibold text-ink-faint">
             {{ t(`workspace.changes.groups.${g.key}`) }}
             <span class="tabular font-normal">{{ g.items.length }}</span>
           </p>
-          <div
-            v-for="e in g.items"
-            :key="e.path"
-            role="option"
-            :aria-selected="e.path === selected"
-            :tabindex="e.path === selected ? 0 : -1"
-            class="mx-1 flex h-7 cursor-pointer items-center gap-2 rounded-inner px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-focus"
-            :class="e.path === selected ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill'"
-            :title="e.origPath ? `${t('workspace.changes.renamedFrom', { path: e.origPath })}\n${e.path}` : e.path"
-            @click="select(e.path)"
-            @dblclick="openSelected"
-          >
-            <span class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="e.path === selected ? 'text-accent-ink' : KIND_CLASS[e.kind]" aria-hidden="true">{{
-              KIND_LETTER[e.kind]
-            }}</span>
-            <span class="sr-only">{{ t(`workspace.changes.kind.${e.kind}`) }}{{ e.staged ? `, ${t('workspace.changes.staged')}` : '' }}:</span>
-            <span class="min-w-0 flex-1 truncate">
-              <span class="font-medium">{{ baseName(e.path) }}</span>
-              <span v-if="dirOfRel(e.path)" class="ml-1.5" :class="e.path === selected ? 'text-accent-ink' : 'text-ink-faint'" dir="rtl"
-                ><bdi>{{ dirOfRel(e.path) }}</bdi></span
+          <template v-if="treeMode">
+            <template v-for="r in g.rows" :key="rowKey(g.key, r)">
+              <div
+                v-if="r.kind === 'dir'"
+                role="treeitem"
+                :aria-expanded="r.expanded"
+                :aria-level="r.depth + 1"
+                :aria-label="t('workspace.diff.folder', { name: r.name, n: r.count }, r.count)"
+                :tabindex="rowTabIndex(rowKey(g.key, r))"
+                :data-row="rowKey(g.key, r)"
+                class="mx-1 flex h-7 cursor-pointer items-center gap-1 rounded-inner pr-2 text-xs text-ink-muted outline-none hover:bg-fill focus-visible:ring-2 focus-visible:ring-focus"
+                :style="{ paddingLeft: `${4 + r.depth * 12}px` }"
+                @click="((cursor = rowKey(g.key, r)), toggleDir(g.key, r.path))"
               >
-            </span>
-            <span v-if="!e.binary && (e.added || e.removed)" class="shrink-0 text-2xs tabular" :aria-label="countsLabel(e)">
-              <span v-if="e.added" class="text-diff-add">+{{ e.added }}</span>
-              <span v-if="e.removed" class="ml-1 text-diff-del">−{{ e.removed }}</span>
-            </span>
-          </div>
+                <ChevronRight :size="12" class="shrink-0 transition-transform duration-(--ccm-dur-fast)" :class="r.expanded ? 'rotate-90' : ''" aria-hidden="true" />
+                <Folder :size="13" class="shrink-0 text-ink-faint" aria-hidden="true" />
+                <span class="min-w-0 flex-1 truncate">{{ r.name }}</span>
+                <span class="shrink-0 text-2xs tabular text-ink-faint" aria-hidden="true">{{ r.count }}</span>
+              </div>
+              <div
+                v-else
+                role="treeitem"
+                :aria-level="r.depth + 1"
+                :aria-selected="r.entry.path === selected"
+                :tabindex="rowTabIndex(rowKey(g.key, r))"
+                :data-row="rowKey(g.key, r)"
+                class="mx-1 flex h-7 cursor-pointer items-center gap-2 rounded-inner pr-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                :class="r.entry.path === selected ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill'"
+                :style="{ paddingLeft: `${20 + r.depth * 12}px` }"
+                :title="r.entry.path"
+                @click="select(r.entry.path)"
+                @dblclick="openSelected()"
+              >
+                <span class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="r.entry.path === selected ? 'text-accent-ink' : KIND_CLASS[r.entry.kind]" aria-hidden="true">{{
+                  KIND_LETTER[r.entry.kind]
+                }}</span>
+                <span class="sr-only">{{ t(`workspace.changes.kind.${r.entry.kind}`) }}{{ r.entry.staged ? `, ${t('workspace.changes.staged')}` : '' }}:</span>
+                <span class="min-w-0 flex-1 truncate font-medium">{{ baseName(r.entry.path) }}</span>
+                <span v-if="!r.entry.binary && (r.entry.added || r.entry.removed)" class="shrink-0 text-2xs tabular" :aria-label="countsLabel(r.entry)">
+                  <span v-if="r.entry.added" class="text-diff-add">+{{ r.entry.added }}</span>
+                  <span v-if="r.entry.removed" class="ml-1 text-diff-del">−{{ r.entry.removed }}</span>
+                </span>
+              </div>
+            </template>
+          </template>
+          <template v-else>
+            <div
+              v-for="e in g.items"
+              :key="e.path"
+              role="option"
+              :aria-selected="e.path === selected"
+              :tabindex="e.path === selected ? 0 : -1"
+              class="mx-1 flex h-7 cursor-pointer items-center gap-2 rounded-inner px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              :class="e.path === selected ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill'"
+              :title="e.origPath ? `${t('workspace.changes.renamedFrom', { path: e.origPath })}\n${e.path}` : e.path"
+              @click="select(e.path)"
+              @dblclick="openSelected()"
+            >
+              <span class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="e.path === selected ? 'text-accent-ink' : KIND_CLASS[e.kind]" aria-hidden="true">{{
+                KIND_LETTER[e.kind]
+              }}</span>
+              <span class="sr-only">{{ t(`workspace.changes.kind.${e.kind}`) }}{{ e.staged ? `, ${t('workspace.changes.staged')}` : '' }}:</span>
+              <span class="min-w-0 flex-1 truncate">
+                <span class="font-medium">{{ baseName(e.path) }}</span>
+                <span v-if="dirOfRel(e.path)" class="ml-1.5" :class="e.path === selected ? 'text-accent-ink' : 'text-ink-faint'" dir="rtl"
+                  ><bdi>{{ dirOfRel(e.path) }}</bdi></span
+                >
+              </span>
+              <span v-if="!e.binary && (e.added || e.removed)" class="shrink-0 text-2xs tabular" :aria-label="countsLabel(e)">
+                <span v-if="e.added" class="text-diff-add">+{{ e.added }}</span>
+                <span v-if="e.removed" class="ml-1 text-diff-del">−{{ e.removed }}</span>
+              </span>
+            </div>
+          </template>
         </div>
         <p v-if="truncated" class="px-3 py-2 text-2xs text-ink-faint">{{ t('workspace.changes.truncated', { n: entries.length }) }}</p>
       </div>
@@ -396,13 +783,16 @@ const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { 
           <span class="min-w-0 flex-1 truncate font-mono text-2xs" :title="absolute(selectedEntry.path)">
             <template v-if="selectedEntry.origPath">{{ selectedEntry.origPath }} → </template>{{ selectedEntry.path }}
           </span>
-          <span class="hidden shrink-0 text-2xs text-well-ink @lg:inline">{{ t('workspace.changes.keysHint') }}</span>
+          <span v-if="blocks.length" class="shrink-0 text-2xs tabular text-well-ink" aria-live="polite" data-diff-position>{{
+            t('workspace.diff.change', { n: currentBlock + 1, total: blocks.length })
+          }}</span>
+          <span class="hidden shrink-0 text-2xs text-well-ink @3xl:inline">· {{ t('workspace.diff.keysHint') }}</span>
           <button
             v-if="selectedEntry.kind !== 'deleted'"
             type="button"
             class="well-btn ccm-btn-plain shrink-0 gap-1 text-2xs"
-            :title="t('workspace.changes.openFile')"
-            @click="openSelected"
+            :title="`${t('workspace.changes.openFile')} (F4)`"
+            @click="openSelected()"
           >
             <SquareArrowOutUpRight :size="13" aria-hidden="true" />
             <span class="hidden @md:inline">{{ t('workspace.changes.openFile') }}</span>
@@ -420,6 +810,7 @@ const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { 
             <span class="sr-only @md:hidden">{{ t('workspace.changes.discardFile') }}</span>
           </button>
         </div>
+        <p v-if="partial && diffState === 'idle'" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.diff.partial') }}</p>
         <div class="ccm-scroll min-h-0 flex-1 overflow-auto">
           <div v-if="!selectedEntry" class="grid size-full place-items-center p-6 text-sm text-well-ink">{{ t('workspace.changes.selectFile') }}</div>
           <div v-else-if="diffState === 'loading'" class="grid size-full place-items-center text-xs text-well-ink" role="status">{{ t('workspace.changes.loading') }}</div>
@@ -431,19 +822,26 @@ const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { 
                   ? t('workspace.changes.tooLarge')
                   : diffState === 'error' && diffError
                     ? t(`workspace.changes.error.${diffError}`)
-                    : t('workspace.changes.noDiff')
+                    : opts.whitespace !== 'none'
+                      ? t('workspace.diff.noChanges')
+                      : t('workspace.changes.noDiff')
             }}
           </div>
           <DiffView
             v-else
             ref="diffView"
             :file="diffFile"
-            :layout="layout"
+            :blocks="blocks"
+            :layout="opts.layout"
             :lang="lang"
-            :can-discard-hunks="canDiscardHunks"
-            :current-hunk="currentHunk"
-            @discard-hunk="askDiscard"
-            @focus-hunk="(i) => (currentHunk = i)"
+            :collapse="collapse"
+            :context="opts.context"
+            :words="opts.words"
+            :can-revert="canRevert"
+            :revert-blocked="revertBlocked"
+            :current="currentBlock"
+            @revert="askDiscard"
+            @focus-block="focusBlock"
           />
         </div>
       </div>

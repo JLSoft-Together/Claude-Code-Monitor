@@ -305,6 +305,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 <SegmentedControl v-model="settings.locale" :options="locales" :label="t('settings.language')" />
               </div>
               <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
+              <ToggleSwitch v-if="hasTerminals" v-model="settings.minimap" :label="t('settings.minimap')" :hint="t('settings.minimapHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="tipsOn" :label="t('tips.setting')" :hint="t('tips.settingHint')" class="px-3" />
             </div>
           </section>

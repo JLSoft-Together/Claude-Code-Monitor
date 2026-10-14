@@ -53,6 +53,8 @@
   --color-diff-add-soft: var(--ccm-diff-add-soft);
   --color-diff-del: var(--ccm-diff-del);
   --color-diff-del-soft: var(--ccm-diff-del-soft);
+  --color-diff-mod: var(--ccm-diff-mod);
+  --color-diff-mod-soft: var(--ccm-diff-mod-soft);
 
   --color-agent-claude: var(--ccm-agent-claude);
   --color-agent-claude-ink: var(--ccm-agent-claude-ink);
@@ -162,6 +164,9 @@
   --ccm-diff-add-soft: rgb(52 199 89 / 0.15);
   --ccm-diff-del: #d70015;
   --ccm-diff-del-soft: rgb(255 59 48 / 0.12);
+  /* modified lines / files (IntelliJ blue) */
+  --ccm-diff-mod: #0060c0;
+  --ccm-diff-mod-soft: rgb(0 96 192 / 0.12);
 
   --ccm-agent-claude: #c15f3c;
   --ccm-agent-claude-ink: #ae4a26;
@@ -198,6 +203,7 @@
   /* diff ink on the always-dark well: the light-theme diff-* are too dark there */
   --ccm-diff-add-well: #30d158;
   --ccm-diff-del-well: #ff6961;
+  --ccm-diff-mod-well: #409cff;
   /* default canvas of a web page in the browser pane: white in both themes, like any browser */
   --ccm-page: #fff;
 
@@ -278,6 +284,8 @@
   --ccm-diff-add-soft: rgb(48 209 88 / 0.18);
   --ccm-diff-del: #ff6961;
   --ccm-diff-del-soft: rgb(215 0 21 / 0.2);
+  --ccm-diff-mod: #5eaaff;
+  --ccm-diff-mod-soft: rgb(64 156 255 / 0.18);
 
   --ccm-agent-claude: #d97757;
   --ccm-agent-claude-ink: #d97757;

@@ -18,7 +18,7 @@ const props = defineProps<{
   /** Workspace on screen: the Changes view watches git only then. */
   visible: boolean
 }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string] }>()
+const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string] }>()
 
 const { t } = useI18n()
 const explorer = useExplorerStore()
@@ -31,7 +31,8 @@ watch(
 onMounted(() => explorer.attach())
 onBeforeUnmount(() => explorer.detach())
 
-const changesActive = computed(() => props.visible && explorer.view === 'changes')
+// Files view colours names by git status too, so status is kept fresh whenever the Explorer is on screen.
+const changesActive = computed(() => props.visible)
 const changes = useExplorerChanges(toRef(explorer, 'root'), changesActive)
 
 // A plain folder has no Changes view.
@@ -122,13 +123,20 @@ const statusText = computed(() => {
         </button>
       </p>
 
-      <ExplorerTree v-if="explorer.view === 'files'" :active-path="activePath" @open="(p, keep) => emit('open', p, keep)" @create="askCreate" />
+      <ExplorerTree
+        v-if="explorer.view === 'files'"
+        :active-path="activePath"
+        :git="changes.marks.value"
+        @open="(p, keep) => emit('open', p, keep)"
+        @open-diff="(p) => changes.status.value?.ok && emit('openDiff', changes.status.value.root, p)"
+        @create="askCreate"
+      />
       <ExplorerChanges
         v-else
         :status="changes.status.value"
         :reading="changes.reading.value"
         @open="(p, keep) => emit('open', p, keep)"
-        @open-diff="(r) => emit('openDiff', r)"
+        @open-diff="(r, p) => emit('openDiff', r, p)"
         @refresh="changes.refresh()"
       />
     </template>

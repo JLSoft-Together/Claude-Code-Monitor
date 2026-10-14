@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { diff, discardFile, discardHunk, hunkPatchFor, newFileDiff, parseNumstat, parseStatusV2, safeRepoPath, status, toplevel } from '../src/preview/changes'
+import { cleanDiffOptions, diff, diffArgs, discardFile, discardHunk, fileDiff, hunkPatchFor, newFileDiff, parseNumstat, parseStatusV2, safeRepoPath, status, toplevel } from '../src/preview/changes'
 import { MAX_CLIPBOARD_IMAGE_BYTES, parsePngDataUrl, writeClipboardImage, writeClipboardImageFile } from '../src/preview/clipboardImage'
 import { FileListCache, listFiles, parseLsFiles, walkFiles } from '../src/preview/listFiles'
 import { findGit } from '../src/pty/git'
@@ -147,6 +147,55 @@ describe.skipIf(!git)('git repo', () => {
     expect(await discardFile(repo, 'added.ts', { trash })).toEqual({ ok: true })
     expect(existsSync(path.join(repo, 'added.ts'))).toBe(false)
     expect(run('status', '--porcelain')).toBe('')
+  })
+
+  it('diffs with full context and whitespace options', async () => {
+    const file = path.join(repo, 'src', 'a.ts')
+    const lines = readFileSync(file, 'utf8').split('\n')
+    lines[1] = 'changed 2'
+    lines[9] = 'line 10   '
+    writeFileSync(file, lines.join('\n'))
+    const full = await diff(repo, 'src/a.ts', { context: 'full' })
+    expect(full.ok && full.text.match(/^@@ .*$/gm)).toEqual(['@@ -1,30 +1,30 @@'])
+    const eol = await diff(repo, 'src/a.ts', { context: 'full', whitespace: 'eol' })
+    expect(eol.ok && eol.text).not.toContain('+line 10')
+    expect(eol.ok && eol.text).toContain('+changed 2')
+    expect(cleanDiffOptions({ context: 99, whitespace: 'rm -rf' })).toEqual({ context: 3, whitespace: 'none' })
+    expect(diffArgs({ whitespace: 'all-blank' })).toEqual(['-w', '--ignore-blank-lines'])
+    run('checkout', '--', 'src/a.ts')
+  })
+
+  it('diffs one viewed file and resolves its repo', async () => {
+    const file = path.join(repo, 'src', 'a.ts')
+    writeFileSync(file, readFileSync(file, 'utf8').replace('line 3\n', 'line 3\nnew\n'))
+    const res = await fileDiff(file, (dir) => toplevel(dir))
+    expect(res).toMatchObject({ ok: true, rel: 'src/a.ts', kind: 'modified' })
+    expect(res.ok && res.text).toContain('+new')
+    expect(await fileDiff(path.join(repo, 'keep.txt'), (dir) => toplevel(dir))).toMatchObject({ ok: true, kind: null, text: '' })
+    writeFileSync(path.join(tmp, 'loose.txt'), 'x')
+    expect(await fileDiff(path.join(tmp, 'loose.txt'), (dir) => toplevel(dir))).toEqual({ ok: false, error: 'not-repo' })
+    run('checkout', '--', 'src/a.ts')
+  })
+
+  it('reverts one change block, keeping a neighbour inside its context (LF and CRLF)', async () => {
+    for (const nl of ['\n', '\r\n']) {
+      const name = nl === '\n' ? 'lf.txt' : 'crlf.txt'
+      const abs = path.join(repo, name)
+      const base = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`)
+      writeFileSync(abs, base.join(nl) + nl)
+      run('add', name)
+      run('commit', '-q', '-m', name)
+      const now = [...base]
+      now[1] = 'changed 2'
+      now[3] = 'changed 4'
+      writeFileSync(abs, now.join(nl) + nl)
+      const cr = nl === '\r\n' ? '\r' : ''
+      const body = [' line 1', ' changed 2', ' line 3', '-line 4', '+changed 4', ' line 5', ' line 6', ' line 7'].map((l) => l + cr)
+      const patch = ['@@ -1,7 +1,7 @@', ...body, ''].join('\n')
+      expect(await discardHunk(repo, name, patch)).toEqual({ ok: true })
+      const after = readFileSync(abs, 'utf8')
+      expect(after).toContain(`changed 2${nl}line 3${nl}line 4${nl}`)
+    }
   })
 
   it('lists files via git and walk, cached per root', async () => {

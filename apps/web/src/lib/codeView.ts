@@ -65,8 +65,8 @@ function tokenStyle(token: CodeToken): string {
   return parts.join(';')
 }
 
-/** One line of escaped HTML; `marks` (sorted, non-overlapping, columns in this line) wrap find hits. */
-export function renderLine(tokens: readonly CodeToken[], marks: ReadonlyArray<{ start: number; end: number; current?: boolean }> = []): string {
+/** One line of escaped HTML; `marks` (sorted, non-overlapping, columns in this line) wrap find hits, or word-diff spans when `cls` is set. */
+export function renderLine(tokens: readonly CodeToken[], marks: ReadonlyArray<{ start: number; end: number; current?: boolean; cls?: string }> = []): string {
   let html = ''
   let col = 0
   let mi = 0
@@ -80,7 +80,7 @@ export function renderLine(tokens: readonly CodeToken[], marks: ReadonlyArray<{ 
       if (mark) {
         if (!open && col < mark.start) take = Math.min(take, mark.start - col)
         else if (!open && col >= mark.start) {
-          html += mark.current ? '<mark class="ccm-find ccm-find-current">' : '<mark class="ccm-find">'
+          html += mark.cls ? `<mark class="${mark.cls}">` : mark.current ? '<mark class="ccm-find ccm-find-current">' : '<mark class="ccm-find">'
           open = true
         }
         if (open) take = Math.min(take, mark.end - col)

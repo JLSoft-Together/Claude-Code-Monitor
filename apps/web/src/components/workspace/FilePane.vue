@@ -1,20 +1,33 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, Code, Copy, Eye, FileText, FileWarning, FolderOpen, Search, SquarePen, TextWrap, X } from 'lucide-vue-next'
-import { changedLines, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
+import { Check, ChevronDown, ChevronUp, Code, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Search, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
+import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
 import { tokenize } from '../../lib/highlight'
 import { renderMarkdown } from '../../lib/markdown'
 import { isMac } from '../../lib/platform'
+import { useFileChanges } from '../../composables/useFileChanges'
+import { useSettingsStore } from '../../stores/settings'
 import AccessPrompt from './AccessPrompt.vue'
-import { baseName, dirOf, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import ChangeRuler from './ChangeRuler.vue'
+import CodeMinimap from './CodeMinimap.vue'
+import DiscardConfirm from './DiscardConfirm.vue'
+import HunkPopup from './HunkPopup.vue'
+import { baseName, changesDiscard, dirOf, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean }>(), { active: true })
-const emit = defineEmits<{ open: [path: string] }>()
+const emit = defineEmits<{
+  open: [path: string]
+  /** Repo root + absolute file path: open the Changes pane on this file. */
+  showDiff: [root: string, path: string]
+}>()
 
 const { t } = useI18n()
+const settings = useSettingsStore()
 const FLASH_MS = 1200
+const MINIMAP_MIN_WIDTH = 420
 
 const view = shallowRef<FileView | null>(null)
 const loading = ref(true)
@@ -35,11 +48,42 @@ const matchIndex = ref(0)
 const findInput = ref<HTMLInputElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 const root = ref<HTMLElement | null>(null)
+const codeEl = ref<HTMLElement | null>(null)
+const paneWidth = ref(0)
+
+// Change markers vs HEAD (IntelliJ gutter): bars beside the line numbers, popup with the old text.
+const changes = useFileChanges(
+  () => props.path,
+  () => props.active,
+)
+const popupIndex = ref<number | null>(null)
+const popupRows = shallowRef<{ top: HTMLElement | null; bottom: HTMLElement } | null>(null)
+const pendingRollback = ref<number | null>(null)
+const changeTotals = computed(() => changes.blocks.value.reduce((a, b) => ({ added: a.added + b.adds.length, removed: a.removed + b.dels.length }), { added: 0, removed: 0 }))
+const rollbackBlocked = computed(() => (changes.ok.value?.kind === 'modified' ? null : t('workspace.gutter.rollbackOnly')))
+type GutterKind = 'add' | 'mod' | 'del' | 'del-end'
+const GUTTER_OF = { added: 'add', modified: 'mod', deleted: 'del' } as const
+/** 0-based line → marker; a deletion marks the line now below it (or the last line at the end of the file). */
+const gutter = computed(() => {
+  const map = new Map<number, { kind: GutterKind; block: number }>()
+  const n = lines.value.length
+  changes.blocks.value.forEach((b, i) => {
+    if (b.type === 'deleted') {
+      const end = b.line1 >= n
+      const at = end ? n - 1 : b.line1
+      if (at >= 0 && !map.has(at)) map.set(at, { kind: end ? 'del-end' : 'del', block: i })
+      return
+    }
+    for (let l = b.line1; l < Math.min(b.line2, n); l++) map.set(l, { kind: GUTTER_OF[b.type], block: i })
+  })
+  return map
+})
 
 const name = computed(() => baseName(props.path))
 const markdown = computed(() => view.value?.kind === 'text' && isMarkdown(props.path))
 const showSource = computed(() => view.value?.kind === 'text' && !(markdown.value && mdPreview.value))
 const matches = computed<Match[]>(() => (findOpen.value && showSource.value ? findMatches(lines.value, query.value) : []))
+const minimap = computed(() => settings.minimap && showSource.value && !loading.value && paneWidth.value >= MINIMAP_MIN_WIDTH)
 
 const html = computed(() => {
   if (!showSource.value) return ''
@@ -50,14 +94,23 @@ const html = computed(() => {
     byLine.set(m.line, list)
   })
   const tok = tokens.value
+  const marks = gutter.value
   let out = ''
   for (let i = 0; i < lines.value.length; i++) {
     const lineTokens = tok?.[i] ?? [{ content: lines.value[i]! }]
-    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${flash.value.has(i) ? ' is-flash' : ''}`
-    out += `<div class="${cls}" data-line="${i + 1}"><span class="n" aria-hidden="true">${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
+    const g = marks.get(i)
+    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${flash.value.has(i) ? ' is-flash' : ''}${g ? ` g-${g.kind}` : ''}`
+    const gAttr = g ? ` data-block="${g.block}"` : ''
+    const nAttr = g ? ` data-gutter title="${gutterTitle(g.block)}"` : ''
+    out += `<div class="${cls}" data-line="${i + 1}"${gAttr}><span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
   }
   return out
 })
+
+function gutterTitle(i: number): string {
+  const b = changes.blocks.value[i]
+  return b ? escapeHtml(t('workspace.gutter.marker', { kind: t(`workspace.gutter.kind.${b.type}`), n: i + 1, total: changes.blocks.value.length })) : ''
+}
 
 const markdownHtml = computed(() => (markdown.value && mdPreview.value ? renderMarkdown(view.value?.text ?? '') : ''))
 
@@ -84,6 +137,7 @@ async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
   const text = next.text ?? ''
   const nextLines = splitLines(text)
   lines.value = nextLines
+  if (opts.keepScroll) changes.reload()
   if (opts.keepScroll && prevView?.kind === 'text') {
     flashLines(changedLines(prevLines, nextLines))
     await nextTick()
@@ -173,6 +227,13 @@ function onFindKey(e: KeyboardEvent): void {
 
 function onWindowKey(e: KeyboardEvent): void {
   if (!props.active || view.value?.kind !== 'text') return
+  if (e.key === 'F7' && !e.ctrlKey && !e.metaKey && !e.altKey && showSource.value && changes.blocks.value.length) {
+    const focus = document.activeElement
+    if (focus && focus !== document.body && !root.value?.contains(focus)) return
+    e.preventDefault()
+    stepChange(e.shiftKey ? -1 : 1)
+    return
+  }
   const mod = isMac ? e.metaKey : e.ctrlKey
   if (!mod || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return
   // Only when this pane holds focus, or nothing in particular does (another pane's terminal keeps its own keys).
@@ -181,6 +242,102 @@ function onWindowKey(e: KeyboardEvent): void {
   e.preventDefault()
   void openFind()
 }
+
+/** Rows of block `i` in the rendered code (first, last). */
+function rowsOf(i: number): { top: HTMLElement | null; bottom: HTMLElement } | null {
+  const rows = codeEl.value?.querySelectorAll<HTMLElement>(`[data-block="${i}"]`)
+  if (!rows?.length) return null
+  return { top: rows[0]!, bottom: rows[rows.length - 1]! }
+}
+
+async function openChange(i: number, scroll = false): Promise<void> {
+  const total = changes.blocks.value.length
+  if (!total) return
+  const at = ((i % total) + total) % total
+  if (scroll) {
+    await nextTick()
+    rowsOf(at)?.top?.scrollIntoView({ block: 'center' })
+  }
+  const rows = rowsOf(at)
+  if (!rows) return
+  popupRows.value = rows
+  popupIndex.value = at
+}
+
+/** F7 / Shift+F7: from the open popup, else from the top of the view. */
+function stepChange(dir: 1 | -1): void {
+  const blocks = changes.blocks.value
+  if (popupIndex.value !== null) {
+    void openChange(popupIndex.value + dir, true)
+    return
+  }
+  const top = scroller.value?.scrollTop ?? 0
+  const offsets = blocks.map((_, i) => rowsOf(i)?.top?.offsetTop ?? 0)
+  const before = offsets.filter((y) => y < top - 1).length
+  const next = dir === 1 ? offsets.findIndex((y) => y > top + 1) : before - 1
+  void openChange(next >= 0 ? next : dir === 1 ? 0 : blocks.length - 1, true)
+}
+
+function closePopup(refocus = false): void {
+  popupIndex.value = null
+  popupRows.value = null
+  if (refocus) root.value?.focus({ preventScroll: true })
+}
+
+function onCodeClick(e: MouseEvent): void {
+  const marker = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-gutter]')
+  const row = marker?.closest<HTMLElement>('[data-block]')
+  if (!row) return
+  const i = Number(row.dataset.block)
+  if (popupIndex.value === i) closePopup()
+  else void openChange(i)
+}
+
+function showDiff(): void {
+  const ok = changes.ok.value
+  if (ok) emit('showDiff', ok.root, view.value?.path ?? props.path)
+  closePopup()
+}
+
+const rollbackText = computed(() => {
+  const i = pendingRollback.value
+  const b = i === null ? undefined : changes.blocks.value[i]
+  if (!b) return null
+  return {
+    title: t('workspace.diff.confirmTitle', { name: name.value }),
+    lines: [t('workspace.changes.confirm.lines', { added: b.adds.length, removed: b.dels.length }), t('workspace.changes.confirm.noUndo')],
+    preview: [...b.dels.map((l) => `− ${l.text}`), ...b.adds.map((l) => `+ ${l.text}`)].slice(0, 12),
+  }
+})
+
+async function confirmRollback(): Promise<void> {
+  const i = pendingRollback.value
+  pendingRollback.value = null
+  const ok = changes.ok.value
+  const file = changes.file.value
+  const block = i === null ? undefined : changes.blocks.value[i]
+  if (!ok || !file || !block) return
+  closePopup(true)
+  const res = await changesDiscard(ok.root, ok.rel, blockPatch(file, block))
+  if (res.ok) notice.value = null
+  else if (res.error === 'failed') notice.value = t('workspace.changes.discardFailed', { detail: res.detail ?? '' })
+  else notice.value = t(`workspace.changes.error.${res.error}`)
+  changes.reload(0)
+}
+
+// Markers moved (file edited, rollback, commit): keep the popup on a change that still exists.
+watch(
+  () => changes.blocks.value,
+  async (blocks) => {
+    if (popupIndex.value === null) return
+    if (!blocks.length) return closePopup()
+    await nextTick()
+    void openChange(Math.min(popupIndex.value, blocks.length - 1))
+  },
+)
+watch(showSource, (src) => {
+  if (!src) closePopup()
+})
 
 async function copyPath(): Promise<void> {
   try {
@@ -212,6 +369,7 @@ watch(
   async () => {
     findOpen.value = false
     targetLine.value = null
+    closePopup()
     await load()
     void setWatch(view.value && view.value.kind !== 'denied' ? dirOf(view.value.path) : null)
     await jumpTo(props.line)
@@ -225,8 +383,11 @@ watch(showSource, (src) => {
   if (src && targetLine.value) void jumpTo(targetLine.value)
 })
 
+const resize = new ResizeObserver(([entry]) => (paneWidth.value = entry?.contentRect.width ?? 0))
+
 onMounted(async () => {
   window.addEventListener('keydown', onWindowKey, true)
+  if (root.value) resize.observe(root.value)
   await load()
   if (props.line && markdown.value) mdPreview.value = false
   void setWatch(view.value && view.value.kind !== 'denied' ? dirOf(view.value.path) : null)
@@ -235,6 +396,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKey, true)
+  resize.disconnect()
   offChange()
   if (flashTimer) clearTimeout(flashTimer)
   void setWatch(null)
@@ -253,6 +415,19 @@ const lineCount = computed(() => lines.value.length)
       </span>
       <span v-if="view?.kind === 'text' && !markdown" class="hidden shrink-0 px-1.5 text-2xs tabular text-ink-faint sm:inline">{{ t('workspace.viewer.lines', lineCount) }}</span>
 
+      <button
+        v-if="changes.blocks.value.length && changes.ok.value"
+        type="button"
+        class="ccm-btn-plain shrink-0 gap-1 text-2xs tabular"
+        :title="`${t('workspace.gutter.showDiff')} — ${t('workspace.gutter.summary', changeTotals)}`"
+        :aria-label="`${t('workspace.gutter.showDiff')}, ${t('workspace.gutter.summary', changeTotals)}`"
+        data-file-show-diff
+        @click="showDiff"
+      >
+        <GitCompare :size="14" class="text-diff-mod" aria-hidden="true" />
+        <span v-if="changeTotals.added" class="text-diff-add">+{{ changeTotals.added }}</span>
+        <span v-if="changeTotals.removed" class="text-diff-del">−{{ changeTotals.removed }}</span>
+      </button>
       <template v-if="markdown">
         <button
           type="button"
@@ -338,24 +513,54 @@ const lineCount = computed(() => lines.value.length)
     <p v-if="notice" class="shrink-0 border-b border-line bg-st-waiting-soft px-3 py-1.5 text-xs text-ink" role="status">{{ notice }}</p>
     <p v-if="plainBecauseLarge" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.viewer.plain') }}</p>
 
-    <div ref="scroller" class="ccm-scroll relative min-h-0 flex-1 overflow-auto">
-      <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
-      <div v-else-if="!hasPreview || !view || (view.kind !== 'text' && view.kind !== 'image')" class="grid size-full place-items-center p-6">
-        <div class="flex max-w-sm flex-col items-center gap-2 text-center">
-          <FileWarning :size="26" class="text-well-ink" aria-hidden="true" />
-          <p class="text-sm text-well-ink">{{ t(`workspace.viewer.kind.${!hasPreview || !view ? 'unavailable' : view.kind}`) }}</p>
-          <AccessPrompt v-if="view?.kind === 'denied'" :path="path" well @granted="load()" />
-          <button v-if="view && (view.kind === 'binary' || view.kind === 'too-large')" type="button" class="ccm-btn mt-1" @click="openInApp">
-            {{ t('workspace.viewer.openEditor') }}
-          </button>
+    <div class="flex min-h-0 flex-1">
+      <div ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
+        <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
+        <div v-else-if="!hasPreview || !view || (view.kind !== 'text' && view.kind !== 'image')" class="grid size-full place-items-center p-6">
+          <div class="flex max-w-sm flex-col items-center gap-2 text-center">
+            <FileWarning :size="26" class="text-well-ink" aria-hidden="true" />
+            <p class="text-sm text-well-ink">{{ t(`workspace.viewer.kind.${!hasPreview || !view ? 'unavailable' : view.kind}`) }}</p>
+            <AccessPrompt v-if="view?.kind === 'denied'" :path="path" well @granted="load()" />
+            <button v-if="view && (view.kind === 'binary' || view.kind === 'too-large')" type="button" class="ccm-btn mt-1" @click="openInApp">
+              {{ t('workspace.viewer.openEditor') }}
+            </button>
+          </div>
         </div>
+        <div v-else-if="view.kind === 'image'" class="grid min-h-full place-items-center p-6">
+          <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
+        </div>
+        <article v-else-if="!showSource" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />
+        <div v-else ref="codeEl" class="code ccm-code min-w-full py-2" :class="wrap ? 'is-wrap' : 'w-max'" role="document" data-code-zoom @click="onCodeClick" v-html="html" />
       </div>
-      <div v-else-if="view.kind === 'image'" class="grid min-h-full place-items-center p-6">
-        <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
-      </div>
-      <article v-else-if="!showSource" class="md mx-auto max-w-3xl px-6 py-5" v-html="markdownHtml" @click="onMarkdownClick" />
-      <div v-else class="code ccm-code min-w-full py-2" :class="wrap ? 'is-wrap' : 'w-max'" role="document" v-html="html" />
+      <CodeMinimap
+        v-if="minimap"
+        :lines="lines"
+        :tokens="tokens"
+        :scroller="scroller"
+        :content="codeEl"
+        :matches="matches"
+        :current="matchIndex"
+        :target-line="targetLine"
+        :changes="changes.blocks.value"
+      />
+      <ChangeRuler v-else-if="showSource && !loading && changes.blocks.value.length" :blocks="changes.blocks.value" :line-count="lineCount" @jump="(i) => openChange(i, true)" />
     </div>
+
+    <HunkPopup
+      v-if="popupIndex !== null && popupRows && changes.blocks.value[popupIndex]"
+      :block="changes.blocks.value[popupIndex]!"
+      :index="popupIndex"
+      :total="changes.blocks.value.length"
+      :anchor="popupRows.bottom"
+      :anchor-top="popupRows.top"
+      :rollback-blocked="rollbackBlocked"
+      @close="closePopup(true)"
+      @step="(dir) => openChange(popupIndex! + dir, true)"
+      @rollback="pendingRollback = popupIndex"
+      @show-diff="showDiff"
+    />
+    <DiscardConfirm v-if="rollbackText" :title="rollbackText.title" :lines="rollbackText.lines" :preview="rollbackText.preview" @confirm="confirmRollback" @cancel="pendingRollback = null" />
+
   </section>
 </template>
 
@@ -392,6 +597,32 @@ const lineCount = computed(() => lines.value.length)
 .code.is-wrap :deep(.c) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* Change markers: a bar on the number column's code edge (triangle for a deletion), IntelliJ style. */
+.code :deep(.r[data-block] .n) {
+  cursor: pointer;
+}
+.code :deep(.r[data-block] .n:hover) {
+  color: var(--ccm-well-ink);
+}
+.code :deep(.r.g-add .n) {
+  box-shadow: inset -3px 0 0 var(--ccm-diff-add-well);
+}
+.code :deep(.r.g-mod .n) {
+  box-shadow: inset -3px 0 0 var(--ccm-diff-mod-well);
+}
+.code :deep(.r.g-del .n::after),
+.code :deep(.r.g-del-end .n::after) {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -4px;
+  border-block: 4px solid transparent;
+  border-right: 6px solid var(--ccm-diff-del-well);
+}
+.code :deep(.r.g-del-end .n::after) {
+  top: auto;
+  bottom: -4px;
 }
 .code :deep(.r.is-target) {
   background: color-mix(in srgb, var(--ccm-selection, #3f638b) 45%, transparent);

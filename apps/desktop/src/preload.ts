@@ -41,7 +41,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   forgetGrants: (): Promise<unknown> => ipcRenderer.invoke('ccm:forget-grants'),
   onPreviewChanged: (handler: (change: unknown) => void): (() => void) => subscribe('ccm:preview-changed', handler),
   changesStatus: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-status', dir),
-  changesDiff: (root: string, path: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-diff', { root, path }),
+  changesDiff: (root: string, path: string, opts?: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:changes-diff', { root, path, opts }),
+  changesFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-file', path),
   // `hunk` stays undefined (not null) for a whole-file discard: the handler branches on `hunk !== undefined`.
   changesDiscard: (root: string, path: string, hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-discard', { root, path, hunk }),
   changesWatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-watch', root),

@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronRight, ChevronsDownUp, Eye, File, FileCode, FileImage, FileJson, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Link2, RotateCw } from 'lucide-vue-next'
-import { samePath } from '../../lib/changesView'
+import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMarks } from '../../lib/changesView'
 import { setDragPath } from '../../lib/explorer/dragPath'
 import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
@@ -11,9 +11,13 @@ import { useExplorerStore } from '../../stores/explorer'
 const props = defineProps<{
   /** File shown by the focused viewer: marked, and revealed when it is inside the root. */
   activePath: string | null
+  /** Git status of the project: names coloured by kind, folders above changes marked. */
+  git?: GitMarks | null
 }>()
 const emit = defineEmits<{
   open: [path: string, keep: boolean]
+  /** Ctrl+D (⌘⌥D) on a changed file. */
+  openDiff: [path: string]
   create: [kind: 'file' | 'directory']
 }>()
 
@@ -46,6 +50,9 @@ const rootListed = computed(() => !!explorer.root && explorer.state.listings.has
 const failed = computed(() => explorer.openDirs.some((d) => explorer.state.errors.has(d)))
 const loading = computed(() => explorer.state.rootExpanded && !rootListed.value && !failed.value)
 const empty = computed(() => explorer.state.rootExpanded && rootListed.value && rows.value.length === 1)
+
+const gitKind = (row: TreeRow) => (props.git && row.depth > 0 && !row.directory ? props.git.files.get(pathKey(row.path)) : undefined)
+const gitDir = (row: TreeRow): boolean => !!props.git && row.depth > 0 && row.directory && props.git.dirs.has(pathKey(row.path))
 
 const isActive = (row: TreeRow): boolean => !!props.activePath && !row.directory && samePath(row.path, props.activePath)
 
@@ -88,6 +95,14 @@ function activate(row: TreeRow, index: number, keep = false): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  if (isShowDiffKey(e)) {
+    const row = rows.value[focusIndex.value]
+    if (row && gitKind(row)) {
+      e.preventDefault()
+      emit('openDiff', row.path)
+    }
+    return
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return
   if ((e.target as HTMLElement).closest('[data-root-action]')) return
   const i = focusIndex.value
@@ -226,7 +241,19 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
             <component :is="row.expanded ? FolderOpen : Folder" v-else-if="row.directory" :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
             <component :is="GLYPH[fileGlyph(row.name)]" v-else :size="13" class="shrink-0" :class="isActive(row) ? 'text-accent-ink' : 'text-agent-file'" aria-hidden="true" />
           </template>
-          <span class="min-w-0 flex-1 truncate" :class="row.depth === 0 ? 'text-2xs tracking-wide uppercase' : ''">{{ row.name }}</span>
+          <span
+            class="min-w-0 flex-1 truncate"
+            :class="[row.depth === 0 ? 'text-2xs tracking-wide uppercase' : '', !isActive(row) && gitKind(row) ? KIND_CLASS[gitKind(row)!] : '', !isActive(row) && gitDir(row) ? 'text-diff-mod' : '']"
+            :data-git="gitKind(row) ?? (gitDir(row) ? 'dir' : undefined)"
+            data-row-name
+            >{{ row.name }}</span
+          >
+          <span v-if="gitKind(row)" class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="isActive(row) ? 'text-accent-ink' : KIND_CLASS[gitKind(row)!]" aria-hidden="true">{{
+            KIND_LETTER[gitKind(row)!]
+          }}</span>
+          <span v-if="gitKind(row)" class="sr-only">, {{ t(`workspace.changes.kind.${gitKind(row)}`) }}</span>
+          <span v-else-if="gitDir(row)" class="mr-1 size-1.5 shrink-0 rounded-full bg-diff-mod" :title="t('workspace.gitStatus.contains')" aria-hidden="true" />
+          <span v-if="gitDir(row)" class="sr-only">, {{ t('workspace.gitStatus.contains') }}</span>
           <span v-if="row.depth === 0" class="flex shrink-0 items-center gap-0.5" data-root-action @click.stop @dblclick.stop>
             <button type="button" :class="ACTION" :title="t('workspace.explorer.newFile')" :aria-label="t('workspace.explorer.newFile')" data-explorer-new-file @click="emit('create', 'file')">
               <FilePlus :size="13" aria-hidden="true" />

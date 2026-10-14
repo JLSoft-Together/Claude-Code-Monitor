@@ -26,8 +26,8 @@ function fixture() {
   git('commit', '-q', '-m', 'init')
 }
 
-const names = `[...document.querySelectorAll('[data-explorer-tree] [role=treeitem]')].map((r) => r.textContent.trim())`
-const row = (name) => `[...document.querySelectorAll('[data-explorer-tree] [role=treeitem]')].find((r) => r.textContent.trim() === ${JSON.stringify(name)})`
+const names = `[...document.querySelectorAll('[data-explorer-tree] [role=treeitem]')].map((r) => (r.querySelector('[data-row-name]') ?? r).textContent.trim())`
+const row = (name) => `[...document.querySelectorAll('[data-explorer-tree] [role=treeitem]')].find((r) => (r.querySelector('[data-row-name]') ?? r).textContent.trim() === ${JSON.stringify(name)})`
 
 async function run(app) {
   const { evaluate, waitFor, shot, sleep, cmd, key, type } = app
@@ -82,7 +82,7 @@ async function run(app) {
   // Keyboard: focus the tree, ArrowDown moves, ArrowRight expands lib.
   await evaluate(`${row('src')}.focus()`)
   await key('ArrowDown', 'ArrowDown', 40)
-  check('ArrowDown moves focus to the next row', await evaluate(`document.activeElement?.textContent.trim() === 'lib'`), await evaluate(`document.activeElement?.textContent.trim()`))
+  check('ArrowDown moves focus to the next row', await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim() === 'lib'`), await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim()`))
   await key('ArrowRight', 'ArrowRight', 39)
   await waitFor(`${names}.includes('util.ts')`, 6000, 'lib expanded').catch(() => {})
   check('ArrowRight expands a folder', await evaluate(`${names}.includes('util.ts')`))
@@ -101,7 +101,7 @@ async function run(app) {
   await evaluate(`document.querySelector('[data-create-submit]').click()`)
   await waitFor(`${names}.includes('added.ts')`, 8000, 'created row').catch(() => {})
   check('new file exists on disk', fs.existsSync(path.join(DIR, 'src', 'lib', 'added.ts')))
-  check('new row appears and takes focus', await evaluate(`document.activeElement?.textContent.trim() === 'added.ts'`), await evaluate(`document.activeElement?.textContent.trim()`))
+  check('new row appears and takes focus', await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim() === 'added.ts'`), await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim()`))
   check('new file opens in the preview viewer', await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.preview && p.path.endsWith('added.ts'))`))
 
   // A file created from outside the app shows up via the watcher.

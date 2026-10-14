@@ -5,11 +5,11 @@ import type { ChangeEntry } from './preview'
 export const KIND_LETTER: Record<ChangeEntry['kind'], string> = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U', conflict: '!' }
 
 export const KIND_CLASS: Record<ChangeEntry['kind'], string> = {
-  modified: 'text-ink-muted',
+  modified: 'text-diff-mod',
   added: 'text-diff-add',
   untracked: 'text-diff-add',
   deleted: 'text-diff-del',
-  renamed: 'text-ink-muted',
+  renamed: 'text-diff-mod',
   conflict: 'text-warning',
 }
 
@@ -40,3 +40,32 @@ const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
 
 /** Same folder/file, case-insensitive where the filesystem usually is. */
 export const samePath = (a: string, b: string): boolean => (isMac || /^[A-Za-z]:/.test(a) ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b))
+
+/** Map key for a path: separators unified, case folded where the filesystem usually ignores it. */
+export const pathKey = (p: string): string => (isMac || /^[A-Za-z]:/.test(p) ? norm(p).toLowerCase() : norm(p))
+
+export interface GitMarks {
+  /** pathKey(absolute file) → kind. */
+  files: Map<string, ChangeEntry['kind']>
+  /** pathKey of every folder above a changed file (the repo root excluded). */
+  dirs: Set<string>
+}
+
+/** Explorer colouring from one status read (IntelliJ file status highlights; parents marked too). */
+export function gitMarks(root: string, entries: readonly ChangeEntry[]): GitMarks {
+  const files = new Map<string, ChangeEntry['kind']>()
+  const dirs = new Set<string>()
+  for (const e of entries) {
+    files.set(pathKey(absoluteIn(root, e.path)), e.kind)
+    for (let d = dirOfRel(e.path); d; d = dirOfRel(d)) {
+      const key = pathKey(absoluteIn(root, d))
+      if (dirs.has(key)) break
+      dirs.add(key)
+    }
+  }
+  return { files, dirs }
+}
+
+/** "Show diff" from a list row: Ctrl+D (⌘⌥D on macOS, where ⌘D splits the pane). */
+export const isShowDiffKey = (e: KeyboardEvent): boolean =>
+  e.code === 'KeyD' && !e.shiftKey && (isMac ? e.metaKey && e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey && !e.metaKey)

@@ -3,6 +3,7 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import diff from './workspace-diff'
 import v28 from './extensions-v28'
 
 export default {
@@ -25,6 +26,7 @@ export default {
     ...viewer.en,
     ...tier2.en,
     ...explorer.en,
+    ...diff.en,
     tabs: 'Terminals',
     newLabel: 'New tab',
     close: 'Close terminal',
@@ -481,6 +483,10 @@ export default {
       wsFocus: 'Move focus to the pane beside it',
       wsQuickOpen: 'Go to file in the project',
       wsExplorer: 'Show the file explorer',
+      wsNextChange: 'Next / previous change (file viewer, Changes)',
+      wsDiffFile: 'Previous / next file in Changes',
+      wsJumpSource: 'Open the file at the current change (Changes)',
+      wsShowDiff: 'Show the diff of the selected file (Explorer)',
       wsFind: 'Find in the focused terminal',
       zoomApp: 'Zoom the app in, out, back to 100%',
       zoomCode: 'Code text size: larger, smaller, default',
@@ -609,6 +615,8 @@ export default {
   },
   settings: {
     breakReminder: 'Break reminders',
+    minimap: 'Code minimap',
+    minimapHint: 'A zoomed-out overview of the file beside the file viewer. Click or drag it to scroll.',
     breakHint: 'Every {n} minutes from the first collector start of the day: drink some water, stand up and walk a bit.',
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',

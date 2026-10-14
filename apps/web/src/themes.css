@@ -27,6 +27,8 @@
   --ccm-diff-del-soft: color-mix(in srgb, var(--ccm-diff-del) 10%, transparent);
   --ccm-diff-add-well: var(--ccm-ansi-2);
   --ccm-diff-del-well: var(--ccm-ansi-1);
+  --ccm-diff-mod-soft: color-mix(in srgb, var(--ccm-diff-mod) 12%, transparent);
+  --ccm-diff-mod-well: var(--ccm-ansi-4);
   --ccm-grid: color-mix(in srgb, var(--ccm-ink) 7%, var(--ccm-surface));
   --ccm-flow-dot: color-mix(in srgb, var(--ccm-ink) 16%, var(--ccm-surface));
   --ccm-edge: color-mix(in srgb, var(--ccm-ink) 36%, var(--ccm-surface));
@@ -41,6 +43,7 @@
   --ccm-warning-soft: color-mix(in srgb, var(--ccm-warning) 16%, transparent);
   --ccm-diff-add-soft: color-mix(in srgb, var(--ccm-diff-add) 16%, transparent);
   --ccm-diff-del-soft: color-mix(in srgb, var(--ccm-diff-del) 14%, transparent);
+  --ccm-diff-mod-soft: color-mix(in srgb, var(--ccm-diff-mod) 16%, transparent);
 }
 
 :root[data-theme='xcode-light'] {
@@ -69,6 +72,7 @@
   --ccm-favorite: #a87b00;
   --ccm-diff-add: #1f7a35;
   --ccm-diff-del: #cc0014;
+  --ccm-diff-mod: #0f5fb0;
   --ccm-agent-claude: #c15f3c;
   --ccm-agent-claude-ink: #ae4a26;
   --ccm-agent-codex: #5e4fc0;
@@ -132,6 +136,7 @@
   --ccm-favorite: #ffd60a;
   --ccm-diff-add: #30d158;
   --ccm-diff-del: #ff6961;
+  --ccm-diff-mod: #409cff;
   --ccm-agent-claude: #d97757;
   --ccm-agent-claude-ink: #e08463;
   --ccm-agent-codex: #a49cf0;
@@ -195,6 +200,7 @@
   --ccm-favorite: #e6db74;
   --ccm-diff-add: #a6e22e;
   --ccm-diff-del: #ff7a9a;
+  --ccm-diff-mod: #66d9ef;
   --ccm-agent-claude: #e8835d;
   --ccm-agent-claude-ink: #ef8f6a;
   --ccm-agent-codex: #ae81ff;
@@ -258,6 +264,7 @@
   --ccm-favorite: #f1fa8c;
   --ccm-diff-add: #50fa7b;
   --ccm-diff-del: #ff7b7b;
+  --ccm-diff-mod: #bd93f9;
   --ccm-agent-claude: #f4a07a;
   --ccm-agent-claude-ink: #f4a07a;
   --ccm-agent-codex: #ff79c6;
@@ -321,6 +328,7 @@
   --ccm-favorite: #9c7600;
   --ccm-diff-add: #586800;
   --ccm-diff-del: #b3221d;
+  --ccm-diff-mod: #1a659c;
   --ccm-agent-claude: #b9532e;
   --ccm-agent-claude-ink: #9f431c;
   --ccm-agent-codex: #5b5fb5;
@@ -384,6 +392,7 @@
   --ccm-favorite: #d4a520;
   --ccm-diff-add: #a3b81c;
   --ccm-diff-del: #f4766b;
+  --ccm-diff-mod: #5aaee8;
   --ccm-agent-claude: #e48b62;
   --ccm-agent-claude-ink: #e8946d;
   --ccm-agent-codex: #9599e6;
@@ -447,6 +456,7 @@
   --ccm-favorite: #9a6700;
   --ccm-diff-add: #187733;
   --ccm-diff-del: #c81e2a;
+  --ccm-diff-mod: #0969da;
   --ccm-agent-claude: #bc5a35;
   --ccm-agent-claude-ink: #a8461f;
   --ccm-agent-codex: #8250df;
@@ -510,6 +520,7 @@
   --ccm-favorite: #d29922;
   --ccm-diff-add: #3fb950;
   --ccm-diff-del: #f85149;
+  --ccm-diff-mod: #58a6ff;
   --ccm-agent-claude: #e08a62;
   --ccm-agent-claude-ink: #e08a62;
   --ccm-agent-codex: #a371f7;
@@ -573,6 +584,7 @@
   --ccm-favorite: #ffcb6b;
   --ccm-diff-add: #c3e88d;
   --ccm-diff-del: #ff8a95;
+  --ccm-diff-mod: #82aaff;
   --ccm-agent-claude: #f0956f;
   --ccm-agent-claude-ink: #f0956f;
   --ccm-agent-codex: #c792ea;
@@ -636,6 +648,7 @@
   --ccm-favorite: #e5c07b;
   --ccm-diff-add: #98c379;
   --ccm-diff-del: #f48a93;
+  --ccm-diff-mod: #61afef;
   --ccm-agent-claude: #e0906b;
   --ccm-agent-claude-ink: #e0906b;
   --ccm-agent-codex: #c678dd;

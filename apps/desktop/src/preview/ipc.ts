@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell, WebContents } from 'electron'
-import { discardFile, discardHunk, diff as changesDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
+import { discardFile, discardHunk, diff as changesDiff, fileDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir } from './explorer'
 import { readFileForView } from './files'
@@ -74,7 +74,7 @@ export interface PreviewIpc {
 
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
-  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
+  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry',
 ]
 
@@ -278,10 +278,24 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   })
 
   ipcMain.handle('ccm:changes-diff', async (event, req: unknown) => {
-    const { root, path: rel } = (req ?? {}) as { root?: unknown; path?: unknown }
+    const { root, path: rel, opts } = (req ?? {}) as { root?: unknown; path?: unknown; opts?: unknown }
     const repo = isAppFrame(event) ? await repoOf(root) : null
     if (!repo) return { ok: false, error: 'denied' }
-    return changesDiff(repo, rel)
+    return changesDiff(repo, rel, opts)
+  })
+
+  // File viewer gutter: the file must be readable here; its repo is registered so a rollback can name it.
+  ipcMain.handle('ccm:changes-file', async (event, file: unknown) => {
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    const ok = await allowedPath(file)
+    if (!ok || !(await fs.stat(ok.real).catch(() => null))?.isFile()) return { ok: false, error: 'denied' }
+    return fileDiff(ok.real, async (dir) => {
+      const known = await repoOf(dir)
+      if (known) return { root: known }
+      const top = await toplevel(dir)
+      if ('root' in top) repos.set(rootKey(top.root), { root: top.root, from: ok.real })
+      return top
+    })
   })
 
   ipcMain.handle('ccm:changes-discard', async (event, req: unknown) => {

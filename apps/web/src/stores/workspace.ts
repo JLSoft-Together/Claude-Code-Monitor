@@ -34,6 +34,8 @@ export interface Pane {
   /** Changes: git toplevel once known, and the number of changed files. */
   root?: string
   count?: number
+  /** Changes: absolute path of the file to select next (Show diff / Ctrl+D); runtime only, cleared once shown. */
+  select?: string
   /** Browser page title / favicon, runtime only. */
   title?: string
   favicon?: string | null
@@ -366,14 +368,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
-  /** One Changes pane per repo (git toplevel once known, else the folder it was opened for). */
-  function openChanges(cwd: string, opts: { split?: Placement } = {}): Pane {
+  /** One Changes pane per repo (git toplevel once known, else the folder it was opened for); `select` = file to show. */
+  function openChanges(cwd: string, opts: { split?: Placement; select?: string } = {}): Pane {
     const same = panes.value.find((p) => p.kind === 'changes' && (sameDir(p.root, cwd) || sameDir(p.cwd, cwd)))
     if (same) {
+      if (opts.select) same.select = opts.select
       activate(same.key)
       return same
     }
     const pane = addView({ kind: 'changes' }, cwd)
+    if (opts.select) pane.select = opts.select
     placeNew(pane, opts.split)
     return pane
   }

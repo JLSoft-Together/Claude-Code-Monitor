@@ -4,6 +4,7 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import diff from './workspace-diff'
 import v28 from './extensions-v28'
 
 const vi: typeof en = {
@@ -26,6 +27,7 @@ const vi: typeof en = {
     ...viewer.vi,
     ...tier2.vi,
     ...explorer.vi,
+    ...diff.vi,
     tabs: 'Terminal',
     newLabel: 'Tab mới',
     close: 'Đóng terminal',
@@ -482,6 +484,10 @@ const vi: typeof en = {
       wsFocus: 'Chuyển sang pane bên cạnh',
       wsQuickOpen: 'Mở nhanh tệp trong dự án',
       wsExplorer: 'Hiện cây thư mục (Explorer)',
+      wsNextChange: 'Thay đổi kế / trước (xem tệp, Thay đổi)',
+      wsDiffFile: 'Tệp trước / sau trong Thay đổi',
+      wsJumpSource: 'Mở tệp tại thay đổi đang chọn (Thay đổi)',
+      wsShowDiff: 'Xem diff của tệp đang chọn (Explorer)',
       wsFind: 'Tìm trong terminal đang chọn',
       zoomApp: 'Phóng to, thu nhỏ app, về 100%',
       zoomCode: 'Cỡ chữ code: lớn hơn, nhỏ hơn, mặc định',
@@ -610,6 +616,8 @@ const vi: typeof en = {
   },
   settings: {
     breakReminder: 'Nhắc nghỉ giải lao',
+    minimap: 'Minimap code',
+    minimapHint: 'Bản thu nhỏ của cả tệp bên cạnh trình xem tệp. Bấm hoặc kéo trên đó để cuộn.',
     breakHint: 'Cứ {n} phút một lần, tính từ lúc bật collector đầu tiên trong ngày: uống nước, đứng dậy đi lại một chút.',
     breakHintAt: 'Cứ {n} phút một lần, tính từ {since} (lần bật collector đầu tiên hôm nay). Lần tới: {next}.',
     subtitle: 'Lưu trên máy này.',

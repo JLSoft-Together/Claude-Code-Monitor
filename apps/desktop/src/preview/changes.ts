@@ -26,12 +26,59 @@ export type ChangesStatus =
   | { ok: false; error: ChangesError }
 
 export type ChangesDiff =
-  | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean }
+  /** `partial`: a full-context diff went past its cap, so `text` holds the usual 3-line-context diff instead. */
+  | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean; partial?: boolean }
+  | { ok: false; error: ChangesError }
+
+export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank'
+
+export interface DiffOptions {
+  /** Lines of context; 'full' = the whole file in one hunk (Diff Viewer with Collapse unchanged). */
+  context?: 3 | 'full'
+  whitespace?: DiffWhitespace
+}
+
+/** File viewer gutter: the file's own diff vs HEAD. `kind` null = clean, ignored or outside the repo index. */
+export type ChangesFile =
+  | {
+      ok: true
+      root: string
+      rel: string
+      kind: ChangeKind | null
+      staged: boolean
+      text: string
+      binary: boolean
+      tooLarge: boolean
+      untracked: boolean
+    }
   | { ok: false; error: ChangesError }
 
 export type ChangesResult = { ok: true } | { ok: false; error: ChangesError; detail?: string }
 
 export const MAX_DIFF_BYTES = 1024 * 1024
+/** Full-context diffs carry every unchanged line too. */
+export const MAX_FULL_DIFF_BYTES = 3 * 1024 * 1024
+const FULL_CONTEXT = '-U1000000'
+
+const WHITESPACE_ARGS: Record<DiffWhitespace, string[]> = {
+  none: [],
+  eol: ['--ignore-space-at-eol'],
+  all: ['-w'],
+  'all-blank': ['-w', '--ignore-blank-lines'],
+}
+
+/** Page-supplied options → known values only. */
+export function cleanDiffOptions(raw: unknown): Required<DiffOptions> {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const whitespace = typeof o.whitespace === 'string' && Object.hasOwn(WHITESPACE_ARGS, o.whitespace) ? (o.whitespace as DiffWhitespace) : 'none'
+  return { context: o.context === 'full' ? 'full' : 3, whitespace }
+}
+
+/** `git diff` flags for the options (after `diff <base>`). */
+export function diffArgs(opts: DiffOptions = {}): string[] {
+  const { context, whitespace } = cleanDiffOptions(opts)
+  return [...(context === 'full' ? [FULL_CONTEXT] : []), ...WHITESPACE_ARGS[whitespace]]
+}
 export const MAX_ENTRIES = 5000
 
 /** Parses `git status --porcelain=v2 -z [--branch]` output. */
@@ -209,10 +256,14 @@ async function entryFor(root: string, rel: string): Promise<ChangeEntry | null> 
   return parseStatusV2(res.stdout).entries.find((e) => e.path === rel) ?? null
 }
 
-export async function diff(root: string, relInput: unknown): Promise<ChangesDiff> {
+export async function diff(root: string, relInput: unknown, optsInput?: unknown): Promise<ChangesDiff> {
   const safe = safeRepoPath(root, relInput)
   if (!safe) return { ok: false, error: 'denied' }
   const entry = await entryFor(root, safe.rel)
+  return diffEntry(root, safe, entry, cleanDiffOptions(optsInput))
+}
+
+async function diffEntry(root: string, safe: { rel: string; abs: string }, entry: ChangeEntry | null, opts: Required<DiffOptions>): Promise<ChangesDiff> {
   if (!entry) return { ok: true, path: safe.rel, text: '', binary: false, tooLarge: false, untracked: false }
   if (entry.kind === 'untracked') {
     const stat = await fs.stat(safe.abs).catch(() => null)
@@ -226,11 +277,37 @@ export async function diff(root: string, relInput: unknown): Promise<ChangesDiff
   const base = await baseRev(root)
   if (!base) return { ok: false, error: 'failed' }
   const paths = entry.origPath ? [entry.origPath, entry.path] : [entry.path]
-  const res = await execGit(root, ['diff', base, '-M', '--no-ext-diff', '--no-textconv', '--', ...paths], { maxBytes: MAX_DIFF_BYTES, timeoutMs: 20_000 })
+  const run = (o: Required<DiffOptions>, maxBytes: number) =>
+    execGit(root, ['diff', base, '-M', '--no-ext-diff', '--no-textconv', ...diffArgs(o), '--', ...paths], { maxBytes, timeoutMs: 20_000 })
+  let res = await run(opts, opts.context === 'full' ? MAX_FULL_DIFF_BYTES : MAX_DIFF_BYTES)
+  let partial = false
+  if (res.truncated && opts.context === 'full') {
+    partial = true
+    res = await run({ ...opts, context: 3 }, MAX_DIFF_BYTES)
+  }
   if (res.code !== 0 && !res.truncated) return { ok: false, error: 'failed' }
   if (res.truncated) return { ok: true, path: safe.rel, text: '', binary: false, tooLarge: true, untracked: false }
   const binary = /^Binary files .* differ$/m.test(res.stdout) && !/^@@ /m.test(res.stdout)
-  return { ok: true, path: safe.rel, text: res.stdout, binary, tooLarge: false, untracked: false }
+  return { ok: true, path: safe.rel, text: res.stdout, binary, tooLarge: false, untracked: false, ...(partial ? { partial } : {}) }
+}
+
+/**
+ * Diff vs HEAD of one file the page shows (`abs` already real and allowed); `repoRoot` resolves its
+ * git toplevel (the IPC layer registers it so later discards against that root are accepted).
+ */
+export async function fileDiff(abs: string, repoRoot: (dir: string) => Promise<{ root: string } | { error: ChangesError }>): Promise<ChangesFile> {
+  const top = await repoRoot(path.dirname(abs))
+  if ('error' in top) return { ok: false, error: top.error }
+  const root = top.root
+  const rel = path.relative(root, abs)
+  const safe = safeRepoPath(root, rel)
+  if (!safe) return { ok: false, error: 'denied' }
+  const entry = await entryFor(root, safe.rel)
+  const none = { ok: true as const, root, rel: safe.rel, kind: null, staged: false, text: '', binary: false, tooLarge: false, untracked: false }
+  if (!entry || entry.kind === 'deleted' || entry.kind === 'conflict') return entry ? { ...none, kind: entry.kind, staged: entry.staged } : none
+  const res = await diffEntry(root, safe, entry, { context: 3, whitespace: 'none' })
+  if (!res.ok) return res
+  return { ok: true, root, rel: safe.rel, kind: entry.kind, staged: entry.staged, text: res.text, binary: res.binary, tooLarge: res.tooLarge, untracked: res.untracked }
 }
 
 export interface DiscardDeps {

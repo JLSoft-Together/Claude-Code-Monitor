@@ -818,7 +818,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div v-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
-        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root) => withViewTransition(() => workspace.openChanges(root))" />
+        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" />
       </div>
       <WorkspaceSidebar
         v-else
@@ -1058,6 +1058,7 @@ onBeforeUnmount(() => {
             :line="pane.line"
             :active="visible && tabBoxes.has(pane.key)"
             @open="(path) => workspace.openFile(path, undefined, { cwd: pane.cwd })"
+            @show-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path, split: { key: pane.key, dir: 'row' } }))"
           >
             <template #end>
               <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
@@ -1067,7 +1068,9 @@ onBeforeUnmount(() => {
             v-else
             class="min-h-0 flex-1"
             :cwd="pane.cwd!"
+            :select="pane.select"
             :active="visible && tabBoxes.has(pane.key)"
+            @selected="workspace.update(pane.key, { select: undefined })"
             @open="(path, line) => workspace.openFile(path, line, { cwd: pane.root ?? pane.cwd })"
             @count="(count) => workspace.update(pane.key, { count })"
             @root="(root) => workspace.update(pane.key, { root })"

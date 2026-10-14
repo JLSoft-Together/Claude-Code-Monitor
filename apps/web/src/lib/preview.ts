@@ -48,7 +48,20 @@ export type ChangesStatus =
   | { ok: false; error: ChangesError }
 
 export type ChangesDiff =
-  | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean }
+  /** `partial`: the full-context diff was too big, `text` is the 3-line-context one. */
+  | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean; partial?: boolean }
+  | { ok: false; error: ChangesError }
+
+export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank'
+
+export interface ChangesDiffOpts {
+  context?: 3 | 'full'
+  whitespace?: DiffWhitespace
+}
+
+/** One viewed file's diff vs HEAD (gutter markers); `kind` null = clean, ignored or not in the index. */
+export type ChangesFile =
+  | { ok: true; root: string; rel: string; kind: ChangeKind | null; staged: boolean; text: string; binary: boolean; tooLarge: boolean; untracked: boolean }
   | { ok: false; error: ChangesError }
 
 export type ChangesResult = { ok: true } | { ok: false; error: ChangesError; detail?: string }
@@ -79,7 +92,8 @@ interface PreviewBridge {
   requestAccess?: (path: string) => Promise<boolean>
   forgetGrants?: () => Promise<boolean>
   changesStatus?: (dir: string) => Promise<ChangesStatus>
-  changesDiff?: (root: string, path: string) => Promise<ChangesDiff>
+  changesDiff?: (root: string, path: string, opts?: ChangesDiffOpts) => Promise<ChangesDiff>
+  changesFile?: (path: string) => Promise<ChangesFile>
   changesDiscard?: (root: string, path: string, hunk?: string) => Promise<ChangesResult>
   changesWatch?: (root: string) => Promise<boolean>
   changesUnwatch?: (root: string) => Promise<boolean>
@@ -115,7 +129,10 @@ export const forgetGrants = (): Promise<boolean> => bridge?.forgetGrants?.() ?? 
 const unavailable = { ok: false as const, error: 'unavailable' as const }
 export const hasChanges = typeof bridge?.changesStatus === 'function'
 export const changesStatus = (dir: string): Promise<ChangesStatus> => bridge?.changesStatus?.(dir) ?? Promise.resolve(unavailable)
-export const changesDiff = (root: string, path: string): Promise<ChangesDiff> => bridge?.changesDiff?.(root, path) ?? Promise.resolve(unavailable)
+export const changesDiff = (root: string, path: string, opts?: ChangesDiffOpts): Promise<ChangesDiff> =>
+  bridge?.changesDiff?.(root, path, opts) ?? Promise.resolve(unavailable)
+export const hasFileChanges = typeof bridge?.changesFile === 'function'
+export const changesFile = (path: string): Promise<ChangesFile> => bridge?.changesFile?.(path) ?? Promise.resolve(unavailable)
 export const changesDiscard = (root: string, path: string, hunk?: string): Promise<ChangesResult> =>
   bridge?.changesDiscard?.(root, path, hunk) ?? Promise.resolve(unavailable)
 export const changesWatch = (root: string): Promise<boolean> => bridge?.changesWatch?.(root) ?? Promise.resolve(false)

@@ -2,12 +2,13 @@
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GitBranch, GitCompare, RotateCw } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
+import { absoluteIn, dirOfRel, groupChanges, isShowDiffKey, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
 import { setDragPath } from '../../lib/explorer/dragPath'
+import { isMac } from '../../lib/platform'
 import { baseName, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
 
 const props = defineProps<{ status: ChangesStatus | null; reading: boolean }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string]; refresh: [] }>()
+const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; refresh: [] }>()
 
 const { t } = useI18n()
 const listEl = ref<HTMLElement | null>(null)
@@ -36,8 +37,16 @@ async function move(index: number): Promise<void> {
 }
 
 function onKey(e: KeyboardEvent): void {
-  if (e.ctrlKey || e.metaKey || e.altKey) return
   const at = ordered.value.findIndex((x) => x.path === focusPath.value)
+  if (isShowDiffKey(e)) {
+    const entry = ordered.value[at]
+    if (entry && ok.value) {
+      e.preventDefault()
+      emit('openDiff', ok.value.root, absoluteIn(ok.value.root, entry.path))
+    }
+    return
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return
   if (e.key === 'ArrowDown') void move(at + 1)
   else if (e.key === 'ArrowUp') void move(at - 1)
   else if (e.key === 'Home') void move(0)
@@ -98,7 +107,8 @@ const title = (e: ChangeEntry): string =>
           :tabindex="e.path === focusPath ? 0 : -1"
           class="flex h-[22px] min-w-0 items-center gap-1.5 rounded-inner px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
           :class="e.kind === 'deleted' ? 'cursor-default text-ink-muted' : 'cursor-pointer text-ink hover:bg-fill'"
-          :title="title(e)"
+          :title="`${title(e)}
+${t('workspace.gutter.showDiff')}: ${isMac ? '⌘⌥D' : 'Ctrl+D'}`"
           :data-change="e.path"
           :draggable="e.kind !== 'deleted'"
           @dragstart="drag($event, e)"

@@ -39,6 +39,7 @@ Source: color audit 2026-10-14. Apple macOS system colors as reference. Tokens l
 | model-1..8 | cat rotated (5,6,8,1,2,3,4,7 → never = series/codex in same view) | | dataviz | Usage › Models | — |
 | diff-add / diff-add-soft | #1f7a35 / green/.15 | #30d158 / green/.18 | systemGreen | `+N`, added lines | status |
 | diff-del / diff-del-soft | #d70015 / red/.12 | #ff6961 / red/.18 | systemRed | `−N`, removed lines | status |
+| diff-mod / diff-mod-soft / diff-mod-well | #0060c0 / blue/.12 · well #409cff | #5eaaff / blue/.18 | systemBlue (IntelliJ "modified") | modified files (M letter, Explorer names, folders above changes), gutter / minimap bars of modified lines | status, links |
 | diff-add-well / diff-del-well | #30d158 / #ff6961 | same | systemGreen / systemRed (dark) | diff ink on the always-dark well (DiffView, ChangesPane) | light surfaces |
 | page | #fff | #fff | — | browser pane canvas behind a web page (pages without a background render white, like any browser) | UI surfaces |
 | ansi-0..15 (well, one set) | black #1c1c1e · red #ff453a · green #30d158 · yellow #ffd60a · blue #0a84ff · magenta #bf5af2 · cyan #64d2ff · white #d1d1d6 · brBlack #8e8e93 · brRed #ff6961 · brGreen #4ae36d · brYellow #ffe55c · brBlue #409cff · brMagenta #da8fff · brCyan #8be3ff · brWhite #f5f5f7 | same | Terminal.app dark | xterm only | UI |

@@ -35,6 +35,10 @@ export function workspaceShortcuts(mac: boolean): Shortcut[] {
       { id: 'wsQuickOpen', keys: ['⌘', 'P'], group },
       { id: 'wsExplorer', keys: ['⌘', '⇧', 'E'], group },
       { id: 'wsFind', keys: ['⌘', 'F'], group },
+      { id: 'wsNextChange', keys: ['F7', '⇧', 'F7'], group },
+      { id: 'wsDiffFile', keys: ['[', ']'], group },
+      { id: 'wsJumpSource', keys: ['F4'], group },
+      { id: 'wsShowDiff', keys: ['⌥', '⌘', 'D'], group },
     ]
   return [
     { id: 'wsNew', keys: ['Ctrl', 'Shift', 'T'], group },
@@ -49,6 +53,10 @@ export function workspaceShortcuts(mac: boolean): Shortcut[] {
     { id: 'wsQuickOpen', keys: ['Ctrl', 'Shift', 'P'], group },
     { id: 'wsExplorer', keys: ['Ctrl', 'Shift', 'E'], group },
     { id: 'wsFind', keys: ['Ctrl', 'Shift', 'F'], group },
+    { id: 'wsNextChange', keys: ['F7', 'Shift', 'F7'], group },
+    { id: 'wsDiffFile', keys: ['[', ']'], group },
+    { id: 'wsJumpSource', keys: ['F4'], group },
+    { id: 'wsShowDiff', keys: ['Ctrl', 'D'], group },
   ]
 }
 

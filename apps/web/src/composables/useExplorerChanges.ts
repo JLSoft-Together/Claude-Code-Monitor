@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
-import { samePath } from '../lib/changesView'
+import { gitMarks, samePath } from '../lib/changesView'
 import { createChangesScheduler } from '../lib/explorer/changesScheduler'
 import { changesStatus, changesUnwatch, changesWatch, onChangesUpdated, type ChangesStatus } from '../lib/preview'
 
@@ -84,5 +84,7 @@ export function useExplorerChanges(root: Ref<string | null>, active: Ref<boolean
   })
   const isRepo = computed(() => (status.value ? status.value.ok || (status.value.error !== 'not-repo' && status.value.error !== 'no-git') : true))
 
-  return { status, reading, totals, isRepo, refresh: () => scheduler.trigger('refresh'), read }
+  const marks = computed(() => (status.value?.ok ? gitMarks(status.value.root, status.value.entries) : null))
+
+  return { status, reading, totals, isRepo, marks, refresh: () => scheduler.trigger('refresh'), read }
 }
