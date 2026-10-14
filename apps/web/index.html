@@ -12,8 +12,8 @@
       ;(function () {
         try {
           // Mirrors lib/themes.ts THEMES (checked by lib/themes.test.ts).
-          var L = ['light', 'xcode-light', 'github-light', 'solarized-light']
-          var D = ['dark', 'xcode-dark', 'github-dark', 'solarized-dark', 'monokai', 'dracula', 'material', 'one-dark']
+          var L = ['light', 'xcode-light', 'github-light', 'solarized-light', 'islands-light']
+          var D = ['dark', 'xcode-dark', 'github-dark', 'solarized-dark', 'monokai', 'dracula', 'material', 'one-dark', 'islands-dark']
           var r = document.documentElement
           var t = localStorage.getItem('ccm.theme')
           if (L.indexOf(t) < 0 && D.indexOf(t) < 0) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
