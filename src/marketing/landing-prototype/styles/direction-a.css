@@ -1,0 +1,446 @@
+.direction-a {
+  --a-surface-0: #0a0c0b;
+  --a-surface-1: #101310;
+  --a-surface-2: #151915;
+  --a-surface-3: #1b211b;
+  --a-ink: #ffffff;
+  --a-ink-soft: rgb(255 255 255 / 64%);
+  --a-ink-faint: rgb(255 255 255 / 52%);
+  --a-line: var(--frame-line);
+  --a-line-strong: rgb(255 255 255 / 21%);
+  /* Signal, aliased to the page-wide token — white, not violet. The chrome is
+     achromatic end to end and the hero window's gold light is the one warm
+     surface above the fold; a coloured CTA competing with it read as a
+     leftover from a different design. */
+  --a-accent: var(--accent);
+  --a-accent-rgb: var(--accent-rgb);
+  --a-ease-lock: cubic-bezier(0.22, 0.78, 0.18, 1);
+  /* Match the app's font language (src/styles.css): one system sans for all
+     text + chrome, mono reserved for real terminal content only. */
+  --a-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --a-font-mono: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+  /* Aliases only — the real values, and their breakpoint overrides, live on
+     :root in tokens.css so the tour and the footer resolve the same frame. */
+  --a-cell-pad: var(--frame-pad);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: clip;
+  color: var(--a-ink);
+  /* Neutral grey-white ground. The window's gold light carries every bit of
+     colour temperature above the fold, so the field it stands in stays
+     achromatic. The hero is as tall as its content and no taller (owner,
+     2026-10-13): stretched to a screen it left a dark band under the window. */
+  background:
+    radial-gradient(120% 74% at 50% 0%, rgb(255 255 255 / 5%), transparent 62%),
+    linear-gradient(180deg, #0b0d0c 0%, #090b0a 100%);
+  isolation: isolate;
+}
+
+.direction-a a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The download CTA is an <a>, and the `color: inherit` above is (0,1,1) —
+   more specific than `.a-primary-cta`, so without this the label inherits
+   white ink and vanishes into the white button face. Declared here rather than
+   by raising `.a-primary-cta`'s own specificity: that rule also carries the
+   padding and font size, which the breakpoints below need to override. */
+.direction-a a.a-primary-cta {
+  color: var(--a-surface-0);
+}
+
+.direction-a a.a-primary-cta:hover,
+.direction-a a.a-primary-cta:focus-visible {
+  color: var(--a-ink);
+}
+
+.a-brand-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.a-partner-mark {
+  display: block;
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
+}
+
+.a-brand-divider {
+  width: 1px;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  background: var(--a-line-strong);
+}
+
+.a-brand-icon {
+  display: block;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 22%;
+}
+
+/* The hero's slice of the page-wide frame. The two verticals are drawn once,
+   for the whole document, by `.page-frame` (frame.css) — this column only has
+   to match its width so the horizontal rules below land between them. */
+.a-main {
+  position: relative;
+  display: flex;
+  width: var(--frame-width);
+  flex-direction: column;
+  min-width: 0;
+  margin-inline: auto;
+  padding: 0;
+  /* Closes the hero and opens the tour — the frame runs on either side of it. */
+  border-bottom: 1px solid var(--frame-line);
+}
+
+/* Brand left, links right: the brand's auto margin is the whole spacer. */
+.a-topbar {
+  z-index: 4;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: clamp(1.25rem, 2.4vw, 2.5rem);
+  padding: 1.15rem var(--a-cell-pad);
+  border-bottom: 1px solid var(--a-line);
+  color: var(--a-ink);
+  font: 600 0.62rem/1 var(--a-font-display);
+  letter-spacing: normal;
+}
+
+.a-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--a-ink);
+  margin-inline-end: auto;
+  letter-spacing: normal;
+}
+
+.a-topbar__brand .a-brand-icon {
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.a-topbar__brand .a-partner-mark {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.a-topbar__brand .a-brand-divider {
+  height: 1.2rem;
+}
+
+.a-topbar__brand strong {
+  font-size: 0.64rem;
+  font-weight: 680;
+}
+
+.a-topbar__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--a-ink);
+}
+
+.a-topbar__changelog {
+  position: relative;
+  padding-block: 0.35rem;
+  color: var(--a-ink-soft);
+  transition: color 220ms var(--a-ease-lock);
+}
+
+.a-topbar__changelog::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: currentcolor;
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms var(--a-ease-lock);
+}
+
+.a-topbar__changelog:hover,
+.a-topbar__changelog:focus-visible {
+  color: var(--a-ink);
+}
+
+.a-topbar__changelog:hover::after,
+.a-topbar__changelog:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.a-github-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: currentColor;
+}
+
+.a-topbar__github::after {
+  width: 1.75rem;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  transform: scaleX(0.35);
+  transform-origin: right;
+  transition: transform 280ms var(--a-ease-lock);
+}
+
+.a-topbar__github:hover::after,
+.a-topbar__github:focus-visible::after {
+  transform: scaleX(1);
+}
+
+/* The feedback board's three dots: its column colours, on the nav link that
+   replaced the second hero pill (2026-10-10). */
+.a-topbar__feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.a-topbar__dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.a-topbar__dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f5c56b;
+}
+
+.a-topbar__dots i:nth-child(2) {
+  background: #8aaeff;
+}
+
+.a-topbar__dots i:nth-child(3) {
+  background: #74d6a0;
+}
+
+.a-topbar a:focus-visible {
+  outline: 2px solid var(--a-accent);
+  outline-offset: 5px;
+}
+
+/* The bar's one filled control, at its right edge: the hero's install button
+   in miniature, hover sweep included (.a-primary-cta below). */
+.a-topbar .a-topbar__download {
+  min-height: 2rem;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem 0.45rem 0.95rem;
+  box-shadow: none;
+  font: 600 0.62rem/1 var(--a-font-display);
+}
+
+.a-topbar__download .a-install-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* Icon + label, kept together so the trailing slot — the arrow, or the
+   coming-soon tag — stays pinned to the button's right edge. */
+.a-cta-lead {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+/* currentColor: the same mark has to sit on the white face and on the muted
+   twin without a second rule. */
+.a-os-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+}
+
+.a-install-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  transition: transform 280ms var(--a-ease-lock);
+}
+
+/* The unfilled twin of .a-primary-cta — identical box, no fill. */
+.a-quiet-cta {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 1.05rem;
+  border: 1px solid var(--a-line-strong);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 5%);
+  color: var(--a-ink);
+  cursor: pointer;
+  font: 500 0.82rem/1 var(--a-font-display);
+  letter-spacing: -0.006em;
+  text-align: left;
+  transition:
+    background 240ms var(--a-ease-lock),
+    border-color 240ms var(--a-ease-lock);
+}
+
+.a-quiet-cta:hover:not(:disabled),
+.a-quiet-cta:focus-visible:not(:disabled) {
+  background: rgb(255 255 255 / 6%);
+  border-color: rgb(255 255 255 / 42%);
+}
+
+.a-quiet-cta i {
+  font-size: 1rem;
+  font-style: normal;
+  transition: transform 280ms var(--a-ease-lock);
+}
+
+.a-quiet-cta:hover:not(:disabled) i {
+  transform: translate(0.2rem, -0.2rem);
+}
+
+.a-quiet-cta:focus-visible {
+  outline: 2px solid var(--a-accent);
+  outline-offset: 4px;
+}
+
+/* The trailing slot: the install glyph, pinned to the button's right edge. */
+.a-cta-trail {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.a-primary-cta {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 1.05rem;
+  overflow: hidden;
+  color: var(--a-surface-0);
+  background: var(--a-accent);
+  border: 1px solid var(--a-accent);
+  border-radius: 999px;
+  box-shadow: 0 0.75rem 2.25rem rgb(var(--a-accent-rgb) / 10%);
+  cursor: pointer;
+  font: 500 0.82rem/1 var(--a-font-display);
+  isolation: isolate;
+  letter-spacing: -0.006em;
+  text-align: left;
+  transition:
+    box-shadow 280ms var(--a-ease-lock),
+    color 380ms var(--a-ease-lock),
+    transform 280ms var(--a-ease-lock);
+}
+
+/* The hover sweep runs INVERTED now that the button face is white: a dark
+   plate slides in under the label and the label flips to white with it. Same
+   mechanic as before, when the face was violet and the plate was white. */
+.a-primary-cta::before {
+  position: absolute;
+  z-index: -1;
+  inset: -2px;
+  background: var(--a-surface-0);
+  content: "";
+  transform: translateX(-112%) skewX(-14deg);
+  transform-origin: left;
+  transition: transform 380ms var(--a-ease-lock);
+}
+
+.a-primary-cta:hover,
+.a-primary-cta:focus-visible {
+  color: var(--a-ink);
+  box-shadow: 0 1rem 2.8rem rgb(var(--a-accent-rgb) / 18%);
+  transform: translateY(-2px);
+}
+
+.a-primary-cta:hover::before,
+.a-primary-cta:focus-visible::before {
+  transform: translateX(0) skewX(0);
+}
+
+/* The arrow settles into its tray when the installer CTA lifts. */
+.a-primary-cta:hover .a-install-icon,
+.a-primary-cta:focus-visible .a-install-icon {
+  transform: translateY(0.1rem);
+}
+
+.a-primary-cta:focus-visible {
+  outline: 2px solid var(--a-ink);
+  outline-offset: 4px;
+}
+
+@media (max-width: 47.5rem) {
+  .direction-a {
+    display: block;
+  }
+
+  .a-brand-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .a-partner-mark {
+    width: 1.55rem;
+    height: 1.55rem;
+  }
+
+  .a-brand-divider {
+    height: 1.15rem;
+  }
+
+  .a-main {
+    padding: 0;
+  }
+
+  /* One compact row: the brand, the changelog and the board's link. */
+  .a-topbar {
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 0.95rem;
+  }
+
+  /* Download gives way too: a phone cannot run the app, and the hero's own
+     install buttons are a thumb's reach below. */
+  .a-topbar__github,
+  .a-topbar__download {
+    display: none;
+  }
+
+  .a-primary-cta,
+  .a-quiet-cta {
+    width: 100%;
+    min-height: 2.75rem;
+    gap: 0.65rem;
+    padding: 0.7rem 1rem;
+    font-size: 0.78rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .a-primary-cta,
+  .a-primary-cta::before,
+  .a-install-icon,
+  .a-quiet-cta,
+  .a-quiet-cta i,
+  .a-topbar__changelog,
+  .a-topbar__changelog::after,
+  .a-topbar__github::after {
+    transition: none;
+  }
+}

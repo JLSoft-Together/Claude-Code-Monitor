@@ -1,0 +1,505 @@
+/* ---------- Modals (DL §29) ---------- */
+/* The one scrim every modal mounts on, owned by `src/ui/modal.tsx` (DL-29.1).
+   `backdrop-filter` is DL-1.3's one sanctioned exception (amended 2026-08-16,
+   scoped to this selector — DL-29.5): the wash dropped from 65% to 42% so the
+   stage still reads as being there, and the blur is what keeps terminal text
+   from competing with the panel through it. It exists only while a modal is
+   open, so the compositing layer is transient rather than a standing cost. */
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 42%, transparent);
+  /* 10px, chosen against a rendered terminal ground rather than picked: 6px
+     still let line rhythm read as text, and 14px erased the stage into a flat
+     wash, which is the thing the 42% figure exists to avoid. */
+  backdrop-filter: blur(10px);
+}
+.preset-editor {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 86vw);
+  height: min(520px, 82vh);
+  /* DL-29.6: the sidebar's chrome plane, the same ground the navigation column
+     and the docked panel stand on — not a step off `--bg`. See the note above
+     `.modal-scrim`. */
+  background: var(--sidebar-bg);
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+.preset-editor__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+.preset-editor__toolbar h1 {
+  font-size: var(--type-title);
+  margin: 0;
+}
+.preset-editor__tools {
+  display: flex;
+  gap: 6px;
+}
+.preset-editor__tools button {
+  font: inherit;
+  font-size: var(--type-meta);
+  padding: 4px 10px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.preset-editor__tools button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.preset-editor__stage {
+  flex: 1;
+  margin: 12px;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--bg);
+}
+.preset-editor__stage > .mock-split,
+.preset-editor__stage > .mock-pane {
+  width: 100%;
+  height: 100%;
+}
+.mock-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.mock-split.is-column {
+  flex-direction: column;
+}
+.mock-branch {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.mock-branch > * {
+  flex: 1;
+}
+.mock-divider {
+  position: relative;
+  flex: 0 0 1px;
+  background: var(--hair);
+  z-index: 1;
+}
+.mock-divider.is-row {
+  cursor: col-resize;
+}
+.mock-divider.is-column {
+  cursor: row-resize;
+}
+.mock-divider::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+.mock-divider:hover {
+  background: var(--accent);
+}
+.mock-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  min-width: 0;
+  min-height: 0;
+}
+.mock-pane.is-selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.mock-pane__cwd {
+  font-family: var(--ui-font);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mock-pane__label {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.preset-editor__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hair);
+}
+.preset-editor__name {
+  flex: 0 0 220px;
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-tab);
+}
+.preset-editor__meta {
+  flex: 1;
+  font-size: var(--type-meta);
+  color: var(--text-faint);
+}
+.preset-editor__actions {
+  display: flex;
+  gap: 8px;
+}
+.preset-editor__actions button {
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 14px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.preset-editor__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.preset-editor__actions button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* ---------- Save preset dialog ---------- */
+.save-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 360px;
+  padding: 16px;
+  background: var(--sidebar-bg); /* DL-29.6 */
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.save-preset h1 {
+  font-size: var(--type-title);
+  margin: 0;
+}
+.save-preset__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--type-body);
+}
+.save-preset__row span {
+  flex: 0 0 96px;
+  color: var(--text-muted);
+}
+.save-preset__row input,
+.save-preset__row select {
+  flex: 1;
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-tab);
+}
+.save-preset__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--type-body);
+  color: var(--text-muted);
+}
+.save-preset__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.save-preset__actions button {
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 14px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.save-preset__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.save-preset__actions button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* ---------- New file / new folder (DL-19.5, amended 2026-08-25) ---------- */
+/* A dialog the user PRESSED a control to open may use the shared shell. The
+   panel is `--sidebar-bg` like every other modal (DL-29.6); the box follows
+   `.save-preset` above verbatim, narrower because it holds one field. */
+.create-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+  padding: 16px;
+  background: var(--sidebar-bg); /* DL-29.6 */
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.create-entry h1 {
+  margin: 0;
+  font-size: var(--type-title);
+}
+.create-entry__destination {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-meta);
+}
+.create-entry input {
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-tab);
+}
+/* DL-3.2: a refusal is red. This is the field's own reason, not the panel's
+   status line — that one lives under the dock's header and reports what main
+   answered. */
+.create-entry__reason {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--type-meta);
+}
+.create-entry__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.create-entry__actions button {
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 14px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.create-entry__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.create-entry__actions button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* ---------- Usage consent (DL-29.9, the decision modal) ---------- */
+/* The one modal whose shell exits are withdrawn: no ✕, no Escape, no scrim
+   dismissal — every way out persists a consent answer (owner-decided
+   2026-08-22, replacing the DL §30 consent row). Sized to its two sentences:
+   a consent dialog that fills the window reads as an ultimatum. */
+.usage-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 86vw);
+  padding: 20px;
+  /* DL-29.6: the chrome plane, like every panel on this scrim. */
+  background: var(--sidebar-bg);
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.usage-consent__title {
+  margin: 0;
+  font-size: var(--type-title);
+}
+.usage-consent__message {
+  margin: 0;
+  font-size: var(--type-body);
+  color: var(--text-muted);
+}
+.usage-consent__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.usage-consent__actions button {
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 6px 14px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.usage-consent__actions button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* "What Deck sends →" / "Read the full privacy notice →": a link, not a
+   decision — plain ink, no frame. Shared with Settings → Privacy, which is
+   why the class is feature-named rather than panel-named. */
+.usage-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  cursor: pointer;
+}
+
+.usage-link:hover,
+.usage-link:focus-visible {
+  color: var(--text-primary);
+}
+
+/* ---------- Agent quick picker ---------- */
+.agent-quick-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 90vw);
+  padding: 16px;
+  background: var(--sidebar-bg); /* DL-29.6 */
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.agent-quick-picker h1 {
+  font-size: var(--type-title);
+  margin: 0;
+}
+.agent-quick-picker__hint {
+  margin: -6px 0 0;
+  font-size: var(--type-body);
+  color: var(--text-muted);
+}
+/* DL-29.7: a COLUMN of rows, not the open board's wrapped grid. Each row is
+   read against the one destination stated above it, and a wrapped grid makes
+   the reading order of that pairing ambiguous. Scoped to this panel on
+   purpose — the open board keeps its grid, where the chips are a value being
+   set rather than a list of things to launch. */
+.agent-quick-picker .agents {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.agent-quick-picker .achip {
+  justify-content: flex-start;
+}
+/* The destination row spans the panel's own padding rather than settings'
+   4px inset, so its hover wash lines up with the agent rows below it. */
+.agent-quick-picker .cfg-row {
+  margin: 0;
+}
+/* `.cfg-btn__text`'s 130px cap is sized for the settings panel's narrow value
+   column. Here the row's key is one word inside a 420px panel, and the half
+   that a 130px cap eats is the BRANCH — the part of `folder · branch` this
+   row exists to show (DL-29.7). */
+.agent-quick-picker .cfg-btn__text {
+  max-width: 240px;
+}
+
+/* DL-29.8: the key line. One quiet row under the choices, stating the keys
+   the panel answers — the chips stopped wearing their digits on 2026-08-16 and
+   nothing said them afterwards. `--text-faint` because DL-3.4 puts keyboard
+   hints there, and `--type-meta` so the line never competes with a row. */
+.agent-quick-picker__keys {
+  margin: 2px 0 0;
+  font-size: var(--type-meta);
+  color: var(--text-faint);
+}
+.agent-quick-picker__keys kbd {
+  font: inherit;
+  color: var(--text-muted);
+}
+
+/* DL-17.3's readout, as a class: a value that cannot be pressed has no border
+   — a border is what promises "you can press this" everywhere else. Used
+   where a §5 row states a value the surface did not offer a choice about
+   (one worktree is not a choice). */
+.cfg-readout {
+  font-size: var(--type-body);
+  color: var(--text-faint);
+}
+
+.persist-error-bar {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--chrome-1);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-control);
+  font-size: var(--type-meta);
+  color: var(--text-primary);
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settings-load-alert {
+  position: absolute;
+  top: calc(var(--frame-h) + 10px);
+  left: 50%;
+  z-index: 31;
+  width: min(520px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.settings-load-alert .load-error {
+  margin: 0;
+  background: var(--chrome-1);
+}
+.persist-error-bar button {
+  font: inherit;
+  font-size: var(--type-meta);
+  padding: 3px 10px;
+  border-radius: var(--radius-tab);
+  border: 1px solid var(--hair-strong);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.persist-error-bar button:hover {
+  border-color: var(--accent);
+}

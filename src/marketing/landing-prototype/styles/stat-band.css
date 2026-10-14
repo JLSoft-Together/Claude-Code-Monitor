@@ -1,0 +1,130 @@
+/* The stat band (src/tour/stat-band.js): three numbers, set huge, on the
+   Launch chapter's ground. */
+
+/* Yellow because it already means something here: it is the `asked` dot in the
+   hero and the "needs you" beat in the demo loop. Light, never a fill: a flat
+   yellow wash over near-black reads as olive, so the hue arrives as a lit top
+   edge and a glow falling from it, over the page's own black. */
+.stat-band {
+  --sb-rule: color-mix(in srgb, var(--sg-yellow) 20%, transparent);
+  position: relative;
+  z-index: 1;
+  width: var(--frame-width);
+  margin-inline: auto;
+}
+
+.stat-band__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.stat-band__cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(2rem, 4.4vw, 3.5rem) var(--frame-pad);
+}
+
+.stat-band__cell + .stat-band__cell {
+  border-left: 1px solid var(--sb-rule);
+}
+
+/* A count that never arrived is a dash the size of a headline — drop the cell
+   instead. */
+.stat-band__cell[data-download-state="unavailable"] {
+  display: none;
+}
+
+.stat-band__num {
+  padding-bottom: 0.06em;
+  background: linear-gradient(
+    180deg,
+    #ffffff 30%,
+    color-mix(in srgb, var(--sg-yellow) 72%, #ffffff) 100%
+  );
+  background-clip: text;
+  color: transparent;
+  font: 600 clamp(3.75rem, 8.4vw, 7.25rem) / 0.86 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.065em;
+}
+
+.stat-band__unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: rgb(255 255 255 / 62%);
+  font: 500 0.74rem / 1.3 var(--font-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.stat-band__unit::before {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sg-yellow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sg-yellow) 20%, transparent);
+  content: "";
+}
+
+.stat-band__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 0.4rem;
+}
+
+/* Same treatment as the hero's row: monochrome so twelve vendor colours do not
+   out-shout the numbers. */
+.stat-band__mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: grayscale(1) brightness(1.6);
+  opacity: 0.55;
+}
+
+.stat-band__mark--mono {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 14%);
+  color: #ffffff;
+  font: 600 10px/1 var(--font-display);
+}
+
+.stat-band [data-reveal] {
+  opacity: 0;
+  transform: translateY(1.2rem);
+  transition:
+    opacity 640ms ease var(--reveal-delay, 0ms),
+    transform 640ms cubic-bezier(0.22, 0.78, 0.18, 1) var(--reveal-delay, 0ms);
+}
+
+.stat-band [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .stat-band__inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat-band__cell + .stat-band__cell {
+    border-top: 1px solid var(--sb-rule);
+    border-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-band [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

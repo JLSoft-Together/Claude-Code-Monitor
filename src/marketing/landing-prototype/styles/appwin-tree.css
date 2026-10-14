@@ -1,0 +1,750 @@
+/* ---- The 2.10 window: the tree rail, the strip, pane cards. ----
+   Styles for `marketing/stage/stage-tree.js`. Every size is the app's own
+   pixel value times `--u`, one app pixel at a 1100px-wide window, so a value
+   here can be checked against the running app's computed style without
+   arithmetic: the rail is 275px there and 275 × --u here (25cqw).
+
+   The palette is the default `deck-dark` preset, restated as the `--sg-*`
+   names appwin.css already reads — scoped to `.a-appwin--tree` and to the
+   chapter widgets (`.w`), because the video still draws the older window from
+   the root tokens.
+
+   Text sizes carry a pixel floor so a narrow window stays legible; line
+   heights are unitless for the same reason, so a floored font never overlaps
+   the row it sits in. */
+
+/* Shared with the chapter widgets (`.w`, widgets.css): the same ground and ink,
+   so a widget reads as a piece of this window. */
+.a-appwin--tree,
+.w {
+  --sg-bg: #0a0a0a;
+  --sg-rail: #141414;
+  --sg-chrome-2: #222222;
+  --sg-seam-column: #0f0f0f;
+  --sg-fg: #e7e7e7;
+  --sg-fg-dim: #ababab;
+  --sg-fg-faint: #949494;
+  --sg-hairline: rgb(255 255 255 / 12%);
+  --sg-hair-strong: rgb(255 255 255 / 20%);
+  --sg-yellow: #e5c07b;
+  --sg-red: #ef6b73;
+  --sg-green: #8ccf7e;
+  --tree-done: color-mix(in srgb, #ffffff 42%, var(--sg-rail));
+  --tree-focus-bg: var(--sg-fg);
+  --tree-focus-ink: var(--sg-bg);
+  --tree-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.a-appwin--tree {
+  --u: calc(100cqw / 1100);
+
+  background: var(--sg-rail);
+  font-family: var(--a-font-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif);
+}
+
+.a-appwin--tree svg {
+  display: block;
+  flex: none;
+}
+
+/* ---- The column ---- */
+
+.a-appwin--tree .a-tree {
+  width: calc(275 * var(--u));
+  background: var(--sg-rail);
+}
+
+.a-tree__frame {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  height: calc(34 * var(--u));
+  padding-right: calc(8 * var(--u));
+}
+
+/* The native lights' 78px reservation, drawn: 12px discs, 8px apart. */
+.a-tree__frame .a-appwin__lights {
+  flex: none;
+  gap: calc(8 * var(--u));
+  width: calc(78 * var(--u));
+  padding-left: calc(13 * var(--u));
+}
+
+.a-tree__frame .a-appwin__lights i {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+}
+
+.a-tree__spacer {
+  flex: 1;
+}
+
+.a-tree__iconbtn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: calc(24 * var(--u));
+  height: calc(24 * var(--u));
+  color: var(--sg-fg-dim);
+}
+
+.a-tree__iconbtn svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+.a-tree__brand {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  color: var(--sg-fg);
+  font-size: max(calc(14 * var(--u)), 9px);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.a-tree__brand img {
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+}
+
+/* `04f-rail-create-row.css`: three equal buttons, Agent filled. */
+.a-tree__create {
+  display: flex;
+  flex: none;
+  gap: calc(4 * var(--u));
+  padding: calc(8 * var(--u));
+}
+
+.a-tree__make {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: calc(4 * var(--u));
+  height: calc(24 * var(--u));
+  border-radius: calc(6 * var(--u));
+  box-shadow: inset 0 0 0 1px var(--sg-hairline);
+  color: var(--sg-fg-dim);
+  font-size: max(calc(11 * var(--u)), 7px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.a-tree__make svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+.a-tree__make--primary {
+  box-shadow: none;
+  background: var(--sg-fg);
+  color: var(--sg-bg);
+  font-weight: 600;
+}
+
+.a-tree__list {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: calc(10 * var(--u));
+  overflow: hidden;
+  padding: 0 calc(14 * var(--u)) 0 calc(8 * var(--u));
+}
+
+.a-tree__cluster {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding-top: calc(3 * var(--u));
+}
+
+/* Folder · bold name · `N need you` in micro, the caret only on a collapsed
+   project with nothing to count (`04a-agent-rail.css`, the hover swap). */
+.a-tree__head {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  padding: calc(2 * var(--u)) calc(27 * var(--u)) calc(2 * var(--u)) calc(5 * var(--u));
+  color: var(--sg-fg);
+}
+
+.a-tree__folder {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: calc(17 * var(--u));
+}
+
+.a-tree__folder svg {
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+}
+
+.a-tree__project {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: max(calc(14 * var(--u)), 9px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.a-tree__count {
+  flex: none;
+  color: var(--sg-yellow);
+  font-size: max(calc(10.5 * var(--u)), 7px);
+  line-height: 1;
+}
+
+.a-tree__count[data-tone="failed"] {
+  color: var(--sg-red);
+}
+
+.a-tree__count[hidden] {
+  display: none;
+}
+
+.a-tree__caret {
+  display: none;
+  flex: none;
+  color: var(--sg-fg);
+}
+
+.a-tree__caret svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+.a-tree__cluster[data-collapsed="true"] .a-tree__count[hidden] + .a-tree__caret {
+  display: grid;
+}
+
+.a-tree__checkout {
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(1 * var(--u));
+}
+
+.a-tree__line {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--u));
+  height: calc(24 * var(--u));
+  padding-left: calc(13.5 * var(--u));
+}
+
+.a-tree__branch {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: calc(14 * var(--u));
+  color: var(--sg-fg-faint);
+}
+
+.a-tree__branch svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+.a-tree__checkoutname {
+  overflow: hidden;
+  color: var(--sg-fg-dim);
+  font-size: max(calc(12.5 * var(--u)), 8px);
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A quiet outlined pill: a kind beside the name, not a second name. */
+.a-tree__tag {
+  flex: none;
+  padding: 0 calc(5 * var(--u));
+  border-radius: calc(3 * var(--u));
+  box-shadow: inset 0 0 0 1px var(--sg-hairline);
+  color: var(--sg-fg-faint);
+  font-size: max(calc(10.5 * var(--u)), 7px);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* A session row (`.asr-card__row`): logo · two lines, flat at rest. */
+.a-tree__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(14 * var(--u)) minmax(0, 1fr);
+  align-items: center;
+  column-gap: calc(11 * var(--u));
+  margin: calc(1 * var(--u)) 0 0 calc(18 * var(--u));
+  padding: calc(5 * var(--u)) calc(33 * var(--u)) calc(5 * var(--u)) calc(9 * var(--u));
+  border-radius: calc(6 * var(--u));
+  --tree-ground: var(--sg-rail);
+}
+
+/* The tree's guide: one hairline down a checkout's rows, under the branch glyph. */
+.a-tree__row::before {
+  position: absolute;
+  top: calc(-2 * var(--u));
+  bottom: 0;
+  left: calc(2.5 * var(--u));
+  width: 1px;
+  background: var(--sg-hairline);
+  content: "";
+}
+
+.a-tree__glyph {
+  position: relative;
+  display: grid;
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  color: var(--sg-fg);
+}
+
+.a-tree__logo {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(6 * var(--u));
+}
+
+.a-tree__logo--mono {
+  display: grid;
+  place-items: center;
+  background: var(--sg-chrome-2);
+  color: var(--sg-fg-dim);
+  font-size: calc(10.5 * var(--u));
+  font-weight: 620;
+}
+
+.a-tree__text {
+  display: grid;
+  gap: calc(1 * var(--u));
+  min-width: 0;
+}
+
+.a-tree__name,
+.a-tree__sentence {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.a-tree__name {
+  color: var(--sg-fg);
+  font-size: max(calc(12.5 * var(--u)), 8.5px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.a-tree__sentence {
+  color: var(--sg-fg-dim);
+  font-size: max(calc(11 * var(--u)), 7.5px);
+  line-height: 1.18;
+}
+
+/* The state badge on the logo's corner (DL-27.21): a 7px disc in a 3px ring of
+   the row's own ground. Done is a quiet gray; idle draws nothing. */
+.a-tree__dot {
+  position: absolute;
+  bottom: calc(-5.5 * var(--u));
+  left: calc(-5.5 * var(--u));
+  box-sizing: content-box;
+  width: calc(7 * var(--u));
+  height: calc(7 * var(--u));
+  border: calc(3 * var(--u)) solid var(--tree-ground);
+  border-radius: 50%;
+}
+
+.a-tree__dot[data-state="done"] {
+  background: var(--tree-done);
+}
+
+.a-tree__dot[data-state="asked"] {
+  background: var(--sg-yellow);
+}
+
+.a-tree__dot[data-state="failed"] {
+  background: var(--sg-red);
+}
+
+.a-tree__dot[data-state="idle"] {
+  display: none;
+}
+
+.a-tree__dot > i {
+  display: none;
+}
+
+/* Working: the braille spinner instead of a disc, ten stacked frames shown one
+   at a time; a stroke in the row's ground hugs the dots instead of a ring. */
+.a-tree__dot[data-state="working"] {
+  display: grid;
+  place-items: center;
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+  border: calc(2 * var(--u)) solid transparent;
+  background: none;
+  color: var(--sg-fg);
+  font: 400 calc(16 * var(--u)) / 1 var(--tree-mono);
+  -webkit-text-stroke: calc(4 * var(--u)) var(--tree-ground);
+  paint-order: stroke fill;
+}
+
+.a-tree__dot[data-state="working"] > i {
+  display: block;
+  grid-area: 1 / 1;
+  font-style: normal;
+  opacity: 0;
+}
+
+.a-tree__dot[data-state="working"] > i:first-child {
+  opacity: 1;
+}
+
+/* The agent holding the keyboard: a true inversion, the one light block in
+   the column (DL-27.22). */
+.a-tree__row[data-focused="true"] {
+  --tree-ground: var(--tree-focus-bg);
+  background: var(--tree-focus-bg);
+}
+
+.a-tree__row[data-focused="true"] :is(.a-tree__name, .a-tree__glyph) {
+  color: var(--tree-focus-ink);
+}
+
+.a-tree__row[data-focused="true"] .a-tree__sentence {
+  color: color-mix(in srgb, var(--tree-focus-ink) 72%, transparent);
+}
+
+.a-tree__row[data-focused="true"] .a-tree__dot[data-state="done"] {
+  background: var(--tree-focus-ink);
+}
+
+.a-tree__row[data-focused="true"] .a-tree__dot[data-state="working"] {
+  color: var(--tree-focus-ink);
+}
+
+/* The foot: the tools row, then one line of micro text. */
+.a-tree__tools {
+  display: flex;
+  flex: none;
+  gap: calc(2 * var(--u));
+  padding: calc(6 * var(--u)) calc(8 * var(--u)) 0;
+}
+
+.a-tree__tool {
+  display: grid;
+  place-items: center;
+  width: calc(30 * var(--u));
+  height: calc(26 * var(--u));
+  color: var(--sg-fg-dim);
+}
+
+.a-tree__tool svg {
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+}
+
+.a-tree__usage {
+  display: flex;
+  flex: none;
+  gap: calc(10 * var(--u));
+  padding: calc(9 * var(--u)) calc(14 * var(--u)) calc(10 * var(--u));
+  overflow: hidden;
+  color: var(--sg-fg-faint);
+  font-size: max(calc(10.5 * var(--u)), 7px);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.a-tree__usage b {
+  color: var(--sg-fg-dim);
+  font-weight: 500;
+}
+
+/* ---- The stage ---- */
+
+.a-appwin--tree .a-tree__stage {
+  background: var(--sg-rail);
+}
+
+.a-tree__strip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  height: calc(34 * var(--u));
+  padding: 0 calc(8 * var(--u));
+}
+
+.a-tree__crumbs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: calc(4 * var(--u));
+  overflow: hidden;
+  font-size: max(calc(12.5 * var(--u)), 8px);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.a-tree__part {
+  flex: none;
+  color: var(--sg-fg-dim);
+}
+
+.a-tree__part--session {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sg-fg);
+  text-overflow: ellipsis;
+}
+
+.a-tree__sep {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--sg-fg-faint);
+}
+
+.a-tree__sep svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+/* `.attn-chip`: a count with its dot, and the Dev servers chip on the same skin. */
+.a-tree__chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(5 * var(--u));
+  height: calc(24 * var(--u));
+  padding: 0 calc(7 * var(--u));
+  color: var(--sg-fg-dim);
+  font-size: max(calc(11 * var(--u)), 7px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.a-tree__chip[hidden] {
+  display: none;
+}
+
+.a-tree__chip svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+.a-tree__chipdot {
+  width: calc(6 * var(--u));
+  height: calc(6 * var(--u));
+  border-radius: 50%;
+  background: var(--sg-yellow);
+}
+
+.a-tree__chip--needs[data-tone="failed"] .a-tree__chipdot {
+  background: var(--sg-red);
+}
+
+.a-tree__chipdot--live {
+  background: var(--sg-green);
+}
+
+.a-tree__strip > .a-tree__iconbtn svg {
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+}
+
+.a-tree__strip > .a-tree__iconbtn:last-child svg {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+}
+
+/* Panes are rounded cards on the gutter (`06-stage-panes.css`, owner
+   2026-09-18): 4px on every edge and between them, a 1px edge each. */
+.a-tree__panes {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(4 * var(--u));
+  padding: calc(4 * var(--u));
+}
+
+.a-tree__panes > .a-tree__col {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 1.25fr 1fr;
+  gap: calc(4 * var(--u));
+}
+
+.a-tree__pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--sg-hair-strong);
+  border-radius: calc(6 * var(--u));
+  background: var(--sg-bg);
+}
+
+/* The keyboard's pane traces its card in the inverted row's ink (DL-18.12). */
+.a-tree__pane.is-focused {
+  border-color: color-mix(in srgb, var(--sg-fg) 74%, var(--sg-rail));
+}
+
+/* The agent header: logo and the rail's sentence on a lid; the focused pane
+   drops the lid so header and terminal read as one sheet (DL-32.7). */
+.a-tree__panehead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  height: calc(33 * var(--u));
+  padding: 0 calc(10 * var(--u));
+  border-bottom: 1px solid var(--sg-hairline);
+  background: var(--sg-chrome-2);
+  color: var(--sg-fg);
+}
+
+.a-tree__pane.is-focused .a-tree__panehead {
+  border-bottom-color: transparent;
+  background: var(--sg-bg);
+}
+
+.a-tree__panelogo {
+  flex: none;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+}
+
+.a-tree__panelogo--mono {
+  display: grid;
+  place-items: center;
+  font-size: calc(10 * var(--u));
+}
+
+.a-tree__panemsg {
+  min-width: 0;
+  overflow: hidden;
+  font-size: max(calc(11 * var(--u)), 7.5px);
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.a-tree__term {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: calc(8 * var(--u)) calc(11 * var(--u)) calc(10 * var(--u));
+  font-family: var(--a-font-mono);
+}
+
+/* These sessions have been running a while: the terminal has scrolled, so the
+   newest line sits on the prompt and older ones leave through the top. Out-ranks
+   the hero's top-aligned rule for a fresh session (hero-copy-column.css). */
+.a-appwin--tree .a-tree__term .a-appwin__transcript {
+  justify-content: flex-end;
+}
+
+/* ---- Motion ----
+   The braille frames step on an 80ms cadence (the app's own), and hold still
+   under reduced motion or wherever an ancestor says `data-motion="off"`. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .a-tree__dot[data-state="working"] > i {
+    animation: tree-braille 800ms steps(1, end) infinite;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(2) {
+    animation-delay: 80ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(3) {
+    animation-delay: 160ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(4) {
+    animation-delay: 240ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(5) {
+    animation-delay: 320ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(6) {
+    animation-delay: 400ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(7) {
+    animation-delay: 480ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(8) {
+    animation-delay: 560ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(9) {
+    animation-delay: 640ms;
+  }
+
+  .a-tree__dot[data-state="working"] > i:nth-child(10) {
+    animation-delay: 720ms;
+  }
+
+  [data-motion="off"] .a-tree__dot[data-state="working"] > i {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes tree-braille {
+  0% {
+    opacity: 1;
+  }
+
+  10%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---- Narrow windows ----
+   The rail stays and the stage keeps only the focused pane, as the older
+   window did (appwin.css): the rail is the subject. One app pixel grows so the
+   column is half the window and its rows stay readable. */
+
+@media (max-width: 47.5rem) {
+  .a-appwin--tree {
+    --u: calc(100cqw / 560);
+  }
+
+  .a-tree__panes {
+    grid-template-columns: 1fr;
+  }
+
+  .a-tree__panes > .a-tree__col {
+    grid-template-rows: 1fr;
+  }
+
+  .a-tree__panes .a-tree__pane:not(.is-focused) {
+    display: none;
+  }
+
+  .a-tree__create,
+  .a-tree__tools {
+    display: none;
+  }
+}

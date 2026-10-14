@@ -1,0 +1,693 @@
+/* ── DL §35: spaces and Mission Control ───────────────────────────────────
+   A space is a terminal tab named by its workspace folder. The strip draws
+   one mark per space (DL-35.3), a switch slides the stage (DL-35.2), and
+   Mission Control zooms the panes out over the stage (DL-35.1). The zoom, the
+   slide and their fades are transform/opacity at 280 ms, run by WAAPI from
+   `src/ui/spaces/space-motion.ts`, which skips them under reduced motion. The
+   one CSS transition — the mark's pill and dot, opacity/transform/background
+   at `--duration` (DL-20.2) — is added under `no-preference` only (DL-1.5,
+   DL-35.4). */
+
+/* ── DL-35.3: the bar ── */
+
+/* The marks are centred in the bar, the name stays at its left edge: equal
+   outer tracks put the middle one on the bar's centre however short the
+   name is, so a short name leaves no gap beside the marks. */
+.space-bar {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Every space's breadcrumb stacks in one grid cell and only the current one is
+   visible, so the cell is as wide as the longest crumb and the marks beside it
+   never move on a switch. */
+.space-bar__name {
+  display: grid;
+  justify-self: start;
+  min-width: 0;
+  max-width: 420px;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+/* DL-35.3 (amended 2026-10-07): project › branch › space › session. At narrow
+   widths the least specific crumb gives way first — the shrink weights run
+   from the project down to the session, which keeps its words longest. */
+.space-bar__name-slot {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  visibility: hidden;
+}
+
+.space-bar__name-slot[data-current="true"] {
+  visibility: visible;
+}
+
+.space-bar__part,
+.space-bar__space {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.space-bar__part[data-part="project"] {
+  flex: 0 1000 auto;
+  color: var(--text-muted);
+}
+
+.space-bar__part[data-part="branch"] {
+  flex: 0 100 auto;
+  color: var(--text-muted);
+}
+
+.space-bar__space {
+  flex: 0 10 auto;
+}
+
+/* The session is a first prompt up to 160 characters; uncapped, its width
+   outweighs the shrink weights and squeezes the project and branch down to
+   bare carets. The cap leaves them room while the order above still holds. */
+.space-bar__part[data-part="session"] {
+  flex: 0 1 auto;
+  max-width: 32ch;
+}
+
+.space-bar__sep {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--text-faint);
+}
+
+/* A double-click renames the space in place, so the name must not be the
+   frame's drag region — that double-click would maximise the window. The field
+   floats over the space's crumb instead of resizing it, so the marks never
+   shift while a name is typed; the label stays laid out beneath it, hidden. */
+.space-bar__name {
+  -webkit-app-region: no-drag;
+}
+
+.space-bar__space {
+  position: relative;
+}
+
+.space-bar__name-slot[data-editing="true"] .space-bar__space {
+  overflow: visible;
+}
+
+.space-bar__name-slot[data-editing="true"] .space-bar__label {
+  visibility: hidden;
+}
+
+.space-bar__rename {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: max(100%, 148px);
+  height: 22px;
+  transform: translateY(-50%);
+  font-size: var(--type-body);
+  font-weight: 400;
+}
+
+/* DL-35.3 (F8): many spaces scroll inside the row, never the frame. */
+.space-bar__marks {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.space-bar__marks::-webkit-scrollbar {
+  display: none;
+}
+
+/* DL-35.3: a needs-you mark scrolled out of sight shows at the row's edge —
+   a fade, then a red dot — so the one state a mark carries is never hidden. */
+.space-bar__scroll {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.space-bar__edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  width: 44px;
+  pointer-events: none;
+}
+
+.space-bar__edge::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.space-bar__edge[data-side="left"] {
+  left: 0;
+  padding-left: 12px;
+  background: linear-gradient(to left, transparent, var(--chrome-1) 55%);
+}
+
+.space-bar__edge[data-side="right"] {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 12px;
+  background: linear-gradient(to right, transparent, var(--chrome-1) 55%);
+}
+
+/* DL-35.3: one capsule per project — a repository and its worktrees are one —
+   with the marks tight inside it, outlined while it holds the current space.
+   The outline is an inset ring, so the capsule never changes size. */
+.space-bar__run {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 4px;
+  border-radius: var(--radius-tab);
+  background: color-mix(in srgb, var(--hair-strong) 40%, transparent);
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+.space-bar__run[data-current="true"] {
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.space-bar__run .space-mark {
+  width: 16px;
+}
+
+.space-mark {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-flat);
+  background: transparent;
+  cursor: pointer;
+}
+
+.space-mark:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* The resting dot. */
+.space-mark::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hair-strong);
+}
+
+.space-mark:hover::before {
+  background: var(--text-muted);
+}
+
+/* DL-35.3 (F2): needs-you is the one state a mark carries, in the rail's two inks —
+   red for a failure and `--status-unread` yellow for a question or an unread
+   finished run (owner, 2026-10-06, reversing 2026-09-29's single red). A space
+   with both reads red: `needsTone` ranks `failed` first. The hover card's
+   counts still say how many. */
+.space-mark[data-needs]::before {
+  background: var(--red);
+}
+
+.space-mark[data-needs="asked"]::before {
+  background: var(--status-unread);
+}
+
+/* The current space's pill: always laid out at full width and scaled down at
+   rest, so the change is a transform, never a width (DL-1.2). */
+.space-mark__pill {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 6px;
+  margin: -3px 0 0 -8px;
+  border-radius: 999px;
+  background: var(--text-primary);
+  opacity: 0;
+  transform: scaleX(0.375);
+}
+
+.space-mark[aria-selected="true"]::before {
+  opacity: 0;
+}
+
+.space-mark[aria-selected="true"] .space-mark__pill {
+  opacity: 1;
+  transform: none;
+}
+
+/* A current space that needs you keeps the pill and drops a dot under it, in the same two inks. */
+.space-mark[aria-selected="true"][data-needs]::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.space-mark[aria-selected="true"][data-needs="asked"]::after {
+  background: var(--status-unread);
+}
+
+/* ── DL-35.3: the hover card, a DL-13.7 hover-raised popover (DL-13.1 surface) ── */
+
+.space-card {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-surface);
+  background: var(--chrome-2);
+  box-shadow: inset 0 0 0 1px var(--seam-raised);
+  /* Portalled to <body>, outside `.window`, which is where `--ui-font` is
+     set — without this the card falls back to the UA serif (DL-4.1). */
+  font-family: var(--ui-font);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.space-card__mini {
+  width: 64px;
+  height: 38px;
+}
+
+.space-card__text {
+  display: grid;
+  gap: 2px;
+}
+
+.space-card__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: var(--type-title);
+  font-weight: 600;
+}
+
+.space-card__index,
+.mc-space__index {
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.space-card__path {
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+}
+
+.space-card__meta {
+  color: var(--text-faint);
+  font-size: var(--type-micro);
+}
+
+/* ── A space in miniature: one cell per pane, tinted by state ── */
+
+.space-mini {
+  display: grid;
+  box-sizing: border-box;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-tab);
+  background: var(--bg);
+}
+
+.space-mini i {
+  border-radius: var(--radius-flat);
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
+.space-mini i[data-state="working"] {
+  background: color-mix(in srgb, var(--tone) 55%, transparent);
+}
+
+/* Still one colour for asked and failed alike: the miniature has not taken the marks' two inks
+   (DL-35.3, amended 2026-10-06 for the marks only). */
+.space-mini i[data-state="asked"],
+.space-mini i[data-state="failed"] {
+  background: var(--red);
+}
+
+.space-mini i[data-state="shell"] {
+  background: var(--hair);
+}
+
+/* ── DL-35.2: the slide ──
+   The stage is clipped for the length of a slide only, so neither the
+   incoming stage nor the outgoing ghost crosses the rail or the dock. `clip`,
+   not `hidden`: it builds no scroll container (traps.md). */
+
+.stage.is-sliding {
+  overflow: clip;
+}
+
+/* No z-index: it sits BEFORE `.stage__tabs` in the DOM, so the incoming space
+   paints over it as it recedes, and the dock over both (DL-35.2). */
+.space-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--sidebar-bg);
+  pointer-events: none;
+}
+
+.space-ghost__pane {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--seam-split);
+  border-radius: var(--radius-tab);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.space-ghost__text {
+  margin: 0;
+  font: inherit;
+  white-space: pre;
+}
+
+/* ── DL-35.1: Mission Control ──
+   The same rectangle `.stage__surface` covers, above a document or the
+   browser (20) and below the Open board (30). */
+
+.mc {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.stage--strip .mc {
+  top: var(--frame-h);
+}
+
+.stage--notice .mc {
+  top: var(--notice-h);
+}
+
+.stage--strip.stage--notice .mc {
+  top: calc(var(--frame-h) + var(--notice-h));
+}
+
+.stage--dock .mc {
+  right: var(--dock-w);
+}
+
+/* The root takes focus only as a resting place (a press on a label or a gap). */
+.mc:focus {
+  outline: none;
+}
+
+.mc[data-leaving="true"] {
+  pointer-events: none;
+}
+
+.mc__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--sidebar-bg);
+}
+
+.mc-shelf {
+  display: flex;
+  gap: 20px;
+  min-width: 0;
+  padding: 10px 14px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--seam-divider);
+  background: var(--chrome-1);
+}
+
+.mc-shelf__set {
+  display: grid;
+  flex: none;
+  gap: 6px;
+}
+
+.mc-shelf__folder {
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+  white-space: nowrap;
+}
+
+.mc-shelf__row {
+  display: flex;
+  gap: 8px;
+}
+
+.mc-space {
+  display: grid;
+  gap: 5px;
+  width: 96px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-space__mini {
+  height: 54px;
+}
+
+.mc-space[data-previewed="true"] .mc-space__mini {
+  border-color: var(--text-muted);
+}
+
+.mc-space[aria-current="true"] .mc-space__mini {
+  border-color: var(--accent);
+}
+
+.mc-space:focus-visible {
+  outline: none;
+}
+
+.mc-space:focus-visible .mc-space__mini {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.mc-space__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 14px;
+  font-size: var(--type-micro);
+}
+
+/* The name fills the row, so an unnamed space with no index still has
+   somewhere to double-click; a long name truncates rather than push the count. */
+.mc-space__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-space__name:not(.mc-space__index) {
+  color: var(--text-primary);
+}
+
+.mc-space__rename {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 18px;
+  font-size: var(--type-micro);
+  font-weight: 400;
+}
+
+.mc-space__needs {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: var(--bg);
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc__spread {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 300px));
+  align-content: center;
+  justify-content: center;
+  gap: 26px 22px;
+  min-height: 0;
+  padding: 18px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mc-window {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-window:focus-visible {
+  outline: none;
+}
+
+.mc-window__shot {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--seam-split);
+  border-radius: var(--radius-tab);
+  background: var(--bg);
+}
+
+.mc-window:hover .mc-window__shot,
+.mc-window:focus-visible .mc-window__shot {
+  border-color: var(--accent);
+}
+
+.mc-window[aria-current="true"] .mc-window__shot {
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.mc-window:focus-visible .mc-window__shot {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.mc-window__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: 22px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  /* A real top border, transparent at rest, so a marked head moves nothing
+     and no offset shadow is spent on it (DL-1.3). */
+  border-top: 2px solid transparent;
+  border-bottom: 1px solid var(--hair);
+  background: var(--chrome-1);
+  font-size: var(--type-micro);
+}
+
+/* DL-34.3's rule on a window: asked and failed mark the head, nothing else does. */
+.mc-window[data-state="asked"] .mc-window__head {
+  border-top-color: var(--status-unread);
+}
+
+.mc-window[data-state="failed"] .mc-window__head {
+  border-top-color: var(--red);
+}
+
+.mc-window__who {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mc-window__logo {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.mc-window__state {
+  color: var(--text-faint);
+}
+
+.mc-window[data-state="asked"] .mc-window__state {
+  color: var(--status-unread);
+}
+
+.mc-window[data-state="failed"] .mc-window__state {
+  color: var(--red);
+}
+
+/* Terminal content, not chrome: the window quotes a pane, so it is set in the
+   Board's mono face (DL-35.1 extends DL-34.5's scope to it). */
+.mc-window__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+  margin: 0;
+  padding: 5px 7px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--board-font);
+  font-size: var(--type-micro);
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.mc-window__caption {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .space-mark::before,
+  .space-mark__pill {
+    transition:
+      opacity var(--duration) var(--ease),
+      transform var(--duration) var(--ease),
+      background-color var(--duration) var(--ease);
+  }
+}

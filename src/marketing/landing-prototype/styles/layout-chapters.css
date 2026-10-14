@@ -1,0 +1,180 @@
+/* The feature chapters (src/tour/layout-chapters.js). Each chapter is full
+   bleed and sets its own ground; light grounds redeclare the `--t-*` ink
+   tokens rather than re-inking elements one by one. `z-index: 1` lifts every
+   chapter over `.tour::after`, the light pools at the foot of the page. */
+
+.chapter {
+  position: relative;
+  z-index: 1;
+  padding-block: clamp(3.5rem, 9vh, 6rem) clamp(4rem, 10vh, 7rem);
+  overflow: clip;
+  color: var(--t-ink);
+}
+
+.chapter__head {
+  display: flex;
+  width: var(--frame-width);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-inline: auto;
+  padding-inline: var(--frame-pad);
+}
+
+/* One word, as big as the column will take: the chapter break you read from
+   across the room, and the only type this size below the hero. */
+.chapter__word {
+  margin: 0;
+  font: 600 clamp(4.5rem, 14.5vw, 13.5rem) / 0.82 var(--font-display);
+  letter-spacing: -0.065em;
+}
+
+.chapter__index {
+  padding-bottom: 0.9rem;
+  color: var(--t-ink-faint);
+  font: 500 0.8rem/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.chapter__head [data-reveal] {
+  opacity: 0;
+  transform: translateY(1.6rem);
+  transition:
+    opacity 700ms ease var(--reveal-delay, 0ms),
+    transform 760ms cubic-bezier(0.22, 0.78, 0.18, 1) var(--reveal-delay, 0ms);
+}
+
+.chapter__head [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+.chapter__grid {
+  display: flex;
+  width: var(--frame-width);
+  flex-direction: column;
+  gap: clamp(2rem, 4vw, 3rem);
+  margin: clamp(2rem, 5vh, 3.5rem) auto 0;
+  padding-inline: var(--frame-pad);
+}
+
+/* Two widgets to a row, the first a little wider; a lone widget takes the
+   row. Titles share the top line, widgets hang from it. */
+.chapter__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 3.5vw, 3.5rem);
+  align-items: start;
+}
+
+.chapter__row[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---- Watch: ivory paper. Still achromatic — value, not hue. ---- */
+.chapter[data-tone="paper"] {
+  --t-ink: #121411;
+  --t-ink-soft: rgb(18 20 17 / 72%);
+  --t-ink-faint: rgb(18 20 17 / 50%);
+  --t-line: rgb(18 20 17 / 12%);
+  background:
+    radial-gradient(60rem 30rem at 85% 8%, rgb(255 255 255 / 75%), transparent 70%),
+    radial-gradient(50rem 30rem at 5% 100%, rgb(214 204 182 / 50%), transparent 72%), #ece8de;
+}
+
+.chapter[data-tone="paper"] .w {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    0 2rem 3.5rem -1.5rem rgb(18 20 17 / 45%),
+    0 3px 8px rgb(18 20 17 / 18%);
+}
+
+/* ---- Launch: black lit gold from the top edge, the numbers set on it. ---- */
+.chapter[data-tone="gold"] {
+  border-top: 1px solid color-mix(in srgb, var(--sg-yellow) 70%, transparent);
+  background:
+    radial-gradient(
+      72rem 36rem at 18% 0%,
+      color-mix(in srgb, var(--sg-yellow) 30%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      50rem 28rem at 92% 12%,
+      color-mix(in srgb, var(--sg-yellow) 14%, transparent),
+      transparent 70%
+    ),
+    #0c0b08;
+  box-shadow: 0 -1px 26px -4px color-mix(in srgb, var(--sg-yellow) 65%, transparent);
+}
+
+.chapter[data-tone="gold"] .chapter__word {
+  background: linear-gradient(
+    180deg,
+    #ffffff 25%,
+    color-mix(in srgb, var(--sg-yellow) 80%, #ffffff) 100%
+  );
+  background-clip: text;
+  color: transparent;
+}
+
+.chapter[data-tone="gold"] .stat-band {
+  margin-top: clamp(1.5rem, 4vh, 3rem);
+  border-block: 1px solid var(--sb-rule);
+}
+
+/* ---- Keep: a painting at full strength, the one on the page now that the hero
+   window stands on a light instead. The dark widgets stand on it. A white veil
+   at the top holds the chapter word off the canvas. ---- */
+.chapter[data-tone="plate"] {
+  --t-ink: #121411;
+  --t-ink-soft: rgb(18 20 17 / 74%);
+  --t-ink-faint: rgb(18 20 17 / 56%);
+  --t-line: rgb(18 20 17 / 14%);
+  background:
+    linear-gradient(180deg, rgb(244 240 230 / 82%) 0%, rgb(244 240 230 / 30%) 38%, transparent 70%),
+    var(--plate-valley) center 40% / cover;
+}
+
+.chapter[data-tone="plate"] .wtile h3 {
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 10px;
+  background: rgb(244 240 230 / 78%);
+  backdrop-filter: blur(8px);
+}
+
+/* The widget keeps its own flat 2.10 ground, opaque, the way the hero's window
+   does; only the deeper shadow is the painting's. */
+.chapter[data-tone="plate"] .w {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 2.5rem 4rem -1.5rem rgb(0 0 0 / 60%);
+}
+
+@media (max-width: 900px) {
+  .chapter__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .chapter__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .chapter__index {
+    order: -1;
+    padding-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chapter__head [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

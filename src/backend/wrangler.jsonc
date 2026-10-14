@@ -1,0 +1,70 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spacevibe-deck-analytics",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-07-30",
+  "account_id": "4505dcfce1ee9cef5bdea0e05b3ec485",
+  "workers_dev": false,
+  "preview_urls": false,
+  "logpush": false,
+  "observability": {
+    "enabled": false,
+    "logs": {
+      "enabled": false,
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false
+    }
+  },
+  "routes": [
+    {
+      "pattern": "api.deck.spacevibe.dev",
+      "custom_domain": true
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "FEEDBACK_READ_LIMITER",
+      "namespace_id": "34203",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "INGEST_LIMITER",
+      "namespace_id": "34201",
+      "simple": {
+        "limit": 1000,
+        "period": 60
+      }
+    },
+    {
+      "name": "FEEDBACK_LIMITER",
+      "namespace_id": "34202",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "FEEDBACK_STORAGE": "supabase",
+    "SUPABASE_URL": "https://calkpkscykzmvyayfxih.supabase.co",
+    "FEEDBACK_TEAM_ID": "cb65f88e-7252-4bcf-b4c7-30030b26ecea",
+    "FEEDBACK_LABEL_ID": "d67dc808-53f9-4fde-9483-2cffe14c0169",
+    "FEEDBACK_BACKLOG_STATE_ID": "cd3a4095-d1d6-48a3-8d10-82231ff5f521",
+    "FEEDBACK_SUBMISSIONS_OPEN": "true",
+    "FEEDBACK_SYNC_ENABLED": "false",
+    "FEEDBACK_PROGRESS_STATE_ID": "dc9f6de9-3d8a-45e5-a7c4-ea2bcec5cace"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "spacevibe-deck-analytics",
+      "database_id": "5b1207c9-50c1-45da-be68-eb52a5d16b5a",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *", "17 * * * *", "* * * * *"]
+  }
+}

@@ -1,0 +1,404 @@
+import { editorRequest, saveDialogOpen, settingsOpen } from "../chrome/events";
+import type { BootMode } from "../terminal/transfer-client";
+import { SIDEBAR_COLUMN_WIDTH, SIDEBAR_HIDDEN_WIDTH } from "./panel-resize";
+
+interface BrowserPanelObscuredState {
+  readonly overlayCoversPane: boolean;
+  readonly agentQuickPickerOpen: boolean;
+  readonly usageConsentOpen: boolean;
+  /** A worktree card's segment or actions menu, both placed over the stage. */
+  readonly railCardMenuOpen: boolean;
+  /**
+   * The Agent Board holds the stage. A DOM surface cannot cover a native
+   * `WebContentsView`, so with the Board on the stage the browser's view must
+   * go or the Board draws underneath the page it just replaced.
+   */
+  readonly agentBoardActive: boolean;
+  readonly promptsOpen: boolean;
+  readonly createEntryOpen: boolean;
+  readonly persistErrorVisible: boolean;
+  readonly settingsLoadError: boolean;
+}
+
+/** Native browser views must hide whenever DOM chrome paints over the stage. */
+export function browserPanelObscured(state: BrowserPanelObscuredState): boolean {
+  return (
+    state.overlayCoversPane ||
+    state.agentQuickPickerOpen ||
+    state.usageConsentOpen ||
+    state.railCardMenuOpen ||
+    state.agentBoardActive ||
+    state.promptsOpen ||
+    state.createEntryOpen ||
+    state.persistErrorVisible ||
+    state.settingsLoadError
+  );
+}
+
+interface TaskLaunchRecoveryState {
+  readonly targetTabExists: boolean;
+  readonly targetPaneExists: boolean;
+  readonly retryTargetExists: boolean;
+  readonly attemptMatchesDraft: boolean;
+}
+
+/** An incomplete task handoff remains actionable only while every identity seam still matches. */
+export function taskLaunchRecoveryValid(state: TaskLaunchRecoveryState): boolean {
+  return (
+    state.targetTabExists &&
+    state.targetPaneExists &&
+    state.retryTargetExists &&
+    state.attemptMatchesDraft
+  );
+}
+
+/**
+ * Pure Settings-close: sets `settingsOpen` false and hands focus back.
+ * Extracted to module scope (out of `App()`'s closure) so it and
+ * `toggleSettingsPanel` below can be unit-tested directly — this repo has no
+ * `<App>`-level render harness, and building one just for this guard would
+ * be disproportionate. `App()`'s `closePanel` supplies the real
+ * `tabsRef.current?.focusActive()` as `focusActive`.
+ */
+export function closeSettingsPanel(focusActive: () => void): void {
+  settingsOpen.value = false;
+  focusActive();
+}
+
+/**
+ * Settings toggle — shared by the gear button and `⌘,`/the menu's
+ * "Settings…" item (both call `App()`'s `toggleSettings` closure below,
+ * the literal same function reference, so this guard covers both entry
+ * points at once).
+ *
+ * CLOSING (the `if` branch) stays unconditional — Settings must always be
+ * reachable to close, or it could strand itself open forever, the exact
+ * trap `b7e6021` already had to design around for the overlay scope guard.
+ *
+ * OPENING (the `else` branch) is blocked only while a PresetEditor/
+ * SavePresetDialog draft is up. A draft's modal-scrim sits at z-index 40,
+ * above Settings' 35 (styles.css) — opening Settings underneath one would be
+ * invisible and unreachable, while `SettingsScreen`'s mount-focus effect
+ * (settings/settings-screen.tsx) still stole DOM focus from the draft, so a
+ * later Escape closed the invisible Settings and orphaned focus behind a
+ * surface that never moved. Same check `runAttentionFocus` makes for
+ * Cmd+Shift+A (attention-focus-coordinator.ts:80-82).
+ *
+ * The Open board is deliberately NOT in that list any more. F3 (2026-07-27
+ * code review) added it because Settings was then a 300px drawer at z-20,
+ * genuinely hidden beneath the z-30 board. Settings is now a full-window
+ * surface at z-35: it covers the board rather than hiding under it, so it
+ * opens from the board like from anywhere else, and closing returns to the
+ * board with its selection intact. Blocking it there left the gear button
+ * silently inert, which reads as a broken app rather than a deliberate rule.
+ *
+ * Settings is the only full-window surface left since 2026-08-16: token usage
+ * and session history became tabs of the dock, which displaces the terminal
+ * grid instead of covering it. The mutual exclusion those three used to keep
+ * (spec §Surface, major M4) went with them — a docked column and a
+ * full-window screen do not compete for the same layer.
+ */
+export function toggleSettingsPanel(focusActive: () => void): void {
+  if (settingsOpen.value) {
+    closeSettingsPanel(focusActive);
+    return;
+  }
+  if (editorRequest.value !== null || saveDialogOpen.value) {
+    return;
+  }
+  settingsOpen.value = true;
+}
+
+interface ZeroTabBoardState {
+  readonly liveTabCount: number;
+  readonly agentBoardOpen: boolean;
+  /** Every surface that is NOT the Board: the file tabs plus the browser chip. */
+  readonly otherSurfaces: number;
+}
+
+/**
+ * Whether the Agent Board's chip must leave the strip (spec §4.2): zero tabs =
+ * no Board. Its chord is `scope: "pane"`, so a Board left standing over an
+ * empty window could not be dismissed by the keyboard.
+ */
+export function agentBoardClosesWithLastTab(state: ZeroTabBoardState): boolean {
+  return state.liveTabCount === 0 && state.agentBoardOpen;
+}
+
+/**
+ * Whether closing that chip has to raise the start surface itself.
+ *
+ * `disposeTab`'s empty branch (tab-manager.ts, the `tabs.length === 0` arm)
+ * reads `surfaces.total()` SYNCHRONOUSLY, one frame before the renderer can
+ * react — and the Board's own chip makes that total 1. So it takes
+ * `surfaces.activate(0)`, which with no file tab and no browser IS the Board,
+ * and never reaches its own `boardOpen.value = true`. Closing the chip
+ * afterwards would leave a window with no tab, no surface and no start screen,
+ * its rail hidden because `liveRailAvailable(0)` is false.
+ *
+ * Only when the Board was the ONLY surface: with a file tab or the browser
+ * still open, `activate(0)` landed on one of those, and raising the Open board
+ * over it would cover a document the user still has open.
+ */
+export function startSurfaceFollowsBoardClose(state: ZeroTabBoardState): boolean {
+  return agentBoardClosesWithLastTab(state) && state.otherSurfaces === 0;
+}
+
+interface StripSurfaceState {
+  readonly boardOpen: boolean;
+  readonly settingsOpen: boolean;
+}
+
+interface SidebarVisibilityState {
+  readonly liveTabCount: number;
+  readonly savedCollapsed: boolean;
+  readonly dragCollapsed: boolean | null;
+}
+
+interface DockVisibilityState {
+  readonly boardOpen: boolean;
+  readonly dockOpen: boolean;
+}
+
+/** The Agent Rail is a projection of live work, never persisted history. */
+export function liveRailAvailable(liveTabCount: number): boolean {
+  return liveTabCount > 0;
+}
+
+/**
+ * A window with no live work temporarily yields the sidebar's space to the
+ * start surface. The persisted collapse choice is read, never rewritten.
+ */
+export function sidebarEffectivelyCollapsed(state: SidebarVisibilityState): boolean {
+  if (!liveRailAvailable(state.liveTabCount)) {
+    return true;
+  }
+  // DL-34.1 had a second branch here — the Agent Board forced the column shut
+  // while it held the stage. REVERSED by DECK-43 (2026-09-09, owner-asked):
+  // the Board shares the Inbox's frame, so the rail keeps whatever width the
+  // user gave it and the Board is what changed, not the window.
+  return state.dragCollapsed ?? state.savedCollapsed;
+}
+
+interface SidebarPaintState extends SidebarVisibilityState {
+  readonly savedWidth: number;
+  /** The width of a resize drag in flight; `null` otherwise. */
+  readonly liveWidth: number | null;
+}
+
+/**
+ * The width the sidebar column is painted at (`--sidebar-w`). Collapsed is
+ * DL-27.29's avatar column, and that includes a drag that has armed the
+ * collapse: the column snaps under the pointer and the grip keeps the gesture
+ * by pointer capture. A window with no live work paints nothing (DL-18.9).
+ */
+export function sidebarPaintWidth(state: SidebarPaintState): number {
+  if (!liveRailAvailable(state.liveTabCount)) {
+    return SIDEBAR_HIDDEN_WIDTH;
+  }
+  if (sidebarEffectivelyCollapsed(state)) {
+    return SIDEBAR_COLUMN_WIDTH;
+  }
+  return state.liveWidth ?? (state.savedCollapsed ? SIDEBAR_HIDDEN_WIDTH : state.savedWidth);
+}
+
+/** The Open Board owns the stage, so the dock waits without losing its state. */
+export function dockVisible(state: DockVisibilityState): boolean {
+  // `boardOpen` only: the OPEN board is a start screen with no window behind
+  // it, while the Agent Board is a surface among surfaces (DECK-43).
+  return state.dockOpen && !state.boardOpen;
+}
+
+/**
+ * Whether the docked column is PAINTED open, which during a resize drag is the
+ * gesture's answer rather than the setting's (2026-08-19).
+ *
+ * The navigation sidebar has always worked this way: pull its seam past the
+ * floor and the column goes at once, pull back and it returns, and the setting
+ * is only written on release. The dock instead dimmed to 45% and waited for the
+ * pointer to come up, because closing it unmounts the grip the gesture is
+ * captured on — `useDockPresence`'s hold now keeps that mount alive through the
+ * drag, so the two seams can finally answer the same way.
+ *
+ * `dragCollapsed` is `null` when no drag is in flight, which is what keeps this
+ * from having to know about pointers: a caller with no gesture passes null and
+ * gets the setting back.
+ */
+export function dockPaintedOpen(state: DockPaintState): boolean {
+  if (state.boardOpen) {
+    return false;
+  }
+  return state.dragCollapsed === null ? state.dockOpen : !state.dragCollapsed;
+}
+
+export interface DockPaintState extends DockVisibilityState {
+  /** Armed-to-collapse while dragging; `null` when no drag is in flight. */
+  readonly dragCollapsed: boolean | null;
+}
+
+/** A failed resume keeps the start surface present so its error stays visible. */
+export function boardClosesAfterResume(resumed: boolean): boolean {
+  return resumed;
+}
+
+/**
+ * Legacy workspace restores share one session-journal suspension flag, so a
+ * second restore must wait even when it targets a different workspace.
+ */
+export function archivedWorkspaceResumeAvailable(inFlight: ReadonlySet<string>): boolean {
+  return inFlight.size === 0;
+}
+
+/**
+ * Whether the CHROME carries the dock's hide control (DL-19.3, amended
+ * 2026-08-19).
+ *
+ * The control has two mounts and exactly one of them is ever on screen. A
+ * shown column carries its own, at its outer edge (`DockPanel`); the stage —
+ * the strip in sidebar mode, `TabBar`'s trailing slot in top-tab mode — carries
+ * only the way back into a column that is gone, which is DL-18.9's arrangement
+ * for the navigation sidebar.
+ *
+ * Board-open is not the same as dock-closed and must not borrow that mount:
+ * the board covers the stage, `dockVisible` already suppresses the column
+ * without touching the setting, and offering a way to "show" a panel the board
+ * is standing on top of promises something the click cannot deliver.
+ *
+ * The Agent Board carried its own term here from 2026-09-04 until DECK-43,
+ * because DL-34.1 suppressed the column and `!dockVisible(state)` would then
+ * have turned this control ON over a Board the press could not reach past.
+ * With DL-34.1 reversed the dock is simply visible under the Board, so the
+ * term has nothing left to guard against.
+ */
+export function dockToggleOnStage(state: DockVisibilityState): boolean {
+  return !state.boardOpen && !dockVisible(state);
+}
+
+/**
+ * Whether the stage strip carries its tab chips (sidebar layout only).
+ *
+ * The strip is not just chips: in sidebar mode it IS the frame row's stage-side
+ * half (DL-18.6), and while the sidebar is hidden it is the whole frame row —
+ * traffic-light inset, the sidebar's way back out (DL-18.9), the feature
+ * toolbar and the dock's control. Those stay put over a full-window surface,
+ * which is the point of the fix that put one below the strip instead of over
+ * it. The CHIPS do not: the Open board and the Settings screen replace what the
+ * tabs show, so a row of them over one lists things that are not on screen.
+ *
+ * Only the two full-window surfaces count. A modal (PresetEditor,
+ * SavePresetDialog, AgentQuickPicker) floats on a scrim with the strip legible
+ * underneath — its chips are still the truth about what is open.
+ *
+ * Module scope, like the guards above, purely so it is unit-testable: this repo
+ * has no `<App>`-level render harness.
+ */
+export function stripShowsTabs(state: StripSurfaceState): boolean {
+  return !state.boardOpen && !state.settingsOpen;
+}
+
+/**
+ * Whether a preset created through the LIVE-WINDOW flow (⌘⇧N, or File ▸ "New
+ * Layout Preset…") should also materialize a tab, or stop once the preset is
+ * saved.
+ *
+ * `new-preset` is tiered `"modal"` in action-registry.ts, so it deliberately
+ * opens the editor OVER the Open board (rank 30 < 40) — sketching a layout
+ * from scratch needs no tab and no workspace, which is the whole point of F4.
+ * What must NOT follow is the live-window tail that materializes a tab: the
+ * board is still up at z-30 covering the stage, so that tab would be
+ * invisible while its pane quietly takes DOM focus behind the board, and on
+ * the app's default landing screen (no tabs yet) there is no active pane to
+ * inherit a CWD from either — it would spawn in `$HOME` instead of the folder
+ * selected on the board.
+ *
+ * Stopping at the save leaves the preset available and the board up, and the
+ * user opens a folder with it — which since 2026-08-16 means the preset is
+ * picked up by the next open of a workspace that remembers it, the board
+ * itself having no layout picker any more. Extracted to module scope (like
+ * `toggleSettingsPanel` above) purely so it is unit testable — this repo has
+ * no `<App>`-level render harness.
+ */
+export function livePresetOpensATab(boardIsOpen: boolean): boolean {
+  return !boardIsOpen;
+}
+
+/**
+ * A window that booted to adopt a pane already has its content: showing the
+ * Open board would cover a live terminal with a "pick a folder" screen
+ * (spec §9.2). Extracted to module scope for the same reason as
+ * `livePresetOpensATab` above — this repo has no `<App>` render harness.
+ */
+export function bootOpensTheBoard(boot: BootMode): boolean {
+  return boot.kind === "normal";
+}
+
+/**
+ * The workspace `tabs[closingIndex]` belongs to, when closing that tab
+ * leaves it with no terminal tab left in THIS window while at least one
+ * other terminal tab (of a DIFFERENT workspace) still exists — the case
+ * where that workspace's file tabs would otherwise go unreachable behind a
+ * live tab of another workspace, yet stay open, watched and dirty-blocking
+ * quit. Null when there is nothing to close (no workspace, or another tab of
+ * the same workspace survives).
+ *
+ * Deliberately returns null when `remaining.length === 0` — the window's
+ * LAST terminal tab closing is `TabManager`'s "last surface, not last tab"
+ * territory (spec §7): `disposeTab` already keeps the window alive on that
+ * workspace's own file surface via `SurfaceStrip.total()`, and closing those
+ * same file tabs here would defeat the rule that just kept them reachable.
+ *
+ * Extracted to module scope (like `livePresetOpensATab`/`bootOpensTheBoard`
+ * above) so it is unit-testable without an `<App>` render harness, which
+ * this repo does not have.
+ */
+export function workspaceOrphanedByClose(
+  tabs: readonly { readonly workspacePath: string | null }[],
+  closingIndex: number,
+): string | null {
+  const workspacePath = tabs[closingIndex]?.workspacePath ?? null;
+  if (workspacePath === null) {
+    return null;
+  }
+  const remaining = tabs.filter((_, index) => index !== closingIndex);
+  if (remaining.length === 0) {
+    return null;
+  }
+  return remaining.some((tab) => tab.workspacePath === workspacePath) ? null : workspacePath;
+}
+
+/**
+ * The same rule over SEVERAL tabs closing at once — the rail's project-header
+ * ✕ (close model, 2026-08-22, table row 4), which closes every tab of a
+ * project in one act.
+ *
+ * Not `closingIndexes.map(workspaceOrphanedByClose)`: that asks "does this
+ * workspace survive the loss of ONE tab", and every tab of the project is
+ * going, so a project with two tabs open would answer "yes, the sibling
+ * survives" twice and leave both file workspaces stranded. The survivor set is
+ * computed once, against everything that is closing.
+ *
+ * Keeps the singular's two carve-outs: a tab with no workspace contributes
+ * nothing, and an empty remainder returns nothing at all — the window's LAST
+ * terminal tab closing is `TabManager`'s "last surface, not last tab"
+ * territory (spec §7), and since the close model that same branch is what
+ * keeps the window standing on the Open board.
+ */
+export function workspacesOrphanedByClose(
+  tabs: readonly { readonly workspacePath: string | null }[],
+  closingIndexes: readonly number[],
+): readonly string[] {
+  const closing = new Set(closingIndexes);
+  const remaining = tabs.filter((_, index) => !closing.has(index));
+  if (remaining.length === 0) {
+    return [];
+  }
+  const survivors = new Set(remaining.map((tab) => tab.workspacePath));
+  const orphaned = new Set<string>();
+  for (const index of closing) {
+    const workspacePath = tabs[index]?.workspacePath ?? null;
+    if (workspacePath !== null && !survivors.has(workspacePath)) {
+      orphaned.add(workspacePath);
+    }
+  }
+  return [...orphaned];
+}

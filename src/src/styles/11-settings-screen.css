@@ -1,0 +1,613 @@
+/* ── Settings rail: one list of category tabs (settings-nav.tsx) ──────────
+   The pinned reset foot and its three rules went on 2026-08-19 (owner):
+   `reset` is a registry category now, so it needs no mount point of its own
+   and no CSS teaching a config row to stack because 220px could not hold it. */
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--hair);
+}
+
+.settings-nav__list {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.settings-nav__item {
+  display: flex;
+  align-items: center;
+  /* No `gap`: the row is one text span since 2026-08-19 (DL-11.3 retired —
+     the owner took the category icons off). */
+  padding: 7px 10px;
+  margin: 0 6px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-faint);
+  /* Navigation, not data — prose font (DL-4.1 / DL-11.4). Mono here reads as
+     a terminal value and fights the native chrome around it. */
+  font-family: var(--ui-font);
+  font-size: var(--type-body);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+/* DL-21.2: hover is the quiet wash. It shared one declaration with `.is-active`
+   until 2026-08-14, which meant pointing at a category you had not opened
+   painted it as the open one. */
+.settings-nav__item:hover {
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+}
+
+/* DL-21.1: the open category is the selection wash — the same mark the active
+   tab and the active rail row use. The 2px accent bar DL-11.2 mandated until
+   2026-08-14 is retired. */
+.settings-nav__item.is-active {
+  background: var(--tab-active-bg);
+  color: var(--text-primary);
+}
+
+.settings-nav__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Settings screen: full-window shell (settings-screen.tsx, DL-11.1) ── */
+
+.settings-screen {
+  /* FIXED, not absolute (2026-08-19, owner): Settings covers the whole window
+     — sidebar, rail and frame row included — rather than only the stage it is
+     mounted in. Fixed rather than reparenting the component: no ancestor
+     carries a transform, so the viewport is the containing block, and the
+     mount point in `app.tsx` stays where every other overlay lives.
+
+     The macOS traffic lights are NOT lost to this. The OS draws them over the
+     web contents, so they float above this surface; what the header below has
+     to do is reserve their footprint and stay draggable, which it does. */
+  position: fixed;
+  /* Full-bleed: the surface has no edge to meet, so no inset, no radius and no
+     raised seam — those belong to surfaces that float (DL-20.1). */
+  inset: 0;
+  background: var(--chrome-2);
+  display: flex;
+  flex-direction: column;
+  /* Above the Open board (30), below a modal draft (40). A full-window
+     Settings surface has to be reachable from anywhere — when it was a 300px
+     drawer at 20 it hid under the board, which is why opening it there used
+     to be blocked outright (app.tsx). */
+  z-index: 35;
+  /* A full-window surface fades and settles; it does not slide in from an
+     edge it no longer has (DL-1.2 — transform/opacity only, under 300ms). */
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  /* visibility (not just opacity) — it takes the closed screen's buttons and
+     native inputs out of the tab order, matching aria-hidden. Delayed so the
+     fade-out still plays. */
+  visibility: hidden;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    visibility 0s linear 0.22s;
+}
+
+/* The board still stops below the strip (09-open-board.css) and Settings no
+   longer does (2026-08-19, owner). The rule those two shared was never about
+   the strip being sacred — it was about not stranding the user: a board opened
+   on a window with no tabs cannot be cancelled, so covering the strip left
+   NOTHING on screen able to bring the sidebar back.
+   Settings is not in that position. It has two unconditional ways out that owe
+   nothing to the chrome underneath — Escape, and the Back button in its own
+   header — so covering the row costs a shortcut, not an exit. */
+
+.settings-screen.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    visibility 0s;
+}
+
+/* The header now stands where the window's own frame row used to be, so it
+   inherits that row's two obligations (2026-08-19):
+
+   - it reserves the window controls' footprint, because the OS paints its
+     buttons over exactly that box and anything placed there sits underneath
+     them. On the left that is the macOS traffic lights: `--frame-lights-w` is
+     0 on Windows, whose controls are on the right, so the padding collapses on
+     its own. On the right it is the Windows caption buttons under Electron,
+     which `22-caption-overlay.css` pads for (`--frame-controls-w`);
+   - it is the drag surface. Covering the frame row would otherwise cost the
+     window its only draggable strip while Settings is open. Every interactive
+     child opts back out below — inside a drag region the OS takes the pointer
+     down before the page sees it. */
+.settings-screen__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--frame-h);
+  box-sizing: border-box;
+  padding: 8px 16px 8px calc(var(--frame-lights-w) + 12px);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--hair);
+  -webkit-app-region: drag;
+}
+
+.settings-screen__head button {
+  -webkit-app-region: no-drag;
+}
+
+/* Back, not a close X (2026-08-19, owner). Settings covers the whole window
+   now, so leaving it is a NAVIGATION — the user goes back to their work —
+   and the control says that in a word rather than in a glyph. Escape does the
+   same thing and always did. */
+.settings-screen__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-tab);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: var(--type-meta);
+  cursor: pointer;
+  /* DL-21.5: state changes ride the shared motion pair. */
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.settings-screen__back:hover {
+  background: var(--state-hover-bg);
+  border-color: var(--hair-strong);
+  color: var(--text-primary);
+}
+
+.settings-screen__back:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 1px;
+}
+
+/* "Star on GitHub" took the decorative path's slot (2026-08-19, owner). It
+   borrows `.settings-screen__back`'s shape deliberately: the two are one
+   leading cluster, and the header is not a split row — the traffic lights own
+   the far left and a lone control on the far right would read as a close.
+   Achromatic (DL-3.7), so the ask carries no hue of its own on this surface;
+   `--text-primary` at rest is the whole emphasis it gets, one step above the
+   muted `Back` next to it. */
+.settings-screen__star {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-tab);
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+  font-family: var(--ui-font);
+  font-size: var(--type-meta);
+  cursor: pointer;
+  /* DL-21.5: state changes ride the shared motion pair. */
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.settings-screen__star:hover {
+  border-color: var(--hair-strong);
+  background: var(--chrome-2);
+}
+
+.settings-screen__star:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 1px;
+}
+
+/* Two columns: the rail is fixed, the section area owns all scrolling
+   (DL-11.1). min-height:0 on both so the grid can actually shrink. */
+.settings-screen__grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.settings-screen__section {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── The section document (DL-11.6, 2026-08-19) ─────────────────────────────
+ * Three layers on the content side: title, one sentence, one grouped surface.
+ *
+ * The measure is owned HERE, by the column, not by each row. Until this change
+ * `.cfg-row` and `.cfg-group` each carried `max-width: 620px` — which keeps a
+ * row from stretching but leaves it flush against the rail on a wide window,
+ * so the content read as a left-aligned list in an empty field rather than as
+ * a document. One centred column sets the measure once, and everything inside
+ * inherits it. */
+.settings-screen__doc {
+  width: min(680px, calc(100% - 80px));
+  margin: 0 auto;
+  padding: 38px 0 54px;
+}
+
+.settings-screen__intro {
+  padding-bottom: 24px;
+  /* The one structural line on this side. Everything below it is settings;
+     everything above it says which settings. */
+  border-bottom: 1px solid var(--hair);
+}
+
+/* A scoped structural heading, 24px — the fifth entry on DL-4.5's closed
+   exception list (2026-08-19), beside the §16 display figure and the board's
+   19px screen heading. It is not a fifth rung of DL-4.4's ladder: it names
+   what a whole screen is currently about, a structural level the four roles
+   do not have. Bounded to this selector, and the reason it is needed is that
+   the section title and the group labels beneath it were both
+   `--type-title`. */
+.settings-screen__title {
+  margin: 0;
+  font-family: var(--ui-font);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.settings-screen__lede {
+  max-width: 58ch;
+  margin: 10px 0 0;
+  font-family: var(--ui-font);
+  font-size: var(--type-title);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* The grouped settings surface — one background step and a 1px edge, no
+   shadow (DL-20.1: this is chrome that sits IN the screen, not a panel
+   floating above it).
+   `min-inline-size: 0` and the border/padding reset are not styling: a
+   `fieldset` ships a UA `min-inline-size: min-content` that refuses to shrink
+   below its widest row, which would push the whole column wider than the
+   window at compact width. */
+.settings-screen__fields {
+  min-inline-size: 0;
+  margin: 24px 0 0;
+  padding: 2px 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-surface);
+  background: var(--chrome-1);
+}
+
+/* Each group after the first opens with a rule, so a surface holding four
+   groups reads as four blocks rather than one long run of rows. */
+.settings-screen__fields .cfg-group {
+  padding: 18px 16px 7px;
+}
+
+.settings-screen__fields .cfg-group:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid var(--hair);
+}
+
+/* Deliberate vertical room, still denser than the references it came from:
+   10px for a bare row, 12px once a description gives the key two lines.
+   `box-sizing` is declared because this element has a percentage-free size
+   AND padding, and `src/styles.css` has no global reset (see AGENTS.md). */
+.settings-screen__fields .cfg-row {
+  box-sizing: border-box;
+  min-height: 42px;
+  margin: 0 6px;
+  padding: 10px;
+}
+
+.settings-screen__fields .cfg-row:has(.cfg-row__desc) {
+  min-height: 50px;
+  padding-block: 12px;
+}
+
+/* Disclosure prose under a section's rows (Privacy, spec §7): body copy, not
+   a control — muted ink, measured line length, aligned with the row inset. */
+.settings-screen__note {
+  margin: 10px 16px;
+  max-width: 62ch;
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  line-height: 1.5;
+}
+
+/* Settings chrome is achromatic (DL-3.7). The terminal palette may be as
+   colourful as it likes; its green "on" and blue focus ring do not belong on
+   a preference control, where colour would be the only thing separating an
+   enabled toggle from a disabled one. Neutral contrast carries the state
+   instead — which is also what makes it legible to a user who cannot
+   distinguish the two hues. */
+.settings-screen .cfg-btn--on,
+.settings-screen .cfg-step__btn {
+  color: var(--text-primary);
+}
+
+.settings-screen .cfg-btn:hover .cfg-btn__hint {
+  color: var(--text-primary);
+}
+
+/* An unavailable pill drops the hover wash on its caret too (DL-23.6). The
+   rule above out-specifies `.cfg-btn--disabled:hover .cfg-btn__hint`, so
+   without this the caret of the Windows "Open with" pill would light up under
+   the pointer. Reached only by that pill, which only Windows renders, and
+   scoped under `.window--windows` like every Windows-only rule. */
+.window--windows .settings-screen .cfg-btn--unavailable:hover .cfg-btn__hint {
+  color: var(--text-faint);
+}
+
+/* The clear-override button (DL-6.1), mounted here by the shortcut rows and
+   the logo row. Accent ink plus a 14% accent wash on hover was the loudest
+   colour left on the surface.
+
+   KNOWN LIMIT, and the reason this list is a list: DL-3.7 is stated as a rule
+   and enforced by enumeration, so every control added to Settings has to be
+   remembered here. The deeper fix is redefining `--accent` / `--green` once,
+   scoped to `.settings-screen`, which would close the whole class instead of
+   one member — deliberately NOT done yet, because it repaints controls across
+   this surface and no owner eye review of it exists. */
+.settings-screen .cfg-clear {
+  color: var(--text-muted);
+}
+
+.settings-screen .cfg-clear:hover {
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+}
+
+.settings-screen .cfg-btn:focus-visible,
+.settings-screen .cfg-btn--overlay:focus-within,
+.settings-screen .cfg-step__btn:focus-visible,
+.settings-screen .settings-nav__item:focus-visible,
+.settings-screen .text-input:focus-visible {
+  outline-color: var(--text-muted);
+}
+
+/* ── The binary segmented value kind (DL-6.5, 2026-08-19) ───────────────────
+ * Two or three equal, mutually exclusive choices, all of them visible before
+ * the user acts. It replaces the cycle button for this shape: a pill reading
+ * `left` tells you what the value IS and hides what it could be, so the only
+ * way to see the alternatives is to change the setting. */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(64px, 1fr);
+  padding: 2px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+}
+
+.segmented__option {
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  /* The inner corner of a 10px track with 2px of padding — DL-20.1's
+     `--radius-tight` is that value, so the nested shape stays on the scale
+     instead of being derived by arithmetic at the use site. */
+  border-radius: var(--radius-tight);
+  background: transparent;
+  color: var(--text-faint);
+  font: 520 var(--type-meta) / 1 var(--ui-font);
+  cursor: pointer;
+  /* DL-21.5: state changes ride the shared motion pair. */
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.segmented__option:hover {
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+}
+
+/* DL-21.1's selection wash, plus the neutral 1px frame the tab strip's
+   selected chip uses (DL-21.1's scoped exception, extended to this control by
+   DL-6.5) — a segment sitting on a
+   wash alone, inside a track that is itself a wash, was not reliably the
+   one that looked chosen. */
+.segmented__option.is-selected {
+  border-color: var(--hair-strong);
+  background: var(--tab-active-bg);
+  color: var(--text-primary);
+}
+
+.segmented__option:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: -2px;
+}
+
+/* ── Compact width (DL-11.7, 2026-08-19) ────────────────────────────────────
+ * Deck's supported minimum is 480px, and at that width a fixed 220px rail
+ * leaves 260px for a document with a 58ch measure. The rail becomes icons —
+ * `settings-nav.tsx` keeps each tab's name in `aria-label`/`title`, so
+ * hiding the text costs the label, not the accessible name — and the document
+ * gives up its centring gutters for edge padding. */
+@media (max-width: 720px) {
+  /* 132px, not the 54px icon rail this rule shipped with earlier the same day:
+     the category icons are gone (DL-11.3 retired, owner), so there is nothing
+     an icon rail could show. The label truncates instead and `title` carries
+     the whole name — which is why `settings-nav.tsx` keeps that attribute now
+     that `aria-label` has gone with the icon. 132px still leaves 348px of
+     document at Deck's 480px minimum. */
+  .settings-screen__grid {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+
+  .settings-nav__item {
+    padding-inline: 8px;
+  }
+
+  .settings-nav__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-screen__doc {
+    width: auto;
+    margin: 0;
+    padding: 28px 18px 40px;
+  }
+}
+
+/* The section's scrollbar is the app-wide one (`01-tokens.css`, 2026-08-17).
+   The three rules that used to stand here said the same thing in a slightly
+   different dialect — 25% instead of the shared thumb, `--radius-control`
+   instead of the thumb scale — and were the reason two surfaces could look
+   different for no reason anyone chose. */
+
+/* ── Window dragging ────────────────────────────────────────────────────────
+ * `data-tauri-drag-region` was interpreted by the Tauri host; Electron knows
+ * nothing about it, so after the host swap the title bar and tab bar could not
+ * be dragged at all. The markup is kept — it still names the drag surfaces —
+ * and Electron's own `-webkit-app-region` is attached to it here.
+ *
+ * Every interactive descendant must opt back OUT: inside a drag region the OS
+ * takes the mouse down before the page sees it, so an unexcluded button drags
+ * the window instead of being clicked. */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] select,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] [role="tab"],
+[data-tauri-drag-region] [role="button"],
+[data-tauri-drag-region] .tab {
+  -webkit-app-region: no-drag;
+}
+
+/* ── File view: the editor surface (mounted by the redesign) ─────────── */
+
+.fileview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hair);
+  overflow: hidden;
+}
+
+.fileview__editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Monaco declares `cursor: text` on `.view-lines` ALONE
+   (`base/browser/ui/mouseCursor/mouseCursor.css`), and that element is sized to
+   the rendered content box — measured 2026-08-19 in a running Electron host as
+   336x0 while `.lines-content` under it spanned the whole code area. Wherever
+   `.view-lines` falls short, the pointer hits `.lines-content`, which carries no
+   cursor at all, so it flips between the I-beam and the arrow as it moves. One
+   declaration on the layer underneath makes every layer in the code area agree.
+   The margin is deliberately NOT included: Monaco's own `lineNumbers.css` puts
+   `cursor: default` there, which is what VS Code shows over the gutter. */
+.fileview__editor .monaco-editor .lines-content {
+  cursor: text;
+}
+
+.fileview__refusal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+}
+
+.fileview__refusal-name {
+  font-size: var(--type-title);
+  color: var(--text-primary);
+}
+
+.fileview__refusal-text {
+  font-size: var(--type-meta);
+  color: var(--text-faint);
+  max-width: 40ch;
+  line-height: 1.5;
+}
+
+/* The external-change bar (spec §5). A row above the editor, not a dialog:
+   the decision is about the file on screen and belongs beside it. */
+.filebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: var(--chrome-2);
+  border-bottom: 1px solid var(--hair);
+  font-size: var(--type-meta);
+  flex: none;
+}
+
+.filebar--quiet {
+  color: var(--text-faint);
+}
+
+.filebar__text {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filebar__actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.filebar__btn {
+  padding: 3px 8px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-tab);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: var(--type-meta);
+  cursor: pointer;
+  /* DL-21.5: state changes ride the shared motion pair. */
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.filebar__btn:hover {
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+}
+
+.filebar__btn--primary {
+  border-color: var(--hair-strong);
+  color: var(--text-primary);
+}

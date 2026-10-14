@@ -1,0 +1,95 @@
+/**
+ * Small renderer facades with no shared main-process state: window chrome
+ * (close/maximize), external links, clipboard, notifications and app
+ * lifecycle.
+ */
+import { app, BrowserWindow, clipboard, ipcMain, Notification, shell } from "electron";
+import { FRAME_HEIGHT_PX, isOverlayColor } from "../window-options";
+import { CHANNELS } from "./channels";
+
+/**
+ * Schemes Deck will hand to the OS.
+ *
+ * Tauri enforced this in the HOST via the `opener:default` permission set;
+ * dropping it left `shell.openExternal` open to anything the renderer passed,
+ * and the renderer is not the trust boundary — an OSC 8 hyperlink carrying
+ * `file:///Applications/…` was one renderer bug away from launching it.
+ */
+const OPENABLE_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
+
+export function registerShell(platform: NodeJS.Platform = process.platform): void {
+  let rejectionLogged = false;
+  // No `window_is_focused` / `window_scale_factor` handlers: both are answered
+  // in the renderer from `document.hasFocus()` and `devicePixelRatio`. The
+  // main-process versions were worse — `getZoomFactor()` returns the user's ZOOM
+  // level, which is 1 on a 2x display at default zoom, so it silently turned the
+  // physical-to-logical drop conversion into a no-op.
+  ipcMain.handle("window_close", (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+  ipcMain.handle("window_toggle_maximize", (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window === null) {
+      return;
+    }
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+  });
+
+  ipcMain.handle(CHANNELS.windowSetTitleBarOverlay, (event, payload: unknown) => {
+    // Only a Windows renderer calls this, and only when the frame corner's
+    // colour changes; any other host resolves without touching the window.
+    if (platform !== "win32") {
+      return;
+    }
+    // Untrusted: the payload is taken whole so a missing or non-object one is a
+    // rejection like any bad colour, not a TypeError thrown into the renderer.
+    const { color, symbolColor } = (payload ?? {}) as Record<string, unknown>;
+    if (!isOverlayColor(color) || !isOverlayColor(symbolColor)) {
+      // Once, not per colour change: the values are never echoed into the log.
+      if (!rejectionLogged) {
+        rejectionLogged = true;
+        console.warn("Deck: ignored a title bar overlay that is not a #rrggbb colour pair");
+      }
+      return;
+    }
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed() || typeof window.setTitleBarOverlay !== "function") {
+      return;
+    }
+    window.setTitleBarOverlay({ color, symbolColor, height: FRAME_HEIGHT_PX });
+  });
+
+  ipcMain.handle("shell_open_url", (_event, { url }) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(String(url));
+    } catch {
+      throw new Error("That link is not a valid URL.");
+    }
+    if (!OPENABLE_SCHEMES.has(parsed.protocol)) {
+      throw new Error(`Deck will not open ${parsed.protocol} links.`);
+    }
+    return shell.openExternal(parsed.href);
+  });
+  ipcMain.handle("clipboard_read_text", () => clipboard.readText());
+  ipcMain.handle("clipboard_write_text", (_event, { text }) => clipboard.writeText(text));
+  // Electron needs no permission grant for notifications; answering true keeps
+  // the renderer's request/grant flow unchanged.
+  ipcMain.handle("notification_permission_granted", () => Notification.isSupported());
+  ipcMain.handle("notification_request_permission", () =>
+    Notification.isSupported() ? "granted" : "denied",
+  );
+  ipcMain.handle("notification_send", (_event, payload) => {
+    const { title, body } = payload as { title: string; body?: string };
+    if (Notification.isSupported()) {
+      new Notification({ title, body }).show();
+    }
+  });
+  ipcMain.handle("app_relaunch", () => {
+    app.relaunch();
+    app.exit(0);
+  });
+  ipcMain.handle("app_version", () => app.getVersion());
+}

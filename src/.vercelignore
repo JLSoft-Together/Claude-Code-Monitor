@@ -1,0 +1,57 @@
+# Vercel builds ONLY the landing page (see vercel.json: buildCommand runs
+# marketing/landing-prototype/vite.build.mjs). Uploading the whole checkout
+# exceeds the 10 MB request limit — the desktop app's sources, docs, review
+# assets and the marketing video renders are megabytes the landing never reads.
+#
+# Whitelist: everything is ignored, then the few paths the install and the
+# landing build actually need are added back.
+/*
+
+!/package.json
+!/package-lock.json
+!/vercel.json
+
+# `npm ci` runs the postinstall script from here.
+!/scripts
+
+!/marketing
+/marketing/*
+!/marketing/landing-prototype
+
+# The tour panels import the shared brand marks from here.
+!/marketing/stage
+
+# Vite's publicDir for the landing build (root = marketing/): the privacy page
+# is copied verbatim into the output root and served by the /privacy rewrites.
+!/marketing/public
+
+# The landing's agent logos live with the app's own assets, and the agent strip
+# reads the app's agent registry.
+!/src
+/src/*
+!/src/assets
+!/src/lib
+/src/lib/*
+!/src/lib/agent-logos.ts
+!/src/lib/agents
+
+# The feature widgets import the app's own launch, resume, install and usage
+# modules rather than copies of them. A new import from `src/` builds locally
+# and in CI but fails on Vercel until its file (and what it imports) is listed.
+!/src/lib/agent-catalog.ts
+!/src/lib/agent-install.ts
+!/src/lib/agent-resume.ts
+!/src/lib/launch-command.ts
+!/src/lib/launch-profile.ts
+!/src/lib/usage-pricing.ts
+!/src/lib/usage-pricing-snapshot.ts
+!/src/lib/usage-snapshot.ts
+!/src/ui
+/src/ui/*
+!/src/ui/usage
+/src/ui/usage/*
+!/src/ui/usage/usage-format.ts
+!/src/ui/usage/usage-ranges.ts
+
+# Rebuilt on Vercel; never upload the local output.
+/marketing/landing-prototype/dist

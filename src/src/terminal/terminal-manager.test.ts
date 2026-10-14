@@ -1,0 +1,897 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Pane, PaneAttentionSignal, PaneEvents } from "./pane";
+import type { CreatePaneFn } from "./pane-lifecycle";
+import { createMemoryPtyClient } from "./pty-client";
+import { createMemoryTransferClient } from "./transfer-client";
+import {
+  createTerminalManager,
+  type ManagerCallbacks,
+  type TerminalManager,
+} from "./terminal-manager";
+
+/**
+ * `emitFocusEvent` models real DOM `focusin` semantics: native `.focus()`
+ * fires no event when the element already holds DOM focus. Default `true`
+ * matches the common case (element not yet focused); pass `false` to
+ * reproduce the already-focused-element case.
+ *
+ * `fitCounts`, when given, records one increment per `fit()` call for this
+ * pane's id — lets a test assert every pane was fit without caring about
+ * focus.
+ *
+ * `selections`, when given, is the shared set of pane ids that currently hold
+ * a terminal selection: a test adds an id to model the user having dragged
+ * over output, and `clearSelection()` removes it, so `activeHasSelection()`
+ * is observed through the same state the manager mutates rather than a spy
+ * that cannot answer differently after the clear.
+ *
+ * `rendererLog`, when given, is the shared ORDERED log of renderer-affecting
+ * calls as `"<id>:<call>"`. Order is the assertion that matters here, not
+ * counts: suspend has to land before `mount`, and resume before the `fit` that
+ * repaints — getting either backwards still passes a counting test while
+ * leaving the pane on the DOM renderer for good.
+ */
+function fakePane(
+  id: number,
+  events: PaneEvents,
+  emitFocusEvent = true,
+  fitCounts?: Map<number, number>,
+  selections?: Set<number>,
+  rendererLog?: string[],
+): Pane {
+  const element = document.createElement("div");
+  // Everything written to the pane, so `serializeScrollback` answers something.
+  // It returned "" before the Agent Board's `serializePane` needed it, which
+  // made every `toContain(...)` on a snapshot pass vacuously.
+  let buffer = "";
+  return {
+    id,
+    element,
+    search: {} as Pane["search"],
+    mount() {
+      rendererLog?.push(`${id}:mount`);
+    },
+    suspendRenderer() {
+      rendererLog?.push(`${id}:suspend`);
+    },
+    resumeRenderer() {
+      rendererLog?.push(`${id}:resume`);
+    },
+    write(data) {
+      buffer += data;
+    },
+    cols: 80,
+    rows: 24,
+    flush() {
+      return Promise.resolve();
+    },
+    serializeScrollback() {
+      return buffer;
+    },
+    writeln(line) {
+      // What `term.writeln` does — the line plus a CRLF. `handleExit`'s
+      // "[Session ended]" banner is written this way, escapes and all.
+      buffer += `${line}\r\n`;
+    },
+    fit() {
+      fitCounts?.set(id, (fitCounts.get(id) ?? 0) + 1);
+      rendererLog?.push(`${id}:fit`);
+    },
+    clear() {},
+    copySelection() {},
+    hasSelection() {
+      return selections?.has(id) ?? false;
+    },
+    clearSelection() {
+      selections?.delete(id);
+    },
+    paste() {},
+    pasteText(text) {
+      return events.onData(id, text);
+    },
+    scrollPage() {},
+    scrollToEdge() {},
+    focus() {
+      if (emitFocusEvent) {
+        events.onFocus(id);
+      }
+    },
+    applySettings() {},
+    setHeaderInfo() {},
+    captureSelection() {
+      return null;
+    },
+    restoreSelection() {},
+    dispose() {},
+  };
+}
+
+/** Builds a TerminalManager wired to a fake createPane that records the
+ * PaneEvents handed to each spawned pane, so a test can invoke
+ * `onAttentionSignal` as if the pane itself raised it.
+ *
+ * `emitFocusEvent` (default `true`) is forwarded to every spawned
+ * `fakePane` — pass `false` to model a manager whose panes behave like an
+ * already-DOM-focused element (native `.focus()` fires no `focusin`). */
+function setup(emitFocusEvent = true): {
+  tm: TerminalManager;
+  container: HTMLElement;
+  onAttentionSignal: ReturnType<typeof vi.fn>;
+  onPaneFocus: ReturnType<typeof vi.fn>;
+  onActivePaneChange: ReturnType<typeof vi.fn>;
+  eventsById: Map<number, PaneEvents>;
+  fitCounts: Map<number, number>;
+  panesById: Map<number, Pane>;
+  selections: Set<number>;
+  rendererLog: string[];
+} {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const pty = createMemoryPtyClient({ nextId: 1 });
+  const eventsById = new Map<number, PaneEvents>();
+  const fitCounts = new Map<number, number>();
+  const panesById = new Map<number, Pane>();
+  const selections = new Set<number>();
+  const rendererLog: string[] = [];
+  const createPane: CreatePaneFn = (id, _settings, events) => {
+    eventsById.set(id, events);
+    const pane = fakePane(id, events, emitFocusEvent, fitCounts, selections, rendererLog);
+    panesById.set(id, pane);
+    return pane;
+  };
+  const onAttentionSignal = vi.fn();
+  const onPaneFocus = vi.fn();
+  const onActivePaneChange = vi.fn();
+  const callbacks: ManagerCallbacks = {
+    onLayoutChange() {},
+    onAttentionSignal,
+    onPaneFocus,
+    onActivePaneChange,
+  };
+  const tm = createTerminalManager(container, callbacks, pty, { createPane });
+  return {
+    tm,
+    container,
+    onAttentionSignal,
+    onPaneFocus,
+    onActivePaneChange,
+    eventsById,
+    fitCounts,
+    panesById,
+    selections,
+    rendererLog,
+  };
+}
+
+describe("guarded launcher creation", () => {
+  it("preserves legacy docking onto an exited pane", async () => {
+    const { tm } = setup();
+    await tm.initFresh("/repo");
+    tm.handleExit(1);
+    expect(tm.isPaneLaunchable(1)).toBe(false);
+    expect(await tm.dockNewPaneAt(1, "right")).toBe(2);
+    expect(tm.paneIds()).toEqual([1, 2]);
+    tm.dispose();
+  });
+  it.each(["committed", "aborted"] as const)(
+    "refuses launch while transferring and follows %s outcome",
+    async (kind) => {
+      const pty = createMemoryPtyClient({ nextId: 1 });
+      const transfer = createMemoryTransferClient();
+      const manager = createTerminalManager(
+        document.createElement("div"),
+        { onLayoutChange() {} },
+        pty,
+        { createPane: (id, _settings, events) => fakePane(id, events), transfer },
+      );
+      await manager.initFresh("/repo", { focus: false });
+      expect(manager.isPaneLaunchable(1)).toBe(true);
+      const moving = manager.detachPaneById(1, { kind: "new-window" });
+      expect(manager.isPaneLaunchable(1)).toBe(false);
+      expect(
+        await manager.dockNewPaneAt(1, "right", { canCommit: () => true, cwd: "/repo" }),
+      ).toBeNull();
+      await vi.waitFor(() => expect(transfer.calls).toContain("await:xfer-1"));
+      transfer.settle(
+        "xfer-1",
+        kind === "committed" ? { kind } : { kind, reason: "Destination closed" },
+      );
+      await moving;
+      expect(manager.isPaneLaunchable(1)).toBe(kind === "aborted");
+      manager.dispose();
+    },
+  );
+
+  it("initializes without hidden focus and rejects cancelled initialization", async () => {
+    const { tm, onPaneFocus } = setup();
+    await tm.initFresh("/repo", { focus: false, canCommit: () => true });
+    expect(onPaneFocus).not.toHaveBeenCalled();
+    expect(tm.isPaneLaunchable(1)).toBe(true);
+    tm.dispose();
+    expect(tm.isPaneLaunchable(1)).toBe(false);
+    const other = setup();
+    await expect(other.tm.initFresh("/repo", { canCommit: () => false })).rejects.toThrow(
+      "Launch cancelled",
+    );
+    expect(other.tm.paneIds()).toEqual([]);
+    other.tm.dispose();
+  });
+
+  it("does not dock or focus when the request is cancelled", async () => {
+    const { tm, onPaneFocus } = setup();
+    await tm.initFresh("/repo");
+    onPaneFocus.mockClear();
+    expect(
+      await tm.dockNewPaneAt(1, "right", { cwd: "/repo", canCommit: () => false, focus: false }),
+    ).toBeNull();
+    expect(tm.paneIds()).toEqual([1]);
+    expect(onPaneFocus).not.toHaveBeenCalled();
+    tm.dispose();
+  });
+});
+
+beforeEach(() => {
+  document.body.innerHTML = "";
+});
+
+describe("createTerminalManager attention signal routing", () => {
+  it("routes an osc-notification signal to ManagerCallbacks.onAttentionSignal with the same pane id", async () => {
+    const { tm, onAttentionSignal, eventsById } = setup();
+    await tm.initFresh();
+    const id = tm.activePaneId();
+    expect(id).not.toBeNull();
+
+    const signal: PaneAttentionSignal = {
+      kind: "requested",
+      source: "osc-notification",
+    };
+    eventsById.get(id!)!.onAttentionSignal?.(id!, signal);
+
+    expect(onAttentionSignal).toHaveBeenCalledTimes(1);
+    expect(onAttentionSignal).toHaveBeenCalledWith(id, signal);
+  });
+
+  it("routes a bell signal the same way", async () => {
+    const { tm, onAttentionSignal, eventsById } = setup();
+    await tm.initFresh();
+    const id = tm.activePaneId();
+    expect(id).not.toBeNull();
+
+    const signal: PaneAttentionSignal = { kind: "requested", source: "bell" };
+    eventsById.get(id!)!.onAttentionSignal?.(id!, signal);
+
+    expect(onAttentionSignal).toHaveBeenCalledWith(id, signal);
+  });
+
+  it("does not leak a signal from one manager's pane into another manager's callback", async () => {
+    const a = setup();
+    const b = setup();
+    await a.tm.initFresh();
+    await b.tm.initFresh();
+
+    const idA = a.tm.activePaneId();
+    expect(idA).not.toBeNull();
+    a.eventsById.get(idA!)!.onAttentionSignal?.(idA!, {
+      kind: "requested",
+      source: "bell",
+    });
+
+    expect(a.onAttentionSignal).toHaveBeenCalledTimes(1);
+    expect(b.onAttentionSignal).not.toHaveBeenCalled();
+  });
+});
+
+describe("createTerminalManager focusPane", () => {
+  it("focuses a known pane: returns true, updates activePaneId, fires onPaneFocus once", async () => {
+    const { tm, onPaneFocus } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first, second] = tm.paneIds();
+    expect(second).not.toBeUndefined();
+    onPaneFocus.mockClear();
+
+    const ok = tm.focusPane(first!);
+
+    expect(ok).toBe(true);
+    expect(tm.activePaneId()).toBe(first);
+    expect(onPaneFocus).toHaveBeenCalledTimes(1);
+    expect(onPaneFocus).toHaveBeenCalledWith(first);
+  });
+
+  it("unknown pane id is a no-op: returns false, active id unchanged, no callback", async () => {
+    const { tm, onPaneFocus } = setup();
+    await tm.initFresh();
+    const activeBefore = tm.activePaneId();
+    onPaneFocus.mockClear();
+
+    const ok = tm.focusPane(999999);
+
+    expect(ok).toBe(false);
+    expect(tm.activePaneId()).toBe(activeBefore);
+    expect(onPaneFocus).not.toHaveBeenCalled();
+  });
+
+  it("focusing a different pane while zoomed restores the layout (tmux behavior)", async () => {
+    const { tm, container } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first, second] = tm.paneIds();
+    expect(second).not.toBeUndefined();
+    // splitActive left `second` active — zoom it.
+    expect(tm.activePaneId()).toBe(second);
+    tm.toggleZoom();
+    expect(container.classList.contains("is-zoomed")).toBe(true);
+
+    const ok = tm.focusPane(first!);
+
+    expect(ok).toBe(true);
+    expect(container.classList.contains("is-zoomed")).toBe(false);
+    expect(tm.activePaneId()).toBe(first);
+  });
+
+  it("fires onPaneFocus exactly once per focusPane call when pane.focus() DOES bubble onFocus (suppression guard prevents a double)", async () => {
+    // Default fakePane routes focus() through events.onFocus — without the
+    // inProgrammaticFocus guard this would double-fire: once from the
+    // bubbled onFocus, once from focusPane's own deterministic ack.
+    const { tm, onPaneFocus } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first] = tm.paneIds();
+    onPaneFocus.mockClear();
+
+    tm.focusPane(first!);
+
+    expect(onPaneFocus).toHaveBeenCalledTimes(1);
+
+    // Re-focusing the already-active pane still fires exactly once — setActive
+    // early-returns (idempotent) but pane.focus() still bubbles onFocus.
+    onPaneFocus.mockClear();
+    tm.focusPane(first!);
+    expect(onPaneFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onPaneFocus exactly once per focusPane call when pane.focus() does NOT bubble onFocus (already-DOM-focused pane — proves the zero-emit is fixed)", async () => {
+    // emitFocusEvent: false models a pane that already holds DOM focus:
+    // native .focus() is then a no-op and fires no focusin, so
+    // events.onFocus never runs. Before the fix this left focusPane's
+    // caller with zero acks for the target; focusPane's own deterministic
+    // emit now covers it regardless.
+    const { tm, onPaneFocus } = setup(false);
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first] = tm.paneIds();
+    onPaneFocus.mockClear();
+
+    const ok = tm.focusPane(first!);
+
+    expect(ok).toBe(true);
+    expect(tm.activePaneId()).toBe(first);
+    expect(onPaneFocus).toHaveBeenCalledTimes(1);
+    expect(onPaneFocus).toHaveBeenCalledWith(first);
+  });
+});
+
+// swap-left/right/up/down exchange the focused pane with its neighbour,
+// reusing focusDirection's own nearestInDirection
+// resolution + the already-shipped swapLeaves (pane-drag.ts's onSwap uses the
+// same primitive). jsdom never lays out real geometry — every slot's
+// getBoundingClientRect() is {0,0,0,0} — so, like focusDirection, this suite
+// cannot assert WHICH direction resolves to WHICH neighbor (that is
+// pane-geometry.test.ts's job, with controlled fake rects). What it CAN prove
+// without real layout: a lone pane has no neighbor in any direction (no-op);
+// a two-pane split has exactly one "other" pane, so any direction call
+// swaps with it, letting behavior (DOM slot order, focus, zoom) be verified.
+describe("createTerminalManager swapDirection", () => {
+  it("no neighbor (single pane) — no-op, no extra focus", async () => {
+    const { tm, container, onPaneFocus } = setup();
+    await tm.initFresh();
+    const before = [...container.querySelectorAll(".pane-slot")].map((s) =>
+      s.getAttribute("data-pane-id"),
+    );
+    onPaneFocus.mockClear();
+
+    tm.swapDirection("left");
+
+    const after = [...container.querySelectorAll(".pane-slot")].map((s) =>
+      s.getAttribute("data-pane-id"),
+    );
+    expect(after).toEqual(before);
+    expect(onPaneFocus).not.toHaveBeenCalled();
+  });
+
+  it("swaps the active pane with its neighbor — active id stays the same, only its slot moves", async () => {
+    const { tm, container, onPaneFocus } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const activeBefore = tm.activePaneId();
+    expect(activeBefore).not.toBeNull();
+    const before = [...container.querySelectorAll(".pane-slot")].map((s) =>
+      s.getAttribute("data-pane-id"),
+    );
+    onPaneFocus.mockClear();
+
+    tm.swapDirection("left");
+
+    const after = [...container.querySelectorAll(".pane-slot")].map((s) =>
+      s.getAttribute("data-pane-id"),
+    );
+    // Only two slots exist here — a real swap is exactly the reverse order.
+    expect(after).toEqual([...before].reverse());
+    expect(tm.activePaneId()).toBe(activeBefore); // id unchanged, only the slot moved
+    expect(onPaneFocus).toHaveBeenCalledWith(activeBefore); // focus follows the pane
+  });
+
+  it("drops zoom on swap unconditionally — a structural rebuild (render/sync), unlike focusDirection's conditional unzoom via setActive", async () => {
+    // Documented difference, not a bug: swapDirection reparents each pane's
+    // DOM element into its new slot, which needs the full render()/sync()
+    // path — and sync() itself always unzooms first (same as splitActive/
+    // closePane), regardless of whether the zoomed pane is the one being
+    // swapped. focusDirection never rebuilds the DOM (no structural change),
+    // so its setActive-driven unzoom stays conditional: only when focus
+    // moves AWAY from the zoomed pane.
+    const { tm, container } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    tm.toggleZoom();
+    expect(container.classList.contains("is-zoomed")).toBe(true);
+
+    tm.swapDirection("left");
+
+    expect(container.classList.contains("is-zoomed")).toBe(false);
+  });
+});
+
+describe("createTerminalManager show", () => {
+  it("show() with no args displays the container, fits every pane, and focuses the active pane exactly once", async () => {
+    const { tm, container, onPaneFocus, fitCounts } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const activeId = tm.activePaneId();
+    expect(activeId).not.toBeNull();
+    tm.hide();
+    expect(container.style.display).toBe("none");
+    fitCounts.clear();
+    onPaneFocus.mockClear();
+
+    tm.show();
+
+    expect(container.style.display).toBe("");
+    for (const id of tm.paneIds()) {
+      expect(fitCounts.get(id)).toBe(1);
+    }
+    expect(onPaneFocus).toHaveBeenCalledTimes(1);
+    expect(onPaneFocus).toHaveBeenCalledWith(activeId);
+  });
+
+  it("show({ focus: false }) displays and fits every pane but focuses none, and leaves the active id unchanged", async () => {
+    const { tm, container, onPaneFocus, fitCounts } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const activeBefore = tm.activePaneId();
+    expect(activeBefore).not.toBeNull();
+    tm.hide();
+    fitCounts.clear();
+    onPaneFocus.mockClear();
+
+    tm.show({ focus: false });
+
+    expect(container.style.display).toBe("");
+    for (const id of tm.paneIds()) {
+      expect(fitCounts.get(id)).toBe(1);
+    }
+    expect(onPaneFocus).not.toHaveBeenCalled();
+    expect(tm.activePaneId()).toBe(activeBefore);
+  });
+});
+
+/**
+ * A manager is born hidden — `addTab` sets `display: none` before it ever runs
+ * `initFresh`/`initFromLayout` — so a GPU context must be handed out only from
+ * `show()`, and only in that order. Every assertion here is about ORDER: a
+ * suspend that lands after `mount()` still built the context it was meant to
+ * prevent, and a resume that lands after `fit()` builds the renderer against
+ * geometry `fit()` is about to change, allocating a surface set twice.
+ */
+describe("createTerminalManager renderer suspension", () => {
+  it("suspends each pane before mounting it while the container is hidden", async () => {
+    const { tm, rendererLog } = setup();
+
+    await tm.initFresh();
+
+    for (const id of tm.paneIds()) {
+      expect(rendererLog.indexOf(`${id}:suspend`)).toBeGreaterThanOrEqual(0);
+      expect(rendererLog.indexOf(`${id}:suspend`)).toBeLessThan(rendererLog.indexOf(`${id}:mount`));
+    }
+  });
+
+  it("show() resumes each pane before fitting it", async () => {
+    const { tm, rendererLog } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    rendererLog.length = 0;
+
+    tm.show();
+
+    for (const id of tm.paneIds()) {
+      expect(rendererLog.indexOf(`${id}:resume`)).toBeGreaterThanOrEqual(0);
+      expect(rendererLog.indexOf(`${id}:resume`)).toBeLessThan(rendererLog.indexOf(`${id}:fit`));
+    }
+  });
+
+  it("hide() suspends every pane", async () => {
+    const { tm, rendererLog } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    tm.show();
+    rendererLog.length = 0;
+
+    tm.hide();
+
+    expect(rendererLog).toEqual(tm.paneIds().map((id) => `${id}:suspend`));
+  });
+
+  it("does not suspend a pane split into an already visible tab", async () => {
+    const { tm, rendererLog } = setup();
+    await tm.initFresh();
+    tm.show();
+    const before = new Set(tm.paneIds());
+    rendererLog.length = 0;
+
+    await tm.splitActive("row");
+
+    const added = tm.paneIds().filter((id) => !before.has(id));
+    expect(added).toHaveLength(1);
+    expect(rendererLog).not.toContain(`${added[0]}:suspend`);
+    expect(rendererLog).toContain(`${added[0]}:mount`);
+  });
+
+  it("show() on an already visible tab still resumes, so surface close is idempotent", async () => {
+    const { tm, rendererLog } = setup();
+    await tm.initFresh();
+    tm.show();
+    rendererLog.length = 0;
+
+    // `selectTab` takes this path when a file or browser surface closes over
+    // the tab that is already active.
+    tm.show();
+
+    for (const id of tm.paneIds()) {
+      expect(rendererLog).toContain(`${id}:resume`);
+    }
+  });
+});
+
+// Scrollback navigation: thin delegation to the active pane's own
+// scrollPage/scrollToEdge (Pane
+// wraps xterm's own scrollPages/scrollToTop/scrollToBottom — untested here,
+// same convention as clear()/pane.clear(): no test in this codebase
+// exercises createPane's real xterm wiring directly, every layer verifies
+// delegation against a fake Pane instead).
+describe("createTerminalManager scrollActivePage / scrollActiveToEdge", () => {
+  it("scrollActivePage delegates to the active pane's scrollPage with the given direction", async () => {
+    const { tm, panesById } = setup();
+    await tm.initFresh();
+    const id = tm.activePaneId();
+    expect(id).not.toBeNull();
+    const scrollPageSpy = vi.spyOn(panesById.get(id!)!, "scrollPage");
+
+    tm.scrollActivePage(-1);
+    tm.scrollActivePage(1);
+
+    expect(scrollPageSpy).toHaveBeenNthCalledWith(1, -1);
+    expect(scrollPageSpy).toHaveBeenNthCalledWith(2, 1);
+  });
+
+  it("scrollActiveToEdge delegates to the active pane's scrollToEdge with the given edge", async () => {
+    const { tm, panesById } = setup();
+    await tm.initFresh();
+    const id = tm.activePaneId();
+    expect(id).not.toBeNull();
+    const scrollToEdgeSpy = vi.spyOn(panesById.get(id!)!, "scrollToEdge");
+
+    tm.scrollActiveToEdge("top");
+    tm.scrollActiveToEdge("bottom");
+
+    expect(scrollToEdgeSpy).toHaveBeenNthCalledWith(1, "top");
+    expect(scrollToEdgeSpy).toHaveBeenNthCalledWith(2, "bottom");
+  });
+
+  it("both are a safe no-op with no active pane", () => {
+    const { tm } = setup();
+
+    expect(() => {
+      tm.scrollActivePage(1);
+      tm.scrollActiveToEdge("top");
+    }).not.toThrow();
+  });
+});
+
+describe("createTerminalManager activeHasSelection / clearActiveSelection", () => {
+  it("reports and clears the active pane's selection", async () => {
+    const { tm, selections } = setup();
+    await tm.initFresh();
+    const id = tm.activePaneId();
+    expect(id).not.toBeNull();
+    selections.add(id!);
+
+    expect(tm.activeHasSelection()).toBe(true);
+    tm.clearActiveSelection();
+    expect(tm.activeHasSelection()).toBe(false);
+  });
+
+  it("answers false for a selection when there is no active pane", () => {
+    const { tm } = setup();
+
+    expect(tm.activeHasSelection()).toBe(false);
+    expect(() => tm.clearActiveSelection()).not.toThrow();
+  });
+});
+
+describe("TerminalManager pane detach", () => {
+  it("removes the pane from the tree, disposes it and never kills the PTY", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const killed: number[] = [];
+    const transfer = createMemoryTransferClient();
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      { ...pty, killPty: async (id) => void killed.push(id) },
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+    await manager.initFresh();
+    await manager.splitActive("row");
+    const [first, second] = manager.paneIds();
+
+    const promise = manager.detachPaneById(first, { kind: "new-window" });
+    await vi.waitFor(() => expect(transfer.calls).toContain("await:xfer-1"));
+    transfer.settle("xfer-1", { kind: "committed" });
+
+    await expect(promise).resolves.toEqual({ kind: "moved", tabEmpty: false });
+    expect(manager.paneIds()).toEqual([second]);
+    expect(killed).toEqual([]);
+  });
+
+  it("reports the tab as empty instead of respawning a shell for the last pane", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const transfer = createMemoryTransferClient();
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      pty,
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+    await manager.initFresh();
+    const [only] = manager.paneIds();
+
+    const promise = manager.detachPaneById(only, { kind: "new-window" });
+    await vi.waitFor(() => expect(transfer.calls).toContain("await:xfer-1"));
+    transfer.settle("xfer-1", { kind: "committed" });
+
+    await expect(promise).resolves.toEqual({ kind: "moved", tabEmpty: true });
+    expect(manager.paneIds()).toEqual([]);
+    // closePane would have spawned a replacement here (terminal-manager.ts:305-312).
+    expect(pty.sessions.size).toBe(1);
+  });
+
+  it("leaves the tree untouched when the transfer aborts", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const transfer = createMemoryTransferClient();
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      pty,
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+    await manager.initFresh();
+    const before = manager.paneIds();
+
+    const promise = manager.detachPaneById(before[0], { kind: "new-window" });
+    await vi.waitFor(() => expect(transfer.calls).toContain("await:xfer-1"));
+    transfer.settle("xfer-1", { kind: "aborted", reason: "claim-failed" });
+
+    await expect(promise).resolves.toEqual({
+      kind: "kept",
+      reason: "claim-failed",
+    });
+    expect(manager.paneIds()).toEqual(before);
+  });
+
+  it("initFromAdoption builds a single-pane tree around the adopted pty", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const transfer = createMemoryTransferClient();
+    const token = await transfer.prepareTransfer(77);
+    await transfer.stageTransfer(token, {
+      paneId: 77,
+      cwd: "/repo",
+      agentId: null,
+      scrollback: "",
+      cols: 100,
+      rows: 30,
+      tabName: null,
+      dotColor: null,
+      workspacePath: "/repo",
+    });
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      pty,
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+
+    await expect(manager.initFromAdoption(token)).resolves.toMatchObject({
+      kind: "adopted",
+      paneId: 77,
+    });
+    expect(manager.paneIds()).toEqual([77]);
+    expect(pty.sessions.size).toBe(0);
+  });
+
+  // WHOLE TREE SHAPE, not membership. `leafIds(next).includes(99)` would pass
+  // under the wrong-side bug — the pane DID arrive, just docked on the wrong
+  // side of the wrong axis. The discriminator is that a left dock must not
+  // equal what `splitLeaf` produces, because `splitLeaf` always puts the new
+  // pane in slot `b` (split-tree.ts:38).
+  it("docks a left-adopted pane into slot a on the row axis, unlike splitLeaf", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const transfer = createMemoryTransferClient();
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      pty,
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+    await manager.initFresh();
+    const [anchor] = manager.paneIds();
+    const token = await transfer.prepareTransfer(99);
+    await transfer.stageTransfer(token, {
+      paneId: 99,
+      cwd: null,
+      agentId: null,
+      scrollback: "",
+      cols: 100,
+      rows: 30,
+      tabName: null,
+      dotColor: null,
+      workspacePath: null,
+    });
+
+    await manager.adoptIntoActiveTab({
+      token,
+      targetPaneId: anchor,
+      edge: "left",
+    });
+
+    const shape = manager.serializeLayout();
+    // `serializeLayout` drops pane ids, so it pins the STRUCTURE: a row split
+    // with two leaves. The id-level side assertion follows it.
+    expect(shape).toEqual({
+      type: "split",
+      direction: "row",
+      ratio: 0.5,
+      first: { type: "leaf" },
+      second: { type: "leaf" },
+    });
+    // Left edge => adopted pane FIRST. paneIds() walks the tree left to right
+    // (leafIds), so order is the side.
+    expect(manager.paneIds()).toEqual([99, anchor]);
+  });
+
+  it("docks a right-adopted pane second, so the two edges are not the same tree", async () => {
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const transfer = createMemoryTransferClient();
+    const manager = createTerminalManager(
+      document.createElement("div"),
+      { onLayoutChange() {} },
+      pty,
+      { createPane: (id, _s, events) => fakePane(id, events), transfer },
+    );
+    await manager.initFresh();
+    const [anchor] = manager.paneIds();
+    const token = await transfer.prepareTransfer(99);
+    await transfer.stageTransfer(token, {
+      paneId: 99,
+      cwd: null,
+      agentId: null,
+      scrollback: "",
+      cols: 100,
+      rows: 30,
+      tabName: null,
+      dotColor: null,
+      workspacePath: null,
+    });
+
+    await manager.adoptIntoActiveTab({
+      token,
+      targetPaneId: anchor,
+      edge: "top",
+    });
+
+    // "top" is the column axis AND source-first — a different tree from the
+    // "left" case above in both respects.
+    expect(manager.serializeLayout()).toMatchObject({
+      type: "split",
+      direction: "column",
+    });
+    expect(manager.paneIds()).toEqual([99, anchor]);
+  });
+});
+
+describe("createTerminalManager onActivePaneChange (DL-27.22)", () => {
+  it("reports each real change once and stays quiet on a repeat", async () => {
+    const { tm, onActivePaneChange } = setup();
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first, second] = tm.paneIds();
+    expect(second).not.toBeUndefined();
+    expect(tm.activePaneId()).toBe(second);
+
+    onActivePaneChange.mockClear();
+    tm.focusPane(first!);
+    expect(onActivePaneChange).toHaveBeenCalledTimes(1);
+    expect(onActivePaneChange).toHaveBeenCalledWith(first);
+
+    // Re-focusing the pane that is already active moves nothing, so the rail
+    // must not be asked to rebuild: `setActive`'s own early return is the
+    // guard that keeps this callback cheap enough to be unconditional.
+    onActivePaneChange.mockClear();
+    tm.focusPane(first!);
+    expect(onActivePaneChange).not.toHaveBeenCalled();
+  });
+
+  it("is optional — a manager wired without it still focuses", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const pty = createMemoryPtyClient({ nextId: 1 });
+    const createPane: CreatePaneFn = (id, _settings, events) => fakePane(id, events);
+    const tm = createTerminalManager(container, { onLayoutChange() {} }, pty, { createPane });
+
+    await tm.initFresh();
+    await tm.splitActive("row");
+    const [first] = tm.paneIds();
+
+    expect(tm.focusPane(first!)).toBe(true);
+    expect(tm.activePaneId()).toBe(first);
+  });
+});
+
+describe("createTerminalManager serializePane / paneAlive (spec §11.5, DL-34.6)", () => {
+  it("answers one pane's scrollback, and null for a pane it does not hold", async () => {
+    const { tm } = setup();
+    await tm.initFresh();
+    const [id] = tm.paneIds();
+    expect(id).not.toBeUndefined();
+
+    tm.handleOutput(id!, "hello\r\n");
+
+    // The escapes are NOT stripped here: `pane-detach.ts` reads the same
+    // `serializeScrollback` and needs them, so the terminal layer keeps
+    // answering what the buffer holds. Stripping is the tab layer's job.
+    expect(tm.serializePane(id!, 10)).toContain("hello");
+    expect(tm.serializePane(999999, 10)).toBeNull();
+  });
+
+  it("still answers after the pane's PTY exits, and paneAlive reports the exit", async () => {
+    const { tm } = setup();
+    await tm.initFresh();
+    const [id] = tm.paneIds();
+    expect(id).not.toBeUndefined();
+    tm.handleOutput(id!, "last words\r\n");
+    // The before-check is the discriminator: without it "an exited pane still
+    // answers" passes trivially for a pane that never exited.
+    expect(tm.paneAlive(id!)).toBe(true);
+
+    tm.handleExit(id!);
+
+    // Deliberately not gated on `life.exited`: a pane whose PTY has gone still
+    // holds the last thing the agent said, which is what the panel is for.
+    expect(tm.serializePane(id!, 10)).toContain("last words");
+    expect(tm.paneAlive(id!)).toBe(false);
+  });
+
+  it("says a pane it never held is not alive", async () => {
+    const { tm } = setup();
+    await tm.initFresh();
+    expect(tm.paneAlive(999999)).toBe(false);
+  });
+});

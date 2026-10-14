@@ -1,0 +1,194 @@
+# AGENTS.md — SpaceVibe Deck
+
+> **Boundary:** standalone desktop app; no shared DB or API with the SpaceVibe web repos.
+> Do not edit sibling repos from this session. Workspace map: [`../AGENTS.md`](../AGENTS.md).
+
+Deck is a terminal for running many agent CLIs side by side. The host is Electron, in
+`electron/`; the renderer is Preact + xterm.js and reaches it through the facades in
+`src/host/`. The Tauri host Electron replaced was removed on 2026-10-12, so a comment that
+still cites a `src-tauri/` file names where code was ported from, not a live twin. Everything
+in this repo — UI strings, comments, docs, and commits — is **English only**.
+
+Read [docs/internals/overview.md](docs/internals/overview.md) before your first change. The
+documentation index is [docs/README.md](docs/README.md).
+
+## Current direction
+
+- **Auto-update is a core requirement.** A release is not complete if distribution falls back
+  to manual download. Release artifacts include the updater payloads and manifests described
+  in [operations/release.md](docs/operations/release.md).
+- **Windows ships unsigned by decision.** See the
+  [platform limits](docs/operations/release.md#platform-limits).
+- **Analytics is mandatory** — always on, no opt-out, and the disclosure stays. The contract is
+  [internals/telemetry.md](docs/internals/telemetry.md); the receiving service is
+  [backend/](backend/README.md).
+- **The Electron cutover is a clean install**, with no settings or workspace migration.
+- **The navigation rail refresh runs as a queue.** Its
+  [spec](docs/specs/2026-10-06-navigation-rail-refresh.md) lists the slices in order; the first
+  row not `Done` is the next work. That slice's plan carries an Operating contract: once the
+  owner approves the plan, the contract is your authorization — run its tasks and gates
+  without asking again, and stop only for the hard stops it names.
+
+Where the current behaviour of a surface is written down:
+
+| Surface                                                | Page                                                              |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| Process model, IPC bridge, persistence, R4 seams        | [internals/overview.md](docs/internals/overview.md)               |
+| PTYs, panes, tabs, materialization, launch, phase, menu | [internals/terminal.md](docs/internals/terminal.md)               |
+| The rail tree, checkouts, tails, close and order        | [internals/agent-rail.md](docs/internals/agent-rail.md)           |
+| Spaces, the strip's marks, the slide, Mission Control   | [internals/mission-control.md](docs/internals/mission-control.md) |
+| The Agent Board (retired, still builds)                  | [internals/agent-board.md](docs/internals/agent-board.md)         |
+| Explorer, editor, markdown, browser tab, path opening   | [internals/file-surface.md](docs/internals/file-surface.md)       |
+| The journal, last-session offer, resume resolution      | [internals/session-restore.md](docs/internals/session-restore.md) |
+| Usage analytics                                         | [internals/telemetry.md](docs/internals/telemetry.md)             |
+| Traps, live switches, accepted limitations              | [internals/traps.md](docs/internals/traps.md)                     |
+| Vocabulary this repo uses precisely                     | [internals/glossary.md](docs/internals/glossary.md)               |
+| Visual invariants and current surface patterns          | [docs/DESIGN-LANGUAGE.md](docs/DESIGN-LANGUAGE.md)                |
+
+Closed decisions, measurements and long rationale live in git history and in the issue that
+owned the work — not in this file.
+
+## Forks
+
+Stop and ask before writing code when a task touches:
+
+- PTY ownership, process classification, the window coordinator, tab materialization, layout
+  or close/quit coordination;
+- bundle, dependency, signing, release channel, updater or version configuration;
+- an **invariant** in [docs/DESIGN-LANGUAGE.md](docs/DESIGN-LANGUAGE.md) (§1–4, §7, §20,
+  §21: tokens, color roles, typography, motion and resource budget, scales, interaction
+  states; a rule marked _(pattern)_ there is not one);
+- any sibling repo.
+
+Not a fork: internal renames, tests, editing the menu registry, and replacing a DL
+**pattern**. A pattern describes how a surface looks today; a redesign rewrites it in the
+same change as the code once the owner has reviewed the result by eye. Gallery specimens,
+prototypes and design proposals are not bound by patterns at all: propose the strongest
+design and list the patterns it would replace, rather than shrinking the idea to fit.
+
+Record a resolved fork on the issue that owns the work, with the alternative you turned down
+and why — a fork nobody can reconstruct is a decision that will be re-litigated.
+
+## Verification and commands
+
+| Command                       | Purpose                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                 | browser-only Vite preview; IPC operations fail soft                                                                                                                     |
+| `npm run electron:dev`        | Electron dev with renderer HMR and incremental main/preload rebuilds via [`scripts/electron-dev-watch.mjs`](scripts/electron-dev-watch.mjs) |
+| `npm run electron:dev:watch`  | alias for `electron:dev` |
+| `npm run electron:dev:once`   | build and launch once from the static renderer bundle through [`scripts/electron-dev-launch.mjs`](scripts/electron-dev-launch.mjs) |
+| `npm run electron:build`      | typecheck and bundle the Electron main process                                                                                                                          |
+| `npm run electron:package`    | package the Electron host as a local **unsigned** `Deck Electron.app` (arm64, `dir` target, no installer/updater/publish) into `dist-electron-app/`                     |
+| `npm run electron:smoke`      | headed smoke test; needs a display server and a real PTY                                                                                                                |
+| `npm test`                    | Vitest suite                                                                                                                                                            |
+| `npm run build`               | TypeScript + shipping renderer bundle                                                                                                                                   |
+| `npm run lint`                | oxlint + prettier check; max-lines stays a warning (101 pre-existing over-length files are backlog)                                                                     |
+| `npm run prototype:gallery`   | visual comparison gallery at `127.0.0.1:5175`                                                                                                                           |
+| `npm run build:landing`       | landing production build                                                                                                                                                |
+| `npm run video:render`        | render marketing video from DOM stage                                                                                                                                   |
+
+**Main stays green (owner, 2026-10-09).** Before pushing a code change, run the tests beside
+the files you changed, lint them, and run `scripts/` and `src/styles/` — the policy suites that
+read stylesheets and docs and fail when a ledger falls behind. The
+[`pre-push`](.githooks/pre-push) hook runs exactly that set, installed by `npm install`; do not
+bypass it with `--no-verify` to land a red change. The policy suites read the working tree, so in a
+checkout holding another session's uncommitted files they can fail on that work: push from a
+clean worktree instead. A test your change breaks gets updated in
+the same commit. The full suite, `npm run build` and `electron:build` stay CI's job and run
+locally only when asked; a change reported without them says so. Manual native acceptance, real-device upgrade checks, and Windows install/update checks run
+only when explicitly requested; they are not prerequisites for release completion or issue
+closure. Report checks actually performed without treating omitted checks as successful.
+
+**E2E gate for large features (owner, 2026-10-08).** The one exception to "only when asked": a
+new user-facing feature or a change to a UI flow — a new surface, command or interaction, or a
+spec slice — is not reported done until an agent has driven the affected flows in the running
+Electron app with `playwright-core`, already a dev dependency. Bug fixes, styling, copy,
+refactors, tests and docs skip it. How to run it:
+
+- Write a scratch wrapper that calls `app.setPath("userData", <scratch dir>)` before requiring
+  `dist-electron/electron/main.cjs`, and drive it from a scratch script with
+  `_electron.launch({ executablePath: <node_modules/electron/dist/Electron.app/Contents/MacOS/Electron>, args: [<wrapper>] })`,
+  then `app.firstWindow()`. A plain `electron:dev` writes the owner's real `workspaces.json`
+  and `session.json`.
+- Do not test through Playwright MCP or a browser tab on `npm run dev`: those reach only the
+  browser preview and prove nothing about IPC, PTYs or persistence.
+- Report each flow walked and its result; screenshots go to scratch, not the repo.
+
+## Sessions and checkouts
+
+Several agent sessions run against this repo at once. The owner's standing rule (2026-09-26):
+
+- **One writer per checkout.** At most one session edits this primary checkout at a time. A
+  short fix that finishes in one pass works here, on `main`.
+- **A parallel coding session works in its own worktree** — this is standing authorization to
+  branch: `git worktree add ../../spacevibe-deck-worktrees/<slug> -b <type>/<slug> main`, then
+  `npm install` inside it. If `git status` shows fresh changes you did not make, stop and ask
+  whether to move to a worktree instead of editing around them.
+- **One `electron:dev` at a time.** Dev runs share the owner's real userData and the Vite port
+  across checkouts.
+- **Merge the same day.** Rebase on `main`, fast-forward `main` to the branch, then
+  `git worktree remove` and delete the branch. Write the `CHANGELOG.md` entry on `main` at merge
+  time, not on the branch. Keep at most three worktrees alive; work that stays open overnight
+  records why in its plan.
+
+## Repo rules
+
+- **R1. English only** for strings, comments, docs and commit messages.
+- **R2. Design language has two tiers.** Tests enforce the DL invariants. The DL patterns
+  describe shipped surfaces, and a redesign may replace them. Cite a rule in a comment only
+  when the code would look wrong without the reason. A cited number must stay declared.
+- **R3. The menu is built from the registry.** [`electron/menu.ts`](electron/menu.ts)
+  derives registry items from `ACTION_REGISTRY` at runtime; change one by editing the
+  registry, not the menu template.
+- **R4. Load-bearing seams stay explicit.** PTY/window/tab/layout/close modules require a plan
+  and cross-boundary verification, not a drive-by refactor.
+- **R5. Renderer state uses Preact signals; module stores are window-scoped.**
+- **R6. IPC payload shape is a contract.** Keep flat command arguments where the frozen
+  frontend contract sends flat keys; `scripts/electron-ipc-contract.test.ts` guards this
+  boundary in `npm test`.
+- **R7. Gallery imports flow app → gallery only.** Shipping modules must not import
+  `src/gallery/` or its stubs.
+
+## Known traps
+
+The full list, with the live switches and the limitations that were looked at and accepted, is
+[internals/traps.md](docs/internals/traps.md). The four that catch people first:
+
+- The app running an update is the **old build**; an updater fix cannot protect the transition
+  into the release that carries it.
+- **Browser `npm run dev` paints the shell** because IPC failures are caught. It proves nothing
+  about persistence, PTY, the updater or packaging.
+- **`src/styles.css` has no global `box-sizing` reset**, so a percentage size beside a padding
+  overflows its box. Form controls get `border-box` from the user agent; a plain element does
+  not. Two shipped defects came from exactly this in one day.
+- **A one-pixel overflow moves the whole window.** `#root` is `overflow: clip`, not `hidden`,
+  because `hidden` still builds a scroll container. Treat "the top bar looks misaligned" as a
+  scroll report, not a layout one.
+
+Old `FR-` and `ADR-` references are historical. Do not recreate `PIPELINE.lock` or
+`docs/decisions/` merely to satisfy those comments.
+
+## Documentation
+
+Most code changes need no documentation change; agents and maintainers can read the code. The
+index is [docs/README.md](docs/README.md).
+
+- `docs/internals/` holds architectural decisions and their reasons, constraints that span
+  modules, and traps hard to discover from the source. Before adding a paragraph, ask what a
+  maintainer would get wrong without it. It is the one place in the repository that still
+  takes new documentation.
+- `docs/user/` helps users accomplish tasks, in the voice of the shipped product, with no
+  implementation detail and no contributor tooling. A UI tweak needs no entry.
+- `docs/operations/` is the maintainer runbook: setup, release, debugging. Every page under
+  `internals/` and `operations/` opens with the "For maintainers" callout.
+- Do not write file catalogs, field or method enumerations, control-flow narration, or
+  appended PR summaries. When a documented decision changes, rewrite or remove the text; never
+  append a second account. Keep a local explanation in a code comment; use an internal page
+  only when the reasoning crosses boundaries.
+- **Specs under `docs/specs/` are committed** so a reset or a fresh worktree cannot lose
+  them (owner, 2026-10-07). **Plans, research notes and review reports are not.** A merged PR
+  is the implementation record. Active work lives in a local plan under `docs/plans/`, which is
+  gitignored, so it exists only in the primary checkout: a session in a worktree reads and
+  updates it there by absolute path.
+- `docs/DESIGN-LANGUAGE.md` stays at its path and keeps its numbering: a test reads it, and
+  code comments cite its rules. `CHANGELOG.md` is read by the release workflow.

@@ -1,0 +1,270 @@
+import { signal } from "@preact/signals";
+
+/**
+ * Canned host IPC so real app components mount in a plain browser.
+ *
+ * The renderer never calls a host directly; it goes through one hook, and
+ * outside a desktop shell that hook does not exist, so the first call throws
+ * before any chrome paints. Installing a stub is therefore the whole reason
+ * the gallery can render the real settings screen, the real popovers and the
+ * real bars instead of a second hand-drawn copy of them.
+ *
+ * The hook is `globalThis.__deckHost` (see `src/host/bridge.ts`, which throws
+ * "Deck host bridge is unavailable" when it is absent).
+ *
+ * Unknown commands resolve to `null` instead of rejecting: a component missing
+ * data should still paint its rows, hairlines and spacing, which is what the
+ * gallery exists to show. But failing *silently* would let it display a state
+ * the app can never reach, so every unanswered command is collected in
+ * `unhandledCommands` and printed at the shell's foot — on screen, not only in
+ * the console.
+ */
+
+type InvokeArgs = Readonly<Record<string, unknown>>;
+type CannedHandler = (args: InvokeArgs) => unknown;
+
+/** Commands the gallery could not answer, in first-seen order. */
+export const unhandledCommands = signal<readonly string[]>([]);
+
+/**
+ * One in-memory persisted store per key, standing in for whichever store the
+ * host provides. Writes are kept so a value the user changes in the gallery
+ * survives a re-render, and dropped on reload — a gallery has no business
+ * writing to the real `settings.json` under the user's app-data directory.
+ * The key is the store's file name.
+ */
+const stores = new Map<string, Map<string, unknown>>();
+
+function readString(args: InvokeArgs, key: string): string {
+  const value = args[key];
+  return typeof value === "string" ? value : "";
+}
+
+function storeFor(key: string): Map<string, unknown> {
+  const existing = stores.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const created = new Map<string, unknown>();
+  stores.set(key, created);
+  return created;
+}
+
+/**
+ * Canned repository scans for the rail.
+ *
+ * Deliberately uneven, because the rail's whole point is the states it can be
+ * in: a worktree nobody has opened, one git calls prunable (design §5's
+ * `missing`), one locked, and — through the fall-through below — a folder that
+ * is not a repository at all. A stub where every row looked the same would
+ * make the gallery green on the one thing it exists to show.
+ */
+const HOME = "/Users/deck";
+const GALLERY_REPOSITORIES = [
+  {
+    kind: "repository" as const,
+    key: `${HOME}/spacevibe-deck/.git`,
+    root: `${HOME}/spacevibe-deck`,
+    worktrees: [
+      wt(`${HOME}/spacevibe-deck`, "main"),
+      wt(`${HOME}/deck-worktrees/electron-migration`, "electron-migration"),
+      wt(`${HOME}/deck-worktrees/redesign`, "redesign/phase-1-2", {
+        prunable: "gitdir file points to non-existent location",
+      }),
+    ],
+  },
+  {
+    kind: "repository" as const,
+    key: `${HOME}/spacevibe-api/.git`,
+    root: `${HOME}/spacevibe-api`,
+    worktrees: [
+      wt(`${HOME}/spacevibe-api`, "main"),
+      wt(`${HOME}/api-worktrees/billing`, "billing", {
+        locked: "on a removable drive",
+      }),
+    ],
+  },
+  {
+    kind: "repository" as const,
+    key: `${HOME}/spacevibe-hub/.git`,
+    root: `${HOME}/spacevibe-hub`,
+    worktrees: [wt(`${HOME}/spacevibe-hub`, "main")],
+  },
+];
+
+function wt(path: string, branch: string, extra: { locked?: string; prunable?: string } = {}) {
+  return {
+    path,
+    head: "0".repeat(40),
+    branch,
+    bare: false,
+    detached: false,
+    locked: extra.locked ?? null,
+    prunable: extra.prunable ?? null,
+  };
+}
+
+/**
+ * Commands whose channel names predate the Electron host — `bridge.ts` kept
+ * them so the renderer's call sites did not have to change.
+ */
+const SHARED: Readonly<Record<string, CannedHandler>> = {
+  desktop_environment: () => ({ platform: "macos", homeDir: "/Users/deck" }),
+  window_boot_mode: () => ({ kind: "normal" }),
+
+  // Two of the five built-ins "missing" is deliberate: the agents section
+  // renders a found agent and a not-found one side by side only if the
+  // catalog answers unevenly.
+  detect_agents: () => ["claude", "codex", "agy"],
+  git_branch: () => "main",
+  // `~/scratch` falls through to `plain` on purpose: a folder that is not a
+  // repository still has to render, and the gallery is where that is checked.
+  git_repository: (args) => {
+    const path = readString(args, "path");
+    return (
+      GALLERY_REPOSITORIES.find((scan) =>
+        scan.worktrees.some((worktree) => worktree.path === path),
+      ) ?? { kind: "plain", reason: "not a git repository" }
+    );
+  },
+  dirs_exist: (args) => {
+    const paths = Array.isArray(args.paths) ? args.paths : [];
+    return paths.map(() => true);
+  },
+  resolve_paths: (args) => (Array.isArray(args.paths) ? args.paths : []),
+  list_prompt_assets: () => ({
+    skills: [
+      {
+        kind: "skill",
+        name: "superpowers:brainstorming",
+        description: "Turn an idea into a design before writing code.",
+        source: "plugin",
+      },
+      {
+        kind: "skill",
+        name: "log-wiki",
+        description: "",
+        source: "global",
+      },
+    ],
+    subagents: [
+      {
+        kind: "subagent",
+        name: "code-reviewer",
+        description: "Findings-first review of a change.",
+        source: "project",
+      },
+    ],
+  }),
+  scan_workspace_favicon: () => null,
+  read_image_as_data_url: () => null,
+  pty_info: () => null,
+};
+
+/**
+ * The Electron host's own channels.
+ *
+ * Deliberately absent: scale factor, focus and drag-drop. `window-host.ts`
+ * answers those from `devicePixelRatio`, `document.hasFocus()` and the DOM's
+ * own drag events without an IPC hop, so there is nothing here to stub — and
+ * adding a channel for them would invent a contract the host does not have.
+ */
+const ELECTRON_ONLY: Readonly<Record<string, CannedHandler>> = {
+  // The store addresses a file by name rather than by resource id.
+  store_load: (args) => {
+    const store = storeFor(readString(args, "file"));
+    const defaults = args.defaults;
+    if (typeof defaults === "object" && defaults !== null) {
+      for (const [key, value] of Object.entries(defaults)) {
+        if (!store.has(key)) {
+          store.set(key, value);
+        }
+      }
+    }
+    return { state: "ready", fresh: false };
+  },
+  // `undefined`, not `[value, found]`: `Store.get` hands its result straight
+  // back to the caller, so a tuple would be read as the value itself.
+  store_get: (args) => stores.get(readString(args, "file"))?.get(readString(args, "key")),
+  store_set: (args) => {
+    storeFor(readString(args, "file")).set(readString(args, "key"), args.value);
+    return null;
+  },
+  store_delete: (args) => {
+    stores.get(readString(args, "file"))?.delete(readString(args, "key"));
+    return null;
+  },
+  store_save: () => null,
+
+  window_close: () => null,
+  window_toggle_maximize: () => null,
+  window_set_title_bar_overlay: () => null,
+
+  dialog_open: () => null,
+  dialog_message: () => null,
+  dialog_ask: () => true,
+
+  app_version: () => "0.0.0-gallery",
+  app_relaunch: () => null,
+  clipboard_read_text: () => "",
+  clipboard_write_text: () => null,
+  // Denied, so a specimen can never raise a real OS notification.
+  notification_permission_granted: () => false,
+  notification_request_permission: () => "denied",
+  notification_send: () => null,
+  shell_open_url: () => null,
+  suspend_menu_accelerators: () => null,
+};
+
+const CANNED: Readonly<Record<string, CannedHandler>> = {
+  ...SHARED,
+  ...ELECTRON_ONLY,
+};
+
+function invokeStub(command: string, args: InvokeArgs): Promise<unknown> {
+  const handler = CANNED[command];
+  if (handler !== undefined) {
+    return Promise.resolve(handler(args));
+  }
+  if (!unhandledCommands.value.includes(command)) {
+    unhandledCommands.value = [...unhandledCommands.value, command];
+  }
+  return Promise.resolve(null);
+}
+
+function asArgs(payload: unknown): InvokeArgs {
+  return typeof payload === "object" && payload !== null ? (payload as InvokeArgs) : {};
+}
+
+/**
+ * The Electron host's hook: `preload.ts` puts exactly two functions on
+ * `globalThis.__deckHost`, plus `getPathForFile` for dropped files.
+ *
+ * `listen` returns an unsubscribe that does nothing because nothing in the
+ * gallery emits: every specimen is driven by seeded signals, not by a main
+ * process. A handler that never fires is the honest answer here — inventing
+ * events would make the gallery show states the app cannot reach.
+ */
+function installDeckHostHook(): void {
+  const bridge = {
+    invoke: (channel: string, payload?: unknown): Promise<unknown> =>
+      invokeStub(channel, asArgs(payload)),
+    listen: (): (() => void) => () => {},
+    getPathForFile: (file: File): string => file.name,
+  };
+
+  Object.defineProperty(globalThis, "__deckHost", {
+    value: bridge,
+    configurable: true,
+  });
+}
+
+/**
+ * Installed as a side effect of importing this module, and `main.tsx` imports
+ * it FIRST. That ordering is the whole reason it is a side effect rather than a
+ * function the entry calls: ES imports are hoisted, so a call written at the
+ * top of `main.tsx` would still run after every module below it had already
+ * evaluated. Importing first is the only way to guarantee the hook exists
+ * before anything can reach for it.
+ */
+installDeckHostHook();

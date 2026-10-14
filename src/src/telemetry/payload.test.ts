@@ -1,0 +1,101 @@
+/**
+ * The privacy contract, executable (spec §11): this suite pins the EXACT
+ * field list and the closed agent key set. If a change here is needed, the
+ * spec, the current privacy page and the versioned notice archive must change
+ * in the same release — that is what this red test is for.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  AGENT_PAYLOAD_KEYS,
+  SCHEMA_VERSION,
+  SURFACE_KEYS,
+  UPDATE_KEYS,
+  agentPayloadKey,
+  type UsagePayload,
+} from "./payload";
+
+/** A payload built the only way one should be: every field, nothing else. */
+const SPECIMEN: UsagePayload = {
+  schemaVersion: SCHEMA_VERSION,
+  dailyId: "00000000-0000-4000-8000-000000000000",
+  day: "2026-08-22",
+  version: "1.0.1",
+  platform: "darwin",
+  arch: "arm64",
+  agents: { claude: 12, codex: 3 },
+  surfaces: { browser: 1, explorer: 4, usage: 0 },
+  maxTabs: 4,
+  maxPanes: 6,
+  restoredSessions: true,
+  updates: {
+    checked: 4,
+    checkFailed: 1,
+    available: 1,
+    downloaded: 1,
+    downloadFailed: 0,
+    installAttempted: 1,
+  },
+};
+
+describe("usage payload contract", () => {
+  it("pins the exact top-level field list", () => {
+    expect(Object.keys(SPECIMEN).sort()).toEqual(
+      [
+        "schemaVersion",
+        "dailyId",
+        "day",
+        "version",
+        "platform",
+        "arch",
+        "agents",
+        "surfaces",
+        "maxTabs",
+        "maxPanes",
+        "restoredSessions",
+        "updates",
+      ].sort(),
+    );
+  });
+
+  it("pins the update outcome key set", () => {
+    expect([...UPDATE_KEYS]).toEqual([
+      "checked",
+      "checkFailed",
+      "available",
+      "downloaded",
+      "downloadFailed",
+      "installAttempted",
+    ]);
+  });
+
+  // `cursor-agent` was withdrawn on 2026-09-11 (DECK-71) but keeps its key:
+  // older clients still send it, and the backend validates the same set.
+  it("pins the closed agent key set", () => {
+    expect([...AGENT_PAYLOAD_KEYS]).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+      "agy",
+      "gemini",
+      "cursor-agent",
+      "custom",
+    ]);
+  });
+
+  it("pins the surface key set", () => {
+    expect([...SURFACE_KEYS]).toEqual(["browser", "explorer", "usage"]);
+  });
+
+  it("folds every non-built-in agent id into the custom bucket", () => {
+    expect(agentPayloadKey("claude")).toBe("claude");
+    // Withdrawn: the key still exists, but no current launch may send it.
+    expect(agentPayloadKey("cursor-agent")).toBe("custom");
+    expect(agentPayloadKey("custom:acme-internal-tool")).toBe("custom");
+    expect(agentPayloadKey("acme-internal-tool")).toBe("custom");
+    expect(agentPayloadKey("")).toBe("custom");
+  });
+
+  it("schema version is 1", () => {
+    expect(SCHEMA_VERSION).toBe(1);
+  });
+});

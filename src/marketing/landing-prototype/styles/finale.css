@@ -1,0 +1,339 @@
+/* The closing band (src/tour/finale.js): the page's last promise at chapter
+   scale, three proofs as a ruled band, then the downloads. It stays dark and
+   continuous with the `.tour` ground and adds one pool of light behind its
+   content, nothing more.
+
+   The sheet owns the band's buttons too. They wear the hero's pill idiom
+   (direction-a.css `.a-primary-cta` / `.a-quiet-cta`), which is built on `--a-*`
+   tokens that only `.direction-a` declares, so `.finale__ctas` declares the ones
+   the pills read. */
+
+.finale {
+  --finale-rule: rgb(255 255 255 / 15%);
+  position: relative;
+  z-index: 1;
+  padding-block: clamp(4rem, 11vh, 7.5rem) 0;
+  color: var(--t-ink);
+  font-family: var(--font-display);
+  isolation: isolate;
+}
+
+.finale::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    radial-gradient(58rem 24rem at 50% 64%, rgb(255 255 255 / 6%), transparent 70%),
+    radial-gradient(40rem 22rem at 10% 6%, rgb(255 255 255 / 4%), transparent 72%);
+  content: "";
+  pointer-events: none;
+}
+
+.finale__frame {
+  width: var(--frame-width);
+  margin-inline: auto;
+}
+
+.finale [data-reveal] {
+  opacity: 0;
+  transform: translateY(var(--rise, 1.5rem));
+  transition:
+    opacity 700ms ease var(--reveal-delay, 0ms),
+    transform 760ms cubic-bezier(0.22, 0.78, 0.18, 1) var(--reveal-delay, 0ms);
+}
+
+.finale [data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+.finale__head {
+  padding-inline: var(--frame-pad);
+}
+
+/* The chapter word's own type, on two lines. The vertical wash is the one
+   accent: line two cools toward a blue-white; line one stays pure. The padding
+   keeps ascenders and descenders inside the box `background-clip: text` paints. */
+.finale__title {
+  margin: 0;
+  padding-block: 0.06em 0.12em;
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 46%, #eef5fb 56%, #a3b8c9 100%);
+  background-clip: text;
+  color: transparent;
+  font: 600 clamp(4.2rem, 14.5vw, 13.5rem) / 0.82 var(--font-display);
+  letter-spacing: -0.065em;
+}
+
+/* ---------- the proofs ---------- */
+
+.finale__band {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: clamp(2.25rem, 5.5vh, 3.75rem);
+  border-block: 1px solid var(--finale-rule);
+}
+
+.finale__cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(2rem, 4.4vw, 3.5rem) var(--frame-pad);
+}
+
+.finale__cell + .finale__cell {
+  border-left: 1px solid var(--finale-rule);
+}
+
+/* The numeral of this band is a token, set in mono and fading toward its foot. */
+.finale__token {
+  padding-bottom: 0.1em;
+  background: linear-gradient(180deg, #ffffff 30%, rgb(255 255 255 / 56%) 100%);
+  background-clip: text;
+  color: transparent;
+  font: 600 clamp(2.2rem, 4.9vw, 4.4rem) / 1 var(--font-mono);
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+}
+
+/* Each cell's label lights and its tick lands in turn (`--i`), half a second
+   after the cell itself has revealed. */
+.finale__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  color: rgb(255 255 255 / 56%);
+  font: 500 0.74rem / 1.4 var(--font-mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transition: color 420ms ease calc(0.5s + var(--i) * 120ms);
+}
+
+.finale__tick {
+  color: var(--sg-green);
+  font-style: normal;
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 380ms ease calc(0.5s + var(--i) * 120ms),
+    transform 460ms cubic-bezier(0.22, 0.78, 0.18, 1) calc(0.5s + var(--i) * 120ms);
+}
+
+.finale__cell.is-revealed .finale__label {
+  color: var(--t-ink);
+}
+
+.finale__cell.is-revealed .finale__tick {
+  opacity: 1;
+  transform: none;
+}
+
+.finale__note {
+  max-width: 34ch;
+  margin: 0.2rem 0 0;
+  color: rgb(255 255 255 / 68%);
+  font: 400 0.88rem / 1.55 var(--font-display);
+}
+
+/* Underlined at rest so the disclosure link reads as a link inside prose. */
+.finale__privacy {
+  color: var(--t-ink);
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 38%);
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color 200ms ease;
+}
+
+.finale__privacy:hover {
+  text-decoration-color: var(--t-ink);
+}
+
+/* ---------- downloads ---------- */
+
+/* The buttons sit in an even frame between the cell rule and the footer's own
+   top rule, so the root carries no bottom padding. */
+.finale__foot {
+  padding-block: clamp(1.75rem, 3vw, 2.5rem);
+  padding-inline: var(--frame-pad);
+}
+
+.finale__ctas {
+  --a-surface-0: #0a0c0b;
+  --a-ink: #ffffff;
+  --a-line-strong: rgb(255 255 255 / 21%);
+  --a-accent: var(--accent);
+  --a-accent-rgb: var(--accent-rgb);
+  --a-ease-lock: cubic-bezier(0.22, 0.78, 0.18, 1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 1.4rem;
+}
+
+/* The visitor's own platform leads, like the hero's install block. */
+.finale__ctas[data-os="win"] .finale__dl[data-os="win"] {
+  order: -1;
+}
+
+.finale__dl {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+/* Two classes, so these sizes outrank the pills' own in direction-a.css. */
+.finale__ctas .finale__btn {
+  min-height: 3.5rem;
+  gap: 1.6rem;
+  padding: 0.8rem 1.7rem;
+  font-size: 1.02rem;
+  text-decoration: none;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The primary keeps the hero's own hover (a dark plate slides in under the
+   label); the arrow settles a little deeper into its tray than it does there. */
+.finale__ctas .finale__btn:hover .a-install-icon,
+.finale__ctas .finale__btn:focus-visible .a-install-icon {
+  transform: translateY(0.22rem);
+}
+
+/* The outline twin fills from the left on hover — the primary's sweep in the
+   other direction, so the two read as one pair. */
+.finale__ctas .a-quiet-cta.finale__btn::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: rgb(255 255 255 / 13%);
+  content: "";
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 460ms var(--a-ease-lock);
+}
+
+.finale__ctas .a-quiet-cta.finale__btn:hover,
+.finale__ctas .a-quiet-cta.finale__btn:focus-visible {
+  border-color: rgb(255 255 255 / 72%);
+}
+
+.finale__ctas .a-quiet-cta.finale__btn:hover::before,
+.finale__ctas .a-quiet-cta.finale__btn:focus-visible::before {
+  transform: scaleX(1);
+}
+
+/* GitHub is a text link, not a third pill: the underline draws in and the
+   arrow leaves up and to the right. */
+.finale__gh {
+  display: inline-flex;
+  min-height: 3.1rem;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.45rem;
+  padding-inline: 0.35rem;
+  color: var(--t-ink-soft);
+  font: 500 0.95rem/1 var(--font-display);
+  text-decoration: none;
+  transition: color 200ms ease;
+}
+
+.finale__gh > span:first-child {
+  padding-bottom: 0.22rem;
+  background: linear-gradient(currentcolor, currentcolor) left bottom / 0 1px no-repeat;
+  transition: background-size 340ms cubic-bezier(0.22, 0.78, 0.18, 1);
+}
+
+.finale__gh-arrow {
+  transition: transform 280ms cubic-bezier(0.22, 0.78, 0.18, 1);
+}
+
+.finale__gh:hover,
+.finale__gh:focus-visible {
+  color: var(--t-ink);
+}
+
+.finale__gh:hover > span:first-child,
+.finale__gh:focus-visible > span:first-child {
+  background-size: 100% 1px;
+}
+
+.finale__gh:hover .finale__gh-arrow,
+.finale__gh:focus-visible .finale__gh-arrow {
+  transform: translate(0.2rem, -0.2rem);
+}
+
+.finale__gh:focus-visible,
+.finale__ctas .finale__btn:focus-visible {
+  outline: 2px solid var(--t-ink);
+  outline-offset: 4px;
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 768px) {
+  .finale__band {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 1.6rem;
+  }
+
+  .finale__cell {
+    gap: 0.5rem;
+    padding-block: 1.15rem;
+  }
+
+  .finale__cell + .finale__cell {
+    border-top: 1px solid var(--finale-rule);
+    border-left: 0;
+  }
+
+  .finale__token {
+    font-size: 2.3rem;
+  }
+
+  .finale__foot {
+    padding-block: 1.5rem;
+  }
+
+  .finale__ctas .finale__btn {
+    min-height: 3rem;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 47.5rem) {
+  .finale {
+    padding-block: 3rem 0;
+  }
+
+  .finale__ctas {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .finale__ctas .finale__btn {
+    gap: 1rem;
+  }
+
+  .finale__gh {
+    min-height: 2.5rem;
+  }
+}
+
+/* ---------- reduced motion: the end state, no travel ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .finale [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .finale__label {
+    color: var(--t-ink);
+  }
+
+  .finale__tick {
+    opacity: 1;
+    transform: none;
+  }
+}

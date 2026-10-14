@@ -1,0 +1,936 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ResumeRequest, SessionTailAnswer } from "../lib/agent-resume";
+import { tabViews, type PaneView, type TabView } from "./tabs-store";
+import {
+  installSessionTailSync,
+  lastSessionIdFor,
+  noteResumedPane,
+  paneModels,
+  paneSessionIds,
+  paneTails,
+  resetSessionTailStore,
+} from "./session-tail-store";
+
+/**
+ * Both hosts are mocked through one hoisted record: the factory runs while
+ * this file's imports are evaluated, so a plain top-level `let` would still be
+ * in its temporal dead zone there. `available` is exposed as a getter because
+ * the store reads it at call time (inside `installSessionTailSync`), which is
+ * what lets a single test flip the host off.
+ */
+const hosts = vi.hoisted(() => ({
+  available: true,
+  sessionTails:
+    vi.fn<(requests: readonly ResumeRequest[]) => Promise<readonly (SessionTailAnswer | null)[]>>(),
+}));
+
+/**
+ * Sentences in, wire answers out — one synthetic session id per POSITION, so a
+ * pane asked twice is told it is still in the same conversation and the tests
+ * that predate the pairing keep meaning what they meant. `null` is the wire's
+ * "nothing could be paired", which is not the same as a paired session with
+ * nothing to quote — `pairing()` builds that one.
+ */
+function tails(...sentences: readonly (string | null)[]): (SessionTailAnswer | null)[] {
+  return sentences.map((tail, index) =>
+    tail === null ? null : { id: `s${index + 1}`, tail, model: null },
+  );
+}
+
+/** A named pairing, for the tests that care WHICH session answered. */
+function pairing(id: string, tail: string | null): SessionTailAnswer {
+  return { id, tail, model: null };
+}
+
+/** A named pairing that also carries a model, for the `paneModels` tests. */
+function pairingWithModel(
+  id: string,
+  tail: string | null,
+  model: string | null,
+): SessionTailAnswer {
+  return { id, tail, model };
+}
+
+vi.mock("../host/worktree-host", () => ({
+  get available() {
+    return hosts.available;
+  },
+}));
+
+vi.mock("../host/session-tail-host", () => ({
+  sessionTails: (requests: readonly ResumeRequest[]) => hosts.sessionTails(requests),
+}));
+
+const DEBOUNCE_MS = 300;
+/** A round clock, so a fixture's `changedAt` reads as an absolute moment. */
+const NOW = 1_700_000_000_000;
+
+const IDLE = {
+  kind: "idle",
+  actionableCount: 0,
+  workingCount: 0,
+  unreadCount: 0,
+} as const;
+
+function pane(paneId: number, over: Partial<PaneView> = {}): PaneView {
+  return {
+    paneId,
+    agent: "claude",
+    attention: "none",
+    phase: "idle",
+    // The default fixture pane has run something — the only kind that earns a
+    // request. Tests that want a never-run pane say `hasRun: false`.
+    hasRun: true,
+    changedAt: NOW,
+    ...over,
+  };
+}
+
+function tab(key: number, workspacePath: string | null, panes: readonly PaneView[]): TabView {
+  return {
+    key,
+    process: "zsh",
+    name: null,
+    dotColor: null,
+    workspacePath,
+    agents: [],
+    agentBusy: false,
+    unread: false,
+    attention: IDLE,
+    panes,
+  };
+}
+
+/** Same content, new array identity — what the 2s process poll produces. */
+function pokeTabViews(): void {
+  tabViews.value = [...tabViews.value];
+}
+
+/** The one batch the store sent, as plain requests. */
+function batchAt(call: number): readonly ResumeRequest[] {
+  return hosts.sessionTails.mock.calls[call][0];
+}
+
+describe("session tail store", () => {
+  let dispose: (() => void) | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    resetSessionTailStore();
+    tabViews.value = [];
+    hosts.available = true;
+    hosts.sessionTails.mockReset();
+    hosts.sessionTails.mockResolvedValue(tails());
+  });
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    resetSessionTailStore();
+    tabViews.value = [];
+    vi.useRealTimers();
+  });
+
+  it("Codex never requests a guessed tail, even with a resume mark", async () => {
+    noteResumedPane("/w", "codex");
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex" })])];
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+  });
+
+  it("Codex requests only its fact, including before the first prompt", async () => {
+    tabViews.value = [
+      tab(1, "/w", [
+        pane(101, {
+          agent: "codex",
+          hasRun: false,
+          sessionId: "own-thread",
+        }),
+      ]),
+    ];
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(batchAt(0)[0]).toMatchObject({ preferredId: "own-thread", exact: true });
+    expect(paneTails.value.has(101)).toBe(false);
+  });
+
+  it("a fact immediately forgets a guessed pin even when its rollout is absent", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairing("stranger", "another conversation")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    hosts.sessionTails.mockResolvedValue([null]);
+    tabViews.value = [tab(1, "/w", [pane(101, { sessionId: "own-thread" })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(batchAt(1)[0]).toMatchObject({ preferredId: "own-thread", exact: true });
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(paneSessionIds.value.get(101)).not.toBe("stranger");
+  });
+
+  it("discards an in-flight answer after the pane's exact identity changes", async () => {
+    let answer!: (value: (SessionTailAnswer | null)[]) => void;
+    hosts.sessionTails.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex", sessionId: "old" })])];
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex", sessionId: "new" })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    answer([pairing("old", "wrong reply")]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(batchAt(1)[0]).toMatchObject({ preferredId: "new", exact: true });
+  });
+
+  it("withdraws Codex text, model and pin without sending another request", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex", sessionId: "own" })])];
+    hosts.sessionTails.mockResolvedValue([pairingWithModel("own", "my reply", "gpt")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.get(101)).toBe("my reply");
+    let finish!: (value: (SessionTailAnswer | null)[]) => void;
+    hosts.sessionTails.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "codex", sessionId: "own", changedAt: NOW + 1000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "codex", sessionId: null, changedAt: NOW + 1000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(paneModels.value.has(101)).toBe(false);
+    expect(paneSessionIds.value.has(101)).toBe(false);
+    finish([pairingWithModel("own", "late reply", "gpt")]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+  });
+
+  it("1. fetches one tail per agent pane and publishes the answers by pane id", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("writing the tests"));
+
+    dispose = installSessionTailSync();
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+    expect(batchAt(0)).toEqual([{ agent: "claude", cwd: "/w", lastSeenAt: NOW, notBefore: NOW }]);
+    expect(paneTails.value.get(101)).toBe("writing the tests");
+  });
+
+  it("2. does not refetch when nothing changed", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("first"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+
+    pokeTabViews();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+    expect(paneTails.value.get(101)).toBe("first");
+  });
+
+  it("3. refetches when a pane's changedAt moves, carrying the new lastSeenAt", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("first"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    hosts.sessionTails.mockResolvedValue(tails("second"));
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+    // The second ask carries the pairing the first ask reported, so the answer
+    // cannot drift onto a different session just because the clock moved.
+    expect(batchAt(1)).toEqual([
+      { agent: "claude", cwd: "/w", lastSeenAt: NOW + 5_000, preferredId: "s1", notBefore: NOW },
+    ]);
+    expect(paneTails.value.get(101)).toBe("second");
+  });
+
+  it("4. keeps the last known tail when a later answer is null", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("what the agent said"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.get(101)).toBe("what the agent said");
+
+    hosts.sessionTails.mockResolvedValue(tails(null));
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 1_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+    expect(paneTails.value.get(101)).toBe("what the agent said");
+  });
+
+  it("5. asks only for panes that have run — a never-run pane and a shell pane are skipped", async () => {
+    tabViews.value = [
+      tab(1, "/w", [pane(101), pane(102, { hasRun: false }), pane(103, { agent: null })]),
+    ];
+    hosts.sessionTails.mockResolvedValue(tails("only mine"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([{ agent: "claude", cwd: "/w", lastSeenAt: NOW, notBefore: NOW }]);
+    expect([...paneTails.value.keys()]).toEqual([101]);
+  });
+
+  it("6. maps positional answers back to the right pane across tabs", async () => {
+    tabViews.value = [
+      tab(1, "/a", [pane(101), pane(102, { agent: "codex", sessionId: "s2" })]),
+      tab(2, "/b", [pane(201, { agent: "gemini" })]),
+    ];
+    hosts.sessionTails.mockResolvedValue(tails("one", "two", "three"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([
+      { agent: "claude", cwd: "/a", lastSeenAt: NOW, notBefore: NOW },
+      {
+        agent: "codex",
+        cwd: "/a",
+        lastSeenAt: NOW,
+        notBefore: NOW,
+        preferredId: "s2",
+        exact: true,
+      },
+      { agent: "gemini", cwd: "/b", lastSeenAt: NOW, notBefore: NOW },
+    ]);
+    expect([...paneTails.value.entries()]).toEqual([
+      [101, "one"],
+      [102, "two"],
+      [201, "three"],
+    ]);
+  });
+
+  it("7. never asks with an empty batch", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null }), pane(102, { hasRun: false })])];
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
+
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+    expect(paneTails.value.size).toBe(0);
+  });
+
+  it("8. is inert without the Electron host", async () => {
+    hosts.available = false;
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+
+    dispose = installSessionTailSync();
+    expect(typeof dispose).toBe("function");
+    pokeTabViews();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
+
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+    expect(paneTails.value.size).toBe(0);
+  });
+
+  it("9. survives a failed fetch, keeping the tails it already has", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("kept"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    hosts.sessionTails.mockRejectedValue(new Error("no handler"));
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 1_000 })])];
+    await expect(vi.advanceTimersByTimeAsync(DEBOUNCE_MS)).resolves.not.toThrow();
+
+    expect(warn).toHaveBeenCalled();
+    expect(paneTails.value.get(101)).toBe("kept");
+    warn.mockRestore();
+  });
+
+  it("10. stops fetching once disposed", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("first"));
+    const stop = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+
+    stop();
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 2_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+  });
+
+  it("11. falls back to now for a pane that has never changed", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: 0 })])];
+    hosts.sessionTails.mockResolvedValue(tails("fresh"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)[0].lastSeenAt).toBe(Date.now());
+  });
+
+  it("12. asks for a never-run pane that was resumed into an existing session", async () => {
+    noteResumedPane("/w", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false })])];
+    hosts.sessionTails.mockResolvedValue(tails("what it said before the quit"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([{ agent: "claude", cwd: "/w", lastSeenAt: NOW }]);
+    expect(paneTails.value.get(101)).toBe("what it said before the quit");
+  });
+
+  it("13. spends one mark on one pane — a second never-run pane stays skipped", async () => {
+    noteResumedPane("/w", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false }), pane(102, { hasRun: false })])];
+    hosts.sessionTails.mockResolvedValue(tails("the resumed one"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toHaveLength(1);
+    expect([...paneTails.value.keys()]).toEqual([101]);
+  });
+
+  it("14. keeps asking for that pane after the mark is spent", async () => {
+    noteResumedPane("/w", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false })])];
+    hosts.sessionTails.mockResolvedValue(tails("first"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    hosts.sessionTails.mockResolvedValue(tails("second"));
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false, changedAt: NOW + 1_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+    expect(paneTails.value.get(101)).toBe("second");
+  });
+
+  it("15. gives the mark to the never-run pane, not to the live one beside it", async () => {
+    noteResumedPane("/w", "claude");
+    // The order that used to break it: an already-running pane of the same
+    // agent sits FIRST in the list, and the resumed one is behind it.
+    tabViews.value = [tab(1, "/w", [pane(101), pane(102, { hasRun: false })])];
+    hosts.sessionTails.mockResolvedValue(tails("the live one", "the resumed one"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toHaveLength(2);
+    expect([...paneTails.value.entries()]).toEqual([
+      [101, "the live one"],
+      [102, "the resumed one"],
+    ]);
+  });
+
+  it("16. ignores a mark left for another workspace", async () => {
+    noteResumedPane("/other", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false })])];
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 5);
+
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+  });
+
+  it("17. a resume mark says ASK, and nothing more — it names no session", async () => {
+    // Withdrawn 2026-08-22 on review: a mark is keyed by (workspace, agent) and
+    // is claimed by whichever matching pane the poll recognizes first, which
+    // need not be the pane that typed `--resume`. As a hint to ask, a misplaced
+    // mark costs one extra question; as a pin it would have been permanent.
+    noteResumedPane("/w", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false })])];
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([{ agent: "claude", cwd: "/w", lastSeenAt: NOW }]);
+  });
+
+  it("20. drops the sentence when the pane is paired with a DIFFERENT session", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairing("sess-old", "what the old session said")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.get(101)).toBe("what the old session said");
+
+    // Re-paired, and the new conversation has nothing quotable in its window.
+    // This is the case that used to leave one sentence walking across rows.
+    hosts.sessionTails.mockResolvedValue([pairing("sess-new", null)]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(batchAt(1)[0].preferredId).toBe("sess-old");
+  });
+
+  it("21. keeps the sentence when the SAME session simply had nothing to quote", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairing("sess-one", "still the newest turn")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    hosts.sessionTails.mockResolvedValue([pairing("sess-one", null)]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneTails.value.get(101)).toBe("still the newest turn");
+  });
+
+  it("22. refetches when a pane's agent changes under an unmoved clock", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex", sessionId: "s1" })])];
+    hosts.sessionTails.mockResolvedValue(tails("what codex said"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    hosts.sessionTails.mockResolvedValue([pairing("claude-1", "what claude said")]);
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "claude" })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+    expect(batchAt(1)[0].agent).toBe("claude");
+    expect(paneTails.value.get(101)).toBe("what claude said");
+  });
+
+  it("23. forgets a pane that has left the window", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101), pane(102)])];
+    hosts.sessionTails.mockResolvedValue(tails("pane one", "pane two"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.size).toBe(2);
+
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneTails.value.has(102)).toBe(false);
+    expect(paneTails.value.get(101)).toBe("pane one");
+  });
+
+  it("24. an empty snapshot prunes nothing — restore publishes one mid-flight", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue(tails("said before the reshuffle"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    tabViews.value = [];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneTails.value.get(101)).toBe("said before the reshuffle");
+  });
+});
+
+/**
+ * Codex's 2026-08-22 review named three HIGH defects in the pairing fix. These
+ * are the reproductions: each asserts the behaviour the review says is MISSING,
+ * so a red test here is the defect confirmed and a green one refutes it.
+ */
+describe("session tail store — the fresh-pane floor", () => {
+  let dispose: (() => void) | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    resetSessionTailStore();
+    tabViews.value = [];
+    hosts.available = true;
+    hosts.sessionTails.mockReset();
+    hosts.sessionTails.mockResolvedValue(tails());
+  });
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    resetSessionTailStore();
+    tabViews.value = [];
+    vi.useRealTimers();
+  });
+
+  it("F1. a fresh pane that trips hasRun carries the moment its agent was first seen", async () => {
+    // A Codex startup paint reads as `working` to the output heuristic
+    // (2026-09-17), so `hasRun` can flip with no prompt sent. The floor is
+    // what keeps the ranking from answering with an older conversation in
+    // the same directory: it is the store's own first sight of this agent
+    // generation, taken while the pane was still skipped as never-run.
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "opencode", hasRun: false })])];
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(hosts.sessionTails).not.toHaveBeenCalled();
+
+    vi.setSystemTime(NOW + 4_000);
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "opencode", hasRun: true, changedAt: NOW + 4_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([
+      { agent: "opencode", cwd: "/w", lastSeenAt: NOW + 4_000, notBefore: NOW },
+    ]);
+  });
+
+  it("F2. a resumed pane sends no floor — its conversation predates it by design", async () => {
+    noteResumedPane("/w", "opencode");
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "opencode", hasRun: false })])];
+    hosts.sessionTails.mockResolvedValue(tails("what it said before the quit"));
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(batchAt(0)).toEqual([{ agent: "opencode", cwd: "/w", lastSeenAt: NOW }]);
+    // And it stays unfloored on every later ask: the mark pins the pane for life.
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "opencode", hasRun: true, changedAt: NOW + 9_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(batchAt(1)).toEqual([
+      { agent: "opencode", cwd: "/w", lastSeenAt: NOW + 9_000, preferredId: "s1" },
+    ]);
+  });
+
+  it("F3. a relaunch in the same pane moves the floor to the new generation", async () => {
+    // opencode → shell → opencode. `PaneView.startedAt` survives that round trip for
+    // Board uptime, which is exactly why the floor is NOT read from it: the
+    // second opencode would inherit the first one's floor and the first one's
+    // conversation would pass it.
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "opencode" })])];
+    hosts.sessionTails.mockResolvedValue(tails("first launch"));
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(batchAt(0)[0].notBefore).toBe(NOW);
+
+    vi.setSystemTime(NOW + 10_000);
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, changedAt: NOW + 10_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    vi.setSystemTime(NOW + 20_000);
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "opencode", hasRun: false, changedAt: NOW + 20_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    vi.setSystemTime(NOW + 25_000);
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "opencode", hasRun: true, changedAt: NOW + 25_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(2);
+    expect(batchAt(1)).toEqual([
+      { agent: "opencode", cwd: "/w", lastSeenAt: NOW + 25_000, notBefore: NOW + 20_000 },
+    ]);
+  });
+});
+
+describe("session tail store — pairing hazards", () => {
+  let dispose: (() => void) | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    resetSessionTailStore();
+    tabViews.value = [];
+    hosts.available = true;
+    hosts.sessionTails.mockReset();
+    hosts.sessionTails.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    resetSessionTailStore();
+    tabViews.value = [];
+    vi.useRealTimers();
+  });
+
+  it("H1. a NEW agent in the same pane must not inherit the old one's pairing", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairing("sess-old", "what the first agent said")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneTails.value.get(101)).toBe("what the first agent said");
+
+    // The agent exits to a shell, then a NEW agent starts in the same pane.
+    // `agent-attention.ts` reopens the gate and `hasRun` goes back to false.
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false, changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    // The new agent has said nothing yet, so nothing is pairable for it.
+    hosts.sessionTails.mockResolvedValue([null]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 9_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    // No pin: the pairing died with the agent that earned it.
+    const calls = hosts.sessionTails.mock.calls;
+    const last = calls[calls.length - 1]?.[0][0];
+    expect(last?.preferredId).toBeUndefined();
+    // And no sentence. `merged` KEEPS a tail on a null answer, so the only
+    // thing that can have cleared this one is the generation change.
+    expect(paneTails.value.has(101)).toBe(false);
+  });
+
+  it("H2. a misplaced mark costs a question, never a pairing", async () => {
+    // Restore resolved pane 0 to NOTHING and pane 1 to a session, so exactly
+    // one mark is left — and the first never-run pane takes it, which is the
+    // WRONG pane. That is tolerable only because a mark no longer names a
+    // session: pane 101 is merely asked about, and the answer it gets is its
+    // own cwd's ranking, not pane 102's conversation handed over.
+    noteResumedPane("/w", "claude");
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false }), pane(102, { hasRun: false })])];
+
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    for (const request of batchAt(0)) {
+      expect(request.preferredId).toBeUndefined();
+    }
+  });
+});
+
+/**
+ * `paneModels` is written by the same merge as `paneTails`, under the same
+ * pairing rules, so it needs no fetch/debounce cases of its own — only the
+ * three rules from the module doc, mirrored off the equivalent `paneTails`
+ * cases above (20, 21, H1).
+ */
+describe("session tail store — paneModels", () => {
+  let dispose: (() => void) | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    resetSessionTailStore();
+    tabViews.value = [];
+    hosts.available = true;
+    hosts.sessionTails.mockReset();
+    hosts.sessionTails.mockResolvedValue(tails());
+  });
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    resetSessionTailStore();
+    tabViews.value = [];
+    vi.useRealTimers();
+  });
+
+  it("drops the model when the pairing moves to another session", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([
+      pairingWithModel("sess-old", "what the old session said", "claude-opus-5"),
+    ]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneModels.value.get(101)).toBe("claude-opus-5");
+
+    // Re-paired, and the new conversation names no model in its window —
+    // the same case that used to leave one sentence walking across rows.
+    hosts.sessionTails.mockResolvedValue([pairingWithModel("sess-new", null, null)]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneModels.value.has(101)).toBe(false);
+  });
+
+  it("keeps the last model when the same session answers with none", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([
+      pairingWithModel("sess-one", "still the newest turn", "claude-sonnet-5"),
+    ]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    // Same session, a tool-only turn this time — it names no model, and that
+    // is not a model change.
+    hosts.sessionTails.mockResolvedValue([pairingWithModel("sess-one", null, null)]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(paneModels.value.get(101)).toBe("claude-sonnet-5");
+  });
+
+  it("forgets the model when the pane's agent generation changes", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([
+      pairingWithModel("sess-old", "what the first agent said", "claude-opus-5"),
+    ]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneModels.value.get(101)).toBe("claude-opus-5");
+
+    // The agent exits to a shell, then a NEW agent starts in the same pane —
+    // `agent-attention.ts` reopens the gate and `hasRun` goes back to false.
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    tabViews.value = [tab(1, "/w", [pane(101, { hasRun: false, changedAt: NOW + 5_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    // The new agent has said nothing yet, so nothing is pairable for it.
+    hosts.sessionTails.mockResolvedValue([null]);
+    tabViews.value = [tab(1, "/w", [pane(101, { changedAt: NOW + 9_000 })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    // No pin: the model died with the agent generation that earned it, the
+    // same as the sentence does in H1.
+    expect(paneModels.value.has(101)).toBe(false);
+  });
+
+  it("prune republishes only the map whose survivor set actually shrank", async () => {
+    // A model with nothing to quote: `paneModels` gets an entry and
+    // `paneTails` stays empty, on purpose (the `tail: null` branch of
+    // `merged`).
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairingWithModel("sess-1", null, "claude-opus-5")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneModels.value.get(101)).toBe("claude-opus-5");
+    expect(paneTails.value.size).toBe(0);
+
+    const tailsBeforePrune = paneTails.value;
+    const modelsBeforePrune = paneModels.value;
+
+    // Pane 101 is replaced by a shell pane, so `entriesOf` sends no request
+    // this round — isolating the run to the prune step alone — while pane 101
+    // is no longer live and gets pruned out of `paneModels`. `paneTails` was
+    // already empty, so pruning it is a no-op and must not republish it.
+    tabViews.value = [tab(1, "/w", [pane(102, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(hosts.sessionTails).toHaveBeenCalledTimes(1);
+    expect(paneModels.value.has(101)).toBe(false);
+    expect(paneModels.value).not.toBe(modelsBeforePrune);
+    expect(paneTails.value).toBe(tailsBeforePrune);
+  });
+});
+
+/**
+ * `lastSessionId` — the one fact that has to OUTLIVE a generation change.
+ *
+ * `forget` deletes a pane's live pairing at the agent → shell transition, and
+ * that is exactly the transition after which the Board offers Restart. So the
+ * id Restart resumes cannot come from `paneSessionIds`; it comes from what
+ * `forget` remembered on its way out (spec §11.10, §11.11).
+ */
+describe("session tail store — lastSessionId", () => {
+  let dispose: (() => void) | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    resetSessionTailStore();
+    tabViews.value = [];
+    hosts.available = true;
+    hosts.sessionTails.mockReset();
+    hosts.sessionTails.mockResolvedValue(tails());
+  });
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    resetSessionTailStore();
+    tabViews.value = [];
+    vi.useRealTimers();
+  });
+
+  /** A pane paired with `sess-abc`, which is where all four cases start. */
+  async function pairClaude(): Promise<void> {
+    tabViews.value = [tab(1, "/w", [pane(101)])];
+    hosts.sessionTails.mockResolvedValue([pairing("sess-abc", "what claude said")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneSessionIds.value.get(101)).toBe("sess-abc");
+  }
+
+  it("preserves an exact id for Restart after an identified agent exits", async () => {
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: "codex", sessionId: "own" })])];
+    hosts.sessionTails.mockResolvedValue([pairing("own", "my reply")]);
+    dispose = installSessionTailSync();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "codex", phase: "exited", sessionId: "own" })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBe("own");
+    expect(paneTails.value.has(101)).toBe(false);
+  });
+
+  it("keeps the id when the agent leaves, and drops it when the pane does", async () => {
+    await pairClaude();
+
+    // agent → shell IS a new generation, so `forget` runs here and takes the
+    // live pairing with it — the empty `paneSessionIds` and the dropped tail
+    // below are the proof that it did, which is what stops this case from
+    // passing for free.
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(paneSessionIds.value.get(101)).toBeUndefined();
+    expect(paneTails.value.has(101)).toBe(false);
+    expect(lastSessionIdFor(101)).toBe("sess-abc");
+
+    // The PANE closing is a different event: nothing about it survives. The
+    // snapshot keeps another pane in it because an EMPTY one prunes nothing
+    // (case 24 above), and would leave this passing on a technicality.
+    tabViews.value = [tab(1, "/w", [pane(102, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBeUndefined();
+  });
+
+  it("clears it when a new agent starts in the shell the old one left", async () => {
+    await pairClaude();
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBe("sess-abc");
+
+    // shell → agent is a new generation too, and this one must CLEAR: spec
+    // §11.11's "overwritten by the next shell→agent generation". Keeping it
+    // would leave a freshly started agent's card offering to resume the
+    // previous agent's conversation.
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "codex", hasRun: false, changedAt: NOW + 5_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBeUndefined();
+  });
+
+  it("clears it when the pane goes straight from one agent to another", async () => {
+    await pairClaude();
+
+    // No shell step, so `paneSessions` STILL holds claude's id at the instant
+    // `forget` runs — an unconditional keep would write it as codex's, which
+    // is a pin rather than a drift and does not self-correct.
+    tabViews.value = [
+      tab(1, "/w", [pane(101, { agent: "codex", hasRun: false, changedAt: NOW + 5_000 })]),
+    ];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBeUndefined();
+  });
+
+  it("is cleared by the store's own reset, which bypasses forget", async () => {
+    await pairClaude();
+    tabViews.value = [tab(1, "/w", [pane(101, { agent: null, hasRun: false })])];
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(lastSessionIdFor(101)).toBe("sess-abc");
+
+    // `resetSessionTailStore` empties this state DIRECTLY rather than through
+    // `forget`, so the map leaks between tests in one file — and between
+    // windows in one process — unless the reset clears it too.
+    resetSessionTailStore();
+    expect(lastSessionIdFor(101)).toBeUndefined();
+  });
+});

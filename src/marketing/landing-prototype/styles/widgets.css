@@ -1,0 +1,261 @@
+/* Feature widgets (src/tour/widgets.js). Real px, not cqw: a widget has no
+   `.a-appwin` container to measure against. The palette is the 2.10
+   `deck-dark` set the hero draws with — appwin-tree.css declares it for
+   `.a-appwin--tree` and `.w` alike — so a widget reads as a piece of that
+   window. This file holds the tile, the card and the primitives every widget
+   shares, then the two Watch widgets; widgets-launch.css and widgets-keep.css
+   hold the other four. */
+
+/* ---------- the tile: a title over its widget ---------- */
+
+.wtile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.wtile h3 {
+  max-width: 26ch;
+  margin: 0;
+  color: var(--t-ink);
+  font: 500 clamp(1.05rem, 1.4vw, 1.3rem) / 1.22 var(--font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.wtile[data-reveal] {
+  opacity: 0;
+  transform: translateY(1.2rem);
+  transition:
+    opacity 640ms ease var(--reveal-delay, 0ms),
+    transform 640ms cubic-bezier(0.22, 0.78, 0.18, 1) var(--reveal-delay, 0ms);
+}
+
+.wtile[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- the widget card ---------- */
+
+.w {
+  /* The app's own planes and signal the hero palette leaves out. */
+  --w-chrome-1: color-mix(in srgb, var(--sg-rail) 97%, #ffffff);
+  --w-active: color-mix(in srgb, var(--sg-rail) 90%, #ffffff);
+  --w-accent: #6f9cff;
+  --w-purple: #c792ea;
+  position: relative;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--sg-hair-strong);
+  border-radius: 12px;
+  background: var(--sg-rail);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    0 1.5rem 3rem -1.5rem rgb(0 0 0 / 70%),
+    0 2px 6px rgb(0 0 0 / 25%);
+  color: var(--sg-fg);
+  font: 400 12.5px/1.4 var(--font-display);
+  transition: transform 360ms cubic-bezier(0.22, 0.78, 0.18, 1);
+}
+
+.w *,
+.w *::before,
+.w *::after {
+  box-sizing: border-box;
+}
+
+.w svg {
+  display: block;
+  flex: none;
+}
+
+.wtile:hover .w {
+  transform: translateY(-4px);
+}
+
+.w-mark,
+.w-card__logo {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  object-fit: contain;
+}
+
+/* A monogram stands in for an agent with no brand file. */
+.w-mark--mono,
+.w-card__logo--mono {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sg-chrome-2);
+  color: var(--sg-fg-dim);
+  font: 600 10px/1 var(--font-display);
+}
+
+.w-icon {
+  display: inline-grid;
+  width: 13px;
+  height: 13px;
+  flex: none;
+  place-items: center;
+  color: var(--sg-fg-faint);
+}
+
+.w-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The app's value pill (`.cfg-btn`): a quiet outline, and a filled variant. */
+.w-btn,
+.w-switch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border: 1px solid var(--sg-hairline);
+  border-radius: 6px;
+  color: var(--sg-fg);
+  font: 400 11px/1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.w-switch {
+  min-width: 32px;
+}
+
+/* ---------- rail ----------
+   The hero's own tree rows (appwin-tree.css), at one app pixel to the pixel.
+   `renderCluster` draws the project, its checkouts and the badge on every logo;
+   the card's ground is the rail's, so the badge's ring blends into it. */
+
+.w-rail {
+  --u: 1px;
+  display: flex;
+  max-width: 30rem;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 12px 8px;
+}
+
+/* ---------- usage ---------- */
+
+.w-usage {
+  padding: 18px 18px 16px;
+}
+
+.w-usage__eyebrow {
+  margin: 0;
+  color: var(--sg-fg-dim);
+  font-size: 10.5px;
+}
+
+.w-usage__total {
+  display: block;
+  margin: 4px 0;
+  color: var(--sg-fg);
+  font: 700 28px / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.w-usage__foot {
+  margin: 0;
+  color: var(--sg-fg-faint);
+  font-size: 10.5px;
+}
+
+.w-usage__agents {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.w-usage__agent + .w-usage__agent {
+  margin-top: 18px;
+}
+
+.w-usage__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.w-usage__line .w-mark {
+  width: 18px;
+  height: 18px;
+}
+
+.w-usage__line > span:last-child {
+  margin-left: auto;
+}
+
+.w-usage__bar {
+  height: 4px;
+  margin: 7px 0 5px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 8%);
+}
+
+.w-usage__bar i {
+  display: block;
+  width: var(--share);
+  height: 100%;
+  border-radius: 2px;
+}
+
+[data-agent="claude"] .w-usage__bar i {
+  background: var(--w-purple);
+}
+
+[data-agent="codex"] .w-usage__bar i {
+  background: var(--sg-green);
+}
+
+.w-usage__agent p {
+  margin: 0;
+  color: var(--sg-fg-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The range selector sits under the figure's accounting, as in the app. */
+.w-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sg-hairline);
+}
+
+.w-range span {
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--sg-fg-faint);
+  font-size: 11px;
+}
+
+.w-range .is-active {
+  background: rgb(255 255 255 / 4%);
+  color: var(--sg-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wtile[data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .w,
+  .wtile:hover .w {
+    transform: none;
+    transition: none;
+  }
+}

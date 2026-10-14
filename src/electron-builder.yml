@@ -1,0 +1,67 @@
+# Local Electron package.
+#
+# An UNSIGNED, local-only packaging path for running the Electron host as a
+# real app instead of a dev-server process. It produces no installer, no
+# updater metadata, no signing, no notarization and no publishing, and is
+# referenced by no release workflow — shipping builds use
+# `electron-builder.release.yml`.
+#
+# Identity is deliberately NOT the shipping identity: `Deck Electron` /
+# `dev.spacevibe.deck.electron` cannot overwrite an installed
+# `SpaceVibe Deck`, and it gets its own userData directory
+# (`~/Library/Application Support/Deck Electron`), which matches the
+# cutover's clean-install decision — no settings or workspace migration.
+appId: dev.spacevibe.deck.electron
+productName: Deck Electron
+directories:
+  output: dist-electron-app
+# Electron Builder writes this into the packaged app's package.json — `main`
+# is not a top-level builder option.
+#
+# `productName` is repeated here on purpose, and it is not cosmetic:
+# `app.getName()` reads the packaged package.json, NOT Info.plist's
+# CFBundleName, so without this line the app would call itself
+# `spacevibe-deck` (the package name) and share
+# `~/Library/Application Support/spacevibe-deck` with every `electron:dev`
+# run — measured, not assumed.
+extraMetadata:
+  main: dist-electron/electron/main.cjs
+  productName: Deck Electron
+files:
+  - dist/**
+  - dist-electron/electron/**/*.cjs
+  - dist-electron/src/**/*.cjs
+  - dist-electron/electron/vendor/**
+  - package.json
+# node-pty is a native module: it cannot load from inside the asar, and its
+# helper binaries must keep their executable modes.
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+mac:
+  target:
+    - target: dir
+  identity: null
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+
+# Windows preview target — UNSIGNED, and cross-built from macOS.
+#
+# Added 2026-08-18 to produce the first Windows artifact of the Electron host.
+# It carries no code signature, so SmartScreen will warn on every install, and
+# it inherits `electron/platform/windows.ts`, which no Windows machine has yet
+# executed (Gate C). This is a preview channel artifact by construction, not a
+# shipping installer.
+#
+# `perMachine: false` keeps the install per-user: no elevation prompt, and a
+# tester can remove it without touching Program Files.
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: Deck-Electron-${version}-win-x64-setup.${ext}

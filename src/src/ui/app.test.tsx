@@ -1,0 +1,938 @@
+// @vitest-environment jsdom
+import { render } from "preact";
+import { readFileSync } from "node:fs";
+import { act } from "preact/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { boardOpen, editorRequest, saveDialogOpen, settingsOpen } from "../chrome/events";
+import {
+  agentBoardClosesWithLastTab,
+  archivedWorkspaceResumeAvailable,
+  boardClosesAfterResume,
+  bootOpensTheBoard,
+  browserPanelObscured,
+  startSurfaceFollowsBoardClose,
+  closeSettingsPanel,
+  dockPaintedOpen,
+  dockToggleOnStage,
+  dockVisible,
+  liveRailAvailable,
+  livePresetOpensATab,
+  sidebarEffectivelyCollapsed,
+  sidebarPaintWidth,
+  stripShowsTabs,
+  taskLaunchRecoveryValid,
+  toggleSettingsPanel,
+  workspacesOrphanedByClose,
+} from "./app-policy";
+import { DesktopChrome } from "./desktop-chrome";
+import { SIDEBAR_COLUMN_WIDTH, SIDEBAR_HIDDEN_WIDTH } from "./panel-resize";
+import { ACTION_REGISTRY, TIER_RANK } from "../terminal/action-registry";
+import {
+  initializeDesktopEnvironment,
+  resetDesktopEnvironmentForTests,
+  type DesktopPlatform,
+} from "../lib/platform";
+
+describe("DesktopChrome platform structure", () => {
+  let host: HTMLDivElement;
+
+  beforeEach(() => {
+    resetDesktopEnvironmentForTests();
+    host = document.createElement("div");
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    act(() => render(null, host));
+    resetDesktopEnvironmentForTests();
+    document.body.innerHTML = "";
+  });
+
+  function mount(platform: DesktopPlatform, sidebar: boolean): HTMLElement {
+    initializeDesktopEnvironment({
+      platform,
+      homeDir: platform === "windows" ? "C:\\Users\\Deck" : "/Users/deck",
+    });
+    act(() => {
+      render(
+        <DesktopChrome
+          sidebar={sidebar}
+          toolbar={<span data-testid="toolbar">toolbar</span>}
+          sidebarNavigation={<nav data-testid="sidebar">sidebar</nav>}
+          topTabs={<header data-testid="tabs">tabs</header>}
+          stage={<main data-testid="stage">stage</main>}
+          status={<footer data-testid="status">status</footer>}
+          onMacTitlebarDoubleClick={vi.fn()}
+        />,
+        host,
+      );
+    });
+    return host.firstElementChild as HTMLElement;
+  }
+
+  // DL-18.9 (2026-08-16): the hide control is a WINDOW control, so it sits in
+  // the frame row immediately after the traffic-light inset — before the drag
+  // spacer, and before anything the app puts in that row.
+  it("puts the sidebar hide control right after the traffic lights", () => {
+    initializeDesktopEnvironment({ platform: "macos", homeDir: "/Users/deck" });
+    act(() => {
+      render(
+        <DesktopChrome
+          sidebar
+          sidebarToggle={<button type="button" data-testid="hide" />}
+          toolbar={null}
+          sidebarNavigation={<nav />}
+          topTabs={<header />}
+          stage={<main />}
+          status={<footer />}
+          onMacTitlebarDoubleClick={vi.fn()}
+        />,
+        host,
+      );
+    });
+
+    const frame = host.querySelector(".deck-frame")!;
+    const order = [...frame.children].map(
+      (child) => child.getAttribute("data-testid") ?? child.className,
+    );
+    expect(order).toEqual(["deck-frame__lights", "hide", "deck-frame__spacer"]);
+  });
+
+  // DL-18: there is no separate title bar. The frame is one command row, and it
+  // only exists in sidebar mode — in top-tab mode the tab bar IS the frame and
+  // carries the toolbar itself.
+  it.each([
+    ["macos", false, false, false],
+    ["macos", true, true, true],
+    ["windows", false, false, false],
+    ["windows", true, true, false],
+  ] as const)(
+    "%s %s mode renders only the platform-owned in-app chrome",
+    (platform, sidebar, hasFrame, hasLightsInset) => {
+      const root = mount(platform, sidebar);
+
+      expect(root.classList.contains(`window--${platform}`)).toBe(true);
+      expect(root.classList.contains("window--sidebar")).toBe(sidebar);
+      expect(root.querySelector(".deck-frame") !== null).toBe(hasFrame);
+      // The traffic-light inset is macOS-only: elsewhere the OS owns that
+      // corner, or nothing does, and reserving space would leave a gap.
+      expect(root.querySelector(".deck-frame__lights") !== null).toBe(hasLightsInset);
+      // The retired elements must not come back — two chrome rows is the shape
+      // DL-18 exists to remove.
+      expect(root.querySelector(".titlebar")).toBe(null);
+      expect(root.querySelector(".deck-toolbar")).toBe(null);
+      expect(root.querySelector('[data-testid="sidebar"]') !== null).toBe(sidebar);
+      expect(root.querySelector('[data-testid="tabs"]') !== null).toBe(!sidebar);
+      expect(root.querySelector('[data-testid="toolbar"]') !== null).toBe(sidebar);
+    },
+  );
+
+  // The same matrix for the one Windows build that paints caption buttons over
+  // the row (Electron). The left stays empty — nothing is painted there — and
+  // the shell gains the marker `22-caption-overlay.css` keys the right-hand
+  // inset on. macOS rows above are untouched and never carry it.
+  it.each([
+    ["windows", false],
+    ["windows", true],
+  ] as const)(
+    "%s under the Electron host (sidebar %s) marks the shell for the right inset",
+    (platform, sidebar) => {
+      vi.stubGlobal("__deckHost", { invoke: vi.fn(), listen: vi.fn() });
+      try {
+        const root = mount(platform, sidebar);
+        expect(root.classList.contains("window--caption-overlay")).toBe(true);
+        expect(root.querySelector(".deck-frame__lights")).toBe(null);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  // The bottom band is a setting (`showStatusBar`, off by default). With no
+  // occupant the ROW must go too — a 28px stripe of empty chrome is not a
+  // hidden status bar.
+  it("drops the status row when nothing occupies it", () => {
+    initializeDesktopEnvironment({ platform: "macos", homeDir: "/Users/deck" });
+    act(() => {
+      render(
+        <DesktopChrome
+          sidebar
+          toolbar={<span />}
+          sidebarNavigation={<nav />}
+          topTabs={<header />}
+          stage={<main />}
+          status={null}
+          onMacTitlebarDoubleClick={vi.fn()}
+        />,
+        host,
+      );
+    });
+    const root = host.firstElementChild as HTMLElement;
+    expect(root.classList.contains("window--no-status")).toBe(true);
+  });
+
+  it("keeps the row while the status bar is shown", () => {
+    const root = mount("macos", true);
+    expect(root.classList.contains("window--no-status")).toBe(false);
+  });
+});
+
+describe("settings load recovery layer", () => {
+  it("hides a native browser surface while the settings load alert is visible", () => {
+    expect(
+      browserPanelObscured({
+        overlayCoversPane: false,
+        agentQuickPickerOpen: false,
+        usageConsentOpen: false,
+        promptsOpen: false,
+        createEntryOpen: false,
+        railCardMenuOpen: false,
+        agentBoardActive: false,
+        persistErrorVisible: false,
+        settingsLoadError: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides it under the usage-consent dialog too (DL-29.9)", () => {
+    // Same defect class the quick picker shipped with: a launch-time modal on
+    // the shared scrim would draw UNDER the native WebContentsView unless the
+    // view is told to go.
+    expect(
+      browserPanelObscured({
+        overlayCoversPane: false,
+        agentQuickPickerOpen: false,
+        usageConsentOpen: true,
+        promptsOpen: false,
+        createEntryOpen: false,
+        railCardMenuOpen: false,
+        agentBoardActive: false,
+        persistErrorVisible: false,
+        settingsLoadError: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides the native browser view while the explorer's naming dialog is up", () => {
+    // The dock stays visible while a browser tab covers the stage, and a native
+    // `WebContentsView` cannot be covered by any DOM layer — so this dialog's
+    // open signal joins the guard the way `agentQuickPickerOpen` and
+    // `usageConsentOpen` already have. This repo has shipped that bug twice.
+    expect(
+      browserPanelObscured({
+        overlayCoversPane: false,
+        agentQuickPickerOpen: false,
+        usageConsentOpen: false,
+        promptsOpen: false,
+        createEntryOpen: true,
+        railCardMenuOpen: false,
+        agentBoardActive: false,
+        persistErrorVisible: false,
+        settingsLoadError: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides the native browser view while the Agent Board holds the stage", () => {
+    // A DOM surface cannot cover a native `WebContentsView`: with the Board on
+    // the stage the browser's view has to go, or the Board draws underneath
+    // the page it just replaced.
+    expect(
+      browserPanelObscured({
+        overlayCoversPane: false,
+        agentQuickPickerOpen: false,
+        usageConsentOpen: false,
+        promptsOpen: false,
+        createEntryOpen: false,
+        railCardMenuOpen: false,
+        agentBoardActive: true,
+        persistErrorVisible: false,
+        settingsLoadError: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("stacks the settings load alert above the Open board", () => {
+    const modalCss = readFileSync("src/styles/10-modals.css", "utf8");
+    const boardCss = readFileSync("src/styles/09-open-board.css", "utf8");
+    const alertZ = Number(modalCss.match(/\.settings-load-alert\s*\{[^}]*z-index:\s*(\d+)/s)?.[1]);
+    const boardZ = Number(boardCss.match(/\.open-board\s*\{[^}]*z-index:\s*(\d+)/s)?.[1]);
+
+    expect(alertZ).toBeGreaterThan(boardZ);
+  });
+});
+
+describe("task launcher mount", () => {
+  // Source contract only; native focus remains an Electron acceptance check.
+  it.each([
+    ["onRunAgent", "openQuickAgent(agentId, workspacePath)"],
+    ["onOpenShell", "openQuickAgent(null, workspacePath)"],
+    ["onSplitHere", "splitInWorkspace(workspacePath)"],
+  ])("dismisses the page before the existing %s action", (callback, invocation) => {
+    const start = source.indexOf(`${callback}: (`);
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("\n    },", start));
+    const close = body.indexOf("agentLaunchPage.close()");
+    expect(close).toBeGreaterThan(-1);
+    expect(body.indexOf(invocation)).toBeGreaterThan(close);
+  });
+  const source = readFileSync("src/ui/app.tsx", "utf8");
+
+  // Inverted, not deleted: it pinned the surface Quick Launch replaced, and it
+  // now pins that the Quick Launch popover is gone (deleted 2026-10-08, launch
+  // actions decision 10) and the agent picker stays unmounted — the Open Board
+  // is the one composer this build ships. Since `rail-create-consolidation` (2026-09-02)
+  // ⌘T raises the rail card's actions menu FREE-STANDING for the active
+  // workspace (`openTaskLauncher` → `railKeyboardMenuFor`), the strip `+` and
+  // the rail project `+` are gone. Only the explicit Open shell action opens
+  // a shell tab; opening the menu itself still starts no process.
+  it("keeps the retired popovers unmounted, and ⌘T raises the card menu", () => {
+    expect(source).not.toContain("<QuickLaunch");
+    expect(source).not.toContain("<AgentQuickPicker");
+    expect(source).toContain('placement="free-standing"');
+    expect(source).toContain("railKeyboardMenuFor.value = workspacePath");
+    // Top-tab mode mounts no rail, and the rail was the only caller of the
+    // scan: without this the chord's heading would name a checkout by its
+    // bare folder in exactly the layout that has no other create control.
+    expect(source).toContain("ensureRepositoriesScanned([workspacePath])");
+    expect(source).toContain("openQuickAgent(null, workspacePath)");
+    // No call path re-enters `TabManager.newTab` from the app: the old `null`
+    // branch called it back and recursed when no tab was active.
+    expect(source).not.toContain("tabsRef.current?.newTab()");
+  });
+
+  it("routes ⌘T through the one required launcher seam into the launch page", () => {
+    // `TabManager.newTab` has no fallback route (launch actions decision 10), so
+    // this wiring is the whole path: the chord reaches `openTaskLauncher` with the
+    // active workspace, which opens (or toggles shut) the launch page for it.
+    expect(source).toContain("onOpenTaskLauncher: openTaskLauncher,");
+    const start = source.indexOf("function openTaskLauncher(");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("\n  }\n", start));
+    expect(body).toContain("agentLaunchPageAvailable && workspacePath !== null");
+    expect(body).toContain("openAgentLaunchPage(workspacePath)");
+  });
+
+  it("clears the shared draft only after a completed handoff", () => {
+    expect(source).toContain("launchClearsDraft(result.outcome)");
+    expect(source).not.toContain("launchSucceeded(outcome)");
+  });
+
+  it("retries prompt delivery in the stored tab without launching another", () => {
+    expect(source).toContain("retryTaskPrompt(");
+    expect(source).toContain("attempt.tabKey");
+    expect(source).toContain("attempt.prompt");
+    expect(source).not.toContain("launchTask(attempt");
+  });
+
+  it("binds recovery to the model and effort that launched the target tab", () => {
+    expect(source).toContain("attempt.modelId === draft.modelId");
+    expect(source).toContain("attempt.reasoningEffort === draft.reasoningEffort");
+  });
+
+  it("shares one task-operation lock across both launcher surfaces and every Board entry", () => {
+    expect(source).toContain("function runTaskOperation(");
+    expect(source).toContain("externalPending={taskOperationPending.value}");
+    // `New Workspace` left the frame row for the rail (DL-27.14), so the lock
+    // reaches it through the rail's `legacy` object rather than a JSX prop.
+    expect(source).toContain("onOpenWorkspace: openTaskBoard");
+    expect(source).toContain("openWorkspaceDisabled: taskOperationPending.value !== null");
+  });
+
+  it("withdraws retry when TabManager no longer owns the original pane", () => {
+    expect(source).toContain("tabsRef.current?.canRetryTaskPrompt(attempt.tabKey)");
+  });
+
+  it("focuses recovery through TabManager's exact-pane handoff target", () => {
+    expect(source).toContain("tabsRef.current?.canFocusTaskPrompt(attempt.tabKey)");
+    expect(source).toContain("tabsRef.current?.focusTaskPrompt(attempt.tabKey)");
+  });
+
+  it("subscribes recovery invalidation to the reactive tab snapshot", () => {
+    expect(source).toContain(
+      "const targetTabExists = tabViews.value.some((tab) => tab.key === attempt.tabKey)",
+    );
+  });
+});
+
+describe("task launcher recovery policy", () => {
+  const liveRecovery = {
+    targetTabExists: true,
+    targetPaneExists: true,
+    retryTargetExists: true,
+    attemptMatchesDraft: true,
+  } as const;
+
+  it("invalidates recovery when the original pane disappears while its tab survives", () => {
+    expect(taskLaunchRecoveryValid(liveRecovery)).toBe(true);
+    expect(taskLaunchRecoveryValid({ ...liveRecovery, targetPaneExists: false })).toBe(false);
+  });
+});
+
+describe("recent agent activity wiring", () => {
+  const source = readFileSync("src/ui/app.tsx", "utf8");
+
+  it("installs the sync that loads the snapshot at boot and keeps it current", () => {
+    // The boot load lives inside `installRecentActivitySync` since 2026-08-26
+    // (DL-33.5): the same request still answers "does this host have sessions",
+    // and the block stops being a snapshot frozen at launch.
+    expect(source).toContain("useEffect(() => installRecentActivitySync(), []);");
+    expect(source).toContain(
+      'import { installRecentActivitySync } from "../sessions/recent-activity-sync";',
+    );
+    expect(source).not.toContain("void probeSessionsSupport();");
+  });
+
+  it("mounts agent usage in the rail and keeps session resume in the Sessions dock", () => {
+    const railMount = source.slice(source.indexOf("<AgentRail"), source.indexOf("topTabs={"));
+    expect(railMount).toContain("<RailAgentLimits");
+    expect(railMount).toContain('onOpenUsage={() => openDockTab("usage")}');
+    expect(source).not.toContain("<RecentSessionActivity");
+    expect(source).toContain(
+      "<SessionsDockTab onResume={(entry) => void resumeSessionEntry(entry)} />",
+    );
+  });
+
+  it("keeps the existing Sessions dock navigation on the rail actions", () => {
+    expect(source).toContain('onOpenSessions={() => openDockTab("sessions")}');
+  });
+});
+
+describe("dev servers chip wiring", () => {
+  const source = readFileSync("src/ui/app.tsx", "utf8");
+
+  it("rides the toolbar beside the needs-you chip, with a stage-taking Open in Deck", () => {
+    const toolbar = source.slice(
+      source.indexOf("<DeckToolbar"),
+      source.indexOf("/>\n  );", source.indexOf("<DeckToolbar")),
+    );
+    expect(toolbar).toContain(
+      "devServers={<DevServersStripChip openInDeck={openDevServerInDeck} />}",
+    );
+    // The explicit-URL operation, not `openBrowser`, which keeps the loaded page
+    // and swallows a failed open; the stage rule runs inside `prepareStage`.
+    const open = source.slice(
+      source.indexOf("const openDevServerInDeck"),
+      source.indexOf("const closeBrowserTab"),
+    );
+    expect(open).toContain("openBrowserAt(url");
+    expect(open).toContain("agentLaunchPage.close()");
+    expect(open).toContain("takeStageForOpenedPage(");
+    expect(open).toContain("notifySurfacesChanged()");
+    expect(open).not.toContain("openBrowser(");
+  });
+});
+
+describe("needs-you chip wiring", () => {
+  const source = readFileSync("src/ui/app.tsx", "utf8");
+
+  it("rides the shared toolbar, so both layouts mount it, with the rail's pane-exact focus", () => {
+    // `chromeActions` is the one element sidebar mode puts at the strip's
+    // trailing end and top-tab mode hands to `TabBar`.
+    const toolbar = source.slice(
+      source.indexOf("<DeckToolbar"),
+      source.indexOf("/>\n  );", source.indexOf("<DeckToolbar")),
+    );
+    expect(toolbar).toContain("attention={<AttentionStripChip onFocusPane={focusRailPane} />}");
+    // `focusRailPane` is the preflighted `activateForAttention` — never the
+    // global `focusNextAttention`, which would pick the loudest pane instead.
+    const focus = source.slice(
+      source.indexOf("const focusRailPane"),
+      source.indexOf("const restoreFocusAfterSettings"),
+    );
+    expect(focus).toContain("activateForAttention(index, paneId)");
+    expect(focus).not.toContain("focusNextAttention");
+  });
+});
+
+// DL-18.6/18.9: in sidebar mode the stage's first `--frame-h` IS the frame row
+// — it carries the traffic-light inset, the sidebar's only way back out while
+// the column is hidden, the feature toolbar and the dock's control. A
+// full-window surface authored `inset: 0` swallowed all of it: with the
+// sidebar collapsed and the board up on a window with no tabs (so the board
+// cannot even be cancelled), NOTHING on screen could bring the sidebar back.
+// Same rectangle rule `.stage__surface` has always used for the document.
+describe("full-window surfaces leave the stage strip's row alone", () => {
+  it.each([["src/styles/09-open-board.css", ".open-board"]])(
+    "%s starts %s below the strip in sidebar mode",
+    (file, selector) => {
+      const css = readFileSync(file, "utf8");
+      const escaped = selector.replace(".", "\\.");
+      const rule = css.match(new RegExp(`\\.stage--strip\\s+${escaped}[^{]*\\{[^}]*\\}`, "s"))?.[0];
+
+      expect(rule).toBeDefined();
+      expect(rule).toContain("top: var(--frame-h)");
+    },
+  );
+
+  /**
+   * Settings LEFT this rule on 2026-08-19, at the owner's request, and the
+   * exemption is conditional — so it is asserted rather than just deleted.
+   *
+   * The rule above was never "the strip is sacred". It was "do not strand the
+   * user": a board opened on a window with no tabs cannot be cancelled, so
+   * covering the row left nothing on screen able to bring the sidebar back.
+   * Settings covers the whole window now and is safe doing it for one reason
+   * only — it has ways out that owe nothing to the chrome underneath. If those
+   * ever go, this exemption has to go with them.
+   */
+  it("lets Settings cover the whole window, and keeps both ways out of it", () => {
+    const css = readFileSync("src/styles/11-settings-screen.css", "utf8");
+    const shell = css.match(/\.settings-screen\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(shell).toContain("position: fixed");
+    expect(shell).toContain("inset: 0");
+    expect(css).not.toMatch(/\.stage--strip\s+\.settings-screen\s*\{/);
+
+    // Covering the frame row takes the window's drag surface and the traffic
+    // lights' reserved footprint with it, so the header has to carry both.
+    const head = css.match(/\.settings-screen__head\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(head).toContain("-webkit-app-region: drag");
+    expect(head).toContain("--frame-lights-w");
+
+    // Way out #1 is a real control, not a glyph the user has to interpret.
+    const screen = readFileSync("src/ui/settings/settings-screen.tsx", "utf8");
+    expect(screen).toContain("settings-screen__back");
+    expect(screen).toMatch(/Back/);
+    // Way out #2 is the key, and `settings-screen.test.tsx` proves it fires.
+    expect(screen).toContain('event.key === "Escape"');
+  });
+});
+
+// The other half of the same fix: the strip survives a full-window surface, so
+// what it carries has to be what still MEANS something over one. The window
+// controls do; a list of tab chips does not — the surface replaced the tabs.
+// A modal is deliberately absent: it floats on a scrim with the strip legible
+// underneath it, and hiding the chips there would be a second, silent change.
+describe("the Agent Board and the window's last tab", () => {
+  // Spec §4.2: zero tabs = no Board. The chip has to go, but closing it is not
+  // the whole rule — see the second case, which is the trap.
+  it("takes the chip when the last tab goes", () => {
+    expect(
+      agentBoardClosesWithLastTab({ liveTabCount: 0, agentBoardOpen: true, otherSurfaces: 0 }),
+    ).toBe(true);
+    expect(
+      agentBoardClosesWithLastTab({ liveTabCount: 1, agentBoardOpen: true, otherSurfaces: 0 }),
+    ).toBe(false);
+    expect(
+      agentBoardClosesWithLastTab({ liveTabCount: 0, agentBoardOpen: false, otherSurfaces: 0 }),
+    ).toBe(false);
+  });
+
+  it("raises the start surface when the Board was the only surface left", () => {
+    // `disposeTab`'s empty branch reads `surfaces.total()` SYNCHRONOUSLY
+    // (tab-manager.ts, the `tabs.length === 0` arm): the Board's own chip
+    // makes that total 1, so it takes `surfaces.activate(0)` — the Board — and
+    // never reaches `boardOpen.value = true`. Closing the chip a frame later
+    // would then leave a window with no tab, no surface and no start screen,
+    // with the rail hidden because `liveRailAvailable(0)` is false.
+    expect(
+      startSurfaceFollowsBoardClose({ liveTabCount: 0, agentBoardOpen: true, otherSurfaces: 0 }),
+    ).toBe(true);
+  });
+
+  it("leaves a surviving file tab or browser chip holding the stage", () => {
+    // With another surface open, `activate(0)` landed on IT rather than on the
+    // Board, so the stage is already occupied and the Open board would cover
+    // a document the user still has open.
+    expect(
+      startSurfaceFollowsBoardClose({ liveTabCount: 0, agentBoardOpen: true, otherSurfaces: 1 }),
+    ).toBe(false);
+  });
+});
+
+describe("stripShowsTabs", () => {
+  it("keeps the chips while only the terminal grid is on the stage", () => {
+    expect(stripShowsTabs({ boardOpen: false, settingsOpen: false })).toBe(true);
+  });
+
+  it.each([
+    ["the Open board", true, false],
+    ["the Settings screen", false, true],
+  ])("drops the chips under %s", (_label, board, settings) => {
+    expect(stripShowsTabs({ boardOpen: board, settingsOpen: settings })).toBe(false);
+  });
+});
+
+describe("Open Board shell visibility", () => {
+  it("hides the Agent Rail when no live tab exists", () => {
+    expect(liveRailAvailable(0)).toBe(false);
+    expect(liveRailAvailable(1)).toBe(true);
+  });
+
+  it("temporarily collapses the sidebar without changing its saved choice", () => {
+    expect(
+      sidebarEffectivelyCollapsed({
+        liveTabCount: 0,
+        savedCollapsed: false,
+        dragCollapsed: false,
+      }),
+    ).toBe(true);
+    expect(
+      sidebarEffectivelyCollapsed({
+        liveTabCount: 1,
+        savedCollapsed: false,
+        dragCollapsed: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("suppresses the dock while the board is open without changing dockOpen", () => {
+    expect(dockVisible({ boardOpen: true, dockOpen: true })).toBe(false);
+    expect(dockVisible({ boardOpen: false, dockOpen: true })).toBe(true);
+    expect(dockVisible({ boardOpen: false, dockOpen: false })).toBe(false);
+  });
+
+  // DL-19.4, amended 2026-08-19: mid-drag the gesture answers, not the setting
+  // — the same way the navigation sidebar's seam has always behaved.
+  it("lets an armed drag close the dock before the pointer is released", () => {
+    // No drag in flight: the setting is the whole answer.
+    expect(
+      dockPaintedOpen({
+        boardOpen: false,
+        dockOpen: true,
+        dragCollapsed: null,
+      }),
+    ).toBe(true);
+    expect(
+      dockPaintedOpen({
+        boardOpen: false,
+        dockOpen: false,
+        dragCollapsed: null,
+      }),
+    ).toBe(false);
+
+    // Dragging past the floor hides it at once; dragging back out brings it
+    // back, still without having written anything.
+    expect(
+      dockPaintedOpen({
+        boardOpen: false,
+        dockOpen: true,
+        dragCollapsed: true,
+      }),
+    ).toBe(false);
+    expect(
+      dockPaintedOpen({
+        boardOpen: false,
+        dockOpen: false,
+        dragCollapsed: false,
+      }),
+    ).toBe(true);
+
+    // The board still wins over both: it owns the stage.
+    expect(
+      dockPaintedOpen({
+        boardOpen: true,
+        dockOpen: true,
+        dragCollapsed: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("closes the board only after a session actually resumes", () => {
+    expect(boardClosesAfterResume(true)).toBe(true);
+    expect(boardClosesAfterResume(false)).toBe(false);
+  });
+
+  // DL-19.3, amended 2026-08-19: the hide control has two mounts and exactly
+  // one is ever on screen. An open column carries its own at its outer edge,
+  // so the chrome must NOT also carry one.
+  it("hands the dock's hide control to the chrome only while the column is gone", () => {
+    expect(dockToggleOnStage({ boardOpen: false, dockOpen: false })).toBe(true);
+    expect(dockToggleOnStage({ boardOpen: false, dockOpen: true })).toBe(false);
+    // Board open: the column is suppressed, but the setting still says open
+    // and the board covers the stage — a "show the side panel" button there
+    // would promise something the click cannot deliver.
+    expect(dockToggleOnStage({ boardOpen: true, dockOpen: true })).toBe(false);
+    expect(dockToggleOnStage({ boardOpen: true, dockOpen: false })).toBe(false);
+  });
+});
+
+// DL-34.1 REVERSED by DECK-43 (2026-09-09, owner-asked). It made the Agent
+// Board hide the sidebar and leave the dock unpainted while it held the stage;
+// the Board now shares the Inbox's frame, so neither column knows the Board
+// exists. These cases are the reversal itself: the same states the old rule
+// answered `true`/`false` about are answered by the USER's own choice alone.
+describe("the sidebar and the dock under the agent board", () => {
+  it("leaves the sidebar exactly as the user set it", () => {
+    // The state DL-34.1 forced shut: three live tabs, an open column. The
+    // Board is on the stage in this case and no longer has a say.
+    expect(
+      sidebarEffectivelyCollapsed({ liveTabCount: 3, savedCollapsed: false, dragCollapsed: null }),
+    ).toBe(false);
+    expect(
+      sidebarEffectivelyCollapsed({ liveTabCount: 3, savedCollapsed: true, dragCollapsed: null }),
+    ).toBe(true);
+  });
+
+  it("still lets an in-flight drag answer for the column", () => {
+    // The ordering DL-34.1 outranked. With the rule gone the drag is the only
+    // thing above the setting, which is DL-18.9's own arrangement.
+    expect(
+      sidebarEffectivelyCollapsed({ liveTabCount: 3, savedCollapsed: false, dragCollapsed: true }),
+    ).toBe(true);
+  });
+
+  it("paints and shows the dock beside the board", () => {
+    const base = { dockOpen: true, boardOpen: false, dragCollapsed: null } as const;
+    expect(dockPaintedOpen(base)).toBe(true);
+    expect(dockVisible({ dockOpen: true, boardOpen: false })).toBe(true);
+  });
+
+  // The Open Board keeps every term it had: it is a start screen with no
+  // window behind it, which is exactly what the Agent Board is not.
+  it("keeps the OPEN board's suppression untouched", () => {
+    expect(dockPaintedOpen({ dockOpen: true, boardOpen: true, dragCollapsed: null })).toBe(false);
+    expect(dockVisible({ dockOpen: true, boardOpen: true })).toBe(false);
+    expect(dockToggleOnStage({ boardOpen: true, dockOpen: true })).toBe(false);
+  });
+
+  // `dockToggleOnStage` carried its own `agentBoardActive` term so the strip's
+  // "show the side panel" control could not turn ON over a Board — pressing it
+  // WROTE `dockOpen` for a column nobody could see. With the column visible
+  // under the Board there is nothing left to guard: the answer is the dock's.
+  it("hands the strip's dock control back to the dock's own state", () => {
+    expect(dockToggleOnStage({ boardOpen: false, dockOpen: true })).toBe(false);
+    expect(dockToggleOnStage({ boardOpen: false, dockOpen: false })).toBe(true);
+  });
+});
+
+// Escape-stacking investigation (team lead thread): Settings' own mount-focus
+// effect (settings/settings-screen.tsx) steals DOM focus onto its close button the
+// moment it opens, even over an already-open PresetEditor/SavePresetDialog —
+// so a later Escape closes only Settings and orphans focus behind a modal
+// that is still fully visible (.modal-scrim z-index 40 > .settings-screen z-index 20,
+// styles.css). Fix: block toggle-settings' OPEN branch while a draft is up;
+// CLOSE stays unconditional so Settings can never strand itself open (the
+// exact trap b7e6021 already had to avoid for the overlay scope guard).
+describe("toggleSettingsPanel — blocks opening over a PresetEditor/SavePresetDialog draft, never blocks closing", () => {
+  const focusActive = vi.fn();
+
+  beforeEach(() => {
+    boardOpen.value = false;
+    settingsOpen.value = false;
+    editorRequest.value = null;
+    saveDialogOpen.value = false;
+    focusActive.mockClear();
+  });
+
+  afterEach(() => {
+    boardOpen.value = false;
+    settingsOpen.value = false;
+    editorRequest.value = null;
+    saveDialogOpen.value = false;
+  });
+
+  it("opens Settings normally when no overlay holds a draft", () => {
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(true);
+  });
+
+  it("does NOT open Settings while a PresetEditor draft is up", () => {
+    editorRequest.value = { source: "live" };
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+  });
+
+  it("does NOT open Settings while a SavePresetDialog draft is up", () => {
+    saveDialogOpen.value = true;
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+  });
+
+  // F3 (2026-07-27 code review) originally blocked this: Settings was a 300px
+  // drawer at z-20, so opening it under the z-30 board made it invisible while
+  // its mount-focus effect still stole DOM focus — arrows / type-to-filter /
+  // Enter stopped reaching the board. Settings is now a full-window surface at
+  // z-35 that COVERS the board, so the premise is gone and the block with it:
+  // a global surface that silently refuses to open reads as a broken app.
+  // Drafts (modal-scrim, z-40) still outrank Settings and still block it —
+  // covered by the two cases above.
+  it("DOES open Settings over the Open board — it now covers the board (z-35 > z-30) instead of hiding under it", () => {
+    boardOpen.value = true;
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(true);
+  });
+
+  it("still CLOSES Settings when it is already open, even with a PresetEditor draft also up (the trap b7e6021 already had to avoid)", () => {
+    settingsOpen.value = true;
+    editorRequest.value = { source: "live" }; // both open at once — an edge case, not the common path
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+    expect(focusActive).toHaveBeenCalledTimes(1);
+  });
+
+  it("still CLOSES Settings when it is already open, even with the Open board also up", () => {
+    settingsOpen.value = true;
+    boardOpen.value = true;
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+    expect(focusActive).toHaveBeenCalledTimes(1);
+  });
+
+  it("still closes Settings normally with no draft open at all", () => {
+    settingsOpen.value = true;
+
+    toggleSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+    expect(focusActive).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ⌘⇧N is deliberately reachable from the Open board (F4 retiered it "modal",
+// above the board's "board" rank) so a layout can be sketched from scratch on
+// the app's landing screen. The live-window tail of handleEditorCreate then
+// materialized a tab anyway — behind the board (z-30 covers the stage), whose
+// pane silently took DOM focus, and with no tab open yet there was no active
+// pane to inherit a CWD from, so it spawned in $HOME instead of the folder
+// selected on the board. Saving the preset and leaving the board up is the
+// whole behaviour now that the board has no layout picker of its own
+// (2026-08-16) — the preset is picked up by the next open that remembers it.
+describe("livePresetOpensATab — ⌘⇧N over the Open board saves the preset without opening a tab", () => {
+  it("opens a tab in a live window, where the stage is actually visible", () => {
+    expect(livePresetOpensATab(false)).toBe(true);
+  });
+
+  it("does NOT open a tab while the Open board covers the stage", () => {
+    expect(livePresetOpensATab(true)).toBe(false);
+  });
+
+  // The guard above only matters because new-preset outranks the board. If
+  // anyone retiers it back to "board" (or lower), the overlay guard blocks
+  // ⌘⇧N on the board outright and this whole branch becomes dead code — fail
+  // here so that is a deliberate decision, not a silent one.
+  it("is only reachable because new-preset outranks the board tier", () => {
+    const newPreset = ACTION_REGISTRY.find((action) => action.id === "new-preset");
+    expect(newPreset?.scope).toBe("modal");
+    expect(TIER_RANK.modal).toBeGreaterThan(TIER_RANK.board);
+  });
+});
+
+describe("closeSettingsPanel", () => {
+  afterEach(() => {
+    settingsOpen.value = false;
+  });
+
+  it("always closes and hands off focus, unconditionally", () => {
+    settingsOpen.value = true;
+    editorRequest.value = { source: "live" };
+    const focusActive = vi.fn();
+
+    closeSettingsPanel(focusActive);
+
+    expect(settingsOpen.value).toBe(false);
+    expect(focusActive).toHaveBeenCalledTimes(1);
+
+    editorRequest.value = null;
+  });
+});
+
+describe("bootOpensTheBoard", () => {
+  it("opens the board on a normal boot", () => {
+    expect(bootOpensTheBoard({ kind: "normal" })).toBe(true);
+  });
+
+  it("skips the board when the window boots to adopt a pane", () => {
+    expect(bootOpensTheBoard({ kind: "adopt", token: "t-1" })).toBe(false);
+  });
+});
+
+describe("archivedWorkspaceResumeAvailable", () => {
+  it("serializes legacy workspace restores around the shared journal suspension", () => {
+    expect(archivedWorkspaceResumeAvailable(new Set())).toBe(true);
+    expect(archivedWorkspaceResumeAvailable(new Set(["/w/deck"]))).toBe(false);
+    expect(archivedWorkspaceResumeAvailable(new Set(["/w/other"]))).toBe(false);
+  });
+});
+
+// Usage and Settings are mutually exclusive (spec §Surface, major M4): both
+// are full-window surfaces at the same z-layer, so two open at once is two
+// screens fighting over one rectangle. The guard mirrors
+// `toggleSettingsPanel` exactly — CLOSING is unconditional (or the screen
+// strands itself open, the b7e6021 trap), OPENING is blocked only by a
+// PresetEditor/SavePresetDialog draft at z-40.
+
+describe("workspacesOrphanedByClose — the project close's file sweep (close model, 2026-08-22)", () => {
+  const tabs = [
+    { workspacePath: "/w/deck" },
+    { workspacePath: "/w/deck-side" },
+    { workspacePath: "/w/other" },
+  ];
+
+  it("orphans a workspace no surviving tab holds", () => {
+    expect(workspacesOrphanedByClose(tabs, [0, 1])).toEqual(["/w/deck", "/w/deck-side"]);
+  });
+
+  it("does NOT ask the singular question once per tab", () => {
+    // Two tabs of ONE workspace, both closing. `workspaceOrphanedByClose` would
+    // answer "the sibling survives" for each and strand the file workspace; the
+    // survivor set is computed against everything that is closing.
+    const pair = [{ workspacePath: "/w/deck" }, { workspacePath: "/w/deck" }, ...tabs.slice(2)];
+    expect(workspacesOrphanedByClose(pair, [0, 1])).toEqual(["/w/deck"]);
+  });
+
+  it("keeps a workspace a surviving tab still holds", () => {
+    const pair = [{ workspacePath: "/w/deck" }, { workspacePath: "/w/deck" }, ...tabs.slice(2)];
+    expect(workspacesOrphanedByClose(pair, [0])).toEqual([]);
+  });
+
+  it("returns nothing when every tab is going", () => {
+    // "Last surface, not last tab" (spec §7) — and since the close model that
+    // same branch is what keeps the window standing on the Open board.
+    expect(workspacesOrphanedByClose(tabs, [0, 1, 2])).toEqual([]);
+  });
+
+  it("ignores a tab with no workspace", () => {
+    expect(workspacesOrphanedByClose([{ workspacePath: null }, ...tabs], [0])).toEqual([]);
+  });
+});
+
+// DL-27.29, amending DL-18.9: collapsed paints the avatar column.
+describe("the sidebar's painted width", () => {
+  const open = {
+    liveTabCount: 2,
+    savedCollapsed: false,
+    dragCollapsed: null,
+    savedWidth: 275,
+    liveWidth: null,
+  } as const;
+
+  it("paints the user's width while open", () => {
+    expect(sidebarPaintWidth(open)).toBe(275);
+    expect(sidebarPaintWidth({ ...open, liveWidth: 310, dragCollapsed: false })).toBe(310);
+  });
+
+  it("paints the avatar column when the setting is collapsed", () => {
+    const collapsed = { ...open, savedCollapsed: true };
+    expect(sidebarPaintWidth(collapsed)).toBe(SIDEBAR_COLUMN_WIDTH);
+  });
+
+  it("lands a drag past the floor on the column, and leaves the pointer free to come back", () => {
+    const armed = { ...open, liveWidth: 200, dragCollapsed: true };
+    expect(sidebarPaintWidth(armed)).toBe(SIDEBAR_COLUMN_WIDTH);
+    expect(sidebarPaintWidth({ ...armed, dragCollapsed: false })).toBe(200);
+  });
+
+  it("opens a collapsed column by dragging it back out", () => {
+    const widening = { ...open, savedCollapsed: true, liveWidth: 240, dragCollapsed: false };
+    expect(sidebarPaintWidth(widening)).toBe(240);
+  });
+
+  it("paints no column for a window with no live work", () => {
+    expect(sidebarPaintWidth({ ...open, liveTabCount: 0 })).toBe(SIDEBAR_HIDDEN_WIDTH);
+    expect(sidebarPaintWidth({ ...open, liveTabCount: 0, savedCollapsed: true })).toBe(
+      SIDEBAR_HIDDEN_WIDTH,
+    );
+  });
+});

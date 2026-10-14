@@ -1,0 +1,371 @@
+/**
+ * PTY manager — owns every live session and the paths that touch them.
+ *
+ * This is where `spawn_shell`, the emitter thread, `consume_shell_integration`
+ * and the write/resize/kill commands from `src-tauri/src/pty.rs` come back
+ * together. The Rust version splits them across threads and a mutex; here they
+ * are ordinary methods on one object, because the main process is
+ * single-threaded.
+ *
+ * The one thing that must NOT be simplified away is the exit ordering. Rust is
+ * careful to flush remaining output, then emit `pty:exit`, then unregister the
+ * pane — in that order — so the renderer never sees an exit for a pane whose
+ * last bytes are still queued. `handleExit` keeps that order.
+ */
+import { randomBytes } from "node:crypto";
+import { EVENTS } from "../ipc/channels";
+import { createStreamDecoder, OutputBatcher } from "./stream";
+import { PtySessionStore, type PtySession } from "./session-store";
+import { spawnShell, type SpawnOptions } from "./spawn";
+import { validateCwdCandidates, type ShellIntegrationEvent } from "../shell-integration";
+import * as macos from "../platform/macos";
+import type { PsRow } from "../platform/macos";
+import * as windows from "../platform/windows";
+
+function platform() {
+  return process.platform === "win32" ? windows : macos;
+}
+
+const STARTUP_TRACE_ENV = "DECK_PTY_STARTUP_TRACE";
+const STARTUP_TRACE_PREFIX = "[deck:pty-startup]";
+
+type StartupMilestone =
+  | "spawn_start"
+  | "shell_resolved"
+  | "cwd_resolved"
+  | "pty_created"
+  | "first_input"
+  | "first_output"
+  | "prompt_ready"
+  | "cwd_validated";
+
+interface StartupTrace {
+  readonly startedAt: number;
+  readonly seen: ReadonlySet<StartupMilestone>;
+}
+
+/** Delivers an event to whichever window currently owns the pane. */
+export type EmitToOwner = (paneId: number, event: string, payload: unknown) => void;
+
+export interface PtyManagerDeps {
+  readonly emitToOwner: EmitToOwner;
+  /** Tie a new pane to the window that asked for it. */
+  readonly register: (paneId: number, windowLabel: string) => void;
+  /** Forget a pane once its PTY is gone. */
+  readonly unregister: (paneId: number) => void;
+  /** Throws when `windowLabel` does not own `paneId`. */
+  readonly assertOwner: (paneId: number, windowLabel: string) => void;
+  /**
+   * The hook endpoint's port at spawn time, or null when it never bound
+   * (agent-signal contract layer, stage 2). Read per spawn, not captured:
+   * the listener binds asynchronously at boot and a pane spawned before it
+   * simply learns no port.
+   */
+  readonly hookPort?: () => number | null;
+  readonly hookScript?: () => string | null;
+  readonly codexHookScript?: () => string | null;
+}
+
+export class PtyManager {
+  private readonly store = new PtySessionStore();
+  private readonly startupTraceByPane = new Map<number, StartupTrace>();
+
+  constructor(private readonly deps: PtyManagerDeps) {}
+
+  spawn(windowLabel: string, options: SpawnOptions): number {
+    const fallbackStartedAt = performance.now();
+    // The id is allocated BEFORE the spawn since stage 2 (2026-09-03): the
+    // shell's environment carries it (`DECK_PANE_ID`), with a fresh secret
+    // the hook endpoint will demand back. Ids are never reused, so a spawn
+    // that throws after allocation merely skips a number.
+    const id = this.store.allocateId();
+    const hookToken = randomBytes(16).toString("hex");
+    const { pty, ttyName, startupTiming } = spawnShell(options, {
+      paneId: id,
+      hookToken,
+      hookPort: this.deps.hookPort?.() ?? null,
+      hookScript: this.deps.hookScript?.() ?? null,
+      ...(this.deps.codexHookScript ? { codexHookScript: this.deps.codexHookScript() } : {}),
+    });
+    const decode = createStreamDecoder();
+
+    const batcher = new OutputBatcher({
+      emit: (data) => {
+        this.consumeShellIntegration(id, data);
+        this.deps.emitToOwner(id, EVENTS.ptyOutput, { id, data });
+      },
+      pause: () => pty.pause(),
+      resume: () => pty.resume(),
+    });
+
+    const session = this.store.insert({ id, pty, ttyName, hookToken, batcher, decode });
+
+    if (process.env[STARTUP_TRACE_ENV] === "1") {
+      const startedAt = startupTiming?.startedAt ?? fallbackStartedAt;
+      this.startupTraceByPane.set(id, { startedAt, seen: new Set() });
+      this.traceStartup(id, "spawn_start", startedAt);
+      if (startupTiming !== undefined) {
+        this.traceStartup(id, "shell_resolved", startupTiming.shellResolvedAt);
+        this.traceStartup(id, "cwd_resolved", startupTiming.cwdResolvedAt);
+      }
+      this.traceStartup(id, "pty_created", startupTiming?.ptyCreatedAt);
+    }
+
+    pty.onData((chunk) => {
+      // Buffers on Unix (`encoding: null`), STRINGS on Windows, where node-pty
+      // ignores the encoding option. `decode` takes both — see the comment on
+      // `createStreamDecoder`, which is where that difference is resolved.
+      this.traceStartup(id, "first_output");
+      batcher.push(decode(chunk as unknown as Uint8Array | string));
+    });
+    pty.onExit(({ exitCode }) => this.handleExit(session, exitCode));
+
+    this.deps.register(id, windowLabel);
+    return id;
+  }
+
+  write(windowLabel: string, id: number, data: string): void {
+    this.deps.assertOwner(id, windowLabel);
+    const session = this.requireSession(id);
+    this.traceStartup(id, "first_input");
+    session.pty.write(data);
+  }
+
+  resize(windowLabel: string, id: number, cols: number, rows: number): void {
+    this.deps.assertOwner(id, windowLabel);
+    const session = this.requireSession(id);
+    session.pty.resize(cols, rows);
+  }
+
+  /**
+   * Kill a pane on request.
+   *
+   * A pane whose PTY already exited has no session and no route; Rust returns
+   * Ok for exactly that case because `TerminalManager.dispose()` hits it on
+   * every window close. Staying a no-op here keeps that.
+   */
+  kill(windowLabel: string, id: number): void {
+    if (!this.store.has(id)) {
+      return;
+    }
+    this.deps.assertOwner(id, windowLabel);
+    this.terminate(id);
+  }
+
+  /**
+   * End the agent running in a pane and leave the pane alive (spec §5.6).
+   *
+   * The first half of `terminate` — the foreground group's SIGHUP, then SIGKILL
+   * after `KILL_GRACE_MS` — with the shell's own group deliberately spared,
+   * which is the whole difference between Stop and `kill`. That split is
+   * exactly how `terminateProcessGroups` is already parameterised, so this is a
+   * reuse rather than a second signal choice, and the PTY is never killed here:
+   * the pane, its scrollback and its shell all survive.
+   *
+   * A pane with no foreground job signals NOTHING rather than falling back to
+   * the shell. `foregroundProcess` answers the shell's own row when nothing
+   * else holds the tty, so that case is a group equal to the shell's pid — not
+   * a null answer, which means the tty was missing from the table.
+   */
+  async killForeground(windowLabel: string, id: number): Promise<void> {
+    const session = this.store.get(id);
+    if (session === undefined) {
+      return;
+    }
+    this.deps.assertOwner(id, windowLabel);
+    let rows: readonly PsRow[] = [];
+    try {
+      rows = await platform().readProcessTable();
+    } catch {
+      // No table, no group to signal. Unlike `killAll`, there is no shell group
+      // to fall back on here — guessing at a pid is how Stop closes a pane.
+      return;
+    }
+    const foreground = platform().foregroundProcess(rows, session.ttyName, session.pty.pid);
+    if (foreground?.group == null || foreground.group === session.pty.pid) {
+      // No job, an unresolvable group, or the shell IS the foreground group:
+      // nothing to stop.
+      return;
+    }
+    // `group`, never `pid`, for `terminate`'s reason: a group MEMBER's pid is
+    // not a group id. The second argument is the shell's group and is null on
+    // purpose — that is the pane staying alive.
+    platform().terminateProcessGroups(foreground.group, null);
+  }
+
+  /**
+   * Terminate without consulting ownership — used when the owning window is
+   * already gone, which is precisely when there is nobody to validate against.
+   *
+   * `rows` is passed in rather than read here so a mass kill takes ONE process
+   * table reading instead of one per pane: quitting with eight panes used to
+   * fork `ps` eight times and freeze the main process for most of a second.
+   * Omitting it still works — the pane is killed, only its foreground group is
+   * not signalled first.
+   */
+  terminate(id: number, rows: readonly PsRow[] = []): void {
+    const session = this.store.get(id);
+    if (session === undefined) {
+      return;
+    }
+    const foreground = platform().foregroundProcess(rows, session.ttyName, session.pty.pid);
+    platform().terminateProcessGroups(
+      // `group`, never `pid`: a group MEMBER's pid is not a group id, and
+      // signalling it would hit nothing.
+      foreground?.group ?? null,
+      session.pty.pid,
+    );
+    try {
+      session.pty.kill();
+    } catch {
+      // Already dead — the outcome we wanted.
+    }
+  }
+
+  /**
+   * Kill every live pane, taking one process-table reading for the batch.
+   *
+   * A failed reading still kills: the shell's own group is signalled from the
+   * session, and only the foreground-group SIGHUP is skipped. Refusing to quit
+   * because `ps` failed would be worse.
+   */
+  async killAll(): Promise<void> {
+    let rows: readonly PsRow[] = [];
+    try {
+      rows = await platform().readProcessTable();
+    } catch {
+      // Fall through with an empty table — see above.
+    }
+    for (const id of this.store.ids()) {
+      this.terminate(id, rows);
+    }
+  }
+
+  snapshots(ids: readonly number[]) {
+    return this.store.snapshots(ids);
+  }
+
+  liveIds(): number[] {
+    return this.store.ids();
+  }
+
+  /** The pane's hook token, or null once its PTY is gone — the endpoint's whole authentication. */
+  hookTokenOf(id: number): string | null {
+    return this.store.get(id)?.hookToken ?? null;
+  }
+
+  /**
+   * Flush, announce, then forget — in that order.
+   *
+   * Emitting `pty:exit` before the tail is flushed would let the renderer tear
+   * down a pane that still has unrendered output, which is how the last lines
+   * of a build log go missing.
+   */
+  private handleExit(session: PtySession, exitCode?: number): void {
+    if (session.exited) {
+      return;
+    }
+    session.exited = true;
+    // Release any partial multibyte sequence the decoder is holding, then
+    // flush — a shell that died mid-character still renders U+FFFD rather than
+    // dropping the bytes.
+    const tail = session.decode.flush();
+    if (tail.length > 0) {
+      session.batcher.push(tail);
+    }
+    session.batcher.flush();
+    session.batcher.close();
+    this.store.remove(session.id);
+    // The status rides the exit (agent-signal contract layer, stage 0,
+    // 2026-09-03) so the renderer's tracker can record how the pane ended.
+    // Additive on the wire: Tauri's `ExitPayload { id }` stays valid, and the
+    // renderer treats a missing or non-finite code as "unknown".
+    const payload =
+      typeof exitCode === "number" && Number.isFinite(exitCode)
+        ? { id: session.id, exitCode }
+        : { id: session.id };
+    this.deps.emitToOwner(session.id, EVENTS.ptyExit, payload);
+    this.deps.unregister(session.id);
+    this.startupTraceByPane.delete(session.id);
+  }
+
+  /**
+   * Feed a decoded chunk to the pane's OSC parser and act on what comes out.
+   *
+   * `cwd` validation hits the filesystem, and a single batch can carry many
+   * candidates, so only the last surviving one is applied — same as
+   * `validate_cwd_candidates` in Rust.
+   */
+  private consumeShellIntegration(id: number, data: string): void {
+    const session = this.store.get(id);
+    if (session === undefined) {
+      return;
+    }
+    const { parser, events } = session.shellIntegration.parse(data);
+    session.shellIntegration = parser;
+    if (events.length === 0) {
+      return;
+    }
+
+    // Prompt-ready fires SYNCHRONOUSLY, in step with the output batch it
+    // arrived in: it drives attention state, and a deferred one would race the
+    // bytes that follow it.
+    for (const event of events) {
+      if (event.kind === "prompt-ready") {
+        this.traceStartup(id, "prompt_ready");
+        this.deps.emitToOwner(id, EVENTS.ptyPromptReady, { id });
+      }
+    }
+
+    const candidates = events
+      .filter(
+        (event): event is Extract<ShellIntegrationEvent, { kind: "current-directory" }> =>
+          event.kind === "current-directory",
+      )
+      .map((event) => event.value);
+    if (candidates.length === 0) {
+      return;
+    }
+    // The cwd probe hits the filesystem, so it does NOT block the emit path.
+    // Terminal output is untrusted, and a batch full of `OSC 9;9` pointing at
+    // missing paths measured 47 ms of frozen main process each — every window
+    // and every pane, for as long as the output kept coming.
+    void validateCwdCandidates(candidates).then((cwd) => {
+      // Re-read: the session may have exited while the probe was in flight.
+      const live = this.store.get(id);
+      if (live !== undefined && cwd !== null) {
+        live.cwd = cwd;
+        this.traceStartup(id, "cwd_validated");
+      }
+    });
+  }
+
+  private traceStartup(
+    id: number,
+    milestone: StartupMilestone,
+    observedAt = performance.now(),
+  ): void {
+    const trace = this.startupTraceByPane.get(id);
+    if (trace === undefined || trace.seen.has(milestone)) {
+      return;
+    }
+    this.startupTraceByPane.set(id, {
+      ...trace,
+      seen: new Set([...trace.seen, milestone]),
+    });
+    // oxlint-disable-next-line no-console -- explicit opt-in startup timing diagnostic
+    console.info(STARTUP_TRACE_PREFIX, {
+      paneId: id,
+      milestone,
+      elapsedMs: Number(Math.max(0, observedAt - trace.startedAt).toFixed(1)),
+    });
+  }
+
+  private requireSession(id: number): PtySession {
+    const session = this.store.get(id);
+    if (session === undefined) {
+      throw new Error(`Terminal session #${id} not found`);
+    }
+    return session;
+  }
+}

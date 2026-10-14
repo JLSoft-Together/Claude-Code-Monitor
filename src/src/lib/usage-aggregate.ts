@@ -1,0 +1,165 @@
+/**
+ * Re-bucketing the Rust payload into the per-agent totals the usage overview
+ * shows.
+ * Pure — no signals, no Tauri, no DOM.
+ *
+ * Rust hands back 15-minute UTC buckets and does no timezone work at all
+ * (spec §Aggregate schema, major M2). Everything local happens here, using the
+ * JS `Date`, which carries the host's zone rules and its DST history — which
+ * is why the fifteen-minute grain matters: real offsets include :30 and :45
+ * (India, Nepal, Chatham), and an hourly grain would put boundary-hour usage
+ * on the wrong local day there.
+ */
+
+import { estimateCostUsd } from "./usage-pricing";
+import {
+  addCounters,
+  EMPTY_COUNTERS,
+  totalTokens,
+  type UsageAgent,
+  type UsageBucket,
+  type UsageCounters,
+} from "./usage-snapshot";
+
+/**
+ * §0.3 decision 8 ("null wins") refined on 2026-08-10, after it deleted a
+ * correct figure on the real corpus. One model id — `unknown`, holding 0.2% of
+ * Codex's tokens — nulled that agent, which nulled the grand total, which
+ * blanked the whole screen: a rule meant to stop a MISLEADING number was
+ * removing an ACCURATE one.
+ *
+ * The rule is now: report the priced part, disclose the gap, and never present
+ * a partial sum as though it were complete. `costUsd` is the sum over the
+ * models that HAVE a price and is null only when not one of them does;
+ * `unpricedTokens` beside it is what makes the omission visible instead of
+ * silent. Presenting the partial sum alone would be the failure this rule
+ * originally guarded against — the disclosure is not decoration, it is the
+ * other half of the rule.
+ */
+export interface AgentTotal {
+  readonly agent: UsageAgent;
+  readonly counters: UsageCounters;
+  /** Sum over priced models; null only when NO token here has a price. */
+  readonly costUsd: number | null;
+  readonly unpricedModels: readonly string[];
+  /** Tokens belonging to `unpricedModels` — the part `costUsd` excludes. */
+  readonly unpricedTokens: number;
+}
+
+function pad2(value: number): string {
+  return `${value}`.padStart(2, "0");
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** The host-local calendar day containing `utcMs`, as "YYYY-MM-DD". */
+export function localDayKey(utcMs: number): string {
+  const at = new Date(utcMs);
+  return [`${at.getFullYear()}`.padStart(4, "0"), pad2(at.getMonth() + 1), pad2(at.getDate())].join(
+    "-",
+  );
+}
+
+/**
+ * Group buckets by a caller-chosen key, keeping the model dimension inside
+ * each group. The model split has to survive grouping: a row's cost is the
+ * sum of its models' costs, and merging counters across models first would
+ * make that sum unrecoverable.
+ */
+function groupByModel<Key extends string>(
+  buckets: readonly UsageBucket[],
+  keyOf: (bucket: UsageBucket) => Key | null,
+): ReadonlyMap<Key, ReadonlyMap<string, UsageCounters>> {
+  const groups = new Map<Key, Map<string, UsageCounters>>();
+  for (const bucket of buckets) {
+    const key = keyOf(bucket);
+    if (key === null) {
+      continue;
+    }
+    const byModel = groups.get(key) ?? new Map<string, UsageCounters>();
+    byModel.set(
+      bucket.model,
+      addCounters(byModel.get(bucket.model) ?? EMPTY_COUNTERS, bucket.counters),
+    );
+    groups.set(key, byModel);
+  }
+  return groups;
+}
+
+function sumCounters(byModel: ReadonlyMap<string, UsageCounters>): UsageCounters {
+  let total = EMPTY_COUNTERS;
+  for (const counters of byModel.values()) {
+    total = addCounters(total, counters);
+  }
+  return total;
+}
+
+interface CostRollup {
+  readonly costUsd: number | null;
+  readonly unpricedModels: readonly string[];
+  readonly unpricedTokens: number;
+}
+
+/**
+ * Sum the per-model costs of one group, keeping the priced and unpriced halves
+ * apart (see the `AgentTotal` comment for why this changed on 2026-08-10).
+ *
+ * `costUsd` covers every model that has a price and goes null only when no
+ * token in the group has one — one unrecognised id can no longer erase a
+ * figure the other models fully support. `unpricedTokens` carries what was
+ * left out so the caller can say so; a caller that renders the money and drops
+ * the disclosure has reintroduced the original bug from the other side.
+ *
+ * A model contributing zero tokens is never "unpriced" — `estimateCostUsd`
+ * answers 0 for it, which is arithmetic and not a price lookup, and it is what
+ * keeps Claude's `<synthetic>` marker out of this list. For the same reason it
+ * is not a price either: counting it as one turned a day spent entirely on
+ * unpriced models into a confident $0.00 (2026-10-10).
+ */
+function rollupCost(byModel: ReadonlyMap<string, UsageCounters>): CostRollup {
+  const unpriced: string[] = [];
+  let priced = 0;
+  let pricedTokens = 0;
+  let unpricedTokens = 0;
+  for (const [model, counters] of byModel) {
+    const cost = estimateCostUsd(model, counters);
+    if (cost === null) {
+      unpriced.push(model);
+      unpricedTokens += totalTokens(counters);
+      continue;
+    }
+    priced += cost;
+    pricedTokens += totalTokens(counters);
+  }
+  return {
+    costUsd: unpricedTokens > 0 && pricedTokens === 0 ? null : priced,
+    unpricedModels: [...new Set(unpriced)].sort(compareStrings),
+    unpricedTokens,
+  };
+}
+
+/**
+ * Per-agent totals, optionally from `sinceMs` onwards. "Today" is the
+ * caller's definition — it passes the local midnight that starts today, or
+ * `null` for the whole recorded history.
+ *
+ * Only agents with data in range get a row. The screen renders both agent
+ * slots from the snapshot's `sources`, which always carries exactly two.
+ */
+export function agentTotals(
+  buckets: readonly UsageBucket[],
+  sinceMs: number | null,
+): readonly AgentTotal[] {
+  const groups = groupByModel<UsageAgent>(buckets, (bucket) =>
+    sinceMs !== null && bucket.bucketStartMs < sinceMs ? null : bucket.agent,
+  );
+  return [...groups.entries()]
+    .map(([agent, byModel]) => ({
+      agent,
+      counters: sumCounters(byModel),
+      ...rollupCost(byModel),
+    }))
+    .sort((left, right) => compareStrings(left.agent, right.agent));
+}

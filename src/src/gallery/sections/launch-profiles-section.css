@@ -1,0 +1,42 @@
+/* DECK-63 selected B: gallery framing only. The shipping editor owns every
+   config row, group and value kind; the rejected candidates live in Linear. */
+.lp-gallery-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lp-gallery-review {
+  width: 720px;
+  max-width: 100%;
+}
+
+.lp-gallery-review.is-compact {
+  width: 480px;
+}
+
+.lp-gallery-review .gx-stage {
+  padding: 0;
+}
+
+.lp-gallery-panel {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 20px 16px;
+}
+
+.lp-gallery-title {
+  padding: 0 14px 16px;
+  font-size: var(--type-title);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lp-gallery-title > span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  font-weight: 400;
+}

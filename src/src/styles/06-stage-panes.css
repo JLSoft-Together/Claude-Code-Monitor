@@ -1,0 +1,745 @@
+/* ── Stage (terminal area) ───────────────────────────────── */
+
+/* The gutter the pane-card geometry is derived from (owner, 2026-09-18):
+   4px on every stage edge AND between panes. On `:root` and not on `.stage`
+   because `.pane` and `.split__divider` are also mounted outside a stage — the
+   gallery's seam specimens do exactly that. The matching 6px corner is
+   DL-20.1's `--radius-tab` spelled at each use site rather than aliased here:
+   `design-language.test.ts` reads the literal role names out of the
+   stylesheet, so an alias would read as a radius picked by feel. */
+:root {
+  --stage-gutter: 4px;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  /* DL-18.7: explicit on the focal surface so its theme background does not
+     depend on whichever shell happens to contain it. */
+  background: var(--bg);
+}
+
+.stage__tabs {
+  position: absolute;
+  inset: 0;
+  /* A gutter on all four edges again (owner, 2026-09-18), replacing the
+     full-bleed grid of 2026-08-17: panes are rounded CARDS floating on the
+     gutter's chrome, so the stage no longer reads as one ruled surface and the
+     split lines no longer have to meet the strip's hairline — the whole reason
+     the 8px gutter was removed. 4px, not the old 8px, so the terminal keeps
+     its columns. */
+  padding: var(--stage-gutter);
+  display: flex;
+  /* The gutter has to be a DIFFERENT surface from the pane or the radius is
+     invisible: the pane background and `.stage` are both `--bg`. `--sidebar-bg`
+     is the chrome the rail already paints (DL-18.7), and
+     `derive-colors.test.ts` guarantees it never collapses into `--bg` in any
+     theme. */
+  background: var(--sidebar-bg);
+}
+
+/* ── DL-18.6: the stage's tab strip (sidebar layout only) ─────────────────
+   Sidebar mode's frame row is one row with two occupants: `.deck-frame` at
+   column 1 and this at column 2. It is `--frame-h` tall and stays transparent
+   on the stage's `--bg`, while the navigation-side occupant paints
+   `--sidebar-bg` (DL-18.2, DL-18.7). It introduces no extra
+   horizontal SURFACE; since 2026-08-16 it does close with the one hairline
+   `.tabbar` has always drawn under itself in top-tab mode, so both layouts
+   separate chrome from the work area the same way.
+
+   Right inset is the same arithmetic `.stage__tabs` uses below: the docked
+   panels own their columns top to bottom, so the strip stops at their edge
+   rather than running under them (DL-19.1). */
+
+.stage__strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--frame-h);
+  /* border-box so the seam below costs no height: the strip stays exactly
+     `--frame-h` tall and the terminal grid underneath keeps its geometry. */
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: transparent;
+  /* No hairline under the strip (owner, 2026-10-09): chrome and work area part
+     by the stage gutter alone. */
+  min-width: 0;
+}
+
+/* The feature toolbar's sidebar-mode mount, since 2026-08-16: the strip's
+   trailing end, pushed there by the chips' own free space rather than by a
+   fixed width, so a long tab list shortens itself before the actions move.
+   `margin-left: auto` and nothing else — `FeatureToolbar` measures whatever
+   box it lands in and folds its own overflow into `More`. */
+.stage__strip-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.stage--strip .stage__tabs {
+  top: var(--frame-h);
+}
+
+/* ── DL §30: the notice row ───────────────────────────────────────────────
+   No instance ships: the usage-consent row became the DL-29.9 decision MODAL
+   (`10-modals.css`) on 2026-08-22, and the Tauri-only migration banner left
+   with the Tauri host on 2026-10-12. The offsets below stay as the genre's
+   rule for the next notice.
+
+   The first row of the stage's own content, BENEATH `.stage__strip` and above
+   the terminal grid. Never above the strip: the strip sits at `top: 0`, and
+   since 2026-08-16 hiding the sidebar moves the traffic-light inset onto it,
+   so anything higher would render underneath OS-painted window buttons.
+
+   Absolute like the strip, in the same shape, so the shell grid in
+   `02-shell.css` is untouched — its three rows and the explicit `grid-row`
+   placements that depend on them are load-bearing, and a fourth row would
+   move every one of them. */
+
+/* DL-30.2: the notice COSTS the stage height rather than floating over the
+   panes — a terminal is a grid measured in rows, and an overlay would hide
+   output the user cannot scroll back into view.
+
+   `.stage__surface` IS offset since 2026-08-22, and stays offset now that
+   the consent row is a modal again: the offset is the genre's rule, not one
+   instance's, so a future notice inherits it instead of
+   re-finding the landmine. The browser's native view needs no host-side
+   change: its bounds are measured off the DOM element (`browser-panel.tsx`),
+   and a `top` change resizes that element, which the panel's ResizeObserver
+   reports. */
+.stage--notice .stage__tabs,
+.stage--notice .stage__surface {
+  top: var(--notice-h);
+}
+
+.stage--strip.stage--notice .stage__tabs,
+.stage--strip.stage--notice .stage__surface {
+  top: calc(var(--frame-h) + var(--notice-h));
+}
+
+.stage--dock .stage__strip {
+  right: var(--dock-w);
+}
+
+/* ── The document surface (docs/internals/file-surface.md) ─────────────────────────────────────
+   Same rectangle as `.stage__tabs`, laid over it rather than replacing it:
+   the terminal grid keeps its measured size while a file holds the stage, so
+   coming back costs no reflow and no PTY resize. Opaque for the same reason
+   — the panes are still there underneath. */
+
+.stage__surface {
+  position: absolute;
+  inset: 0;
+  /* Opaque is not enough on its own: several things INSIDE `.stage__tabs` open
+     with a z-index of their own — the pane's hover anchor (5), the search bar
+     (6), the zoom overlay (10), the focus bar (12), the divider's grab zone (1)
+     — and neither `.stage__tabs` nor `.stage` opens a stacking context, so at
+     `auto` they all compete in the root stacking context and paint THROUGH the
+     surface that covers them. 20 stands above every one of them and below the surfaces that
+     must still cover the document: the open board (30), Settings (35), the
+     modal tier (40) and the popovers (100+). */
+  z-index: 20;
+  /* Whatever gutter `.stage__tabs` gives its panes — `--stage-gutter` since
+     2026-09-18 — so the document lands on exactly the rectangle the terminal
+     was occupying instead of shifting by a gutter when the stage changes
+     hands. Both values move together or the handover jumps, and the gutter
+     surface has to match for the same reason. */
+  padding: var(--stage-gutter);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  background: var(--sidebar-bg);
+}
+
+/* The document is a card on the gutter like a pane is, so the handover does
+   not change the shape of the rectangle. Named children, not `> *`: the
+   markdown view-mode toggle is also a direct child and it is a CONTROL, which
+   keeps its own DL-20.1 role. Radius only, no clipping: Monaco's suggest and
+   hover widgets live inside the editor and an `overflow` here would cut them
+   off. */
+.stage__surface > .fileview,
+.stage__surface > .browser-panel,
+.stage__surface > .agent-board {
+  border-radius: var(--radius-tab);
+  /* The pane's edge, for the pane's reason — see `.pane` below. This outranks
+     `.fileview`'s own `--hair` border (`11-settings-screen.css`) only while
+     the file view IS the stage's card; inside the settings screen it stays a
+     line within a surface, which is what `--hair` is for. */
+  border: 1px solid var(--seam-split);
+  box-sizing: border-box;
+}
+
+.stage--strip .stage__surface {
+  top: var(--frame-h);
+}
+
+.stage--dock .stage__surface {
+  right: var(--dock-w);
+}
+
+/* The browser variant keeps the gutter the base rule gives it (2026-09-18):
+   a page floating on the chrome like every other card is worth more than the
+   few pixels a web page's own margins duplicate. The corners of the web
+   content stay SQUARE and that is accepted — the content is a native view the
+   host positions over `.browser-panel__view`, and CSS cannot round it. */
+.stage__surface--browser {
+  padding: var(--stage-gutter);
+}
+
+/* ── Browser surface: the browser tab's stage cover (DL-18.8) ────────────
+   Mounted inside `.stage__surface`, so it takes the document surface's
+   rectangle and explorer inset for free. The web content itself is a native
+   view the host positions over `.browser-panel__view`, which is why that
+   element paints nothing at all. */
+
+.browser-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  /* The radius comes from `.stage__surface > *`; this is what makes the URL
+     bar's own edges follow it instead of squaring off the top corners. */
+  overflow: hidden;
+}
+
+.browser-panel__bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.browser-panel__form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.browser-panel__url {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-tab);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: var(--ui-font);
+  font-size: var(--type-body);
+  outline: none;
+  /* DL-21.5: state changes ride the shared motion pair. */
+  transition: border-color var(--duration) var(--ease);
+}
+
+.browser-panel__url:focus {
+  /* DL-3.1: accent marks the interactive/focused state and nothing else. */
+  border-color: var(--accent);
+}
+
+.browser-panel__url::placeholder {
+  color: var(--text-faint);
+}
+
+.browser-panel__note {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: var(--type-meta);
+  /* DL-3.4: a hint is faint, not muted. */
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--hair);
+}
+
+.browser-panel__note--error {
+  color: var(--red);
+}
+
+/* Deliberately empty: the host's native view covers exactly this rectangle. */
+.browser-panel__view {
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  position: relative; /* anchor for the pane zoom overlay */
+}
+
+/* Pane zoom (tmux-style): the zoomed pane's element is reparented into an
+   overlay covering the tab, leaving the split layout untouched underneath */
+.zoom-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  z-index: 10;
+  /* The gutter's surface, not `--bg`: the zoomed pane is a card on the same
+     chrome as an unzoomed one, so its corners still read as corners. */
+  background: var(--sidebar-bg);
+}
+
+.tab-stage > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Split layout ────────────────────────────────────────── */
+
+.split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.split--row {
+  flex-direction: row;
+}
+
+.split--column {
+  flex-direction: column;
+}
+
+.split__child {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.split__child > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split__child {
+  transition: flex-grow 150ms ease;
+}
+
+/* No animation while dragging a divider — ratios must track the pointer */
+.split.is-resizing > .split__child {
+  transition: none;
+}
+
+/* A `--stage-gutter` GAP between panes since 2026-09-18, replacing the 2px
+   `--seam-split` line of 2026-09-11: two rounded cards separated by the
+   gutter's chrome need no drawn seam, and a line plus a gap would read as
+   three surfaces. The divider element stays — it IS the gap, so it keeps
+   owning the drag — and paints nothing until hover. Its grab zone is still
+   widened past its own width with a pseudo-element. */
+.split__divider {
+  position: relative;
+  flex: 0 0 var(--stage-gutter);
+  background: transparent;
+  /* The sidebar grip's shape, for the same reason it has it: a 4px accent
+     reads as a bar, and a bar takes DL-20.1's 2px detail corner. */
+  border-radius: var(--radius-flat);
+  transition: background var(--duration) var(--ease);
+}
+
+.split__divider::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+}
+
+.split--row > .split__divider {
+  cursor: col-resize;
+}
+.split--row > .split__divider::after {
+  inset: 0 -3px;
+}
+
+.split--column > .split__divider {
+  cursor: row-resize;
+}
+.split--column > .split__divider::after {
+  inset: -3px 0;
+}
+
+/* Full `--accent`, up from a 60% mix (owner, 2026-09-18): the sidebar grip and
+   this divider are now the same object — a 4px chrome gutter between two
+   `--bg` cards — and the 60% was justified by a difference between them that
+   no longer exists (DL-18.9). One idiom, one value. */
+.split__divider:hover,
+.split__divider.is-dragging {
+  background: var(--accent);
+}
+
+/* While dragging a divider, block mouse events on terminals so text is not selected */
+.split.is-resizing .pane {
+  pointer-events: none;
+}
+
+/* ── Pane ────────────────────────────────────────────────── */
+
+.pane-slot {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  /* Match the pane card corner (DL-18.12). */
+  border-radius: var(--radius-tab);
+}
+
+.pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  /* 6px (owner, 2026-09-18). The existing `overflow: hidden` is what makes it
+     visible: xterm's canvases fill the pane and would otherwise paint over the
+     rounded corners. */
+  border-radius: var(--radius-tab);
+  /* The card's own edge, added the same day the gutter was: `--sidebar-bg` is
+     only a few luminance units off `--bg`, so on a dark theme the gutter alone
+     left the corner legible and the straight runs invisible — the owner saw
+     exactly that in the dev app. `--seam-split` is the token the pane boundary
+     has always owned (DL-2.3); it moved from the line BETWEEN two panes to the
+     edge AROUND each one, so it is the same 20% of `--tone` doing the same
+     job at the new geometry. A real border and not `box-shadow: inset`
+     (DL-1.3's permitted hairline): xterm's canvases fill the padding box and
+     would paint straight over an inset line, while a border sits outside it.
+     The 1px costs the terminal nothing — the grid re-fits to the padding box
+     and a cell is never that small. */
+  border: 1px solid var(--seam-split);
+  /* DL-21.5: the focus edge below changes colour, it does not snap. */
+  transition: border-color var(--duration) var(--ease);
+}
+
+/* DL-18.12 (amended 2026-10-03, owner): the pane that holds the keyboard traces its card in the
+   rail's inverted-row fill (DL-27.22). `is-active` is `layout-engine.ts`'s own class and it is
+   set only while the tab holds more than one pane, so a lone pane keeps the ordinary edge. Only
+   the colour of the border DL-18.12 already draws changes, so nothing moves — and it stays a
+   real border for the reason above. The variable the rail row reads is scoped to that row,
+   which is why the mix is restated here. */
+.pane-slot.is-active > .pane {
+  border-color: color-mix(in srgb, var(--text-primary) 74%, var(--sidebar-bg));
+}
+
+.pane__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  font-size: var(--type-meta);
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--seam-recessed);
+  background: var(--chrome-1);
+  flex-shrink: 0;
+}
+
+/* Pane bar hidden mode: the bar stays in the DOM (drag ghost and anchor
+   read its cwd) — only its visibility is CSS-driven (showPaneBar setting) */
+.pane-bar-hidden .pane__bar {
+  display: none;
+}
+
+/* ── Hover anchor: centered grip, drag handle when the bar is hidden ── */
+
+.pane__anchor {
+  position: absolute;
+  /* Clears the divider above: `.split__divider::after` widens the 2px seam's
+     grab zone 3px into this pane, and the pill used to start at y=-1px once
+     its hidden `translateY(-6px)` was applied — sitting right on the grab
+     zone the pointer was aiming for. */
+  top: 12px;
+  left: 50%;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  /* The pill carries the grip and nothing else, so the padding IS the hit
+     target: when the bar is hidden this is the pane's only drag handle
+     (`pane-drag.ts`), and a bare glyph is too small to aim at. */
+  padding: 4px 12px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 999px;
+  background: var(--chrome-2);
+  font-family: var(--ui-font);
+  font-size: var(--type-meta);
+  color: var(--text-muted);
+  cursor: grab;
+  opacity: 0;
+  /* An opacity-0 element still takes the pointer. While hidden the pill must
+     be transparent to hit-testing, or hovering the divider lands on the pill,
+     bubbles to the pane and reveals it instead of letting the seam be dragged.
+     Re-enabled with the visible state below. */
+  pointer-events: none;
+  transform: translate(-50%, -6px);
+  transition:
+    opacity var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.pane-bar-hidden .pane__anchor {
+  display: flex;
+}
+
+.pane-bar-hidden .pane.is-anchor-zone .pane__anchor {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+/* A covered pane never receives the `mouseleave` that clears `is-anchor-zone`,
+   so while a document or the browser holds the stage the pill can still be in
+   its revealed state underneath. The surface's own `z-index` already hides it;
+   this takes it out of the layout too, so no hover state survives the handover.
+   Outranks the `.pane-bar-hidden` rule above on specificity, and is removed
+   with the surface, so nothing changes for a terminal tab. */
+.stage:has(.stage__surface) .pane__anchor {
+  display: none;
+}
+
+.pane__anchor-grip {
+  color: var(--text-faint);
+  /* Tightens the two "⋮⋮" glyphs. Retuned when this subtree left mono: the
+     old -2px was measured against a monospace advance width. DL-4.3: the one
+     sanctioned tracking exception in this stylesheet — this shapes an
+     icon-like grip, not readable copy. */
+  letter-spacing: -1px;
+  flex-shrink: 0;
+  /* The glyph sits on its text baseline with the face's own descent below it,
+     which put the pill's optical centre off. */
+  line-height: 1;
+}
+
+/* ── Search bar (Cmd+F) ─────────────────────────────────── */
+
+.search-bar {
+  position: absolute;
+  top: 34px;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  /* DL-2.3: a surface floating above a pane takes the raised seam. DL-1.3:
+     the blurred shadow that sat here is banned outright — the last real one in
+     this file, and DL §10's fourth ledger row. Depth is the background step
+     plus the seam, which is what every other floating surface already uses. */
+  border: 1px solid var(--seam-raised);
+  border-radius: var(--radius-surface);
+  background: var(--chrome-2);
+  font: var(--type-body) var(--ui-font);
+}
+
+/* Pane bar hidden → no header to clear, hug the top edge */
+.pane-bar-hidden .search-bar {
+  top: 8px;
+}
+
+.search-bar__input {
+  width: 160px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-tab);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  outline: none;
+}
+
+.search-bar__count {
+  min-width: 34px;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-bar__btn {
+  padding: 2px 5px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+/* DL-21.2: hover is the quiet wash, never the selection wash — this button
+   rests transparent like `.iconbtn`, so it takes the same hover step. */
+.search-bar__btn:hover {
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+}
+
+.pane__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.pane__cwd {
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane__badge {
+  margin-left: auto;
+  font-family: var(--ui-font);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: var(--radius-control);
+}
+
+.pane__badge--agent {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 90%, var(--fg));
+}
+
+.pane__badge--shell {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+
+.pane__term {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.pane__term .xterm {
+  height: 100%;
+}
+
+/* xterm's viewport defaults to a black background — make it transparent so the
+   theme background shows through, avoiding a black strip in the leftover space
+   at the bottom of a pane (height not divisible by the cell height).
+   xterm 6 scrolls via DomScrollableElement; the viewport still has
+   overflow-y:scroll from xterm.css, which paints a native WebKit scrollbar in
+   that leftover strip (white stub under the custom bar). Hide it. */
+.pane__term .xterm-viewport {
+  background-color: transparent !important;
+  scrollbar-width: none;
+}
+
+.pane__term .xterm-viewport::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none;
+}
+
+/* xterm 6 replaced the native viewport scrollbar with DomScrollableElement
+   (VS Code-style .scrollbar > .slider). ::-webkit-scrollbar rules never apply. */
+.pane__term .xterm-scrollable-element > .scrollbar.vertical {
+  width: 6px !important;
+}
+
+.pane__term .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  width: 6px !important;
+  left: 0 !important;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--fg) 25%, transparent) !important;
+}
+
+.pane__term .xterm-scrollable-element > .scrollbar > .slider:hover {
+  background: color-mix(in srgb, var(--fg) 40%, transparent) !important;
+}
+
+.pane__term .xterm-scrollable-element > .scrollbar > .slider.active {
+  background: color-mix(in srgb, var(--fg) 50%, transparent) !important;
+}
+
+/* ── Status bar ──────────────────────────────────────────── */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  font-family: var(--ui-font);
+  font-size: var(--type-meta);
+  color: var(--text-muted);
+  background: var(--chrome-1);
+  border-top: 1px solid var(--seam-recessed);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.status__seg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.status__seg--accent {
+  color: color-mix(in srgb, var(--accent) 85%, var(--fg));
+}
+
+.status__vsep {
+  width: 1px;
+  height: 13px;
+  background: var(--hair);
+  flex-shrink: 0;
+}
+
+.status__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status__hint {
+  color: var(--text-faint);
+}
+
+.status__kbd {
+  font-size: var(--type-micro);
+  padding: 1px 5px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hair-strong);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+.status__gitdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+/* A file surface's unsaved-changes mark — same dot shape as `.status__gitdot`
+   above, `--accent` rather than `--green` since this signals a pending write,
+   not a VCS fact. */
+.status__dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 6px;
+}

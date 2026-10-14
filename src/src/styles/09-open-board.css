@@ -1,0 +1,795 @@
+/* ---------- Open board — Cursor-style home + config views ---------- */
+/* The board's paddings/widths are authored border-box (there is no global
+   reset in this stylesheet, and divs default to content-box). */
+.open-board,
+.open-board * {
+  box-sizing: border-box;
+}
+.open-board {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* DL-18.6/18.9: the stage's first `--frame-h` is the frame row's stage-side
+   half, and while the sidebar is hidden it is the entire frame row — the
+   traffic-light inset, the control that brings the sidebar back, the feature
+   toolbar and the dock's control all live there. `inset: 0` covered it, so a
+   collapsed sidebar plus this board left no way back to either edge (and with
+   no tabs the board cannot be cancelled either). Same rectangle
+   `.stage__surface` has always taken for the document. Sidebar mode only:
+   top-tab mode's `.tabbar` is outside the stage and was never covered. */
+.stage--strip .open-board {
+  top: var(--frame-h);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Home is the start surface: one heading, one primary action, and recent
+   workspaces. Live work stays in the Agent Rail; history gets its own view. */
+.board-home {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  padding: 11vh 24px 40px;
+}
+.applogo {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-control);
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--chrome-2);
+  border: 1px solid var(--hair);
+}
+.applogo svg {
+  width: 14px;
+  height: 14px;
+  fill: var(--text-faint);
+}
+.applogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The home mark reads as the screen's own identity, not a chrome icon —
+   double the rail-era size. */
+.applogo--lg {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: 0;
+}
+.board-home__title {
+  margin: 16px 0 0;
+  font-size: var(--type-title);
+  font-weight: 650;
+  line-height: 1.2;
+}
+.board-home__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+.home-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 33px;
+  padding: 0 16px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--type-body);
+  font-weight: 590;
+  background: none;
+  border: 1px solid var(--hair-strong);
+  color: var(--text-muted);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+.home-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.home-action:focus-visible,
+.board-home__resume:focus-visible,
+.board-home__missing-toggle:focus-visible,
+.row__open:focus-visible,
+.row__x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.home-action:disabled,
+.board-home__resume:disabled,
+.row__open:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.home-action--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.home-action--primary:hover:not(:disabled) {
+  border-color: var(--text-primary);
+  color: var(--bg);
+}
+.home-action kbd {
+  font: inherit;
+  font-size: var(--type-meta);
+  /* DL-3.4: keyboard hints are `--text-faint`. */
+  color: var(--text-faint);
+}
+.home-action--primary kbd {
+  color: inherit;
+}
+.board-home__resume {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-tab);
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--type-meta);
+  cursor: pointer;
+}
+.board-home__resume:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--state-hover-bg);
+}
+/* The standing "Star on GitHub" row (2026-08-19, owner). A resting call to
+   action, NOT a state marker: the accent tint here is DL-3.1's "interactive",
+   the same reading `.home-action--primary`'s solid fill already has on this
+   screen, and nothing on the board is ever marked active this way. It is
+   quieter than the primary action above it (a 10% wash, not a fill) and
+   louder than `.board-home__resume` below it, which is the order the board's
+   own actions come in. */
+.board-home__star {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-tab);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-meta);
+  font-weight: 590;
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+.board-home__star:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.board-home__star:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.board-home__star:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+/* The star is the only coloured mark: `--accent` on the glyph, so the row
+   reads as one object rather than as a warning (DL-3.2 owns `--yellow`). */
+.board-home__star-mark {
+  color: var(--accent);
+}
+
+.board-home__opening {
+  margin: 12px 0 0;
+  font-size: var(--type-meta);
+  color: var(--text-muted);
+}
+
+/* The board's one warning line, where the config footer's summary used to
+   say this (2026-08-16). DL-3.2: yellow is "something needs your attention",
+   and it only ever appears when an open did not happen. */
+.board-home__notice {
+  margin: 14px 0 0;
+  max-width: 460px;
+  font-size: var(--type-body);
+  color: var(--yellow);
+  text-align: center;
+}
+
+/* The board's decision line: the same yellow sentence, plus the two ways
+   forward. It is a block rather than a paragraph because it ASKS — a launch is
+   waiting on it — and DL-19.7 would rather a control be omitted than inert, so
+   both buttons exist only while the question does. */
+.board-home__decision {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 0;
+  max-width: 460px;
+  padding: 11px 14px;
+  border-radius: var(--radius-control);
+  /* DL-1.3: an inset hairline, never a border — no layout, nothing to clip. */
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+  background: var(--chrome-1);
+  text-align: center;
+}
+.board-home__decision-text {
+  margin: 0;
+  font-size: var(--type-body);
+  color: var(--yellow);
+}
+.board-home__decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* The board's own text-action shape (`.gsep button`), not a new one: bare
+   copy, `--accent` on the one that acts (DL-3.1) and `--text-muted` on the
+   one that leaves. */
+.board-home__decision-go,
+.board-home__decision-fix {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--type-meta);
+  color: var(--accent);
+  cursor: pointer;
+}
+.board-home__decision-fix {
+  color: var(--text-muted);
+}
+.board-home__decision-go:hover,
+.board-home__decision-fix:hover {
+  color: var(--text-primary);
+}
+.board-home__decision-go:focus-visible,
+.board-home__decision-fix:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.board-home__decision-go:disabled,
+.board-home__decision-fix:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.board-home__recents {
+  width: min(480px, 100%);
+  margin-top: 34px;
+}
+.board-home__recents-head {
+  padding: 0 8px 6px;
+  font-size: var(--type-meta);
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.board-home__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One recent is a group: a full-width native button and a sibling Remove. */
+.row {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-control);
+  transition: background var(--duration) var(--ease);
+}
+.row + .row {
+  margin-top: 1px;
+}
+.row:hover,
+.row:focus-within {
+  background: var(--state-hover-bg);
+}
+/* The row the composer's Workspace field is currently answering. DL-32.1 says
+   choosing a recent "establishes context", and the wash is how selection is
+   said everywhere else in Deck (DL-21.1 on a chip, DL-27.8 on a rail row) —
+   without it the row set `aria-pressed` and painted nothing, so the only
+   feedback for a click was a chip several hundred pixels above it. Declared
+   after the hover rule, which it shares specificity with: a selected row stays
+   selected under the pointer. */
+.row.is-selected {
+  background: var(--tab-active-bg);
+}
+.row__open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 30px 7px 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row__ico {
+  /* Geometry and stroke belong to DeckIcon — a width or stroke-width here
+     would win over its attributes and split icon sizing in two (DL-14.3).
+     Colour is `color`, so the icon's `currentColor` keeps resolving. */
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.row__name {
+  min-width: 0;
+  font-size: var(--type-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row__headline {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 7px;
+}
+.row__state {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-control);
+  color: var(--text-faint);
+  font-size: var(--type-micro);
+  line-height: 1.2;
+}
+.row__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.row__path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ui-font);
+  font-size: var(--type-micro);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row__combo {
+  flex: none;
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A remembered agent that cannot run any more. DL-3.2: `--yellow` is
+   attention a person must act on — one step below `--red`'s failure, which is
+   right, since the workspace still opens. `flex: none` so it is never the
+   part of the meta line that gets ellipsised away. */
+.row__stale {
+  flex: none;
+  font-size: var(--type-micro);
+  color: var(--yellow);
+  white-space: nowrap;
+}
+.row__time {
+  flex: none;
+  font-size: var(--type-micro);
+  color: var(--text-faint);
+}
+.row__x {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+  padding: 0;
+}
+.row:hover .row__x,
+.row:focus-within .row__x {
+  opacity: 1;
+}
+.row__x:hover {
+  background: color-mix(in srgb, var(--red) 22%, transparent);
+  color: var(--red);
+}
+
+.row.is-missing .row__name {
+  color: var(--text-faint);
+}
+.row.is-missing .row__ico {
+  color: var(--yellow);
+}
+.row.is-missing .row__path {
+  text-decoration: line-through;
+}
+
+/* "Missing" group heading with its remove-all action. */
+.gsep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 9px 5px;
+  font-size: var(--type-meta);
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.gsep button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--type-meta);
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+}
+.gsep .board-home__missing-toggle {
+  color: var(--text-faint);
+}
+
+/* Session history is a dedicated Open Board view, never a second block under
+   workspace recents. It reuses the dock-width Sessions body and its states. */
+.board-sessions {
+  width: min(640px, 100%);
+  min-height: 0;
+  margin: 0 auto;
+  padding: 34px 24px 40px;
+  overflow-y: auto;
+}
+.board-sessions__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.board-sessions__head .board-back {
+  margin: 0;
+}
+.board-sessions__head h1 {
+  margin: 0;
+  font-size: var(--type-title);
+  font-weight: 650;
+}
+
+/* Sits directly under the rail head, above the recents list — head padding
+   supplies the gap above it, so only the sides and bottom are padded here. */
+/* Create-worktree form (task 16): back button, wshead, its own field stack
+   and a footer. The config view it once shared this shell with is gone
+   (2026-08-16); `min-width: 0` lets the column shrink below the content's
+   min-content on a narrow window, so paths ellipsize instead of pushing the
+   footer actions off-screen. */
+.board-worktree {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.board-worktree__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 18px;
+}
+.wtf__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+  margin-top: 20px;
+}
+.wtf__label {
+  font-size: var(--type-meta);
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.wtf__row {
+  display: flex;
+  gap: 8px;
+}
+.wtf__select,
+.wtf__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--type-body);
+  padding: 7px 10px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-control);
+}
+.wtf__select:focus,
+.wtf__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.wtf__browse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: var(--type-body);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.wtf__browse:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.wtf__error {
+  margin-top: 16px;
+  font-size: var(--type-body);
+  /* DL-3.2: --red marks a failure, not the softer --yellow warning tone —
+     a worktree that failed to create is a stop, not a heads-up. */
+  color: var(--red);
+}
+/* Nothing on this footer's left (there is no summary line any more) — the
+   actions move to the right so the primary button still lands where a form's
+   confirm action is expected. */
+.board-worktree .foot {
+  justify-content: flex-end;
+}
+
+.board-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--type-body);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.board-back:hover {
+  color: var(--text-primary);
+}
+
+.wshead {
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--hair);
+}
+.wshead__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wshead__path {
+  margin-top: 4px;
+  font-family: var(--ui-font);
+  font-size: var(--type-micro);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Agent: one row of chips. Digit keys 1-9/0 still pick, but the chips stopped
+   WEARING their number on 2026-08-16 — a chip is a mark and a name. */
+.agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.achip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 9px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hair);
+  background: var(--chrome-1);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--type-body);
+}
+.achip:hover {
+  background: var(--chrome-2);
+}
+.achip.is-selected {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 10%, var(--chrome-1));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.achip__logo {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: block;
+}
+/* Declared agents ship no brand mark, so they wear the same letter avatar the
+   workspace rail uses (lib/letter-avatar.ts) rather than a generic glyph. */
+.achip__letter {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+/* Declared, but its binary is not on $PATH. Still selectable — the footer says
+   what will happen — so this dims rather than disables (DL-3.2). */
+.achip.is-missing {
+  color: var(--text-faint);
+  border-style: dashed;
+}
+.achip.is-shell {
+  color: var(--text-muted);
+}
+.shellmark {
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  font-family: var(--ui-font);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Preset thumbnail: bg-colored gutters; each pane is a terminal mini —
+   two text bars + a green cursor drawn as background-image layers, so the
+   colors follow the theme tokens and flip with a light background. */
+.preset-thumb {
+  display: flex;
+  height: 70px;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--bg);
+  padding: 3px;
+}
+.preset-thumb__split {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+}
+.preset-thumb__split.is-column {
+  flex-direction: column;
+}
+.preset-thumb__branch {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.preset-thumb__branch > * {
+  flex: 1;
+}
+.preset-thumb__leaf {
+  --bar: color-mix(in srgb, var(--fg) 28%, transparent);
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius-control);
+  background-color: color-mix(in srgb, var(--bg) 80%, var(--tone));
+  background-image:
+    linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar)),
+    linear-gradient(var(--green), var(--green));
+  background-repeat: no-repeat;
+  background-size:
+    44% 2px,
+    64% 2px,
+    14% 2px;
+  background-position:
+    4px 5px,
+    4px 9px,
+    4px 13px;
+}
+/* Board footer: actions only — the summary line and its key hints went with
+   the config view (2026-08-16); the worktree form is the last screen with a
+   footer and it has never had a lead. */
+.foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 24px;
+  border-top: 1px solid var(--hair);
+}
+.foot__act {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  font: inherit;
+  font-size: var(--type-body);
+  font-weight: 510;
+  height: 29px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hair-strong);
+  background: var(--state-hover-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+.btn:hover {
+  background: var(--tab-active-bg);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--accent) 72%, #000);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 590;
+  padding: 0 18px;
+}
+.btn--primary:hover {
+  background: color-mix(in srgb, var(--accent) 92%, var(--tone));
+}
+.btn--primary kbd {
+  font: inherit;
+  font-size: var(--type-meta);
+  opacity: 0.6;
+}
