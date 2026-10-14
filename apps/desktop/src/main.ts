@@ -23,6 +23,8 @@ const LEGACY_EXE = 'Claude Code Monitor.exe'
 const IS_MAC = process.platform === 'darwin'
 const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
 const ORIGIN = `http://127.0.0.1:${PORT}`
+const DEV_URL = app.isPackaged ? null : devUrlOf(process.argv)
+const PAGE_ORIGIN = DEV_URL?.origin ?? ORIGIN
 const START_HIDDEN = process.argv.includes('--hidden')
 const PORTABLE_EXE = process.env.PORTABLE_EXECUTABLE_FILE
 // The collector refuses requests without it, so the dashboard opens only in this app's windows.
@@ -56,9 +58,21 @@ let disposeLayouts: (() => void) | null = null
 const ROOTS_TTL_MS = 2_000
 let rootsCache: { at: number; dirs: string[] } | null = null
 
+function devUrlOf(argv: readonly string[]): URL | null {
+  const raw = argv.find((a) => a.startsWith('--dev-url='))?.slice('--dev-url='.length)
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost') ? url : null
+  } catch {
+    return null
+  }
+}
+
 const isAppUrl = (url: string): boolean => {
   try {
-    return new URL(url).origin === ORIGIN
+    const origin = new URL(url).origin
+    return origin === ORIGIN || origin === PAGE_ORIGIN
   } catch {
     return false
   }
@@ -232,7 +246,7 @@ function repairLoginItem(): void {
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
     { label: t.trayOpen, click: showMain },
-    { label: t.trayCompact, click: () => openAppWindow(`${ORIGIN}/?mode=compact`) },
+    { label: t.trayCompact, click: () => openAppWindow(`${PAGE_ORIGIN}/?mode=compact`) },
     { type: 'separator' },
     {
       label: IS_MAC ? t.trayLoginMac : t.trayLogin,
@@ -296,6 +310,16 @@ async function confirmQuit(): Promise<boolean> {
 
 let booting: Promise<void> | null = null
 
+/** Vite starts alongside the app; give it time before the first load (a miss is a blank page, Ctrl+R retries). */
+async function waitForDevServer(url: URL): Promise<void> {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    const ok = await fetch(url, { signal: AbortSignal.timeout(1_000) }).then((r) => r.ok, () => false)
+    if (ok) return
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  }
+}
+
 function boot(): Promise<void> {
   booting ??= (async () => {
     if (!mainWindow) return
@@ -303,7 +327,8 @@ function boot(): Promise<void> {
     try {
       await mainWindow.loadURL(loadingPage(t)).catch(() => undefined)
       await host.start()
-      if (!showingError) await mainWindow.loadURL(`${ORIGIN}/`)
+      if (DEV_URL) await waitForDevServer(DEV_URL)
+      if (!showingError) await mainWindow.loadURL(`${PAGE_ORIGIN}/`)
     } catch (err) {
       showError(err instanceof FatalError ? err.reason : { kind: 'exited', code: null })
     }
@@ -322,6 +347,7 @@ function collectorEnv(): NodeJS.ProcessEnv {
     CCM_STATUSLINE_BRIDGE: bridge.script,
     CCM_STATUSLINE_COMMAND: bridge.command,
     CCM_APP_KEY: APP_KEY,
+    ...(DEV_URL ? { CCM_DEV_ORIGIN_PORT: DEV_URL.port || '80' } : {}),
     ...(IS_MAC ? { CCM_TOAST_BACKEND: 'electron' } : { CCM_TOAST_LINK: `${LINK_SCHEME}://` }),
   }
 }
@@ -353,6 +379,8 @@ function logReport(pageReport: string): string {
 
 function sendAppKey(): void {
   const urls = [`${ORIGIN}/*`, `ws://127.0.0.1:${PORT}/*`]
+  // Vite proxies /ws to the collector and passes the header on.
+  if (DEV_URL) urls.push(`${DEV_URL.origin}/*`, `ws://${DEV_URL.host}/*`)
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls }, (details, callback) =>
     callback({ requestHeaders: { ...details.requestHeaders, 'X-CCM-App': APP_KEY } }),
   )
@@ -450,7 +478,7 @@ async function ready(): Promise<void> {
   ptys = new PtySupervisor({
     script: unpacked('pty-host.cjs'),
     nodePty: resource('pty/node_modules/@lydell/node-pty', 'node_modules/@lydell/node-pty'),
-    origins: [ORIGIN],
+    origins: [...new Set([ORIGIN, PAGE_ORIGIN])],
     logFile: path.join(app.getPath('logs'), 'pty.log'),
     shellInitDir: path.join(DATA_DIR, 'shell-init'),
   })

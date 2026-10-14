@@ -9,6 +9,7 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
+    strictPort: true,
     proxy: {
       '/ws': { target: collector, ws: true, changeOrigin: true },
       '/health': { target: collector, changeOrigin: true },
