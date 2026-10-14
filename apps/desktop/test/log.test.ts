@@ -213,4 +213,15 @@ describe.skipIf(!git)('git log repo', () => {
     expect(root.ok && root.text).toContain('+one')
     expect(await commitDiff(repo, h.main2, '../x')).toEqual({ ok: false, error: 'denied' })
   })
+
+  it('reports a new branch through the git dir watcher', async () => {
+    const { GitDirWatcher } = await import('../src/preview/changes')
+    const seen: string[] = []
+    const w = new GitDirWatcher((r) => seen.push(r))
+    await w.add(repo)
+    run('update-ref', 'refs/heads/watched', h.root)
+    for (let i = 0; i < 30 && !seen.length; i++) await new Promise((r) => setTimeout(r, 100))
+    w.closeAll()
+    expect(seen.length).toBeGreaterThan(0)
+  })
 })

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell, WebContents } from 'electron'
-import { discardFile, discardHunk, diff as changesDiff, fileDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
+import { discardFile, discardHunk, diff as changesDiff, fileDiff, GitDirWatcher, status as changesStatus, toplevel, type ChangesError } from './changes'
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir } from './explorer'
 import { readFileForView } from './files'
@@ -9,6 +9,7 @@ import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { GrantStore } from './grants'
 import { FileListCache } from './listFiles'
+import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { existingDir } from '../pick-start'
 import type { PreviewServer } from './server'
@@ -75,6 +76,7 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
+  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry',
 ]
 
@@ -112,6 +114,18 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const real = await realOrNull(root)
     const repo = real && repos.get(rootKey(real))
     return repo && (await allowedPath(repo.from)) ? repo.root : null
+  }
+
+  /** Known repo for `dir`, else its toplevel registered once the folder is allowed (Changes and Log panes). */
+  async function registerRepo(dir: unknown): Promise<string | { error: ChangesError }> {
+    const known = await repoOf(dir)
+    if (known) return known
+    const ok = await allowedPath(dir)
+    if (!ok) return { error: 'denied' }
+    const top = await toplevel(ok.real)
+    if ('error' in top) return top
+    repos.set(rootKey(top.root), { root: top.root, from: ok.real })
+    return top.root
   }
 
   watcher.listen((root, changed) => {
@@ -267,14 +281,8 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
 
   ipcMain.handle('ccm:changes-status', async (event, dir: unknown) => {
     if (!isAppFrame(event)) return { ok: false, error: 'denied' }
-    const known = await repoOf(dir)
-    if (known) return changesStatus(known)
-    const ok = await allowedPath(dir)
-    if (!ok) return { ok: false, error: 'denied' }
-    const top = await toplevel(ok.real)
-    if ('error' in top) return { ok: false, error: top.error }
-    repos.set(rootKey(top.root), { root: top.root, from: ok.real })
-    return changesStatus(top.root)
+    const repo = await registerRepo(dir)
+    return typeof repo === 'string' ? changesStatus(repo) : { ok: false, error: repo.error }
   })
 
   ipcMain.handle('ccm:changes-diff', async (event, req: unknown) => {
@@ -296,6 +304,36 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
       if ('root' in top) repos.set(rootKey(top.root), { root: top.root, from: ok.real })
       return top
     })
+  })
+
+  ipcMain.handle('ccm:log-refs', async (event, dir: unknown) => {
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    const repo = await registerRepo(dir)
+    return typeof repo === 'string' ? listRefs(repo) : { ok: false, error: repo.error }
+  })
+
+  const logRepo = async (event: IpcMainInvokeEvent, root: unknown): Promise<string | null> => (isAppFrame(event) ? repoOf(root) : null)
+  const denied = { ok: false, error: 'denied' } as const
+
+  ipcMain.handle('ccm:log-page', async (event, req: unknown) => {
+    const { root, query } = (req ?? {}) as { root?: unknown; query?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? logPage(repo, query) : denied
+  })
+  ipcMain.handle('ccm:log-commit', async (event, req: unknown) => {
+    const { root, hash } = (req ?? {}) as { root?: unknown; hash?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? commitDetail(repo, hash) : denied
+  })
+  ipcMain.handle('ccm:log-contains', async (event, req: unknown) => {
+    const { root, hash } = (req ?? {}) as { root?: unknown; hash?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? branchesContaining(repo, hash) : denied
+  })
+  ipcMain.handle('ccm:log-diff', async (event, req: unknown) => {
+    const { root, hash, path: rel, opts, origPath } = (req ?? {}) as { root?: unknown; hash?: unknown; path?: unknown; opts?: unknown; origPath?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? commitDiff(repo, hash, rel, opts, origPath) : denied
   })
 
   ipcMain.handle('ccm:changes-discard', async (event, req: unknown) => {

@@ -1,4 +1,4 @@
-import type { EntryNameProblem } from '@ccm/shared'
+import type { CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, RefsResult } from '@ccm/shared'
 import { desktop } from './desktop'
 import type { DirEntry } from './explorer/tree'
 
@@ -94,6 +94,11 @@ interface PreviewBridge {
   changesStatus?: (dir: string) => Promise<ChangesStatus>
   changesDiff?: (root: string, path: string, opts?: ChangesDiffOpts) => Promise<ChangesDiff>
   changesFile?: (path: string) => Promise<ChangesFile>
+  logRefs?: (dir: string) => Promise<RefsResult>
+  logPage?: (root: string, query: LogQuery) => Promise<LogPageResult>
+  logCommit?: (root: string, hash: string) => Promise<CommitDetail>
+  logContains?: (root: string, hash: string) => Promise<ContainsResult>
+  logDiff?: (root: string, hash: string, path: string, opts?: ChangesDiffOpts, origPath?: string) => Promise<ChangesDiff>
   changesDiscard?: (root: string, path: string, hunk?: string) => Promise<ChangesResult>
   changesWatch?: (root: string) => Promise<boolean>
   changesUnwatch?: (root: string) => Promise<boolean>
@@ -133,6 +138,19 @@ export const changesDiff = (root: string, path: string, opts?: ChangesDiffOpts):
   bridge?.changesDiff?.(root, path, opts) ?? Promise.resolve(unavailable)
 export const hasFileChanges = typeof bridge?.changesFile === 'function'
 export const changesFile = (path: string): Promise<ChangesFile> => bridge?.changesFile?.(path) ?? Promise.resolve(unavailable)
+
+type Unavailable = { ok: false; error: 'unavailable' }
+export type WebRefs = RefsResult | Unavailable
+export type WebLogPage = LogPageResult | Unavailable
+export type WebCommitDetail = CommitDetail | Unavailable
+export type WebContains = ContainsResult | Unavailable
+export const hasLog = typeof bridge?.logPage === 'function'
+export const logRefs = (dir: string): Promise<WebRefs> => bridge?.logRefs?.(dir) ?? Promise.resolve(unavailable)
+export const logPage = (root: string, query: LogQuery): Promise<WebLogPage> => bridge?.logPage?.(root, query) ?? Promise.resolve(unavailable)
+export const logCommit = (root: string, hash: string): Promise<WebCommitDetail> => bridge?.logCommit?.(root, hash) ?? Promise.resolve(unavailable)
+export const logContains = (root: string, hash: string): Promise<WebContains> => bridge?.logContains?.(root, hash) ?? Promise.resolve(unavailable)
+export const logDiff = (root: string, hash: string, path: string, opts?: ChangesDiffOpts, origPath?: string): Promise<ChangesDiff> =>
+  bridge?.logDiff?.(root, hash, path, opts, origPath) ?? Promise.resolve(unavailable)
 export const changesDiscard = (root: string, path: string, hunk?: string): Promise<ChangesResult> =>
   bridge?.changesDiscard?.(root, path, hunk) ?? Promise.resolve(unavailable)
 export const changesWatch = (root: string): Promise<boolean> => bridge?.changesWatch?.(root) ?? Promise.resolve(false)

@@ -43,6 +43,12 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   changesStatus: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-status', dir),
   changesDiff: (root: string, path: string, opts?: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:changes-diff', { root, path, opts }),
   changesFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-file', path),
+  logRefs: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:log-refs', dir),
+  logPage: (root: string, query: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:log-page', { root, query }),
+  logCommit: (root: string, hash: string): Promise<unknown> => ipcRenderer.invoke('ccm:log-commit', { root, hash }),
+  logContains: (root: string, hash: string): Promise<unknown> => ipcRenderer.invoke('ccm:log-contains', { root, hash }),
+  logDiff: (root: string, hash: string, path: string, opts?: unknown, origPath?: string): Promise<unknown> =>
+    ipcRenderer.invoke('ccm:log-diff', { root, hash, path, opts, origPath }),
   // `hunk` stays undefined (not null) for a whole-file discard: the handler branches on `hunk !== undefined`.
   changesDiscard: (root: string, path: string, hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-discard', { root, path, hunk }),
   changesWatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-watch', root),

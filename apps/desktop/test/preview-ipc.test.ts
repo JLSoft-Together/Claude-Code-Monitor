@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -6,6 +7,7 @@ import { GrantStore } from '../src/preview/grants'
 import { registerPreviewIpc } from '../src/preview/ipc'
 import { workspaceChord } from '../src/preview/keys'
 import type { PreviewServer } from '../src/preview/server'
+import { findGit } from '../src/pty/git'
 import type { RootWatcher } from '../src/preview/watch'
 
 const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-ipc-')))
@@ -130,5 +132,29 @@ describe('workspaceChord', () => {
     expect(workspaceChord(key('KeyK', { meta: true }), true)).not.toBeNull()
     expect(workspaceChord(key('KeyC', { meta: true }), true)).toBeNull()
     expect(workspaceChord(key('Tab', { control: true }), true)).toBeNull()
+  })
+})
+
+describe.skipIf(!findGit())('ccm:log-*', () => {
+  const repoDir = path.join(project, 'logrepo')
+  const g = (...a: string[]) => execFileSync(findGit()!, ['-C', repoDir, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a], { encoding: 'utf8' }).trim()
+
+  it('serves refs and pages only for a registered repo inside the roots', async () => {
+    mkdirSync(repoDir, { recursive: true })
+    execFileSync(findGit()!, ['init', '-q', '-b', 'main', repoDir])
+    writeFileSync(path.join(repoDir, 'a.txt'), 'a\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'one')
+    const hash = g('rev-parse', 'HEAD')
+    const { call } = setup(false)
+    expect(await call('ccm:log-page', { root: repoDir, query: {} })).toEqual({ ok: false, error: 'denied' })
+    expect(await call('ccm:log-refs', outside)).toEqual({ ok: false, error: 'denied' })
+    const refs = (await call('ccm:log-refs', repoDir)) as { ok: boolean; root: string }
+    expect(refs.ok).toBe(true)
+    const page = (await call('ccm:log-page', { root: refs.root, query: {} })) as { ok: boolean; commits: { hash: string }[] }
+    expect(page.commits.map((c) => c.hash)).toEqual([hash])
+    expect(((await call('ccm:log-commit', { root: refs.root, hash })) as { ok: boolean }).ok).toBe(true)
+    expect(((await call('ccm:log-contains', { root: refs.root, hash })) as { branches: string[] }).branches).toEqual(['main'])
+    expect(((await call('ccm:log-diff', { root: refs.root, hash, path: 'a.txt' })) as { text: string }).text).toContain('+a')
   })
 })
