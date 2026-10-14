@@ -464,6 +464,17 @@ A user request (not monitoring): a tab listing popular MCP servers (Figma, Meshy
 - Unity has no CLI install: CoplayDev "MCP for Unity" configures Claude Code from the Unity editor, so the card shows the steps and its status once a server named `unityMCP` / `UnityMCP` / `unity-mcp` appears. Unity's own `unity@claude-plugins-official` is a skills plugin.
 - Tested against the real CLI with `CLAUDE_CONFIG_DIR` pointed at a temp folder: `add-json` in all three scopes, `mcp list` states (connected / pending / 401 failure), `marketplace add` + project `plugin install` + `uninstall`.
 
+## 11s. Git Log pane reads history with plain git (v30, desktop only, read-only, 2026-10-15)
+
+Not monitoring: an IntelliJ-style log of a project's repo. Every command is read-only and runs through `execGit` (`GIT_LITERAL_PATHSPECS=1`, no colour, no pager).
+
+- Refs: `for-each-ref --format=%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:short)%1f%(upstream:track,nobracket) refs/heads refs/remotes refs/tags`, `remote`, `symbolic-ref -q --short HEAD`, `rev-parse -q --verify HEAD`, `config user.name`.
+- Log: `log --topo-order -z --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s --skip=N -n 501` + `--branches --remotes --tags HEAD` (no stash) or one ref; filters `--author=`, `--since=/--until=` (ISO), `--grep=` (and `--author=`, regex-escaped when the regex toggle is on) with `--fixed-strings` or, with the regex toggle, `--extended-regexp`; `--regexp-ignore-case` unless match case, `-- <paths>`. A 4–40 hex text is also resolved with `rev-parse --verify -q <text>^{commit}` and shown first.
+- Commit: `show -s` (author, committer, body) + `diff-tree -r -z -M --name-status|--numstat <first parent or empty tree> <hash>`. Plain `diff-tree <hash>` prints nothing for a merge, hence the explicit first parent.
+- Branches containing: `branch -a --contains <hash> --format=%(refname:short)`, only when asked.
+- File diff: `diff <first parent or empty tree> <hash> -M -U1000000 -- [orig] <path>`, 3 MB cap then 3-line context (same as §11o Changes).
+- Refresh: the git-dir watcher also reacts to `packed-refs`, `FETCH_HEAD`, `ORIG_HEAD` and `refs/` (recursive). The page reloads the list only when HEAD or a ref hash changed.
+
 ## 12. Open items
 
 | Item | State |
