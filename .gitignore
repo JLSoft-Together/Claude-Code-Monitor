@@ -1,8 +1,59 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+build/
+out/
+package-lock.json
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
 *.log
-.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Coverage
 coverage/
-*.lnk
-.vitest/
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# Testing
+.nyc_output/
+
+# IDEs and editors
+.vscode/*
+!.vscode/extensions.json
 .idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Package manager
+# Uncomment if you want to ignore lock files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Temporary files
+tmp/
+temp/
+
+# Secrets and certificates
+*.pem
+*.key
+*.p12
+*.pfx
