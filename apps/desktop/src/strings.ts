@@ -37,6 +37,19 @@ The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up
   statusLineConfirm: 'Turn on',
   statusLineCancel: 'Cancel',
   grantTitle: 'Choose your projects folder',
+  extTitle: (kind: 'install' | 'remove' | 'source'): string =>
+    kind === 'install' ? 'Install into Claude Code?' : kind === 'remove' ? 'Remove from Claude Code?' : 'Add to Claude Code?',
+  extDetail: (where: string, commands: string[]) => `Agent Monitor will run, for ${where}:
+
+${commands.join('\n\n')}
+
+New Claude sessions pick up the change.`,
+  extWhereUser: 'all your projects (user config)',
+  extWhereProject: (dir: string) => `${dir}, shared with the team (.mcp.json / .claude/settings.json, usually committed)`,
+  extWhereLocal: (dir: string) => `${dir}, only you (not committed)`,
+  extWhereNone: 'Claude Code (user settings)',
+  extConfirm: 'Run',
+  extCancel: 'Cancel',
 }
 
 const vi: typeof en = {
@@ -78,6 +91,18 @@ Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Cla
   statusLineConfirm: 'Bật',
   statusLineCancel: 'Huỷ',
   grantTitle: 'Chọn thư mục chứa các project',
+  extTitle: (kind) => (kind === 'install' ? 'Cài vào Claude Code?' : kind === 'remove' ? 'Gỡ khỏi Claude Code?' : 'Thêm vào Claude Code?'),
+  extDetail: (where, commands) => `Agent Monitor sẽ chạy, cho ${where}:
+
+${commands.join('\n\n')}
+
+Các phiên Claude mới sẽ nhận thay đổi.`,
+  extWhereUser: 'mọi project của bạn (cấu hình user)',
+  extWhereProject: (dir) => `${dir}, chia sẻ cho cả team (.mcp.json / .claude/settings.json, thường được commit)`,
+  extWhereLocal: (dir) => `${dir}, chỉ mình bạn (không commit)`,
+  extWhereNone: 'Claude Code (cấu hình user)',
+  extConfirm: 'Chạy',
+  extCancel: 'Huỷ',
 }
 
 export type Strings = typeof en

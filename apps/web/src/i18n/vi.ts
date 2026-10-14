@@ -4,15 +4,18 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import v28 from './extensions-v28'
 
 const vi: typeof en = {
   ...v25.vi,
   ...v27.vi,
+  ...v28.vi,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',
   },
   nav: {
+    extensions: 'Mở rộng',
     history: 'Lịch sử',
     label: 'Màn hình',
     monitor: 'Giám sát',
@@ -773,6 +776,7 @@ const vi: typeof en = {
     scopeLabel: 'Hiện',
     scope: { all: 'Tất cả', sessions: 'Session', favorites: 'Yêu thích', commands: 'Lệnh' },
     goHistory: 'Tới Lịch sử',
+    goExtensions: 'Tới Mở rộng',
     darkTheme: 'Giao diện tối',
     themeNamed: 'Giao diện: {name}',
     toolsPref: 'Tool call trong Hoạt động',

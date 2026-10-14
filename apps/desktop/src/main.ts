@@ -17,6 +17,7 @@ import { PreviewServer } from './preview/server'
 import { RootWatcher } from './preview/watch'
 import { GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
+import { registerExtensionsIpc } from './extensions/ipc'
 import { PtySupervisor } from './pty/supervisor'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
@@ -58,6 +59,7 @@ const preview = new PreviewServer()
 const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
+let disposeExtensions: (() => void) | null = null
 let bridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
@@ -102,6 +104,8 @@ function stopPreview(): Promise<void> {
   previewIpc = null
   disposeLayouts?.()
   disposeLayouts = null
+  disposeExtensions?.()
+  disposeExtensions = null
   previewWatch.closeAll()
   return preview.close()
 }
@@ -615,6 +619,26 @@ async function ready(): Promise<void> {
     },
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
+  // Extensions tab: the page picks a catalog entry; the native confirm shows the exact claude command and is the consent.
+  disposeExtensions = registerExtensionsIpc({
+    ipcMain,
+    isAppFrame,
+    confirm: async (event, plan) => {
+      const where = plan.scope === 'user' ? t.extWhereUser : plan.scope === 'project' && plan.dir ? t.extWhereProject(plan.dir) : plan.scope === 'local' && plan.dir ? t.extWhereLocal(plan.dir) : t.extWhereNone
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const opts: Electron.MessageBoxOptions = {
+        type: 'question',
+        message: t.extTitle(plan.kind),
+        detail: t.extDetail(where, plan.commands),
+        buttons: [t.extConfirm, t.extCancel],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      }
+      const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+      return response === 0
+    },
+  })
   ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {
     const frame = event.senderFrame
     if (!frame || frame.parent || !isAppUrl(frame.url) || (action !== 'copy' && action !== 'save')) return null

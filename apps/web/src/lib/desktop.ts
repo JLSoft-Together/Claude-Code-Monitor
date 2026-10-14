@@ -1,4 +1,4 @@
-import type { PtyEndpoint } from '@ccm/shared'
+import type { AvailablePlugin, ExtInstallRequest, ExtRemoveRequest, ExtResult, ExtSourceRequest, ExtStatus, McpServerRow, PtyEndpoint } from '@ccm/shared'
 import type { FileView, PreviewChange, PreviewTarget } from './preview'
 
 /** Chord pressed inside a browser pane's <webview>, forwarded by the main process (fields of KeyboardEventInit). */
@@ -55,9 +55,18 @@ interface DesktopBridge {
   /** Native "Allow … to open files in <folder>?"; true when the path is (now) readable. */
   requestAccess?: (path: string) => Promise<boolean>
   onForwardKey?: (handler: (key: ForwardedKey) => void) => () => void
+  /** Extensions tab (v28): read-only status; every change asks a native confirm showing the claude command. */
+  extStatus?: (dir?: string) => Promise<ExtStatus | null>
+  extMcp?: (dir?: string, fresh?: boolean) => Promise<{ servers: McpServerRow[]; at: number } | null>
+  extInstall?: (req: ExtInstallRequest) => Promise<ExtResult>
+  extRemove?: (req: ExtRemoveRequest) => Promise<ExtResult>
+  extSource?: (req: ExtSourceRequest) => Promise<(ExtResult & { marketplace?: string; plugins?: AvailablePlugin[] }) | null>
+  extLogin?: (name: string, dir?: string) => Promise<ExtResult>
 }
 
 /** Set by the Electron preload; absent in a plain browser, where terminals stay unavailable. */
 export const desktop: DesktopBridge | undefined = (window as unknown as { ccmDesktop?: DesktopBridge }).ccmDesktop
 
 export const hasTerminals = typeof desktop?.ptyEndpoint === 'function'
+
+export const hasExtensions = typeof desktop?.extStatus === 'function'

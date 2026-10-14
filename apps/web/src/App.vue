@@ -22,12 +22,13 @@ import CompactView from './components/CompactView.vue'
 import MonitorView from './components/MonitorView.vue'
 import UsageView from './components/usage/UsageView.vue'
 import HistoryView from './components/history/HistoryView.vue'
-import { desktop, hasTerminals } from './lib/desktop'
+import { desktop, hasExtensions, hasTerminals } from './lib/desktop'
 import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
 import { isMac } from './lib/platform'
 
 // xterm + addons (~400 KB) load only when the workspace is first opened.
 const WorkspaceView = defineAsyncComponent(() => import('./components/workspace/WorkspaceView.vue'))
+const ExtensionsView = defineAsyncComponent(() => import('./components/extensions/ExtensionsView.vue'))
 
 const { t } = useI18n()
 const connection = useConnectionStore()
@@ -102,6 +103,7 @@ onBeforeUnmount(() => {
         <MonitorView v-else-if="ui.view === 'monitor'" id="main" key="monitor" />
         <UsageView v-else-if="ui.view === 'usage'" id="main" key="usage" />
         <HistoryView v-else-if="ui.view === 'history'" id="main" key="history" />
+        <ExtensionsView v-else-if="ui.view === 'extensions' && hasExtensions" id="main" key="extensions" />
       </Transition>
       <!-- Kept mounted once opened: switching views must not tear down the terminals' xterm state. -->
       <Transition name="ccm-view">

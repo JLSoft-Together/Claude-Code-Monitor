@@ -3,8 +3,8 @@ import { modeOf } from '../lib/themes'
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, SquareTerminal, Sun } from 'lucide-vue-next'
-import { hasTerminals } from '../lib/desktop'
+import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Puzzle, Search, SquareTerminal, Sun } from 'lucide-vue-next'
+import { hasExtensions, hasTerminals } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
 import { withViewTransition } from '../lib/motion'
 import { useConnectionStore } from '../stores/connection'
@@ -26,6 +26,7 @@ const tabs = computed(() => [
   ...(hasTerminals ? [{ id: 'workspace' as View, label: t('nav.workspace'), icon: SquareTerminal }] : []),
   { id: 'usage' as View, label: t('nav.usage'), icon: ChartColumnBig },
   { id: 'history' as View, label: t('nav.history'), icon: History },
+  ...(hasExtensions ? [{ id: 'extensions' as View, label: t('nav.extensions'), icon: Puzzle }] : []),
 ])
 const titleChars = computed(() => [...t('app.title')])
 // Brand words ("Agent") take the accent; the last word stays in ink.

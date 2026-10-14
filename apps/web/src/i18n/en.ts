@@ -3,15 +3,18 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import v28 from './extensions-v28'
 
 export default {
   ...v25.en,
   ...v27.en,
+  ...v28.en,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Skip to content',
   },
   nav: {
+    extensions: 'Extensions',
     history: 'History',
     label: 'Views',
     monitor: 'Monitor',
@@ -772,6 +775,7 @@ export default {
     scopeLabel: 'Show',
     scope: { all: 'All', sessions: 'Sessions', favorites: 'Favorites', commands: 'Commands' },
     goHistory: 'Go to History',
+    goExtensions: 'Go to Extensions',
     darkTheme: 'Dark theme',
     themeNamed: 'Theme: {name}',
     toolsPref: 'Tool calls in Activity',
