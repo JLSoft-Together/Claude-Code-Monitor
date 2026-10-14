@@ -57,6 +57,8 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
   let graph: GraphState = emptyGraph()
   let seq = 0
   let detailSeq = 0
+  let refsSeq = 0
+  let disposed = false
   let signature = ''
   let watched: string | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -79,12 +81,15 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     commits.value = append ? [...commits.value, ...list] : list
   }
 
-  async function loadRefs(): Promise<boolean> {
+  /** 'stale' = superseded by a newer call, cwd change or dispose: the caller must touch nothing. */
+  async function loadRefs(): Promise<'ok' | 'fail' | 'stale'> {
+    const run = ++refsSeq
     const res = await logRefs(root.value ?? cwd())
+    if (disposed || run !== refsSeq) return 'stale'
     if (!res.ok) {
       error.value = res.error
-      refs.value = null
-      return false
+      if (!commits.value.length) refs.value = null
+      return 'fail'
     }
     refs.value = res
     signature = refsSignature(res)
@@ -92,7 +97,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
       root.value = res.root
       void watchRoot(res.root)
     }
-    return true
+    return 'ok'
   }
 
   async function firstPage(): Promise<void> {
@@ -101,7 +106,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     if (!r) return
     loading.value = true
     const res = await logPage(r, toQuery(filters.value, now(), 0))
-    if (run !== seq) return
+    if (disposed || run !== seq) return
     loading.value = false
     if (!res.ok) {
       error.value = res.error
@@ -117,8 +122,9 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
   }
 
   async function reload(): Promise<void> {
-    if (await loadRefs()) await firstPage()
-    else loading.value = false
+    const st = await loadRefs()
+    if (st === 'ok') await firstPage()
+    else if (st === 'fail') loading.value = false
   }
 
   async function loadMore(): Promise<void> {
@@ -128,7 +134,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     loadingMore.value = true
     const res = await logPage(r, toQuery(filters.value, now(), commits.value.length))
     loadingMore.value = false
-    if (run !== seq || !res.ok) return
+    if (disposed || run !== seq || !res.ok) return
     applyPage(res.commits, true)
     more.value = res.more
   }
@@ -138,6 +144,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     const run = ++detailSeq
     if (!hash || !root.value) {
       detail.value = null
+      detailLoading.value = false
       return
     }
     const hit = cache.get(hash)
@@ -145,8 +152,10 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
       cache.delete(hash)
       cache.set(hash, hit)
       detail.value = hit
+      detailLoading.value = false
       return
     }
+    detail.value = null
     detailLoading.value = true
     void logCommit(root.value, hash).then((res) => {
       if (run !== detailSeq) return
@@ -158,7 +167,7 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
           if (cache.size > DETAIL_CACHE) cache.delete(cache.keys().next().value!)
         }
         detail.value = d
-      }
+      } else detail.value = null
     })
   }
 
@@ -187,15 +196,15 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
 
   async function refreshIfMoved(): Promise<void> {
     const before = signature
-    if (!(await loadRefs())) return
-    if (signature !== before) {
+    if ((await loadRefs()) !== 'ok') return
+    if (signature !== before || error.value) {
       cache.clear()
       await firstPage()
     }
   }
 
   async function watchRoot(r: string): Promise<void> {
-    if (watched === r) return
+    if (disposed || watched === r) return
     if (watched) void changesUnwatch(watched)
     watched = r
     await changesWatch(r)
@@ -209,12 +218,29 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     if (on) void refreshIfMoved()
   })
   watch(cwd, () => {
+    seq++
+    detailSeq++
     root.value = null
     cache.clear()
+    graph = emptyGraph()
+    signature = ''
+    error.value = null
+    commits.value = []
+    rows.value = []
+    more.value = false
+    loadingMore.value = false
+    selected.value = null
+    detail.value = null
+    detailLoading.value = false
+    loading.value = true
     void reload()
   })
 
   onScopeDispose(() => {
+    disposed = true
+    seq++
+    detailSeq++
+    refsSeq++
     off()
     if (timer) clearTimeout(timer)
     if (watched) void changesUnwatch(watched)

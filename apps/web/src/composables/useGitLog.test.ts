@@ -1,4 +1,4 @@
-import { effectScope, nextTick } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LogCommit, LogQuery } from '@ccm/shared'
 
@@ -96,6 +96,103 @@ describe('useGitLog', () => {
     log.select('h3')
     await flush()
     expect(vi.mocked(preview.logCommit).mock.calls.filter((c) => c[1] === 'h3')).toHaveLength(1)
+    scope.stop()
+  })
+  it('clears detailLoading when a cached or null selection supersedes a pending load', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    log.select('h3')
+    await flush()
+    let release: (v: unknown) => void = () => undefined
+    vi.mocked(preview.logCommit).mockImplementationOnce((() => new Promise((r) => (release = r))) as never)
+    log.select('h4')
+    expect(log.detailLoading.value).toBe(true)
+    expect(log.detail.value).toBeNull()
+    log.select('h3')
+    expect(log.detailLoading.value).toBe(false)
+    log.select('h5')
+    log.select(null)
+    expect(log.detailLoading.value).toBe(false)
+    release({ ok: true, hash: 'h4' })
+    await flush()
+    expect(log.detailLoading.value).toBe(false)
+    scope.stop()
+  })
+
+  it('clears detail when the commit is unavailable', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    log.select('h3')
+    await flush()
+    vi.mocked(preview.logCommit).mockResolvedValueOnce({ ok: false, error: 'unavailable' } as never)
+    log.select('h4')
+    await flush()
+    expect(log.detail.value).toBeNull()
+    scope.stop()
+  })
+
+  it('ignores in-flight replies and clears the list when cwd changes', async () => {
+    let release: (v: unknown) => void = () => undefined
+    const dir = ref('/r')
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => dir.value, () => true, { debounceMs: 0 }))!
+    await flush()
+    pageImpl = () => new Promise((r) => (release = r))
+    vi.mocked(preview.logRefs).mockResolvedValueOnce({ ok: false, error: 'unavailable' } as never)
+    dir.value = '/other'
+    await flush()
+    expect(log.commits.value).toEqual([])
+    expect(log.rows.value).toEqual([])
+    expect(log.selected.value).toBeNull()
+    expect(log.detail.value).toBeNull()
+    release({ ok: true, commits: [commit(1)], more: false })
+    await flush()
+    expect(log.commits.value).toEqual([])
+    scope.stop()
+  })
+
+  it('drops an older refs reply that resolves after a newer one', async () => {
+    let releaseOld: (v: unknown) => void = () => undefined
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    vi.mocked(preview.logRefs).mockImplementationOnce((() => new Promise((r) => (releaseOld = r))) as never)
+    const slow = log.reload()
+    vi.mocked(preview.logRefs).mockResolvedValueOnce({ ...refs, root: '/new' } as never)
+    await log.reload()
+    releaseOld({ ...refs, root: '/old' })
+    await slow
+    await flush()
+    expect(log.root.value).toBe('/new')
+    scope.stop()
+  })
+
+  it('does not watch or write after dispose', async () => {
+    let releaseRefs: (v: unknown) => void = () => undefined
+    vi.mocked(preview.logRefs).mockImplementationOnce((() => new Promise((r) => (releaseRefs = r))) as never)
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    scope.stop()
+    releaseRefs(refs)
+    await flush()
+    expect(preview.changesWatch).not.toHaveBeenCalled()
+    expect(log.root.value).toBeNull()
+    expect(pages).toHaveLength(0)
+  })
+
+  it('recovers from a transient refs failure on the next refresh', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    vi.mocked(preview.logRefs).mockResolvedValueOnce({ ok: false, error: 'unavailable' } as never)
+    await log.refreshIfMoved()
+    expect(log.error.value).toBe('unavailable')
+    expect(log.refs.value).not.toBeNull()
+    expect(log.commits.value).toHaveLength(500)
+    await log.refreshIfMoved()
+    expect(log.error.value).toBeNull()
     scope.stop()
   })
 })
