@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eraseCount, fileMention, findPromptRange, scanPrompt, shellPath } from './promptAttachments'
+import { eraseCount, fileMention, findPromptRange, needsLeadSpace, scanPrompt, shellPath } from './promptAttachments'
 
 // Bottom of a Claude Code 2.1.299 screen (110 cols), captured with node-pty + @xterm/headless (docs §11p).
 const RULE = '─'.repeat(110)
@@ -53,5 +53,13 @@ describe('prompt attachments', () => {
     expect(fileMention('/home/u/x.ts', '/srv', false)).toBe('@/home/u/x.ts')
     expect(shellPath('C:\\a b\\c.txt', true)).toBe("'C:\\a b\\c.txt'")
     expect(shellPath("/tmp/it's", false)).toBe("'/tmp/it'\\''s'")
+  })
+
+  it('asks for a space before a mention glued to text', () => {
+    const rows = ['❯ [Image #1]', '❯ a ', '']
+    expect(needsLeadSpace(rows, { x: 12, y: 0 })).toBe(true)
+    expect(needsLeadSpace(rows, { x: 4, y: 1 })).toBe(false)
+    expect(needsLeadSpace(rows, { x: 0, y: 2 })).toBe(false)
+    expect(needsLeadSpace(rows, { x: 5, y: 2 })).toBe(false)
   })
 })

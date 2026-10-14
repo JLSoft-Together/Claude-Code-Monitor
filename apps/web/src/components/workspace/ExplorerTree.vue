@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect
 import { useI18n } from 'vue-i18n'
 import { ChevronRight, ChevronsDownUp, Eye, File, FileCode, FileImage, FileJson, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Link2, RotateCw } from 'lucide-vue-next'
 import { samePath } from '../../lib/changesView'
+import { setDragPath } from '../../lib/explorer/dragPath'
 import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
 import { useExplorerStore } from '../../stores/explorer'
@@ -206,6 +207,8 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           ]"
           :style="{ top: `${index * ROW}px`, height: `${ROW}px`, paddingLeft: `${4 + Math.max(0, row.depth - 1) * INDENT}px` }"
           :title="row.depth === 0 ? (explorer.root ?? undefined) : row.outOfRoot ? t('workspace.explorer.outOfRoot') : row.directory ? row.name : t('workspace.explorer.openHint')"
+          :draggable="row.depth > 0"
+          @dragstart="setDragPath($event.dataTransfer, row.path)"
           @focus="explorer.setFocused(index === 0 ? null : row.path)"
           @click="activate(row, index)"
           @dblclick="!row.directory && emit('open', row.path, true)"

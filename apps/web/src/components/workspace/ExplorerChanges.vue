@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GitBranch, GitCompare, RotateCw } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
+import { setDragPath } from '../../lib/explorer/dragPath'
 import { baseName, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
 
 const props = defineProps<{ status: ChangesStatus | null; reading: boolean }>()
@@ -20,6 +21,10 @@ const focusPath = computed(() => (ordered.value.some((e) => e.path === focused.v
 function open(e: ChangeEntry, keep = false): void {
   focused.value = e.path
   if (e.kind !== 'deleted' && ok.value) emit('open', absoluteIn(ok.value.root, e.path), keep)
+}
+
+function drag(ev: DragEvent, e: ChangeEntry): void {
+  if (ok.value) setDragPath(ev.dataTransfer, absoluteIn(ok.value.root, e.path))
 }
 
 async function move(index: number): Promise<void> {
@@ -95,6 +100,8 @@ const title = (e: ChangeEntry): string =>
           :class="e.kind === 'deleted' ? 'cursor-default text-ink-muted' : 'cursor-pointer text-ink hover:bg-fill'"
           :title="title(e)"
           :data-change="e.path"
+          :draggable="e.kind !== 'deleted'"
+          @dragstart="drag($event, e)"
           @click="open(e)"
           @dblclick="open(e, true)"
         >

@@ -52,6 +52,17 @@ async function run(app) {
   check('root listing: folders first, node_modules and dot-files hidden', JSON.stringify(top.slice(1)) === JSON.stringify(['src', 'README.md']), JSON.stringify(top))
   check('root row is the project folder', (top[0] ?? '').toLowerCase() === path.basename(DIR).toLowerCase(), top[0])
 
+  // Drag a row onto the terminal: the row hands out its path, the shell pane types it at the prompt.
+  const drag = await evaluate(`(() => { const r = ${row('README.md')}; const dt = new DataTransfer(); r.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt })); return { draggable: r.draggable, root: document.querySelector('[data-explorer-tree] [role=treeitem]').draggable, path: dt.getData('application/x-ccm-path') } })()`)
+  check('file rows are draggable with their path, the root row is not', drag.draggable && !drag.root && drag.path === path.join(DIR, 'README.md'), JSON.stringify(drag))
+  const shellKey = await evaluate(`${W}.panes[0].key`)
+  const center = await evaluate(`(() => { const r = document.querySelector('[data-pane="${shellKey}"] .xterm')?.getBoundingClientRect(); return r && [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)] })()`)
+  for (const type of ['dragEnter', 'dragOver', 'drop']) {
+    await cmd('Input.dispatchDragEvent', { type, x: center[0], y: center[1], data: { items: [{ mimeType: 'application/x-ccm-path', data: drag.path }], dragOperationsMask: 1 } })
+    await sleep(120)
+  }
+  await sleep(500)
+
   // Expand src, single click = preview viewer replaced in place; double click keeps it.
   await evaluate(`${row('src')}.click()`)
   await waitFor(`${names}.includes('main.ts')`, 8000, 'src expanded')
@@ -130,6 +141,16 @@ async function run(app) {
     check(`image viewer renders ${name}`, w > 0, `naturalWidth ${w}`)
   }
   await shot('explorer-04-image')
+
+  // Last: replaying the shell's output takes its socket over. The dropped path sits at the prompt.
+  const out = await evaluate(`(async () => {
+    const id = ${W}.panes.find((p) => p.key === ${JSON.stringify(shellKey)}).sessionId; const ep = await window.ccmDesktop.ptyEndpoint()
+    return await new Promise((res) => { const ws = new WebSocket(ep.url, [ep.protocol]); ws.binaryType = 'arraybuffer'; let t = ''
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'attach', id })); ws.onmessage = (e) => { if (typeof e.data !== 'string') t += new TextDecoder().decode(e.data) }
+      setTimeout(() => { ws.close(); res(t) }, 1200) })
+  })()`)
+  const clean = out.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+  check('Explorer row dropped on a shell pane types its path', clean.includes('README.md') && clean.includes(path.basename(DIR)), clean.replace(/\s+/g, ' ').slice(-160))
 }
 
 ;(async () => {

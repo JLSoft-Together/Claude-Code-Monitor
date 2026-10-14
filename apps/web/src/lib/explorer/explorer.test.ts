@@ -1,6 +1,7 @@
 import { checkEntryName } from '@ccm/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { createChangesScheduler, type SchedulerClock } from './changesScheduler'
+import { dragPaths, hasDragPath, PATH_MIME, setDragPath } from './dragPath'
 import { nextRevealStep, type RevealState } from './reveal'
 import {
   createTargetDirectory,
@@ -182,5 +183,42 @@ describe('checkEntryName', () => {
   ])('%j → %s', (name, reason) => {
     const res = checkEntryName(name)
     expect(res.ok ? null : res.reason).toBe(reason)
+  })
+})
+
+describe('dragPath', () => {
+  const transfer = () => {
+    const data = new Map<string, string>()
+    return {
+      effectAllowed: 'all' as DataTransfer['effectAllowed'],
+      setData: (type: string, value: string) => void data.set(type, value),
+      getData: (type: string) => data.get(type) ?? '',
+      get types() {
+        return [...data.keys()]
+      },
+    }
+  }
+
+  it('carries the path under the app type and as plain text', () => {
+    const dt = transfer()
+    setDragPath(dt, '/repo/src/a.ts')
+    expect(hasDragPath(dt)).toBe(true)
+    expect(dragPaths(dt)).toEqual(['/repo/src/a.ts'])
+    expect(dt.getData('text/plain')).toBe('/repo/src/a.ts')
+    expect(dt.effectAllowed).toBe('copy')
+  })
+
+  it('ignores drags that are not from the explorer', () => {
+    const dt = transfer()
+    dt.setData('text/plain', 'hello')
+    expect(hasDragPath(dt)).toBe(false)
+    expect(dragPaths(dt)).toEqual([])
+    expect(hasDragPath(null)).toBe(false)
+  })
+
+  it('splits several paths, one per line', () => {
+    const dt = transfer()
+    dt.setData(PATH_MIME, '/a\n\n /b \n')
+    expect(dragPaths(dt)).toEqual(['/a', '/b'])
   })
 })

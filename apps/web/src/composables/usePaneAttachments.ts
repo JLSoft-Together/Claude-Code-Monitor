@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { PtyPreset } from '@ccm/shared'
 import { clipboardImage, clipboardImageFile } from '../lib/preview'
-import { eraseCount, fileMention, scanPrompt, shellPath, type PromptScan } from '../lib/promptAttachments'
+import { eraseCount, fileMention, needsLeadSpace, scanPrompt, shellPath, type PromptScan } from '../lib/promptAttachments'
 import { useAttachmentsStore, type Attachment, type NewAttachment } from '../stores/attachments'
 
 export interface PaneScreen {
@@ -106,12 +106,14 @@ export function usePaneAttachments(o: Options) {
     const key = o.paneKey()
     if (a.kind === 'file' || !imagesSupported.value) {
       if (a.kind === 'image' && !a.path) return store.patch(key, a.id, { state: 'failed', error: 'unsupported' })
+      const screen = o.screen()
+      const lead = screen && needsLeadSpace(screen.rows, screen.cursor) ? ' ' : ''
       if (!agent.value) {
-        o.paste(`${shellPath(a.path!, o.win)} `)
+        o.paste(`${lead}${shellPath(a.path!, o.win)} `)
         return store.remove(key, a.id)
       }
       const token = fileMention(a.path!, o.cwd(), o.win)
-      o.paste(`${token} `)
+      o.paste(`${lead}${token} `)
       store.patch(key, a.id, { state: 'inserted', token })
       return
     }

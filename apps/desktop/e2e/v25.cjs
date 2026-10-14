@@ -124,6 +124,15 @@ async function main() {
     check('panel shows file names', await evaluate(`(() => { const t = document.querySelector('${pane} [data-attachments]')?.textContent ?? ''; return t.includes('package.json') && t.includes('ccm-256.png') })()`))
     await shot('v25-08-attach-drop')
 
+    // A row dragged out of the Explorer carries its path under the app type, no OS file.
+    for (const type of ['dragEnter', 'dragOver', 'drop']) {
+      await cmd('Input.dispatchDragEvent', { type, x: center[0], y: center[1], data: { items: [{ mimeType: 'application/x-ccm-path', data: path.join(REPO, 'CLAUDE.md') }], dragOperationsMask: 1 } })
+      await sleep(120)
+    }
+    const fromTree = await waitFor(`${A}.list(${JSON.stringify(claudeKey)}).find(a => a.token === '@CLAUDE.md' && a.state === 'inserted' && a.seen)?.token`, 15000, 'explorer drop').catch(() => null)
+    check('Explorer row drop → @CLAUDE.md in the prompt', fromTree === '@CLAUDE.md', String(fromTree ?? (await evaluate(`JSON.stringify(${A}.list(${JSON.stringify(claudeKey)}).map(a => [a.token, a.state, a.seen]))`))))
+    await shot('v25-08b-attach-explorer')
+
     // Paste image from the panel (clipboard holds the image just inserted).
     await evaluate(`document.querySelector('${pane} [data-attach=paste]').click()`)
     const pasted = await waitFor(`${A}.list(${JSON.stringify(claudeKey)}).find(a => a.source === 'paste' && a.token)?.token`, 15000, 'pasted').catch(() => null)

@@ -20,6 +20,7 @@ import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
 import { imagePasteKey, usePaneAttachments, type PaneScreen } from '../../composables/usePaneAttachments'
 import { desktop } from '../../lib/desktop'
 import { clipboardImageBlob, imageData } from '../../lib/imageData'
+import { dragPaths, hasDragPath } from '../../lib/explorer/dragPath'
 import { hasAttachments, pathForFile } from '../../lib/preview'
 import { useAgentsStore } from '../../stores/agents'
 import { fromPath, useAttachmentsStore, type NewAttachment } from '../../stores/attachments'
@@ -269,10 +270,11 @@ watch(
   (shown) => shown && att.schedule(),
 )
 
-const hasFiles = (e: DragEvent): boolean =>!!e.dataTransfer?.types.includes('Files')
+/** Files from the OS, or paths dragged out of the Explorer. */
+const canDrop = (e: DragEvent): boolean => !!e.dataTransfer?.types.includes('Files') || hasDragPath(e.dataTransfer)
 
 function onDragEnter(e: DragEvent): void {
-  if (!hasAttachments || !hasFiles(e) || props.pane.state !== 'running') return
+  if (!hasAttachments || !canDrop(e) || props.pane.state !== 'running') return
   e.preventDefault()
   dragDepth++
   dropping.value = true
@@ -296,11 +298,17 @@ async function onDrop(e: DragEvent): Promise<void> {
   dropping.value = false
   workspace.activate(props.pane.key)
   const items: NewAttachment[] = []
-  for (const file of Array.from(e.dataTransfer?.files ?? [])) {
+  const keep = (it: NewAttachment): boolean => it.kind === 'file' || att.imagesSupported.value || !att.agent.value
+  const paths = dragPaths(e.dataTransfer)
+  for (const path of paths) {
+    const it = fromPath(path, 'drop')
+    if (keep(it)) items.push(it)
+  }
+  for (const file of paths.length ? [] : Array.from(e.dataTransfer?.files ?? [])) {
     const path = pathForFile(file)
     if (path) {
       const it = fromPath(path, 'drop')
-      if (it.kind === 'file' || att.imagesSupported.value || !att.agent.value) items.push(it)
+      if (keep(it)) items.push(it)
     } else if (file.type.startsWith('image/') && att.imagesSupported.value) {
       const img = await imageData(file)
       if (img) items.push({ kind: 'image', name: file.name || t('attach.image'), source: 'drop', ...img })

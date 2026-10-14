@@ -53,6 +53,12 @@ export function eraseCount(rows: string[], cursor: { x: number; y: number }, tok
   return cursor.x - row.length + (token.startsWith('[Image #') ? 1 : token.length)
 }
 
+/** The cell left of the cursor holds text (e.g. `[Image #1]` the agent typed without a space): a mention needs one first. */
+export function needsLeadSpace(rows: string[], cursor: { x: number; y: number }): boolean {
+  const ch = cursor.x > 0 ? rows[cursor.y]?.[cursor.x - 1] : undefined
+  return !!ch && !/\s/.test(ch)
+}
+
 export function scanPrompt(rows: string[]): PromptScan {
   const box = findPromptRows(rows)
   if (!box) return { found: false, images: [], files: [], text: '' }
