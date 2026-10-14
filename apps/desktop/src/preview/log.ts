@@ -140,6 +140,7 @@ export async function logPage(root: string, rawQuery: unknown): Promise<LogPageR
   let commits = parseLog(res.stdout)
   const more = commits.length > LOG_PAGE || res.truncated
   commits = commits.slice(0, LOG_PAGE)
+  const gitRows = commits.length
   // A hash typed in the text field: that commit first, then the message matches.
   if (q.skip === 0 && q.text && isHash(q.text)) {
     const full = await resolveCommit(root, q.text)
@@ -149,7 +150,8 @@ export async function logPage(root: string, rawQuery: unknown): Promise<LogPageR
       if (found) commits = [found, ...commits.filter((c) => c.hash !== found.hash)]
     }
   }
-  return { ok: true, commits, more }
+  // `injected` rows are not part of git's own paging: the page must not count them toward `skip`.
+  return { ok: true, commits, more, ...(commits.length > gitRows ? { injected: commits.length - gitRows } : {}) }
 }
 
 /** First parent, or the empty tree for a root commit. */
@@ -193,9 +195,15 @@ export async function commitDetail(root: string, hash: unknown): Promise<CommitD
 export async function branchesContaining(root: string, hash: unknown): Promise<ContainsResult> {
   const full = await resolveCommit(root, hash)
   if (full === 'denied' || full === 'missing') return { ok: false, error: full }
-  const res = await execGit(root, ['branch', '-a', '--contains', full, '--format=%(refname:short)'], T)
+  const res = await execGit(root, ['branch', '-a', '--contains', full, '--format=%(refname)'], T)
   if (res.code !== 0) return { ok: false, error: fail(res) }
-  return { ok: true, branches: res.stdout.split('\n').filter((b) => b && !b.endsWith('/HEAD')).slice(0, 500) }
+  // Full refnames: `%(refname:short)` turns refs/remotes/origin/HEAD into a bare `origin`, and a detached HEAD prints `(HEAD detached at …)`.
+  const branches = res.stdout
+    .split('\n')
+    .map((b) => b.trim())
+    .filter((b) => b.startsWith('refs/') && !/^refs\/remotes\/.+\/HEAD$/.test(b))
+    .map((b) => b.replace(/^refs\/(heads|remotes)\//, ''))
+  return { ok: true, branches: branches.slice(0, 500) }
 }
 
 export async function commitDiff(root: string, hash: unknown, rel: unknown, optsInput?: unknown, origRel?: unknown): Promise<ChangesDiff> {

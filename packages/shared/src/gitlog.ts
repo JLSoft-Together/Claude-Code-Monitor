@@ -53,7 +53,10 @@ export interface LogQuery {
   skip: number
 }
 
-export type LogPageResult = { ok: true; commits: LogCommit[]; more: boolean } | { ok: false; error: LogError }
+export type LogPageResult =
+  // `injected`: leading rows that git paging did not return (a commit found by hash); the next `skip` must not count them.
+  | { ok: true; commits: LogCommit[]; more: boolean; injected?: number }
+  | { ok: false; error: LogError }
 
 export type CommitFileKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechange'
 

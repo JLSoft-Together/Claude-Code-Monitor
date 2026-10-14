@@ -19,7 +19,7 @@ let gitPath: string | null | undefined
 
 // Pathspec magic (":(top)", "*") must never come from a file name the page passes in.
 const GIT_ENV = { GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', GIT_LITERAL_PATHSPECS: '1' }
-const GIT_CONFIG = ['-c', 'core.quotePath=false', '-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', '-c', 'color.ui=false']
+const GIT_CONFIG = ['-c', 'core.quotePath=false', '-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', '-c', 'color.ui=false', '-c', 'log.showSignature=false']
 
 /** `git -C cwd …` with the absolute git from our own PATH walk; stdin optional, stdout capped. Never throws. */
 export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}): Promise<GitExecResult> {

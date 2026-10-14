@@ -109,6 +109,14 @@ describe('log query', () => {
 const git = findGit()
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'ccm-log-'))
 const repo = path.join(tmp, 'repo')
+const canSign = (() => {
+  try {
+    execFileSync('ssh-keygen', ['-?'], { stdio: 'ignore' })
+    return true
+  } catch (err) {
+    return (err as { code?: string }).code !== 'ENOENT'
+  }
+})()
 const run = (...args: string[]): string => execFileSync(git!, ['-C', repo, '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' }).trim()
 const commit = (msg: string, file: string, text: string, author = 'Ann <ann@x>'): string => {
   writeFileSync(path.join(repo, file), text)
@@ -178,6 +186,8 @@ describe.skipIf(!git)('git log repo', () => {
   it('finds a commit by hash prefix first', async () => {
     const r = await logPage(repo, { text: h.feat.slice(0, 8) })
     expect(r.ok && r.commits[0]!.hash).toBe(h.feat)
+    // The injected hit is not a git row: the client must page from git's own count.
+    expect(r.ok && r.injected).toBe(1)
   })
 
   it('returns an empty page for a repo without commits', async () => {
@@ -204,6 +214,41 @@ describe.skipIf(!git)('git log repo', () => {
   it('lists branches containing a commit', async () => {
     const r = await branchesContaining(repo, h.main2)
     expect(r.ok && r.branches.sort()).toEqual(['main', 'origin/main'])
+  })
+
+  it('does not list the origin/HEAD alias or a detached HEAD as a branch', async () => {
+    run('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+    run('checkout', '-q', '--detach', h.main2)
+    try {
+      const r = await branchesContaining(repo, h.main2)
+      expect(r.ok && r.branches.sort()).toEqual(['main', 'origin/main'])
+    } finally {
+      run('checkout', '-q', 'main')
+      run('symbolic-ref', '--delete', 'refs/remotes/origin/HEAD')
+    }
+  })
+
+  it.skipIf(!canSign)('ignores a user log.showSignature=true on a signed commit', async () => {
+    const key = path.join(tmp, 'sigkey')
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key])
+    run('checkout', '-q', '-b', 'signedb')
+    try {
+      writeFileSync(path.join(repo, 's.txt'), 's\n')
+      run('add', 's.txt')
+      run('-c', 'gpg.format=ssh', '-c', `user.signingkey=${key}.pub`, 'commit', '-q', '-S', '-m', 'signed one')
+      const signed = run('rev-parse', 'HEAD')
+      run('config', 'log.showSignature', 'true')
+      const page = await logPage(repo, { branch: 'refs/heads/signedb' })
+      expect(page.ok && page.commits[0]!.hash).toBe(signed)
+      expect(page.ok && page.commits[0]!.subject).toBe('signed one')
+      const d = await commitDetail(repo, signed)
+      expect(d.ok && d.hash).toBe(signed)
+      expect(d.ok && d.message.trim()).toBe('signed one')
+    } finally {
+      run('config', '--unset-all', 'log.showSignature')
+      run('checkout', '-q', 'main')
+      run('branch', '-D', 'signedb')
+    }
   })
 
   it('diffs one file of a commit vs its first parent', async () => {
