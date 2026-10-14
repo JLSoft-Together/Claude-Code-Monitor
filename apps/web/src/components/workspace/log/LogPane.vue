@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ChevronLeft, ChevronRight, PanelLeft } from 'lucide-vue-next'
 import type { CommitFile } from '@ccm/shared'
@@ -50,6 +50,7 @@ const sideEl = ref<HTMLElement | null>(null)
 const table = ref<InstanceType<typeof LogTable> | null>(null)
 const selectedPath = ref<string | null>(null)
 
+let stopDrag: (() => void) | null = null
 function drag(e: PointerEvent, kind: 'refs' | 'side' | 'split'): void {
   const startX = e.clientX
   const startY = e.clientY
@@ -60,13 +61,30 @@ function drag(e: PointerEvent, kind: 'refs' | 'side' | 'split'): void {
     else if (kind === 'side') cols.value.side = Math.min(720, Math.max(200, start.side - (m.clientX - startX)))
     else if (rect) cols.value.split = Math.min(0.8, Math.max(0.2, start.split + (m.clientY - startY) / rect.height))
   }
+  stopDrag?.()
   const onUp = (): void => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+    stopDrag = null
   }
+  stopDrag = onUp
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
 }
+
+// The stored widths are a preference; a narrow split caps what is drawn so the table keeps room.
+const MIN_MIDDLE = 240
+const paneW = ref(0)
+let sizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  if (!rootEl.value || typeof ResizeObserver === 'undefined') return
+  sizeObserver = new ResizeObserver((entries) => void (paneW.value = entries[0]?.contentRect.width ?? 0))
+  sizeObserver.observe(rootEl.value)
+})
+const sideW = computed(() => (paneW.value ? Math.min(cols.value.side, Math.max(120, (paneW.value - MIN_MIDDLE - 8) * 0.55)) : cols.value.side))
+const refsW = computed(() => (paneW.value ? Math.min(cols.value.refs, Math.max(100, paneW.value - MIN_MIDDLE - 8 - sideW.value)) : cols.value.refs))
 
 watch(log.root, (r) => r && emit('root', r))
 watch(
@@ -89,7 +107,7 @@ watch(log.selected, (hash) => {
 
 const empty = computed<'none' | 'filtered' | 'repo'>(() => {
   if (log.loading.value || log.commits.value.length) return 'none'
-  return hasFilters(log.filters.value) ? 'filtered' : log.refs.value?.head.hash ? 'filtered' : 'repo'
+  return hasFilters(log.filters.value) ? 'filtered' : 'repo'
 })
 const remotes = computed(() => log.refs.value?.remotes.map((g) => g.name) ?? [])
 
@@ -162,8 +180,13 @@ function typing(e: KeyboardEvent): boolean {
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
 }
 
+function inPane(): boolean {
+  const a = document.activeElement
+  return a === document.body || (!!a && !!rootEl.value?.contains(a))
+}
+
 function onKey(e: KeyboardEvent): void {
-  if (!props.active) return
+  if (!props.active || !inPane()) return
   if (menu.value) {
     if (e.key === 'Escape') {
       closeMenu()
@@ -180,11 +203,25 @@ function onKey(e: KeyboardEvent): void {
   e.preventDefault()
 }
 
+/** Commit whose first file opens as soon as its details land (select clears the detail first). */
+let pendingOpen: string | null = null
+
 function openCommit(hash: string): void {
+  pendingOpen = hash
   log.select(hash)
-  const first = commitFiles.value[0]
-  if (first && log.detail.value?.ok && log.detail.value.hash === hash) void openDiff(first)
+  tryPendingOpen()
 }
+
+function tryPendingOpen(): void {
+  const d = log.detail.value
+  if (!pendingOpen || !d?.ok || d.hash !== pendingOpen) return
+  pendingOpen = null
+  if (d.files[0]) void openDiff(d.files[0])
+}
+watch(log.detail, tryPendingOpen)
+watch(log.selected, (h) => {
+  if (h !== pendingOpen) pendingOpen = null
+})
 
 // Context menus (read-only copy / open actions).
 const MENU_W = 208
@@ -229,6 +266,8 @@ const closeMenu = (): void => void (menu.value = null)
 window.addEventListener('keydown', onKey)
 window.addEventListener('pointerdown', closeMenu)
 onBeforeUnmount(() => {
+  stopDrag?.()
+  sizeObserver?.disconnect()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('pointerdown', closeMenu)
 })
@@ -251,7 +290,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
 
     <div v-else class="flex min-h-0 min-w-0 flex-1">
       <template v-if="cols.refsOpen">
-        <LogRefsTree class="shrink-0" :style="{ width: `${cols.refs}px` }" :refs="log.refs.value" :branch="log.filters.value.branch" @pick="(name) => log.setFilters({ branch: name })" />
+        <LogRefsTree class="shrink-0" :style="{ width: `${refsW}px` }" :refs="log.refs.value" :branch="log.filters.value.branch" @pick="(name) => log.setFilters({ branch: name })" />
         <div class="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-fill" role="separator" aria-orientation="vertical" @pointerdown.prevent="drag($event, 'refs')" />
       </template>
 
@@ -266,7 +305,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
           <span class="hidden truncate text-2xs text-ink-faint md:inline">{{ t('workspace.log.diff.keys') }}</span>
         </div>
         <div class="ccm-scroll min-h-0 flex-1 overflow-auto bg-well">
-          <p v-if="diffState === 'loading'" class="p-4 text-xs text-well-ink">…</p>
+          <p v-if="diffState === 'loading'" class="p-4 text-xs text-well-ink" role="status">{{ t('workspace.log.diff.loading') }}</p>
           <p v-else-if="diffState === 'binary' || diffState === 'too-large' || diffState === 'empty' || diffState === 'error'" class="p-4 text-xs text-well-ink">
             {{ t(diffState === 'binary' ? 'workspace.log.diff.binary' : diffState === 'too-large' ? 'workspace.log.diff.tooLarge' : diffState === 'empty' ? 'workspace.log.diff.empty' : 'workspace.log.error.failed') }}
           </p>
@@ -309,7 +348,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
           />
         </div>
         <div class="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-fill" role="separator" aria-orientation="vertical" @pointerdown.prevent="drag($event, 'side')" />
-        <div ref="sideEl" class="flex min-h-0 shrink-0 flex-col" :style="{ width: `${cols.side}px` }">
+        <div ref="sideEl" class="flex min-h-0 shrink-0 flex-col" :style="{ width: `${sideW}px` }">
           <LogCommitFiles class="min-h-0" :style="{ flex: `${cols.split} 1 0` }" :detail="log.detail.value" :loading="log.detailLoading.value" :selected-path="selectedPath" @select="(p) => (selectedPath = p)" @open="openDiff" @menu="fileMenu" />
           <div class="h-1 shrink-0 cursor-row-resize border-t border-line hover:bg-fill" role="separator" aria-orientation="horizontal" @pointerdown.prevent="drag($event, 'split')" />
           <LogCommitDetails class="min-h-0" :style="{ flex: `${1 - cols.split} 1 0` }" :detail="log.detail.value" :loading="log.detailLoading.value" :contains="log.contains" />
