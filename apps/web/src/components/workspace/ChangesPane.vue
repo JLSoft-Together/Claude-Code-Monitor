@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
+import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
@@ -17,6 +17,7 @@ import {
   changesUnwatch,
   changesWatch,
   hasChanges,
+  hasLog,
   onChangesUpdated,
   type ChangeEntry,
   type ChangesError,
@@ -34,6 +35,8 @@ const emit = defineEmits<{
   root: [root: string]
   /** `select` was applied (or cannot be): the owner clears it. */
   selected: []
+  /** Open the Log pane for this repo. */
+  log: [root: string]
 }>()
 
 const { t } = useI18n()
@@ -634,6 +637,9 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           </div>
         </Transition>
       </div>
+      <button v-if="hasLog && repoRoot" type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.log.open')" :aria-label="t('workspace.log.open')" data-changes-log @click="emit('log', repoRoot)">
+        <GitGraph :size="14" aria-hidden="true" />
+      </button>
       <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.changes.refresh')" :aria-label="t('workspace.changes.refresh')" @click="loadStatus">
         <RotateCw :size="14" aria-hidden="true" />
       </button>

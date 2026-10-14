@@ -179,6 +179,11 @@ function openChangesTab(): void {
   if (contextCwd.value) workspace.openChanges(contextCwd.value)
 }
 
+function openLogTab(): void {
+  closeMenu(false)
+  if (contextCwd.value) workspace.openLog(contextCwd.value)
+}
+
 const quickOpen = ref(false)
 const quickRoot = ref<string | null>(null)
 // Focus before Quick open: `>` hands over to Scripts, whose own opener (the Quick open input) is gone when it closes.
@@ -819,7 +824,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div v-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
-        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" />
+        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" />
       </div>
       <WorkspaceSidebar
         v-else
@@ -925,7 +930,7 @@ onBeforeUnmount(() => {
             role="dialog"
             :aria-label="t('workspace.launch.title')"
           >
-            <LaunchPicker ref="menuPicker" :cwd="contextCwd" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" @changes="openChangesTab" />
+            <LaunchPicker ref="menuPicker" :cwd="contextCwd" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" @changes="openChangesTab" @log="openLogTab" />
             <div v-if="activeProject && (hasScripts || hasLayouts)" class="mt-1.5 flex flex-col border-t border-line pt-1.5">
               <button v-if="hasScripts" type="button" :class="MENU_ROW" data-menu="scripts" @click="openScriptsForActive()">
                 <Play :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.scripts.open') }}
@@ -1089,6 +1094,7 @@ onBeforeUnmount(() => {
             @open="(path, line) => workspace.openFile(path, line, { cwd: pane.root ?? pane.cwd })"
             @count="(count) => workspace.update(pane.key, { count })"
             @root="(root) => workspace.update(pane.key, { root })"
+            @log="(root) => withViewTransition(() => workspace.openLog(root, { split: { key: pane.key, dir: 'row' } }))"
           >
             <template #end>
               <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />

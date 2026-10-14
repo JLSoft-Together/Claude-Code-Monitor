@@ -18,7 +18,7 @@ const props = defineProps<{
   /** Workspace on screen: the Changes view watches git only then. */
   visible: boolean
 }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string] }>()
+const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string] }>()
 
 const { t } = useI18n()
 const explorer = useExplorerStore()
@@ -137,6 +137,7 @@ const statusText = computed(() => {
         :reading="changes.reading.value"
         @open="(p, keep) => emit('open', p, keep)"
         @open-diff="(r, p) => emit('openDiff', r, p)"
+        @open-log="(r) => emit('openLog', r)"
         @refresh="changes.refresh()"
       />
     </template>
