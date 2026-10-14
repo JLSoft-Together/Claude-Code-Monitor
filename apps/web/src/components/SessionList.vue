@@ -77,7 +77,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
   <section id="sessions" aria-labelledby="sessions-title" class="flex h-full min-h-0 flex-col">
     <PanelHeader panel="sessions" title-id="sessions-title" :title="t('sessions.title')" :meta="t('sessions.count', { n: terminals.live.length })" />
 
-    <div id="sessions-body" class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
+    <div id="sessions-body" class="ccm-scroll -m-1 min-h-0 flex-1 overflow-y-auto p-1">
     <FavoritesList />
     <JobsList />
     <div v-if="connection.hasData && terminals.list.length > 1" class="mb-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">

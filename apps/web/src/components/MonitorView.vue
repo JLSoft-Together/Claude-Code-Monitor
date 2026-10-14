@@ -83,7 +83,7 @@ function panelTransition(p: Panel): string {
           <SessionList v-if="!ui.sessionTab" />
           <section v-else-if="tabTerminal" aria-labelledby="session-panel-title" class="flex h-full min-h-0 flex-col">
             <PanelHeader panel="sessions" title-id="session-panel-title" :title="t('panel.session')" />
-            <div class="ccm-scroll -mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div class="ccm-scroll -m-1 min-h-0 flex-1 overflow-y-auto p-1">
               <SessionCard :terminal="tabTerminal" />
             </div>
           </section>
