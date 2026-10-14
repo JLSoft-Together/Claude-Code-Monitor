@@ -54,6 +54,20 @@ describe('useGitLog', () => {
     scope.stop()
   })
 
+  it('stops paging after a failed page so it is not retried forever', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r/sub', () => true, { debounceMs: 0 }))!
+    await flush()
+    pageImpl = async () => ({ ok: false, error: 'failed' })
+    await log.loadMore()
+    expect(log.more.value).toBe(false)
+    expect(log.commits.value).toHaveLength(500)
+    const calls = pages.length
+    await log.loadMore()
+    expect(pages.length).toBe(calls)
+    scope.stop()
+  })
+
   it('drops a late reply for an old query', async () => {
     let release: (v: unknown) => void = () => undefined
     pageImpl = (q) => (q.text ? Promise.resolve({ ok: true, commits: [commit(9)], more: false }) : new Promise((r) => (release = r)))

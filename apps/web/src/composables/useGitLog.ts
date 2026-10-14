@@ -134,7 +134,11 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
     loadingMore.value = true
     const res = await logPage(r, toQuery(filters.value, now(), commits.value.length))
     loadingMore.value = false
-    if (disposed || run !== seq || !res.ok) return
+    if (disposed || run !== seq) return
+    if (!res.ok) {
+      more.value = false
+      return
+    }
     applyPage(res.commits, true)
     more.value = res.more
   }
