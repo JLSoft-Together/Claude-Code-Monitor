@@ -74,6 +74,7 @@ async function run(app) {
   await waitFor(`document.querySelector('[data-log-details]').textContent.includes('main')`, 8000, 'contains').catch(() => {})
   check('"In N branches" lists main', await evaluate(`document.querySelector('[data-log-details]').textContent.includes('main')`))
   await shot('log-02-details')
+  check('narrow pane keeps the selected subject readable and clear of author/date', await evaluate(`(() => { const row = document.querySelector('[data-log-table] [data-commit][aria-selected=true]'); const s = [...row.querySelectorAll('span[title]')].find((e) => e.textContent.trim() === 'Merge feature/x'); if (!s) return false; const r = s.getBoundingClientRect(); const cells = [...row.children].filter((c) => c !== s.parentElement && c.tagName === 'SPAN' && c.getBoundingClientRect().width > 0); return r.width > 40 && cells.every((c) => c.getBoundingClientRect().left >= r.right - 1) && row.scrollWidth <= row.clientWidth + 1 })()`))
 
   // Diff of one file, Esc back.
   await evaluate(`document.querySelector('[data-log-file="b.txt"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)

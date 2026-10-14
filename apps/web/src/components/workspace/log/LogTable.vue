@@ -139,7 +139,7 @@ defineExpose({ focus: () => scroller.value?.focus() })
     <div
       v-else
       ref="scroller"
-      class="ccm-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
+      class="ccm-scroll @container min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
       role="listbox"
       tabindex="0"
       :aria-label="t('workspace.log.table.label')"
@@ -159,6 +159,7 @@ defineExpose({ focus: () => scroller.value?.focus() })
           :aria-posinset="v.index + 1"
           class="absolute inset-x-0 flex h-6 min-w-0 cursor-default items-center gap-2 pr-2 text-xs"
           :class="v.c.hash === selected ? 'bg-selection text-ink' : 'text-ink hover:bg-fill'"
+          :title="`${v.c.author} <${v.c.email}> · ${fullFmt.format(v.c.time * 1000)}`"
           :style="{ top: `${v.index * ROW_H}px` }"
           :data-commit="v.c.hash"
           @click="emit('select', v.c.hash)"
@@ -166,23 +167,23 @@ defineExpose({ focus: () => scroller.value?.focus() })
           @contextmenu.prevent="emit('select', v.c.hash), emit('menu', v.c.hash, $event.clientX, $event.clientY)"
         >
           <LogGraphCell v-if="v.row" :row="v.row" :lanes="lanes" :head="v.c.hash === headHash" />
-          <span class="flex min-w-0 flex-1 items-center gap-1.5" :class="v.c.hash === headHash ? 'font-semibold' : ''">
+          <span class="flex min-w-28 flex-1 items-center gap-1.5 overflow-hidden" :class="v.c.hash === headHash ? 'font-semibold' : ''">
             <GitMerge v-if="v.c.parents.length > 1" :size="12" class="shrink-0 text-ink-faint" :aria-label="t('workspace.log.table.merge')" />
             <span
               v-for="l in labelsOf(v.c)"
               :key="`${l.kind}:${l.name}`"
-              class="inline-flex max-w-40 shrink-0 items-center gap-0.5 truncate rounded-inner px-1 text-2xs leading-4"
+              class="inline-flex max-w-24 min-w-0 shrink items-center gap-0.5 overflow-hidden rounded-inner px-1 text-2xs leading-4"
               :class="l.kind === 'tag' ? 'bg-warning-soft text-warning' : l.kind === 'remote' ? 'bg-fill text-ink-muted' : 'bg-accent-soft text-accent-ink'"
               :title="labelText(l)"
               data-ref-pill
             >
               <Tag v-if="l.kind === 'tag'" :size="10" class="shrink-0" aria-hidden="true" />
-              {{ l.kind === 'head' ? t('workspace.log.table.head') : labelText(l) }}
+              <span class="truncate">{{ l.kind === 'head' ? t('workspace.log.table.head') : labelText(l) }}</span>
             </span>
             <span class="min-w-0 truncate" :title="v.c.subject">{{ v.c.subject }}</span>
           </span>
-          <span class="w-32 shrink-0 truncate text-ink-muted" :title="`${v.c.author} <${v.c.email}>`">{{ v.c.author }}</span>
-          <span class="w-32 shrink-0 truncate text-right text-ink-muted tabular" :title="fullFmt.format(v.c.time * 1000)">{{ dateFmt.format(v.c.time * 1000) }}</span>
+          <span class="hidden w-32 shrink-0 truncate text-ink-muted @[20rem]:block" :title="`${v.c.author} <${v.c.email}>`">{{ v.c.author }}</span>
+          <span class="hidden w-32 shrink-0 truncate text-right text-ink-muted tabular @[26rem]:block" :title="fullFmt.format(v.c.time * 1000)">{{ dateFmt.format(v.c.time * 1000) }}</span>
         </div>
       </div>
       <p v-if="loadingMore" class="py-1 text-center text-2xs text-ink-faint">{{ t('workspace.log.table.loadingMore') }}</p>
