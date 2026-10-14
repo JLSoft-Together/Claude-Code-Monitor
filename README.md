@@ -38,6 +38,7 @@ Build:
 
 ```powershell
 npm install
+npm run dist        # tự chọn theo OS (Windows → dist:win, macOS → dist:mac)
 npm run dist:win    # → apps/desktop/release/: Agent-Monitor-Setup-<ver>.exe (NSIS) + Agent-Monitor-Portable-<ver>.exe
 npm run desktop     # chạy thử bản dev, không đóng gói
 ```
@@ -48,6 +49,7 @@ Cùng app Electron, đóng gói `.dmg` cho Apple Silicon (`arm64`) và Intel (`x
 
 ```bash
 npm ci
+npm run dist        # = dist:mac trên macOS
 npm run dist:mac    # → apps/desktop/release/: Agent-Monitor-<ver>-arm64.dmg + Agent-Monitor-<ver>-x64.dmg
 ```
 

@@ -15,6 +15,7 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm test` — Vitest in all workspaces; single file: `npm test -w @ccm/collector -- test/monitor.test.ts`
 - `npm run typecheck`
 - `npm run desktop` — build web, then run the Electron app from `apps/desktop/stage` (dev)
+- `npm run dist` — packages for the host OS (`scripts/dist.mjs`: win32 → `dist:win`, darwin → `dist:mac`, else exit 1); no cross builds (node-pty prebuilt is host-only)
 - `npm run dist:win` — build web + desktop → `apps/desktop/release/` (NSIS Setup + Portable exe)
 - `npm run dist:mac` — same → `.dmg` arm64 + x64; **macOS only** (or GitHub Actions workflow `desktop`)
 - `npm run e2e -w @ccm/desktop [exe]` — CDP E2E against the dev build (or a packaged exe); build web + desktop first

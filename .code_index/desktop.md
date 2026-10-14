@@ -12,6 +12,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 - Name: product **Agent Monitor** (was Claude Code Monitor, 2026-10-11); `appId`/AUMID `dev.ccm.monitor`, data dir `ccm` unchanged so updates install in place. `repairLoginItem` re-points a login entry still aimed at the old `Claude Code Monitor.exe` (same folder) to the new exe.
 - `build.mjs`: esbuild → `stage/main.cjs` (external electron) + `stage/collector.cjs` (from `apps/collector/src/index.ts`), writes `stage/package.json` without dependencies.
 - `electron-builder.yml`: app dir `stage`, output `release`; win nsis + portable x64 unsigned; mac dmg arm64 + x64, icon `scripts/assets/ccm-mac.png`, ad-hoc `identity: '-'`, `hardenedRuntime: false`. All dist scripts `--publish never`.
+- root `npm run dist` → `scripts/dist.mjs` picks `dist:win` / `dist:mac` by `process.platform` (node-pty extraResource is host-only, so no cross builds).
 - `.github/workflows/desktop.yml`: manual / tag `v*` → `dist:mac` on macos-latest + `dist:win` on windows-latest → upload artifacts.
 - Icons: source `scripts/assets/logo.svg` (also `web/src/assets/art/01-logo.svg`, `web/public/favicon.svg`); `scripts/make-icon.mjs` mirrors its geometry (`shapes()`: fill/ring/line SDF) and `render(size, {inset, radius, glyph})` → `ccm.ico` + `ccm-256.png` + PWA icons (full-bleed), `ccm-mac.png` (1024, inset 100, radius 230 — only rounded tile, macOS does not mask), `ccmTrayTemplate{,@2x}.png` (16/32 black glyph, strokes ×1.6, cropped to frame). Edit the SVG → update `shapes()` → rerun.
 
