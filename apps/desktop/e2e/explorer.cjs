@@ -121,6 +121,15 @@ async function run(app) {
   await evaluate(`document.querySelector('[data-side-view=projects]').click()`)
   await sleep(300)
   check('Projects view comes back', await evaluate(`!document.querySelector('[data-explorer]') && localStorage.getItem('ccm.workspace.sideView') === 'projects'`))
+
+  // Image viewer: the <img> comes from the preview server (another loopback port) and must actually decode.
+  for (const name of ['ccm-256.png', 'logo.svg']) {
+    fs.copyFileSync(path.join(__dirname, '../../../scripts/assets', name), path.join(DIR, name))
+    await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, name))})`)
+    const w = await waitFor(`(() => { const i = [...document.querySelectorAll('[data-kind=file] img')].find((x) => x.offsetParent && x.src.endsWith(${JSON.stringify(name)})); return i?.complete && i.naturalWidth })()`, 8000, name).catch(() => 0)
+    check(`image viewer renders ${name}`, w > 0, `naturalWidth ${w}`)
+  }
+  await shot('explorer-04-image')
 }
 
 ;(async () => {

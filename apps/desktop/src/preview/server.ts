@@ -50,7 +50,7 @@ export interface PreviewTarget {
 const BASE_HEADERS = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
-  // Only pages from this server may embed these files; other local sites cannot hotlink them.
+  // Only pages from this server may embed these files; other local sites cannot hotlink them (images: see serveFile).
   'Cross-Origin-Resource-Policy': 'same-origin',
 }
 
@@ -185,7 +185,10 @@ export class PreviewServer {
   }
 
   private serveFile(req: IncomingMessage, res: ServerResponse, file: string, size: number): void {
-    const headers: Record<string, string> = { ...BASE_HEADERS, 'Content-Type': mimeOf(file), 'Accept-Ranges': 'bytes' }
+    const type = mimeOf(file)
+    const headers: Record<string, string> = { ...BASE_HEADERS, 'Content-Type': type, 'Accept-Ranges': 'bytes' }
+    // The file viewer's <img> lives on the app page (another port); Chromium blocks it under same-origin and same-site.
+    if (type.startsWith('image/')) headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
     let start = 0
     let end = size - 1
     let status = 200

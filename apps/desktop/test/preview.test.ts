@@ -37,6 +37,7 @@ beforeAll(async () => {
   mkdirSync(other, { recursive: true })
   writeFileSync(path.join(site, 'index.html'), '<h1>home</h1>')
   writeFileSync(path.join(site, 'app.js'), 'export const x = 1')
+  writeFileSync(path.join(site, 'pic.png'), 'png')
   writeFileSync(path.join(site, 'sub', 'index.html'), '<p>sub</p>')
   writeFileSync(path.join(site, 'a b.css'), 'body{}')
   writeFileSync(path.join(tmp, 'secret.txt'), 'top secret')
@@ -66,8 +67,16 @@ describe('PreviewServer', () => {
     expect(res.headers.get('content-type')).toBe('text/javascript; charset=utf-8')
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('cross-origin-resource-policy')).toBe('same-origin')
     expect(await res.text()).toBe('export const x = 1')
     expect((await fetch(`${base}a%20b.css`)).headers.get('content-type')).toBe('text/css; charset=utf-8')
+  })
+
+  it('lets the app page (another loopback port) embed images, nothing else', async () => {
+    const img = await fetch(`${base}pic.png`)
+    expect(img.headers.get('content-type')).toBe('image/png')
+    expect(img.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    expect((await fetch(`${base}index.html`)).headers.get('cross-origin-resource-policy')).toBe('same-origin')
   })
 
   it('maps directories to index.html, redirects missing slash, no listing', async () => {
