@@ -66,3 +66,8 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## v26 Explorer IPC
 - `src/preview/explorer.ts`: `listDir(root, dir)` (readdir withFileTypes, symlinks realpath'd 32 at a time → `outOfRoot` when dangling or outside; dir must realpath inside root; uncapped) and `createEntry(root, parent, name, kind)` (`checkEntryName` again in main, parent inside root, `mkdir` non-recursive / `open(wx)`, EEXIST → `exists`). `preview/ipc.ts` `ccm:list-dir {root, dir}` / `ccm:create-entry {root, parent, name, kind}` gated like `ccm:list-files` (`repoOf ?? allowedPath`), create invalidates `fileLists`. Preload `listDir createEntry`; `keys.ts` forwards ⌘⇧E / Ctrl+Shift+E. Tree refresh reuses `RootWatcher` (`ccm:watch` + `ccm:preview-changed`). Tests `test/explorer.test.ts`.
+
+## v25 (2.3.0)
+- `main.ts`: `appearance.json` (userData) `{background}` → first-frame `backgroundColor` (`savedBackground`, OS fallback); IPC `ccm:window-bg` (isAppFrame, `#RRGGBB`) → `setBackgroundColor` on every window + save. Preload `setWindowBackground`.
+- `preview/clipboardImage.ts` `writeClipboardImageFile` (absolute, png/jpg/gif/webp, ≤ 20 MB, `nativeImage.createFromPath` non-empty → PNG) + deps `createFromPath`; ipc `ccm:clipboard-image-file`, `ccm:pick-files` (multi, ≤ 50 paths, no grants: paths only become @mentions). Preload `clipboardImageFile`, `pickFiles`, `pathForFile` (`webUtils.getPathForFile`). Test `test/changes.test.ts`.
+- E2E: scripts set `ccm.tourWorkspaceDone` too; `e2e/v25.cjs` (in `run.cjs`): guide, `+` position, tip, help menu, 8 themes, map context menu → pane, attachments drop/paste/Ctrl+V/remove on a real Claude pane (no Enter; image lands on the system clipboard).

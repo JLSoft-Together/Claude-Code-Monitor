@@ -11,7 +11,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
     const ep = await evaluate(`window.ccmDesktop.ptyEndpoint().then(e => !!e && e.url.startsWith('ws://127.0.0.1:'))`)
     check('pty endpoint handed out', ep)
-    await evaluate(`localStorage.setItem('ccm.tourDone','1')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1')`)
     await app.cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${S}.get('ui') && !${S}.get('ui').tourOpen`, 30000, 'reloaded')
@@ -77,9 +77,9 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     const header = await evaluate(`document.querySelectorAll('section header')[1]?.innerText`)
     check('pane header shows session status', !!header && /Working|Waiting|Idle|Đang|Chờ|Rảnh/i.test(header), JSON.stringify(header))
 
-    // "+ New" popover: label is just "New", the accessible name says what it makes.
-    const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b && b.textContent.trim() })()`)
-    check('+ button reads New / Mới', /^(New|Mới)$/.test(plus ?? ''), plus)
+    // Browser-style "+": icon only (v25), the accessible name says what it makes.
+    const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b ? b.textContent.trim() : null })()`)
+    check('+ button is icon-only, named New tab', plus === '', plus)
     await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
     await sleep(400)
     const pop = await evaluate(`!!document.querySelector('[role=dialog] [data-launch-row]')`)

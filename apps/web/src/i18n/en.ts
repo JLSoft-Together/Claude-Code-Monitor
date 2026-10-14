@@ -1,8 +1,10 @@
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
+import v25 from './workspace-v25'
 import explorer from './workspace-explorer'
 
 export default {
+  ...v25.en,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Skip to content',
@@ -19,7 +21,6 @@ export default {
     ...tier2.en,
     ...explorer.en,
     tabs: 'Terminals',
-    new: 'New',
     newLabel: 'New tab',
     close: 'Close terminal',
     closeTab: 'Close tab',
@@ -162,6 +163,12 @@ export default {
     label: 'Session tabs',
     all: 'All sessions',
     waiting: '{n} waiting for you',
+  },
+  agentMenu: {
+    label: 'Actions for {title}',
+    focus: 'Show session',
+    details: 'Show details',
+    noWorkspace: 'No saved session to open here',
   },
   terminal: {
     noteAdd: 'Add note',
@@ -761,6 +768,7 @@ export default {
     scope: { all: 'All', sessions: 'Sessions', favorites: 'Favorites', commands: 'Commands' },
     goHistory: 'Go to History',
     darkTheme: 'Dark theme',
+    themeNamed: 'Theme: {name}',
     toolsPref: 'Tool calls in Activity',
     language: 'Switch language',
     openSettings: 'Open settings',

@@ -20,7 +20,7 @@ import MonitorView from './components/MonitorView.vue'
 import UsageView from './components/usage/UsageView.vue'
 import HistoryView from './components/history/HistoryView.vue'
 import { desktop, hasTerminals } from './lib/desktop'
-import { useWorkspaceStore } from './stores/workspace'
+import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
 import { isMac } from './lib/platform'
 
 // xterm + addons (~400 KB) load only when the workspace is first opened.
@@ -35,14 +35,8 @@ useBreakReminder()
 useAwayStore().install()
 
 // Windows toast buttons reach the app through agent-monitor://; a session running in a pane opens that pane.
-desktop?.onFocus?.((terminalId) => {
-  const workspace = useWorkspaceStore()
-  const pane = workspace.paneByTerminal.get(terminalId)
-  if (!pane) return false
-  workspace.activate(pane.key)
-  ui.setView('workspace')
-  return true
-})
+const reveal = useRevealInWorkspace()
+desktop?.onFocus?.((terminalId) => reveal.show(terminalId))
 // Chords pressed while a browser pane's page has focus come back from the main process; replay them on the
 // window (not inside .xterm) so the workspace / palette handlers see them as usual.
 desktop?.onForwardKey?.((key) => {

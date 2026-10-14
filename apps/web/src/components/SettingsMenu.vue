@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FolderX, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
+import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FolderX, GraduationCap, Send, Settings2, Stethoscope, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { retireOverlay } from '../lib/motion'
@@ -11,17 +11,22 @@ import { forgetGrants, hasGrants } from '../lib/preview'
 import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
+import { useTipsStore } from '../stores/tips'
 import { useUiStore } from '../stores/ui'
+import { hasTerminals } from '../lib/desktop'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
+import ThemePicker from './ui/ThemePicker.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
 const extras = useExtrasStore()
 const connection = useConnectionStore()
 const ui = useUiStore()
+const tips = useTipsStore()
+const tipsOn = computed({ get: () => !tips.state.off, set: (on: boolean) => tips.setOff(!on) })
 const panel = ref<HTMLElement | null>(null)
 const grantsForgotten = ref(false)
 
@@ -32,10 +37,6 @@ async function onForgetGrants(): Promise<void> {
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
-const themes = computed(() => [
-  { value: 'light' as const, label: t('settings.themeLight'), icon: Sun },
-  { value: 'dark' as const, label: t('settings.themeDark'), icon: Moon },
-])
 const locales = [
   { value: 'vi' as const, label: 'Tiếng Việt', lang: 'vi' },
   { value: 'en' as const, label: 'English', lang: 'en' },
@@ -253,15 +254,16 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           <section aria-labelledby="set-appearance">
             <h3 id="set-appearance" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.appearance') }}</h3>
             <div class="ccm-group">
-              <div class="flex items-center justify-between gap-3 px-3 py-2">
-                <span class="min-w-0 text-sm">{{ t('settings.theme') }}</span>
-                <SegmentedControl v-model="settings.theme" :options="themes" :label="t('settings.theme')" />
+              <div class="px-3 py-2">
+                <p class="mb-2 text-sm">{{ t('settings.theme') }}</p>
+                <ThemePicker />
               </div>
               <div class="flex items-center justify-between gap-3 px-3 py-2">
                 <span class="min-w-0 text-sm">{{ t('settings.language') }}</span>
                 <SegmentedControl v-model="settings.locale" :options="locales" :label="t('settings.language')" />
               </div>
               <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
+              <ToggleSwitch v-if="hasTerminals" v-model="tipsOn" :label="t('tips.setting')" :hint="t('tips.settingHint')" class="px-3" />
             </div>
           </section>
 
@@ -458,7 +460,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             <div class="ccm-group overflow-hidden">
               <button
                 v-for="h in [
-                  { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = true) },
+                  { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
+                  ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace' as const) }] : []),
                   { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },
                 ]"
                 :key="h.key"

@@ -10,6 +10,7 @@ import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
 import { contextPctOf, isCodex } from '../lib/provider'
 import { statusMeta } from '../lib/status'
+import { retireOverlay } from '../lib/motion'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
 import { displayTitle } from '../lib/title'
@@ -19,6 +20,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useUiStore } from '../stores/ui'
+import AgentContextMenu from './AgentContextMenu.vue'
 import ContextGauge from './ContextGauge.vue'
 import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
@@ -28,6 +30,18 @@ import SubagentCounts from './SubagentCounts.vue'
 import TokenCount from './TokenCount.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
+
+// Same session menu as the map nodes; the cursor anchors it, the menu key anchors it on the card.
+const ctxAt = ref<DOMRect | null>(null)
+const ctxTrigger = ref<HTMLElement | null>(null)
+function openMenu(e: MouseEvent | KeyboardEvent): void {
+  if (e instanceof KeyboardEvent && e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return
+  const el = e.currentTarget as HTMLElement
+  if ((e.target as HTMLElement).closest('input, textarea')) return
+  e.preventDefault()
+  ctxTrigger.value = (document.activeElement as HTMLElement | null) ?? el
+  ctxAt.value = e instanceof MouseEvent && e.clientX ? new DOMRect(e.clientX, e.clientY, 0, 0) : el.getBoundingClientRect()
+}
 
 const { t, locale } = useI18n()
 const agents = useAgentsStore()
@@ -178,7 +192,14 @@ function commitNote(): void {
   <article
     class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200"
     :class="[focused ? 'ring-2 ring-focus' : '', ended ? 'text-ink-muted' : '']"
+    @contextmenu="openMenu"
+    @keydown="openMenu"
   >
+    <Teleport to="body">
+      <Transition name="ccm-menu" @before-leave="retireOverlay">
+        <AgentContextMenu v-if="ctxAt" :at="ctxAt" :terminal-id="terminal.id" :trigger="ctxTrigger" @close="ctxAt = null" />
+      </Transition>
+    </Teleport>
     <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
 

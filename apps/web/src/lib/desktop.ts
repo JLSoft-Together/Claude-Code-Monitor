@@ -15,6 +15,8 @@ interface DesktopBridge {
   platform: string
   ptyEndpoint: () => Promise<PtyEndpoint | null>
   pickFolder: () => Promise<string | null>
+  /** Theme canvas colour (#RRGGBB) for the native window background, kept for the next launch. */
+  setWindowBackground?: (color: string) => Promise<boolean>
   logs?: (action: 'copy' | 'save', report: string) => Promise<{ ok: boolean; path?: string } | null>
   onFocus?: (handler: (terminalId: string) => boolean) => void
   onSelect?: (handler: (terminalId: string) => void) => void

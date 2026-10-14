@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell, WebContents } from 'electron'
 import { discardFile, discardHunk, diff as changesDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
-import { electronClipboardImage, writeClipboardImage, type ClipboardImageDeps } from './clipboardImage'
+import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir } from './explorer'
 import { readFileForView } from './files'
 import { detectScripts } from './scripts'
@@ -73,7 +73,7 @@ export interface PreviewIpc {
 
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
-  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:capture-guest', 'ccm:forget-grants',
+  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry',
 ]
 
@@ -208,6 +208,15 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return file
   })
 
+  // Attachments tray "Add files…": paths only go into the agent's prompt as @mentions, nothing is read here.
+  ipcMain.handle('ccm:pick-files', async (event) => {
+    if (!isAppFrame(event)) return []
+    const win = deps.getWindow()
+    const opts: Electron.OpenDialogOptions = { properties: ['openFile', 'multiSelections'] }
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    return res.canceled ? [] : res.filePaths.slice(0, 50)
+  })
+
   ipcMain.handle('ccm:open-external', async (event, url: unknown) => {
     if (!isAppFrame(event) || !isWebUrl(url)) return false
     await shell.openExternal(url)
@@ -338,6 +347,15 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
 
   let clipboardImpl: Promise<ClipboardImageDeps> | null = null
   const imageClipboard = (): Promise<ClipboardImageDeps> => (clipboardImpl ??= deps.clipboardImage ? Promise.resolve(deps.clipboardImage) : electronClipboardImage())
+
+  ipcMain.handle('ccm:clipboard-image-file', async (event, file: unknown) => {
+    if (!isAppFrame(event)) return false
+    try {
+      return await writeClipboardImageFile(file, await imageClipboard())
+    } catch {
+      return false
+    }
+  })
 
   ipcMain.handle('ccm:clipboard-image', async (event, dataUrl: unknown) => {
     if (!isAppFrame(event)) return false

@@ -10,7 +10,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
   const { evaluate, waitFor, shot, sleep, cmd, key } = app
   try {
     await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.workspace.preset','shell')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell')`)
     await cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')
@@ -19,7 +19,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await evaluate(`[...document.querySelectorAll('[data-launch-row]')].at(-1).click()`)
     await waitFor(`${W}.panes[0]?.state === 'running'`, 20000, 'shell running')
 
-    await evaluate(`document.querySelector('[aria-haspopup=menu]').click()`)
+    await evaluate(`document.querySelector('[data-pane] [aria-haspopup=menu]').click()`)
     await waitFor(`!!document.querySelector('[role=menu]')`, 5000, 'menu')
     const items = await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent.trim())`)
     check('menu lists Claude, Codex, Shell, Browser', items.length === 4 && /Claude/.test(items[0]) && /Codex/.test(items[1]) && /Shell/.test(items[2]) && /Browser/.test(items[3]), JSON.stringify(items))
@@ -31,7 +31,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await key('Escape', 'Escape', 27)
     check('Esc closes the menu', await evaluate(`!document.querySelector('[role=menu]')`))
 
-    await evaluate(`document.querySelector('[aria-haspopup=menu]').click()`)
+    await evaluate(`document.querySelector('[data-pane] [aria-haspopup=menu]').click()`)
     await waitFor(`!!document.querySelector('[role=menu]')`, 5000, 'menu again')
     await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => /Codex/.test(b.textContent)).click()`)
     await waitFor(`${W}.panes.length === 2`, 5000, 'second pane')

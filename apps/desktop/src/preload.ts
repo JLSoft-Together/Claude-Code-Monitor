@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 
 function subscribe(channel: string, handler: (payload: unknown) => void): () => void {
   const listener = (_event: IpcRendererEvent, payload: unknown): void => handler(payload)
@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   platform: process.platform,
   ptyEndpoint: (): Promise<unknown> => ipcRenderer.invoke('ccm:pty-endpoint'),
   pickFolder: (): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder'),
+  setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),
   logs: (action: 'copy' | 'save', report: string): Promise<unknown> => ipcRenderer.invoke('ccm:logs', action, report),
   /** Toast click: the page answers whether a workspace pane holds that session. */
   onFocus: (handler: (terminalId: string) => boolean): void => {
@@ -46,6 +47,16 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   createEntry: (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<unknown> =>
     ipcRenderer.invoke('ccm:create-entry', { root, parent, name, kind }),
   clipboardImage: (pngDataUrl: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image', pngDataUrl),
+  clipboardImageFile: (file: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image-file', file),
+  pickFiles: (): Promise<unknown> => ipcRenderer.invoke('ccm:pick-files'),
+  // Dropped File → absolute path (File.path is gone since Electron 32); '' for files that have none.
+  pathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
   captureGuest: (webContentsId: number): Promise<unknown> => ipcRenderer.invoke('ccm:capture-guest', webContentsId),
   projectRoot: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir),
   scripts: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:scripts', dir),

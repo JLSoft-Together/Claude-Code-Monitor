@@ -2,12 +2,17 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
+import { desktop } from '../lib/desktop'
+import { applyTheme, isThemeId, themeMeta, toggleTarget, type ThemeId } from '../lib/themes'
 
-export type Theme = 'light' | 'dark'
+export type Theme = ThemeId
 export type NotifyPermission = NotificationPermission | 'unsupported'
 
+// index.html already applied the stored theme before paint; read it back from the root.
 function initialTheme(): Theme {
-  return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  const root = document.documentElement
+  const id = root.dataset.theme
+  return isThemeId(id) ? id : root.classList.contains('dark') ? 'dark' : 'light'
 }
 
 function read(key: string): string | null {
@@ -85,10 +90,11 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     theme,
     (value) => {
-      document.documentElement.classList.toggle('dark', value === 'dark')
+      applyTheme(document.documentElement, value)
       persist('ccm.theme', value)
+      void desktop?.setWindowBackground?.(themeMeta(value).swatch[0])
     },
-    { flush: 'sync' },
+    { flush: 'sync', immediate: true },
   )
 
   watch(
@@ -102,7 +108,11 @@ export const useSettingsStore = defineStore('settings', () => {
   )
 
   function toggleTheme(): void {
-    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+    theme.value = toggleTarget(theme.value)
+  }
+
+  function setTheme(id: ThemeId): void {
+    if (isThemeId(id)) theme.value = id
   }
 
   function toggleLocale(): void {
@@ -167,6 +177,7 @@ export const useSettingsStore = defineStore('settings', () => {
     togglePin,
     prunePins,
     toggleTheme,
+    setTheme,
     toggleLocale,
     toggleHideFinished,
     toggleNotifications,

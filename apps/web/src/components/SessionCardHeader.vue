@@ -2,18 +2,17 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AppWindow, Check, Info, LoaderCircle, Pencil, Pin, RotateCcw, SquareTerminal, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
-import { isAgentSessionId, type TerminalSession } from '@ccm/shared'
-import { hasTerminals } from '../lib/desktop'
+import type { TerminalSession } from '@ccm/shared'
 import { openAppKey } from '../lib/platform'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
+import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
 import { isCodex } from '../lib/provider'
 import { displayTitle, isAutoNamed } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
-import { useWorkspaceStore } from '../stores/workspace'
 import ProviderBadge from './ProviderBadge.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
@@ -24,7 +23,6 @@ const ui = useUiStore()
 const connection = useConnectionStore()
 const favorites = useFavoritesStore()
 const settings = useSettingsStore()
-const workspace = useWorkspaceStore()
 
 const ended = computed(() => props.terminal.status === 'stale')
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
@@ -45,15 +43,13 @@ const canJump = computed(() => !ended.value && !!props.terminal.processId)
 function jump(): void {
   if (!connection.focusWindow(props.terminal.id)) ui.reportWindowResult(props.terminal.id, 'offline')
 }
-const pane = computed(() => workspace.paneByTerminal.get(props.terminal.id))
-const resumeId = computed(() => (codex.value ? props.terminal.codexSessionId : props.terminal.claudeSessionId))
-const canReopen = computed(() => hasTerminals && !pane.value && !!props.terminal.cwd && isAgentSessionId(resumeId.value))
+const reveal = useRevealInWorkspace()
+const pane = computed(() => reveal.paneOf(props.terminal.id))
+const canReopen = computed(() => reveal.canReopen(props.terminal))
 const confirmReopen = ref(false)
 
 function showInWorkspace(): void {
-  if (!pane.value) return
-  workspace.activate(pane.value.key)
-  ui.setView('workspace')
+  reveal.show(props.terminal.id)
 }
 
 // Two live instances on one session would both append to the same transcript, so a running one needs a yes first.
@@ -64,8 +60,7 @@ function reopen(force = false): void {
     return
   }
   confirmReopen.value = false
-  workspace.resumeSession(codex.value ? 'codex' : 'claude', props.terminal.cwd!, resumeId.value!)
-  ui.setView('workspace')
+  reveal.reopen(props.terminal)
 }
 
 const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))

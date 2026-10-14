@@ -331,6 +331,21 @@ body {
   backdrop-filter: saturate(180%) blur(24px);
 }
 
+/* shiki css-variables theme (lib/highlight.ts) → the active theme's syn-* tokens; FilePane + DiffView. */
+.ccm-code {
+  --shiki-foreground: var(--ccm-syn-var);
+  --shiki-background: transparent;
+  --shiki-token-keyword: var(--ccm-syn-keyword);
+  --shiki-token-string: var(--ccm-syn-string);
+  --shiki-token-string-expression: var(--ccm-syn-string);
+  --shiki-token-constant: var(--ccm-syn-number);
+  --shiki-token-comment: var(--ccm-syn-comment);
+  --shiki-token-function: var(--ccm-syn-func);
+  --shiki-token-parameter: var(--ccm-syn-var);
+  --shiki-token-link: var(--ccm-syn-type);
+  --shiki-token-punctuation: var(--ccm-well-ink);
+}
+
 :focus-visible {
   outline: 2px solid var(--ccm-focus);
   outline-offset: 2px;

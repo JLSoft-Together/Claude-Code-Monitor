@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { TourId } from '../lib/tour'
 import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
@@ -197,7 +198,8 @@ export const useUiStore = defineStore('ui', () => {
   const paletteOpen = ref(false)
   const recapOpen = ref(false)
   const diagnosticsOpen = ref(false)
-  const tourOpen = ref(false)
+  /** Which guide is open (lib/tour.ts TOURS). */
+  const tourOpen = ref<false | TourId>(false)
   const settingsOpen = ref(false)
   const breakDue = ref<{ at: number; minutes: number } | null>(null)
   const focusingWindow = ref<string | null>(null)

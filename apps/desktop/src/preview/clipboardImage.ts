@@ -1,3 +1,6 @@
+import { stat } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
+
 export const MAX_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024
 
 const PREFIX = 'data:image/png;base64,'
@@ -16,6 +19,8 @@ export function parsePngDataUrl(value: unknown, maxBytes = MAX_CLIPBOARD_IMAGE_B
 export interface ClipboardImageDeps {
   /** `nativeImage.createFromDataURL`: proves the bytes decode as an image. */
   createFromDataURL: (dataUrl: string) => { isEmpty: () => boolean; toPNG: () => Buffer }
+  /** `nativeImage.createFromPath` (png / jpeg / gif first frame / webp per platform support). */
+  createFromPath: (file: string) => { isEmpty: () => boolean; toPNG: () => Buffer }
   /** Electron 44 clipboard is the async W3C-style API: `clipboard.write([new ClipboardItem({'image/png': blob})])`. */
   writePng: (png: Buffer) => Promise<void>
 }
@@ -29,11 +34,32 @@ export async function writeClipboardImage(dataUrl: unknown, deps: ClipboardImage
   return true
 }
 
+export const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i
+
+/**
+ * Image file the user dropped / picked into the attachments tray → clipboard, so the agent's own paste key picks it up.
+ * Only image files (by extension, then by decoding), absolute, ≤ 20 MB; the pixels are re-encoded as PNG.
+ */
+export async function writeClipboardImageFile(file: unknown, deps: ClipboardImageDeps): Promise<boolean> {
+  if (typeof file !== 'string' || !isAbsolute(file) || !IMAGE_FILE.test(file)) return false
+  try {
+    const info = await stat(file)
+    if (!info.isFile() || info.size > MAX_CLIPBOARD_IMAGE_BYTES) return false
+  } catch {
+    return false
+  }
+  const image = deps.createFromPath(file)
+  if (image.isEmpty()) return false
+  await deps.writePng(image.toPNG())
+  return true
+}
+
 /** Electron's own implementation, loaded lazily so tests never import `electron`. */
 export async function electronClipboardImage(): Promise<ClipboardImageDeps> {
   const { clipboard, ClipboardItem, nativeImage } = await import('electron')
   return {
     createFromDataURL: (u) => nativeImage.createFromDataURL(u),
+    createFromPath: (f) => nativeImage.createFromPath(f),
     writePng: (png) => clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]),
   }
 }

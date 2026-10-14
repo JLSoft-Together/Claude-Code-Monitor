@@ -16,7 +16,7 @@ import { useSnoozeStore } from '../stores/snooze'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUsageStore } from '../stores/usage'
 import { useUiStore } from '../stores/ui'
-import { useWorkspaceStore } from '../stores/workspace'
+import { useRevealInWorkspace } from './useRevealInWorkspace'
 
 export type NotifyKind = 'waiting' | 'done' | 'reminder' | 'context' | 'stuck' | 'job' | 'limit' | 'loop'
 
@@ -106,11 +106,7 @@ export function useNotifications(): void {
       const n = new Notification(title, { body, tag, icon: '/favicon.svg' })
       n.onclick = () => {
         window.focus()
-        const pane = terminal ? useWorkspaceStore().paneByTerminal.get(terminal.id) : undefined
-        if (pane) {
-          useWorkspaceStore().activate(pane.key)
-          ui.setView('workspace')
-        } else {
+        if (!terminal || !useRevealInWorkspace().show(terminal.id)) {
           ui.setView('monitor')
           if (terminal) ui.focusTerminal(terminal.id)
         }

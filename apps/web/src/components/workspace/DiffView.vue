@@ -97,7 +97,7 @@ defineExpose({ scrollToHunk })
 </script>
 
 <template>
-  <div ref="root" class="diff min-w-full py-1" :class="layout === 'split' ? 'is-split' : 'w-max'" role="document">
+  <div ref="root" class="diff ccm-code min-w-full py-1" :class="layout === 'split' ? 'is-split' : 'w-max'" role="document">
     <section
       v-for="h in hunks"
       :key="h.index"
@@ -120,23 +120,12 @@ defineExpose({ scrollToHunk })
 </template>
 
 <style scoped>
-/* Always on the dark well; diff tints use the dark diff values (well-specific tokens fall back to them). */
+/* On the well: diff tints use the well diff inks; shiki colours come from .ccm-code (style.css). */
 .diff {
-  --add-ink: var(--ccm-diff-add-well, #30d158);
-  --del-ink: var(--ccm-diff-del-well, #ff6961);
+  --add-ink: var(--ccm-diff-add-well);
+  --del-ink: var(--ccm-diff-del-well);
   --add-bg: color-mix(in srgb, var(--add-ink) 16%, transparent);
   --del-bg: color-mix(in srgb, var(--del-ink) 18%, transparent);
-  --shiki-foreground: var(--ccm-syn-var, var(--ccm-well-ink));
-  --shiki-background: transparent;
-  --shiki-token-keyword: var(--ccm-syn-keyword, #ff7ab2);
-  --shiki-token-string: var(--ccm-syn-string, #ff8170);
-  --shiki-token-string-expression: var(--ccm-syn-string, #ff8170);
-  --shiki-token-constant: var(--ccm-syn-number, #d9c97c);
-  --shiki-token-comment: var(--ccm-syn-comment, #7f8c98);
-  --shiki-token-function: var(--ccm-syn-func, #67b7a4);
-  --shiki-token-parameter: var(--ccm-syn-var, var(--ccm-well-ink));
-  --shiki-token-link: var(--ccm-syn-type, #6bdfff);
-  --shiki-token-punctuation: var(--ccm-well-ink);
   color: var(--shiki-foreground);
   font-family: var(--font-mono);
   font-size: 12.5px;

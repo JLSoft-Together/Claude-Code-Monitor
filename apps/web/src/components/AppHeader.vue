@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modeOf } from '../lib/themes'
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -58,6 +59,8 @@ const connectionTitle = computed(() =>
 
 const showClaudeLimits = computed(() => !!(extras.limits?.fiveHour || extras.limits?.sevenDay))
 const showCodexLimits = computed(() => !!(extras.codexLimits?.fiveHour || extras.codexLimits?.sevenDay))
+
+const isDark = computed(() => modeOf(settings.theme) === 'dark')
 
 function toggleTheme(): void {
   withViewTransition(() => settings.toggleTheme())
@@ -189,8 +192,8 @@ function onTabKey(e: KeyboardEvent): void {
           <button
             type="button"
             class="ccm-btn-plain hidden 2xl:inline-flex"
-            :aria-label="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
-            :title="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
+            :aria-label="isDark ? t('settings.toLight') : t('settings.toDark')"
+            :title="isDark ? t('settings.toLight') : t('settings.toDark')"
             @click="toggleTheme"
           >
             <Transition
@@ -200,7 +203,7 @@ function onTabKey(e: KeyboardEvent): void {
               leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
               leave-to-class="opacity-0 rotate-[60deg] scale-75"
             >
-              <Sun v-if="settings.theme === 'dark'" key="sun" :size="16" aria-hidden="true" />
+              <Sun v-if="isDark" key="sun" :size="16" aria-hidden="true" />
               <Moon v-else key="moon" :size="16" aria-hidden="true" />
             </Transition>
           </button>

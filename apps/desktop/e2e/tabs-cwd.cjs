@@ -38,7 +38,7 @@ const activeTab = `document.querySelector('[role=tablist][aria-label=Terminals] 
 async function phaseOne(app) {
   const { evaluate, waitFor, shot, sleep, cmd, key, type } = app
   await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
+  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
   await cmd('Page.reload')
   await sleep(1500)
   await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')
@@ -48,8 +48,9 @@ async function phaseOne(app) {
   await waitFor(`${W}.panes[0]?.state === 'running'`, 20000, 'shell running')
   await sleep(1500)
 
-  const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => b.getAttribute('aria-label') === 'New tab'); return b ? b.textContent.trim() : null })()`)
-  check('+ button reads "New", aria-label "New tab"', plus === 'New', plus)
+  // Browser-style: the "+" sits right after the tab list, not pinned to the far right.
+  const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => b.getAttribute('aria-label') === 'New tab'); if (!b) return null; const strip = document.querySelector('[role=tablist][aria-label=Terminals]').getBoundingClientRect(); return Math.round(b.getBoundingClientRect().left - strip.right) })()`)
+  check('+ button (aria-label "New tab") follows the last tab', plus !== null && plus >= 0 && plus <= 12, plus)
 
   // The first prompt already reports the start folder; the branch chip shows the top repo.
   await waitFor(`${W}.panes[0].liveCwd && ${W}.panes[0].branch === 'trunk'`, 15000, 'first cwd report').catch(() => {})

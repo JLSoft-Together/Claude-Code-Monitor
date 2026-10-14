@@ -430,6 +430,18 @@ Native notifications: an Electron `Notification` from the dev binary (`com.githu
 4. Session restore uses the session id the monitor already knows for the pane (registry `sessionId`, follows `/clear`); nothing is guessed from folders. Restoring is always a user action ("Restore previous workspace"), never automatic. Reopening an external session that is still live asks first: two instances on one session would both append to the same transcript.
 5. Git worktrees are created and removed by the PTY host (token channel), never by the collector's dashboard socket: `git -C <dir> worktree add -- <repo>-wt/<branch> [<branch>|-b <branch>]`, `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0`; removal refuses the main checkout, a dirty tree or a folder a live terminal runs in, and never uses `--force`. `git` is resolved by walking PATH ourselves because Windows process creation would try the project folder first.
 
+## 11p. Attachments tray — image paste key and reading the input box (v25, desktop only, verified 2026-10-14, Claude Code 2.1.299, Windows 11)
+
+Probe: `claude` in a node-pty (110×36) rendered by `@xterm/headless`; image put on the clipboard with `System.Windows.Forms.Clipboard.SetImage`; Enter never pressed.
+
+1. **Image paste key.** On Windows Claude Code reads a clipboard image on **Alt+V** (`ESC v`): the status line shows "Pasting…", then `[Image #N]` appears in the prompt. `^V` (`\x16`, what the app sent before v25) does nothing there. macOS / Linux keep Ctrl+V. `usePaneAttachments.imagePasteKey` picks the key per platform; it is used for Ctrl/⌘+V in a pane, the browser screenshot hand-off and the tray.
+2. **Input box.** The prompt sits between two full-width `─` rules with a `❯ ` prefix; the empty box shows a dim placeholder (`Try "…"`). Status lines (model, mode, status-line output) are below the lower rule; "↓ N more" and earlier messages are above. `lib/promptAttachments.ts` reads only the rows between the two lowest rules in the bottom 40 rows, so earlier messages that mention `[Image #1]` or `@file` are never counted.
+3. **Tokens.** Images: `[Image #1]`, `[Image #2]`, … in paste order. File mentions typed through bracketed paste stay as typed: `@package.json`, `@"docs/a b.md"` (quoted form accepted, no autocomplete interference).
+4. **Removal.** One Backspace right after `[Image #N]` removes the whole placeholder (and the image). A mention is plain text: one Backspace per character. Ctrl+U clears the line. The tray erases only an item that ends the prompt with the cursor right after it (`eraseCount`); anything else is left to the user ("remove it in the terminal").
+5. **Codex 0.154 not verified** (its first run in this folder asks to trust it; answering would change the user's Codex config). Codex panes get file mentions only; Codex's own Ctrl+V is left as it was.
+
+Privacy: the screen is read in the page only, for the pane's own prompt; nothing reaches the collector, logs or storage. Tray items (names, paths, thumbnails ≤ 96 px) live in memory and are dropped with the pane. Inserting an image replaces the system clipboard; the UI says so.
+
 ## 12. Open items
 
 | Item | State |

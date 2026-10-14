@@ -10,8 +10,9 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type MapView } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
-import { motionMs, nextMapIsSwitch, reducedMotion } from '../lib/motion'
+import { motionMs, nextMapIsSwitch, reducedMotion, retireOverlay } from '../lib/motion'
 import { WINDOWS } from '../lib/toolTimeline'
+import AgentContextMenu from './AgentContextMenu.vue'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
 import KeyHint from './KeyHint.vue'
@@ -27,7 +28,7 @@ const settings = useSettingsStore()
 
 const scoped = !!props.terminalId
 const FLOW_ID = scoped ? `agent-map-${props.terminalId}` : 'agent-map'
-const { addNodes, removeNodes, getNodes, fitView, getViewport, setViewport, zoomIn, zoomOut, updateNode, onNodeClick, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
+const { addNodes, removeNodes, getNodes, fitView, getViewport, setViewport, zoomIn, zoomOut, updateNode, onNodeClick, onNodeContextMenu, onNodeDragStop, onPaneClick, onNodesInitialized } = useVueFlow(FLOW_ID)
 
 const canvas = ref<HTMLElement | null>(null)
 const picked = ref<Set<string>>(new Set())
@@ -314,6 +315,32 @@ onNodeClick(({ node, event }) => {
   ui.selectAgent(selecting ? node.id : null)
   if (selecting && terminalId) ui.revealTerminal(terminalId)
 })
+// Right-click (or the menu key / Shift+F10 on a focused node): session actions, incl. its workspace pane.
+const ctxMenu = ref<{ at: DOMRect; terminalId: string; agentId: string; trigger: HTMLElement | null } | null>(null)
+function openContextMenu(agentId: string, at: DOMRect, trigger: HTMLElement | null): void {
+  const terminalId = agents.byId[agentId]?.terminalId
+  if (!terminalId) return
+  if (ui.selectedAgentId !== agentId) {
+    ui.selectAgent(agentId)
+    ui.revealTerminal(terminalId)
+  }
+  ctxMenu.value = { at, terminalId, agentId, trigger }
+}
+onNodeContextMenu(({ node, event }) => {
+  event.preventDefault()
+  const p = 'clientX' in event ? event : event.touches[0]
+  if (!p) return
+  const el = (event.target as HTMLElement | null)?.closest<HTMLElement>('.vue-flow__node') ?? null
+  openContextMenu(node.id, new DOMRect(p.clientX, p.clientY, 0, 0), el)
+})
+function onCanvasKey(e: KeyboardEvent): void {
+  if (e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return
+  const el = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.vue-flow__node')
+  const id = el?.dataset.id
+  if (!el || !id) return
+  e.preventDefault()
+  openContextMenu(id, el.getBoundingClientRect(), el)
+}
 onPaneClick(() => {
   ui.selectAgent(null)
   clearPicked()
@@ -349,6 +376,7 @@ const views = computed(() => [
       :class="nodeMotion ? 'ccm-map-motion' : ''"
       role="region"
       :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
+      @keydown="onCanvasKey"
     >
       <ToolTimeline v-if="ui.mapView === 'timeline'" :terminal-id="terminalId" />
       <VueFlow
@@ -370,6 +398,18 @@ const views = computed(() => [
           <AgentNode :id="nodeProps.id" :data="nodeProps.data" :picked="nodeProps.selected" />
         </template>
       </VueFlow>
+      <Teleport to="body">
+        <Transition name="ccm-menu" @before-leave="retireOverlay">
+          <AgentContextMenu
+            v-if="ctxMenu"
+            :at="ctxMenu.at"
+            :terminal-id="ctxMenu.terminalId"
+            :agent-id="ctxMenu.agentId"
+            :trigger="ctxMenu.trigger"
+            @close="ctxMenu = null"
+          />
+        </Transition>
+      </Teleport>
 
       <div v-if="ui.mapView === 'map' && !hasNodes" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-sm text-ink-muted">
         <ArtImage name="agent-map-bg" class="w-full max-w-3xl opacity-25" />

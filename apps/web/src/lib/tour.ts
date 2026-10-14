@@ -21,19 +21,35 @@ export const TOUR_STEPS: TourStep[] = [
   { id: 'finish' },
 ]
 
-const KEY = 'ccm.tourDone'
+/** Workspace (desktop only): the parts used every day, nothing more. i18n under `wsTour.<id>`. */
+export const WORKSPACE_TOUR_STEPS: TourStep[] = [
+  { id: 'welcome' },
+  { id: 'new', target: 'ws-new' },
+  { id: 'split', target: 'ws-split', absent: true },
+  { id: 'pane', target: 'ws-pane', absent: true },
+  { id: 'sidebar', target: 'ws-sidebar', absent: true },
+  { id: 'attach', target: 'ws-attach', absent: true },
+  { id: 'keys', target: 'ws-help', absent: true },
+]
 
-export function tourDone(): boolean {
+export type TourId = 'monitor' | 'workspace'
+
+export const TOURS: Record<TourId, { steps: TourStep[]; view: 'monitor' | 'workspace'; key: string; i18n: string }> = {
+  monitor: { steps: TOUR_STEPS, view: 'monitor', key: 'ccm.tourDone', i18n: 'tour.steps' },
+  workspace: { steps: WORKSPACE_TOUR_STEPS, view: 'workspace', key: 'ccm.tourWorkspaceDone', i18n: 'wsTour' },
+}
+
+export function tourDone(id: TourId = 'monitor'): boolean {
   try {
-    return localStorage.getItem(KEY) === '1'
+    return localStorage.getItem(TOURS[id].key) === '1'
   } catch {
     return true
   }
 }
 
-export function markTourDone(): void {
+export function markTourDone(id: TourId = 'monitor'): void {
   try {
-    localStorage.setItem(KEY, '1')
+    localStorage.setItem(TOURS[id].key, '1')
   } catch {
     return
   }

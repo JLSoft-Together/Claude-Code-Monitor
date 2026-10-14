@@ -88,6 +88,9 @@ interface PreviewBridge {
   listDir?: (root: string, dir: string) => Promise<DirEntry[] | null>
   createEntry?: (root: string, parent: string, name: string, kind: 'file' | 'directory') => Promise<CreateEntryResult>
   clipboardImage?: (pngDataUrl: string) => Promise<boolean>
+  clipboardImageFile?: (file: string) => Promise<boolean>
+  pickFiles?: () => Promise<string[]>
+  pathForFile?: (file: File) => string
   captureGuest?: (webContentsId: number) => Promise<boolean>
 }
 
@@ -123,6 +126,11 @@ export const listDir = (root: string, dir: string): Promise<DirEntry[] | null> =
 export const createEntry = (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<CreateEntryResult> =>
   bridge?.createEntry?.(root, parent, name, kind) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const clipboardImage = (pngDataUrl: string): Promise<boolean> => bridge?.clipboardImage?.(pngDataUrl) ?? Promise.resolve(false)
+export const clipboardImageFile = (file: string): Promise<boolean> => bridge?.clipboardImageFile?.(file) ?? Promise.resolve(false)
+export const pickFiles = (): Promise<string[]> => bridge?.pickFiles?.() ?? Promise.resolve([])
+export const hasAttachments = typeof bridge?.pathForFile === 'function'
+/** Absolute path of a dropped file, '' when it has none (dragged out of a web page). */
+export const pathForFile = (file: File): string => bridge?.pathForFile?.(file) ?? ''
 export const captureGuest = (webContentsId: number): Promise<boolean> => bridge?.captureGuest?.(webContentsId) ?? Promise.resolve(false)
 export const hasCaptureGuest = typeof bridge?.captureGuest === 'function'
 

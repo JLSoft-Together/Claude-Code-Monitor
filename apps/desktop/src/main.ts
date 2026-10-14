@@ -163,12 +163,39 @@ function saveBounds(win: BrowserWindow): void {
   }
 }
 
+// Canvas colour of the theme picked in the page, so a new window does not flash the OS-default grey.
+const appearanceFile = (): string => path.join(app.getPath('userData'), 'appearance.json')
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+let windowBackground: string | null | undefined
+
+function savedBackground(): string | null {
+  if (windowBackground !== undefined) return windowBackground
+  try {
+    const bg = (JSON.parse(readFileSync(appearanceFile(), 'utf8')) as { background?: unknown }).background
+    windowBackground = typeof bg === 'string' && HEX_COLOR.test(bg) ? bg : null
+  } catch {
+    windowBackground = null
+  }
+  return windowBackground
+}
+
+function setWindowBackground(color: string): void {
+  if (color === savedBackground()) return
+  windowBackground = color
+  for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(color)
+  try {
+    writeFileSync(appearanceFile(), JSON.stringify({ background: color }))
+  } catch {
+    // Only the next launch's first frame depends on it.
+  }
+}
+
 function baseWindow(options: Electron.BrowserWindowConstructorOptions, prefs: Electron.WebPreferences = {}): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     // macOS takes the window icon from the app bundle.
     icon: IS_MAC ? undefined : resource('ccm.ico', 'scripts/assets/ccm.ico'),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ececee',
+    backgroundColor: savedBackground() ?? (nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ececee'),
     autoHideMenuBar: true,
     title: t.appName,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs'), ...prefs },
@@ -485,6 +512,11 @@ async function ready(): Promise<void> {
   // The token is the only gate on a shell; hand it out to top-level app frames only.
   // Any other process that grabbed the port serves its own page: no shell for it.
   ipcMain.handle('ccm:pty-endpoint', (event) => (isAppFrame(event) ? (ptys?.endpoint() ?? null) : null))
+  ipcMain.handle('ccm:window-bg', (event, color: unknown) => {
+    if (!isAppFrame(event) || typeof color !== 'string' || !HEX_COLOR.test(color)) return false
+    setWindowBackground(color)
+    return true
+  })
   // Native picker so a folder for a terminal comes from the user, not from page script.
   ipcMain.handle('ccm:pick-folder', async (event) => {
     if (!isAppFrame(event)) return null

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, CircleCheck, CircleDot, Columns2, GitBranch, LoaderCircle, Play, RotateCw, X } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck, CircleDot, Columns2, GitBranch, LoaderCircle, Paperclip, Play, RotateCw, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -17,13 +17,20 @@ import { contextPctOf } from '../../lib/provider'
 import { retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
+import { imagePasteKey, usePaneAttachments, type PaneScreen } from '../../composables/usePaneAttachments'
+import { desktop } from '../../lib/desktop'
+import { clipboardImageBlob, imageData } from '../../lib/imageData'
+import { hasAttachments, pathForFile } from '../../lib/preview'
 import { useAgentsStore } from '../../stores/agents'
+import { fromPath, useAttachmentsStore, type NewAttachment } from '../../stores/attachments'
 import { useSettingsStore } from '../../stores/settings'
 import { useTerminalsStore } from '../../stores/terminals'
+import { useTipsStore } from '../../stores/tips'
 import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
 import { hasScripts } from '../../lib/projects'
 import { useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
+import AttachmentsPanel from './AttachmentsPanel.vue'
 import DevServerChip from './DevServerChip.vue'
 import TermFind from './TermFind.vue'
 import StatusBadge from '../StatusBadge.vue'
@@ -39,6 +46,7 @@ const workspace = useWorkspaceStore()
 const settings = useSettingsStore()
 const terminals = useTerminalsStore()
 const agents = useAgentsStore()
+const tips = useTipsStore()
 
 const host = ref<HTMLElement | null>(null)
 let term: Terminal | null = null
@@ -131,6 +139,12 @@ function closeWorktrees(): void {
 const splitAnchor = ref<DOMRect | null>(null)
 const splitButton = ref<HTMLButtonElement | null>(null)
 
+// Clicking into another pane has a chord (Alt+Arrows): counted for the shortcut tip.
+function onPointerDown(): void {
+  if (props.multi && !props.focused) tips.mouse('focus')
+  workspace.activate(props.pane.key)
+}
+
 function toggleSplit(): void {
   splitAnchor.value = splitAnchor.value ? null : (splitButton.value?.getBoundingClientRect() ?? null)
 }
@@ -218,19 +232,96 @@ function refit(): void {
   }
 }
 
-async function clipboardHasImage(): Promise<boolean> {
-  try {
-    const items = await navigator.clipboard.read()
-    return items.some((it) => it.types.some((type) => type.startsWith('image/')))
-  } catch {
-    // read() rejects on some clipboard formats while plain text is still readable
-    return false
+// Attachments tray (agent panes): inserts go through this pane's PTY, the prompt is read back from the screen.
+const attachments = useAttachmentsStore()
+const isWin = desktop?.platform === 'win32'
+const canAttach = computed(() => hasAttachments && props.pane.preset !== 'shell')
+const attachOpen = computed(() => canAttach.value && !!attachments.open[props.pane.key])
+const attachCount = computed(() => attachments.live(props.pane.key).length)
+const dropping = ref(false)
+let dragDepth = 0
+
+function readScreen(): PaneScreen | null {
+  if (!term) return null
+  const b = term.buffer.active
+  const rows: string[] = []
+  for (let y = 0; y < term.rows; y++) rows.push(b.getLine(b.baseY + y)?.translateToString(true) ?? '')
+  return { rows, cursor: { x: b.cursorX, y: b.cursorY } }
+}
+
+const att = usePaneAttachments({
+  paneKey: () => props.pane.key,
+  preset: () => props.pane.preset,
+  cwd: () => cwd.value,
+  running: () => props.pane.state === 'running',
+  visible: () => props.visible,
+  write: (data) => conn?.write(data),
+  paste: (text) => {
+    term?.paste(text)
+    term?.focus()
+  },
+  screen: readScreen,
+  win: isWin,
+})
+
+watch(
+  () => props.visible,
+  (shown) => shown && att.schedule(),
+)
+
+const hasFiles = (e: DragEvent): boolean =>!!e.dataTransfer?.types.includes('Files')
+
+function onDragEnter(e: DragEvent): void {
+  if (!hasAttachments || !hasFiles(e) || props.pane.state !== 'running') return
+  e.preventDefault()
+  dragDepth++
+  dropping.value = true
+}
+
+function onDragOver(e: DragEvent): void {
+  if (!dropping.value) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+
+function onDragLeave(): void {
+  if (dragDepth && --dragDepth === 0) dropping.value = false
+}
+
+/** Files carry a path (desktop); images dragged out of a web page have none and travel as pixels. */
+async function onDrop(e: DragEvent): Promise<void> {
+  if (!dropping.value) return
+  e.preventDefault()
+  dragDepth = 0
+  dropping.value = false
+  workspace.activate(props.pane.key)
+  const items: NewAttachment[] = []
+  for (const file of Array.from(e.dataTransfer?.files ?? [])) {
+    const path = pathForFile(file)
+    if (path) {
+      const it = fromPath(path, 'drop')
+      if (it.kind === 'file' || att.imagesSupported.value || !att.agent.value) items.push(it)
+    } else if (file.type.startsWith('image/') && att.imagesSupported.value) {
+      const img = await imageData(file)
+      if (img) items.push({ kind: 'image', name: file.name || t('attach.image'), source: 'drop', ...img })
+    }
   }
+  if (!items.length) return
+  // Shell panes: the path is typed at the prompt, no tray.
+  attachments.add(props.pane.key, items, att.agent.value ? undefined : true)
+  if (!att.agent.value) attachments.toggle(props.pane.key, false)
 }
 
 async function paste(textOnly: boolean): Promise<void> {
-  // Claude Code reads clipboard images itself on ^V, so forward the raw key when one is there.
-  if (!textOnly && (await clipboardHasImage())) return conn?.write('\x16')
+  // Agents read clipboard images themselves on their paste key (Alt+V on Windows for Claude Code, §11p).
+  const key = textOnly ? null : imagePasteKey(props.pane.preset, isWin)
+  const blob = key ? await clipboardImageBlob() : null
+  if (key && blob) {
+    conn?.write(key)
+    const img = await imageData(blob)
+    att.notePaste({ kind: 'image', name: t('attach.clipboard'), source: 'paste', thumb: img?.thumb })
+    return
+  }
   try {
     const text = await navigator.clipboard.readText()
     if (text) term?.paste(text)
@@ -250,6 +341,13 @@ function onKey(e: KeyboardEvent): boolean {
   if (e.code === 'KeyF' && !e.altKey && (isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey)) {
     e.preventDefault()
     void openFind()
+    return false
+  }
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) att.noteSubmit()
+  // ⌘V is image-aware too (xterm's own paste only knows text).
+  if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'v') {
+    e.preventDefault()
+    void paste(e.shiftKey)
     return false
   }
   if (isMac) return true
@@ -373,6 +471,7 @@ onMounted(() => {
   term.unicode.activeVersion = '15-graphemes'
   term.open(host.value!)
   term.attachCustomKeyEventHandler(onKey)
+  term.onWriteParsed(() => att.schedule())
   term.parser.registerOscHandler(7, (data) => (onShellCwd(parseOsc7(data)), true))
   term.parser.registerOscHandler(9, (data) => {
     const dir = parseOsc9(data)
@@ -426,7 +525,11 @@ watch(
   (req) => {
     if (!req || req.paneKey !== props.pane.key || props.pane.state !== 'running') return
     if (req.image) {
-      if (props.pane.preset !== 'shell') conn?.write('\x16')
+      const key = imagePasteKey(props.pane.preset, isWin)
+      if (key) {
+        conn?.write(key)
+        att.notePaste({ kind: 'image', name: t('attach.screenshot'), source: 'paste' })
+      }
     } else term?.paste(req.text)
     term?.focus()
   },
@@ -453,7 +556,10 @@ onBeforeUnmount(() => {
   if (pendingTimer) clearTimeout(pendingTimer)
   window.removeEventListener('resize', dropMenus)
   linkProvider?.dispose()
-  if (!workspace.panes.some((p) => p.key === props.pane.key)) killSession()
+  if (!workspace.panes.some((p) => p.key === props.pane.key)) {
+    killSession()
+    attachments.drop(props.pane.key)
+  }
   conn?.close()
   webgl?.dispose()
   term?.dispose()
@@ -466,9 +572,9 @@ onBeforeUnmount(() => {
     :data-pane="pane.key"
     :style="visible ? `view-transition-name: ccm-pane-${pane.key}; view-transition-class: ccm-pane` : undefined"
     :aria-label="t(`workspace.preset.${pane.preset}`)"
-    @pointerdown="workspace.activate(pane.key)"
+    @pointerdown="onPointerDown"
   >
-    <header class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs">
+    <header class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs" :data-tour="focused ? 'ws-pane' : undefined">
       <PresetIcon :preset="pane.preset" :size="15" class="shrink-0" />
       <span class="shrink-0 font-semibold text-ink">{{ t(`workspace.preset.${pane.preset}`) }}</span>
       <span v-if="cwd" class="min-w-0 shrink truncate text-ink-faint" :title="cwd" data-cwd>{{ shortPath(cwd) }}</span>
@@ -506,6 +612,20 @@ onBeforeUnmount(() => {
         </Transition>
       </span>
       <button
+        v-if="canAttach"
+        type="button"
+        class="ccm-btn-plain shrink-0 gap-1"
+        :aria-pressed="attachOpen"
+        :aria-label="t('attach.button')"
+        :title="`${t('attach.button')}: ${t('attach.hint')}`"
+        :data-tour="focused ? 'ws-attach' : undefined"
+        data-attach-toggle
+        @click="attachments.toggle(pane.key)"
+      >
+        <Paperclip :size="14" aria-hidden="true" />
+        <span v-if="attachCount" class="text-2xs tabular" data-attach-count>{{ attachCount }}</span>
+      </button>
+      <button
         v-if="pane.state === 'error' && pane.sessionId"
         type="button"
         class="ccm-btn-plain shrink-0"
@@ -538,6 +658,7 @@ onBeforeUnmount(() => {
         :aria-label="t('workspace.splitPane')"
         aria-haspopup="menu"
         :aria-expanded="!!splitAnchor"
+        :data-tour="focused ? 'ws-split' : undefined"
         @click="toggleSplit"
       >
         <Columns2 :size="14" aria-hidden="true" />
@@ -551,8 +672,9 @@ onBeforeUnmount(() => {
         <X :size="14" aria-hidden="true" />
       </button>
     </header>
+    <div class="flex min-h-0 flex-1 gap-1.5" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <div
-      class="relative min-h-0 flex-1 rounded-card bg-well shadow-card outline-1 -outline-offset-1 transition-[outline-color] duration-(--ccm-dur-fast)"
+      class="relative min-h-0 min-w-0 flex-1 rounded-card bg-well shadow-card outline-1 -outline-offset-1 transition-[outline-color] duration-(--ccm-dur-fast)"
       :class="multi && focused ? 'outline-focus' : 'outline-transparent'"
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
@@ -567,6 +689,24 @@ onBeforeUnmount(() => {
         :class="pane.attention === 'waiting' ? 'text-st-waiting' : 'text-st-done'"
         aria-hidden="true"
       />
+      <Transition name="ccm-fade">
+        <div
+          v-if="dropping"
+          class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-card bg-accent-soft outline-2 -outline-offset-2 outline-focus outline-dashed"
+          data-drop-overlay
+        >
+          <span class="ccm-sheet inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink"><Paperclip :size="15" aria-hidden="true" />{{ t('attach.drop') }}</span>
+        </div>
+      </Transition>
+    </div>
+    <AttachmentsPanel
+      v-if="attachOpen"
+      :pane-key="pane.key"
+      :images-supported="att.imagesSupported.value"
+      :erase-for="att.eraseFor"
+      :remove="att.remove"
+      @close="attachments.toggle(pane.key, false)"
+    />
     </div>
   </section>
 </template>

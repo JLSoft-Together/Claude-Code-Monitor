@@ -354,25 +354,14 @@ const lineCount = computed(() => lines.value.length)
         <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
       </div>
       <article v-else-if="!showSource" class="md mx-auto max-w-3xl px-6 py-5" v-html="markdownHtml" @click="onMarkdownClick" />
-      <div v-else class="code min-w-full py-2" :class="wrap ? 'is-wrap' : 'w-max'" role="document" v-html="html" />
+      <div v-else class="code ccm-code min-w-full py-2" :class="wrap ? 'is-wrap' : 'w-max'" role="document" v-html="html" />
     </div>
   </section>
 </template>
 
 <style scoped>
-/* syn-* tokens land in style.css in v21 phase 2; fallbacks are the Xcode Default Dark values from .planning/COLOR-SYSTEM.md. */
+/* shiki colours: .ccm-code (style.css). */
 .code {
-  --shiki-foreground: var(--ccm-syn-var, var(--ccm-well-ink));
-  --shiki-background: transparent;
-  --shiki-token-keyword: var(--ccm-syn-keyword, #ff7ab2);
-  --shiki-token-string: var(--ccm-syn-string, #ff8170);
-  --shiki-token-string-expression: var(--ccm-syn-string, #ff8170);
-  --shiki-token-constant: var(--ccm-syn-number, #d9c97c);
-  --shiki-token-comment: var(--ccm-syn-comment, #7f8c98);
-  --shiki-token-function: var(--ccm-syn-func, #67b7a4);
-  --shiki-token-parameter: var(--ccm-syn-var, var(--ccm-well-ink));
-  --shiki-token-link: var(--ccm-syn-type, #6bdfff);
-  --shiki-token-punctuation: var(--ccm-well-ink);
   color: var(--shiki-foreground);
   font-family: var(--font-mono);
   font-size: 13px;

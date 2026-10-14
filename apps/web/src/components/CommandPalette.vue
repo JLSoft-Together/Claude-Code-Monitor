@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modeOf, THEMES } from '../lib/themes'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -22,8 +23,12 @@ import {
   Trash2,
   Volume2,
   X,
+  Palette,
+  Lightbulb,
 } from 'lucide-vue-next'
-import { retireOverlay } from '../lib/motion'
+import { retireOverlay, withViewTransition } from '../lib/motion'
+import { hasTerminals } from '../lib/desktop'
+import { useTipsStore } from '../stores/tips'
 import { shortPath } from '../lib/format'
 import { statusMeta } from '../lib/status'
 import { isCodex } from '../lib/provider'
@@ -57,6 +62,7 @@ interface Item {
 
 const { t } = useI18n()
 const ui = useUiStore()
+const tips = useTipsStore()
 const terminals = useTerminalsStore()
 const favorites = useFavoritesStore()
 const settings = useSettingsStore()
@@ -119,13 +125,27 @@ const items = computed<Item[]>(() => {
     ...(ended ? [{ id: 'c:clear', group: 'actions' as const, label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),
     { id: 'c:notify', group: 'prefs', label: t('settings.notifyEnable'), icon: Bell, on: settings.notifyEnabled, run: () => void settings.toggleNotifications() },
     { id: 'c:sound', group: 'prefs', label: t('settings.sound'), icon: Volume2, on: settings.sound, run: () => (settings.sound = !settings.sound) },
-    { id: 'c:theme', group: 'prefs', label: t('palette.darkTheme'), icon: Moon, on: settings.theme === 'dark', run: () => settings.toggleTheme() },
+    { id: 'c:theme', group: 'prefs', label: t('palette.darkTheme'), icon: Moon, on: modeOf(settings.theme) === 'dark', run: () => settings.toggleTheme() },
+    ...THEMES.map((th) => ({
+      id: `c:theme:${th.id}`,
+      group: 'prefs' as const,
+      label: t('palette.themeNamed', { name: `${th.name} ${t(th.mode === 'dark' ? 'settings.themeDark' : 'settings.themeLight')}` }),
+      icon: Palette,
+      on: settings.theme === th.id,
+      run: () => withViewTransition(() => settings.setTheme(th.id)),
+    })),
     { id: 'c:keyHints', group: 'prefs', label: t('keys.hints'), icon: Keyboard, on: settings.keyHints, run: () => (settings.keyHints = !settings.keyHints) },
     { id: 'c:tools', group: 'prefs', label: t('palette.toolsPref'), icon: ListFilter, on: !settings.hideTools, run: () => (settings.hideTools = !settings.hideTools) },
     { id: 'c:lang', group: 'prefs', label: t('palette.language'), sub: settings.locale === 'vi' ? 'Tiếng Việt → English' : 'English → Tiếng Việt', icon: Languages, run: () => settings.toggleLocale() },
     { id: 'c:settings', group: 'help', label: t('palette.openSettings'), icon: Settings2, run: () => (ui.settingsOpen = true) },
     { id: 'c:keys', group: 'help', label: t('keys.title'), sub: '?', icon: Keyboard, run: () => (ui.shortcutsOpen = true) },
-    { id: 'c:tour', group: 'help', label: t('tour.open'), icon: GraduationCap, run: () => (ui.tourOpen = true) },
+    { id: 'c:tour', group: 'help', label: t('tour.open'), icon: GraduationCap, run: () => (ui.tourOpen = 'monitor') },
+    ...(hasTerminals
+      ? [
+          { id: 'c:tourWorkspace', group: 'help' as const, label: t('wsHelp.tour'), icon: GraduationCap, run: () => (ui.tourOpen = 'workspace' as const) },
+          { id: 'c:tips', group: 'prefs' as const, label: t('tips.setting'), icon: Lightbulb, on: !tips.state.off, run: () => tips.setOff(!tips.state.off) },
+        ]
+      : []),
     { id: 'c:diag', group: 'help', label: t('diag.title'), icon: Stethoscope, run: () => (ui.diagnosticsOpen = true) },
   ]
   return [...sessions, ...favs, ...commands.map((c) => ({ ...c, hay: fold(`${c.label} ${c.sub ?? ''}`) }))]

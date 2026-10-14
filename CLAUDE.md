@@ -58,7 +58,7 @@ Key cross-cutting contracts:
 - No horizontal page scrolling: `overflow-x-hidden` at app level, Agent Map pans/zooms inside its own canvas, long paths truncate with tooltips.
 - All UI strings via vue-i18n (`en`, `vi`); all colors via theme tokens (dark/light, persisted). Status = icon + text + color, never color alone.
 - Colors: follow `.planning/COLOR-SYSTEM.md` (roles + rules): accent fill vs `accent-ink` text, status colours for lifecycle only, `success`/`warning`/`diff-*`/`agent-*`/`favorite` for other meanings, ink ladder not opacity.
-- Design system: Apple (macOS HIG), spec in `.planning/AUDIT-v18-deck-reference.md` §4. One palette (systemBlue accent, neutral greys), light + dark.
+- Design system: Apple (macOS HIG), spec in `.planning/AUDIT-v18-deck-reference.md` §4. Default palette Apple (systemBlue accent, neutral greys), light + dark; v25 extra themes (Xcode, GitHub, Solarized, Monokai, Dracula, Material, One Dark) live in `apps/web/src/themes.css` as palette-only blocks, contrast-checked by `lib/themes.test.ts`.
 - Font: system stack `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`; mono `ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace`. No web fonts.
 - Visual style: technical developer tool — dense but calm, no gradients/decoration. Translucent material (blur) only on chrome layers: toolbar, sidebar, popovers/menus. Content surfaces stay opaque.
 - Before frontend work, load the skills `frontend-design:frontend-design` and `ui-ux-pro-max:ui-ux-pro-max` (`PLAN.md` calls them `/front-end-design` and `/ui-ux-promax`).

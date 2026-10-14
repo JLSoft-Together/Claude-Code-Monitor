@@ -1,9 +1,11 @@
 import type en from './en'
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
+import v25 from './workspace-v25'
 import explorer from './workspace-explorer'
 
 const vi: typeof en = {
+  ...v25.vi,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',
@@ -20,7 +22,6 @@ const vi: typeof en = {
     ...tier2.vi,
     ...explorer.vi,
     tabs: 'Terminal',
-    new: 'Mới',
     newLabel: 'Tab mới',
     close: 'Đóng terminal',
     closeTab: 'Đóng tab',
@@ -163,6 +164,12 @@ const vi: typeof en = {
     label: 'Tab session',
     all: 'Tất cả',
     waiting: '{n} session đang chờ',
+  },
+  agentMenu: {
+    label: 'Thao tác cho {title}',
+    focus: 'Xem phiên',
+    details: 'Xem chi tiết',
+    noWorkspace: 'Không có phiên đã lưu để mở tại đây',
   },
   terminal: {
     noteAdd: 'Thêm ghi chú',
@@ -762,6 +769,7 @@ const vi: typeof en = {
     scope: { all: 'Tất cả', sessions: 'Session', favorites: 'Yêu thích', commands: 'Lệnh' },
     goHistory: 'Tới Lịch sử',
     darkTheme: 'Giao diện tối',
+    themeNamed: 'Giao diện: {name}',
     toolsPref: 'Tool call trong Hoạt động',
     language: 'Đổi ngôn ngữ',
     openSettings: 'Mở cài đặt',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, ChevronDown, History, LayoutTemplate, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, CircleHelp, GraduationCap, History, Keyboard, LayoutTemplate, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
@@ -19,7 +19,10 @@ import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, type Box, type Divider, type SplitDir } from '../../lib/splitLayout'
 import { workspaceAction } from '../../lib/workspaceKeys'
 import { shortcutText } from '../../lib/shortcuts'
+import type { TipAction } from '../../lib/tips'
 import { useTerminalsStore } from '../../stores/terminals'
+import { useTipsStore } from '../../stores/tips'
+import { useUiStore } from '../../stores/ui'
 import { isTerm, primaryPaneKey, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import LaunchPicker from './LaunchPicker.vue'
@@ -32,6 +35,7 @@ import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
+import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
 import ViewPaneControls from './ViewPaneControls.vue'
 import WorkspaceSidebar from './WorkspaceSidebar.vue'
@@ -392,8 +396,92 @@ function closePanes(keys: string[]): void {
 }
 
 function closeTab(tab: Tab): void {
+  if (leaves(tab.root).length === 1) tips.mouse('closePane')
   closePanes(leaves(tab.root))
 }
+
+// Mouse paths of actions that have a chord: counted for the shortcut tip (stores/tips.ts).
+const tips = useTipsStore()
+const ui = useUiStore()
+
+function mouseSplit(choice: SplitChoice, key: string): void {
+  tips.mouse('split')
+  splitActive(undefined, choice, key)
+}
+
+function mouseClose(key: string): void {
+  tips.mouse('closePane')
+  closePanes([key])
+}
+
+function mouseFocus(key: string): void {
+  if (multiPane.value && workspace.activeKey !== key) tips.mouse('focus')
+  workspace.activate(key)
+}
+
+function onTabClick(tab: Tab): void {
+  if (tab !== workspace.activeTab) tips.mouse('tab')
+  workspace.activateTab(tab.key)
+}
+
+function onPlusClick(): void {
+  if (menuOpen.value) return closeMenu()
+  tips.mouse('newTab')
+  void openMenu()
+}
+
+function onAttentionClick(): void {
+  tips.mouse('attention')
+  workspace.nextAttention()
+}
+
+const KEY_TIP: Partial<Record<string, TipAction>> = { newTab: 'newTab', split: 'split', closePane: 'closePane', attention: 'attention', cycleTab: 'tab', tab: 'tab', focus: 'focus' }
+
+// Help: shortcuts list + this view's guide (ShortcutsDialog / OnboardingTour live in App.vue).
+const helpOpen = ref(false)
+const helpButton = ref<HTMLButtonElement | null>(null)
+const helpMenu = ref<HTMLElement | null>(null)
+
+function closeHelp(focusButton = false): void {
+  helpOpen.value = false
+  if (focusButton) helpButton.value?.focus()
+}
+
+async function toggleHelp(): Promise<void> {
+  if (helpOpen.value) return closeHelp()
+  helpOpen.value = true
+  await nextTick()
+  helpMenu.value?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
+}
+
+function helpAction(run: () => void): void {
+  closeHelp()
+  run()
+}
+
+function onHelpKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape' || e.key === 'Tab') {
+    if (e.key === 'Escape') e.preventDefault()
+    e.stopPropagation()
+    closeHelp(e.key === 'Escape')
+    return
+  }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  e.preventDefault()
+  const items = [...(helpMenu.value?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? [])]
+  const at = items.indexOf(document.activeElement as HTMLElement)
+  items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+}
+
+function onHelpOutside(e: PointerEvent): void {
+  const target = e.target as Node
+  if (!helpMenu.value?.contains(target) && !helpButton.value?.contains(target)) closeHelp()
+}
+
+watch(helpOpen, (open) => {
+  if (open) document.addEventListener('pointerdown', onHelpOutside, true)
+  else document.removeEventListener('pointerdown', onHelpOutside, true)
+})
 
 function clearSeenAttention(): void {
   const pane = workspace.active
@@ -414,6 +502,7 @@ const canvasSize = ref({ w: 0, h: 0 })
 let canvasObserver: ResizeObserver | null = null
 
 const menuOpen = ref(false)
+const menuAlignRight = ref(false)
 const menuTrigger = ref<HTMLButtonElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
 const menuPicker = ref<InstanceType<typeof LaunchPicker> | null>(null)
@@ -431,9 +520,17 @@ function launch(cwd: string | undefined): void {
 async function openMenu(): Promise<void> {
   // No tabs: the picker is already on screen, inline in the empty state.
   if (!workspace.tabs.length) return emptyPicker.value?.focusFirst()
+  // Left-aligned under the "+" like a browser, unless that would run off the right edge.
+  const r = menuTrigger.value?.getBoundingClientRect()
+  menuAlignRight.value = !!r && r.left + 380 > window.innerWidth - 12
   menuOpen.value = true
   await nextTick()
   menuPicker.value?.focusFirst()
+}
+
+/** Double-click on the empty strip after the "+" opens a new tab, as in a browser. */
+function onStripDblClick(e: MouseEvent): void {
+  if (e.target === e.currentTarget) void openMenu()
 }
 
 function closeMenu(focusTrigger = true): void {
@@ -589,6 +686,8 @@ function onGlobalKey(e: KeyboardEvent): void {
   if (!action) return
   e.preventDefault()
   e.stopPropagation()
+  const tip = KEY_TIP[action.t]
+  if (tip) tips.key(tip)
   switch (action.t) {
     case 'newTab':
       void openMenu()
@@ -691,6 +790,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKey, true)
   window.removeEventListener('focus', clearSeenAttention)
   document.removeEventListener('pointerdown', onOutside, true)
+  document.removeEventListener('pointerdown', onHelpOutside, true)
   canvasObserver?.disconnect()
   pillObserver.disconnect()
   if (noticeTimer) clearTimeout(noticeTimer)
@@ -699,7 +799,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="flex h-[calc(100dvh-var(--ccm-header-h,52px))] min-h-0 w-full gap-3 px-3 pt-2 pb-3 sm:px-4">
-    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 flex-col gap-1.5 md:flex">
+    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 flex-col gap-1.5 md:flex" data-tour="ws-sidebar">
       <div ref="sideTabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.sideViews')" @keydown="onSideTabKey">
         <button
           v-for="v in SIDE_VIEWS"
@@ -741,7 +841,8 @@ onBeforeUnmount(() => {
       >
         <PanelLeft :size="15" aria-hidden="true" />
       </button>
-      <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 flex-1 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')">
+      <div class="flex min-w-0 flex-1 items-center gap-1" data-tab-row @dblclick="onStripDblClick">
+      <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')">
         <span
           v-if="tabPill"
           aria-hidden="true"
@@ -766,7 +867,7 @@ onBeforeUnmount(() => {
             :tabindex="tab === workspace.activeTab ? 0 : -1"
             class="inline-flex h-full max-w-[260px] min-w-0 cursor-pointer items-center gap-1.5 pr-1 pl-2.5"
             :title="tabTitle(tab)"
-            @click="workspace.activateTab(tab.key)"
+            @click="onTabClick(tab)"
             @keydown="onTabKey($event, i)"
           >
             <StatusIcon v-if="tabSession(tab)" :status="tabSession(tab)!.status" :size="13" />
@@ -800,36 +901,26 @@ onBeforeUnmount(() => {
         </div>
         </TransitionGroup>
       </div>
-      <button
-        v-if="workspace.attentionPanes.length"
-        type="button"
-        class="ccm-btn shrink-0 text-st-waiting!"
-        :title="t('workspace.attention.jump', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
-        @click="workspace.nextAttention()"
-      >
-        <BellRing :size="14" aria-hidden="true" />
-        <span>{{ t('workspace.attention.chip', { n: workspace.attentionPanes.length }, workspace.attentionPanes.length) }}</span>
-      </button>
       <div class="relative shrink-0" @keydown.esc.stop="closeMenu()" @focusout="onFocusOut">
         <button
           ref="menuTrigger"
           type="button"
-          class="ccm-btn"
+          class="ccm-btn-plain"
           aria-haspopup="dialog"
           :aria-expanded="menuOpen"
           :aria-label="t('workspace.newLabel')"
           :title="t('workspace.newHint', { keys: isMac ? '⌘T' : 'Ctrl+Shift+T' })"
-          @click="menuOpen ? closeMenu() : openMenu()"
+          data-tour="ws-new"
+          @click="onPlusClick"
         >
-          <Plus :size="14" aria-hidden="true" />
-          <span>{{ t('workspace.new') }}</span>
-          <ChevronDown :size="13" class="text-ink-muted" aria-hidden="true" />
+          <Plus :size="16" aria-hidden="true" />
         </button>
         <Transition name="ccm-menu" @before-leave="retireOverlay">
           <div
             v-if="menuOpen"
             ref="menu"
-            class="ccm-menu absolute top-full right-0 z-40 mt-1.5 w-[min(380px,calc(100vw-24px))] p-2 [--ccm-origin:top_right]"
+            class="ccm-menu absolute top-full z-40 mt-1.5 w-[min(380px,calc(100vw-24px))] p-2"
+            :class="menuAlignRight ? 'right-0 [--ccm-origin:top_right]' : 'left-0 [--ccm-origin:top_left]'"
             role="dialog"
             :aria-label="t('workspace.launch.title')"
           >
@@ -842,6 +933,48 @@ onBeforeUnmount(() => {
                 <LayoutTemplate :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.layouts.save') }}
               </button>
             </div>
+          </div>
+        </Transition>
+      </div>
+      </div>
+      <button
+        v-if="workspace.attentionPanes.length"
+        type="button"
+        class="ccm-btn shrink-0 text-st-waiting!"
+        :title="t('workspace.attention.jump', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
+        @click="onAttentionClick"
+      >
+        <BellRing :size="14" aria-hidden="true" />
+        <span>{{ t('workspace.attention.chip', { n: workspace.attentionPanes.length }, workspace.attentionPanes.length) }}</span>
+      </button>
+      <div class="relative shrink-0" @keydown="onHelpKey">
+        <button
+          ref="helpButton"
+          type="button"
+          class="ccm-btn-plain"
+          aria-haspopup="menu"
+          :aria-expanded="helpOpen"
+          :aria-label="t('wsHelp.button')"
+          :title="t('wsHelp.button')"
+          data-tour="ws-help"
+          @click="toggleHelp"
+        >
+          <CircleHelp :size="16" aria-hidden="true" />
+        </button>
+        <Transition name="ccm-menu" @before-leave="retireOverlay">
+          <div
+            v-if="helpOpen"
+            ref="helpMenu"
+            role="menu"
+            :aria-label="t('wsHelp.button')"
+            class="ccm-menu absolute top-full right-0 z-40 mt-1.5 flex w-56 flex-col p-1 [--ccm-origin:top_right]"
+          >
+            <button type="button" role="menuitem" :class="MENU_ROW" data-menu="shortcuts" @click="helpAction(() => (ui.shortcutsOpen = true))">
+              <Keyboard :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('wsHelp.shortcuts') }}
+            </button>
+            <button type="button" role="menuitem" :class="MENU_ROW" data-menu="tour" @click="helpAction(() => (ui.tourOpen = 'workspace'))">
+              <GraduationCap :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('wsHelp.tour') }}
+            </button>
           </div>
         </Transition>
       </div>
@@ -868,7 +1001,7 @@ onBeforeUnmount(() => {
           </button>
         </section>
         <div class="ccm-group p-2">
-          <LaunchPicker ref="emptyPicker" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" />
+          <LaunchPicker ref="emptyPicker" data-tour="ws-new" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" />
         </div>
       </div>
     </div>
@@ -885,8 +1018,8 @@ onBeforeUnmount(() => {
           :visible="visible && tabBoxes.has(pane.key)"
           :focused="pane.key === workspace.activeKey"
           :multi="multiPane"
-          @split="(choice) => splitActive(undefined, choice, pane.key)"
-          @close="closePanes([pane.key])"
+          @split="(choice) => mouseSplit(choice, pane.key)"
+          @close="mouseClose(pane.key)"
           @open-link="(target, opts) => openLink(pane, target, opts)"
           @scripts="openScripts([workCwd(pane)!])"
         />
@@ -899,7 +1032,7 @@ onBeforeUnmount(() => {
           :style="[tabBoxes.has(pane.key) ? boxStyle(tabBoxes.get(pane.key)!) : {}, visible && tabBoxes.has(pane.key) ? { viewTransitionName: `ccm-pane-${pane.key}`, viewTransitionClass: 'ccm-pane' } : {}]"
           :data-pane="pane.key"
           :data-kind="pane.kind"
-          @pointerdown="workspace.activate(pane.key)"
+          @pointerdown="mouseFocus(pane.key)"
           @focusin="workspace.activate(pane.key)"
         >
           <BrowserPane
@@ -914,7 +1047,7 @@ onBeforeUnmount(() => {
             @insert-image="insertFromBrowser(pane.key, null)"
           >
             <template #toolbar-end>
-              <ViewPaneControls @split="(choice) => splitActive(undefined, choice, pane.key)" @close="closePanes([pane.key])" />
+              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </BrowserPane>
           <FilePane
@@ -926,7 +1059,7 @@ onBeforeUnmount(() => {
             @open="(path) => workspace.openFile(path, undefined, { cwd: pane.cwd })"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => splitActive(undefined, choice, pane.key)" @close="closePanes([pane.key])" />
+              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </FilePane>
           <ChangesPane
@@ -939,7 +1072,7 @@ onBeforeUnmount(() => {
             @root="(root) => workspace.update(pane.key, { root })"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => splitActive(undefined, choice, pane.key)" @close="closePanes([pane.key])" />
+              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </ChangesPane>
         </div>
@@ -1055,5 +1188,6 @@ onBeforeUnmount(() => {
         {{ agentNotice }}
       </p>
     </Transition>
+    <ShortcutTip :visible="visible" />
   </main>
 </template>

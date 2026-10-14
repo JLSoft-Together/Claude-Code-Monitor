@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { diff, discardFile, discardHunk, hunkPatchFor, newFileDiff, parseNumstat, parseStatusV2, safeRepoPath, status, toplevel } from '../src/preview/changes'
-import { MAX_CLIPBOARD_IMAGE_BYTES, parsePngDataUrl, writeClipboardImage } from '../src/preview/clipboardImage'
+import { MAX_CLIPBOARD_IMAGE_BYTES, parsePngDataUrl, writeClipboardImage, writeClipboardImageFile } from '../src/preview/clipboardImage'
 import { FileListCache, listFiles, parseLsFiles, walkFiles } from '../src/preview/listFiles'
 import { findGit } from '../src/pty/git'
 
@@ -191,10 +191,32 @@ describe('ls-files + clipboard', () => {
     expect(MAX_CLIPBOARD_IMAGE_BYTES).toBe(20 * 1024 * 1024)
 
     const written: Buffer[] = []
-    const deps = { createFromDataURL: () => ({ isEmpty: () => false, toPNG: () => png }), writePng: async (b: Buffer) => void written.push(b) }
+    const deps = { createFromDataURL: () => ({ isEmpty: () => false, toPNG: () => png }), createFromPath: () => ({ isEmpty: () => true, toPNG: () => png }), writePng: async (b: Buffer) => void written.push(b) }
     expect(await writeClipboardImage(url, deps)).toBe(true)
     expect(await writeClipboardImage('data:text/plain,hi', deps)).toBe(false)
     expect(await writeClipboardImage(url, { ...deps, createFromDataURL: () => ({ isEmpty: () => true, toPNG: () => png }) })).toBe(false)
     expect(written).toEqual([png])
+  })
+
+  it('clipboard image file: absolute image files only, decoded before writing', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ccm-clip-'))
+    try {
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
+      const file = path.join(dir, 'shot.png')
+      writeFileSync(file, png)
+      writeFileSync(path.join(dir, 'notes.txt'), 'hi')
+      const written: Buffer[] = []
+      const image = (empty: boolean) => ({ isEmpty: () => empty, toPNG: () => png })
+      const deps = { createFromDataURL: () => image(false), createFromPath: () => image(false), writePng: async (b: Buffer) => void written.push(b) }
+      expect(await writeClipboardImageFile(file, deps)).toBe(true)
+      expect(await writeClipboardImageFile('shot.png', deps)).toBe(false)
+      expect(await writeClipboardImageFile(path.join(dir, 'notes.txt'), deps)).toBe(false)
+      expect(await writeClipboardImageFile(path.join(dir, 'missing.png'), deps)).toBe(false)
+      expect(await writeClipboardImageFile(dir + path.sep + 'x.gif', deps)).toBe(false)
+      expect(await writeClipboardImageFile(file, { ...deps, createFromPath: () => image(true) })).toBe(false)
+      expect(written).toEqual([png])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
