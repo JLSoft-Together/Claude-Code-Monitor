@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CaseSensitive, Regex, RotateCw, Search, X } from 'lucide-vue-next'
 import type { RefsOk } from '../../../lib/gitRefs'
@@ -11,6 +11,14 @@ import LogFilterMenu from './LogFilterMenu.vue'
 const props = defineProps<{ filters: LogFilters; refs: RefsOk | null; authors: string[]; root: string; flat: boolean }>()
 const emit = defineEmits<{ change: [patch: Partial<LogFilters>]; refresh: [] }>()
 const { t } = useI18n()
+const note = ref(false)
+let noteTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(noteTimer))
+
+function change(patch: Partial<LogFilters>): void {
+  note.value = false
+  emit('change', patch)
+}
 
 const branchOptions = computed(() => {
   const r = props.refs
@@ -50,11 +58,18 @@ function toRel(abs: string | null): string | null {
 }
 
 async function onPath(id: string): Promise<void> {
-  if (id === '') return emit('change', { paths: [] })
-  if (id.startsWith('-')) return emit('change', { paths: props.filters.paths.filter((p) => p !== id.slice(1)) })
+  if (id === '') return change({ paths: [] })
+  if (id.startsWith('-')) return change({ paths: props.filters.paths.filter((p) => p !== id.slice(1)) })
   const abs = id === '+file' ? await pickFile('any', props.root) : await desktop?.pickFolder(props.root)
-  const rel = toRel(abs ?? null)
-  if (rel && !props.filters.paths.includes(rel)) emit('change', { paths: [...props.filters.paths, rel] })
+  if (!abs) return
+  const rel = toRel(abs)
+  if (!rel) {
+    note.value = true
+    clearTimeout(noteTimer)
+    noteTimer = setTimeout(() => (note.value = false), 4000)
+    return
+  }
+  if (!props.filters.paths.includes(rel)) change({ paths: [...props.filters.paths, rel] })
 }
 </script>
 
@@ -69,27 +84,27 @@ async function onPath(id: string): Promise<void> {
         :placeholder="t('workspace.log.filter.text')"
         :aria-label="t('workspace.log.filter.text')"
         data-log-text
-        @input="emit('change', { text: ($event.target as HTMLInputElement).value })"
+        @input="change({ text: ($event.target as HTMLInputElement).value })"
       />
-      <button type="button" class="ccm-btn-plain size-5 p-0" :class="filters.regex ? 'text-accent-ink' : 'text-ink-faint'" :aria-pressed="filters.regex" :title="t('workspace.log.filter.regex')" :aria-label="t('workspace.log.filter.regex')" @click="emit('change', { regex: !filters.regex })">
+      <button type="button" class="ccm-btn-plain size-5 p-0" :class="filters.regex ? 'bg-accent-soft text-accent-ink' : 'text-ink-faint'" :aria-pressed="filters.regex" :title="t('workspace.log.filter.regex')" :aria-label="t('workspace.log.filter.regex')" @click="change({ regex: !filters.regex })">
         <Regex :size="13" aria-hidden="true" />
       </button>
-      <button type="button" class="ccm-btn-plain size-5 p-0" :class="filters.matchCase ? 'text-accent-ink' : 'text-ink-faint'" :aria-pressed="filters.matchCase" :title="t('workspace.log.filter.matchCase')" :aria-label="t('workspace.log.filter.matchCase')" @click="emit('change', { matchCase: !filters.matchCase })">
+      <button type="button" class="ccm-btn-plain size-5 p-0" :class="filters.matchCase ? 'bg-accent-soft text-accent-ink' : 'text-ink-faint'" :aria-pressed="filters.matchCase" :title="t('workspace.log.filter.matchCase')" :aria-label="t('workspace.log.filter.matchCase')" @click="change({ matchCase: !filters.matchCase })">
         <CaseSensitive :size="13" aria-hidden="true" />
       </button>
     </label>
-    <LogFilterMenu :label="t('workspace.log.filter.branch')" :value="branchValue" :active="!!filters.branch" :options="branchOptions" data-log-filter="branch" @pick="(id) => emit('change', { branch: id || null })" />
-    <LogFilterMenu :label="t('workspace.log.filter.user')" :value="filters.author ?? ''" :active="!!filters.author" :options="userOptions" data-log-filter="user" @pick="(id) => emit('change', { author: id || null })" />
-    <LogFilterMenu :label="t('workspace.log.filter.date')" :value="t(`workspace.log.filter.dates.${filters.date}`)" :active="filters.date !== 'any'" :options="dateOptions" data-log-filter="date" @pick="(id) => emit('change', { date: id as LogFilters['date'] })">
+    <LogFilterMenu :label="t('workspace.log.filter.branch')" :value="branchValue" :active="!!filters.branch" :options="branchOptions" data-log-filter="branch" @pick="(id) => change({ branch: id || null })" />
+    <LogFilterMenu :label="t('workspace.log.filter.user')" :value="filters.author ?? ''" :active="!!filters.author" :options="userOptions" data-log-filter="user" @pick="(id) => change({ author: id || null })" />
+    <LogFilterMenu :label="t('workspace.log.filter.date')" :value="t(`workspace.log.filter.dates.${filters.date}`)" :active="filters.date !== 'any'" :options="dateOptions" data-log-filter="date" @pick="(id) => change({ date: id as LogFilters['date'] })">
       <template #extra>
         <div v-if="filters.date === 'custom'" class="flex flex-col gap-1 border-t border-line px-2 pt-1.5 pb-1">
           <label class="flex items-center justify-between gap-2 text-2xs text-ink-muted">
             {{ t('workspace.log.filter.from') }}
-            <input type="date" class="rounded-inner bg-fill px-1 text-xs text-ink" :value="filters.from" @change="emit('change', { from: ($event.target as HTMLInputElement).value })" />
+            <input type="date" class="rounded-inner bg-fill px-1 text-xs text-ink" :value="filters.from" @change="change({ from: ($event.target as HTMLInputElement).value })" />
           </label>
           <label class="flex items-center justify-between gap-2 text-2xs text-ink-muted">
             {{ t('workspace.log.filter.to') }}
-            <input type="date" class="rounded-inner bg-fill px-1 text-xs text-ink" :value="filters.to" @change="emit('change', { to: ($event.target as HTMLInputElement).value })" />
+            <input type="date" class="rounded-inner bg-fill px-1 text-xs text-ink" :value="filters.to" @change="change({ to: ($event.target as HTMLInputElement).value })" />
           </label>
         </div>
       </template>
@@ -103,8 +118,9 @@ async function onPath(id: string): Promise<void> {
       @pick="onPath"
     />
     <span class="flex-1" />
+    <span v-if="note" class="truncate text-2xs text-warning" role="status" :title="t('workspace.log.filter.outside')">{{ t('workspace.log.filter.outside') }}</span>
     <span v-if="flat" class="truncate text-2xs text-ink-faint" :title="t('workspace.log.filter.flatNote')">{{ t('workspace.log.filter.flatNote') }}</span>
-    <button v-if="hasFilters(filters)" type="button" class="ccm-btn-plain h-6 shrink-0 gap-1 px-1.5 text-xs" data-log-clear @click="emit('change', { text: '', branch: null, author: null, date: 'any', from: '', to: '', paths: [] })">
+    <button v-if="hasFilters(filters)" type="button" class="ccm-btn-plain h-6 shrink-0 gap-1 px-1.5 text-xs" data-log-clear @click="change({ text: '', branch: null, author: null, date: 'any', from: '', to: '', paths: [] })">
       <X :size="12" aria-hidden="true" />{{ t('workspace.log.filter.clear') }}
     </button>
     <button type="button" class="ccm-btn-plain size-6 shrink-0 p-0" :title="t('workspace.log.filter.refresh')" :aria-label="t('workspace.log.filter.refresh')" @click="emit('refresh')">

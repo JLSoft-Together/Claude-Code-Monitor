@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { GitMerge, Tag } from 'lucide-vue-next'
 import type { LogCommit } from '@ccm/shared'
@@ -35,21 +35,41 @@ const lanes = computed(() => graphWidth(props.rows))
 const first = computed(() => Math.max(0, Math.floor(top.value / ROW_H) - OVERSCAN))
 const last = computed(() => Math.min(props.commits.length, Math.ceil((top.value + height.value) / ROW_H) + OVERSCAN))
 const visible = computed(() => props.commits.slice(first.value, last.value).map((c, i) => ({ c, row: props.rows[first.value + i], index: first.value + i })))
+const activeId = computed(() => (props.selected && visible.value.some((v) => v.c.hash === props.selected) ? `log-${props.selected}` : undefined))
 const selectedIndex = computed(() => props.commits.findIndex((c) => c.hash === props.selected))
 
 const dateFmt = computed(() => new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }))
 const fullFmt = computed(() => new Intl.DateTimeFormat(locale.value, { dateStyle: 'full', timeStyle: 'medium' }))
 const labelsOf = (c: LogCommit) => parseDecorations(c.refs, props.remotes)
 
+function checkMore(): void {
+  const el = scroller.value
+  if (el && props.more && !props.loadingMore && el.scrollTop + el.clientHeight > el.scrollHeight - ROW_H * 40) emit('loadMore')
+}
+
 function onScroll(): void {
   const el = scroller.value
   if (!el) return
   top.value = el.scrollTop
-  if (props.more && !props.loadingMore && el.scrollTop + el.clientHeight > el.scrollHeight - ROW_H * 40) emit('loadMore')
+  checkMore()
 }
 
-const resize = new ResizeObserver(([e]) => (height.value = e?.contentRect.height ?? height.value))
-onMounted(() => scroller.value && resize.observe(scroller.value))
+const resize = new ResizeObserver(([e]) => {
+  height.value = e?.contentRect.height ?? height.value
+  checkMore()
+})
+watch(
+  scroller,
+  (el, old) => {
+    if (old) resize.unobserve(old)
+    if (el) {
+      resize.observe(el)
+      top.value = el.scrollTop
+      height.value = el.clientHeight
+    }
+  },
+  { flush: 'post' },
+)
 onBeforeUnmount(() => {
   resize.disconnect()
   clearTimeout(copiedTimer)
@@ -62,6 +82,11 @@ function scrollToIndex(i: number): void {
   if (y < el.scrollTop) el.scrollTop = y
   else if (y + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = y + ROW_H - el.clientHeight
 }
+
+watch(
+  () => [props.commits.length, props.more, props.loadingMore],
+  () => void nextTick(checkMore),
+)
 
 watch(
   () => props.selected,
@@ -118,7 +143,7 @@ defineExpose({ focus: () => scroller.value?.focus() })
       role="listbox"
       tabindex="0"
       :aria-label="t('workspace.log.table.label')"
-      :aria-activedescendant="selected ? `log-${selected}` : undefined"
+      :aria-activedescendant="activeId"
       data-log-table
       @scroll.passive="onScroll"
       @keydown="onKey"
@@ -130,6 +155,8 @@ defineExpose({ focus: () => scroller.value?.focus() })
           :key="v.c.hash"
           role="option"
           :aria-selected="v.c.hash === selected"
+          :aria-setsize="commits.length"
+          :aria-posinset="v.index + 1"
           class="absolute inset-x-0 flex h-6 min-w-0 cursor-default items-center gap-2 pr-2 text-xs"
           :class="v.c.hash === selected ? 'bg-selection text-ink' : 'text-ink hover:bg-fill'"
           :style="{ top: `${v.index * ROW_H}px` }"
