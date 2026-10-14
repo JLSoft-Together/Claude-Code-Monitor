@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, Folder, FolderOpen, Globe, LoaderCircle, LogIn, Plus, Puzzle, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Check, CircleAlert, Copy, Folder, FolderOpen, Globe, LoaderCircle, LogIn, Plus, Puzzle, RefreshCw, Server, Sparkles, Trash2 } from 'lucide-vue-next'
 import { CATALOG, type CatalogEntry, type ExtScope, type McpServerRow } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
 import { entryState, others, removeScope } from '../../lib/extensions'
@@ -16,7 +16,7 @@ import SegmentedControl from '../ui/SegmentedControl.vue'
 import AddSourceSheet from './AddSourceSheet.vue'
 import ExtensionCard from './ExtensionCard.vue'
 import InstallSheet from './InstallSheet.vue'
-import { STATE_META } from './meta'
+import { brandIcon, STATE_META } from './meta'
 
 const { t, locale } = useI18n()
 const ext = useExtensionsStore()
@@ -82,6 +82,29 @@ function removeEntry(e: CatalogEntry, scope: ExtScope): void {
 
 const serverScope = (row: McpServerRow): ExtScope | null => (row.plugin || row.connector ? null : removeScope(row.scopes, projectView.value))
 const serverMeta = (row: McpServerRow) => STATE_META[row.state]
+
+const skillGroups = computed(() => {
+  const s = ext.status
+  if (!s) return []
+  const groups = [{ key: 'user', title: t('ext.sections.skillsUser'), dir: s.skillDirs.user, names: s.skills.user }]
+  if (ext.mode === 'project' && s.skillDirs.project) groups.push({ key: 'project', title: t('ext.sections.skillsProject'), dir: s.skillDirs.project, names: s.skills.project })
+  return groups
+})
+const skillPath = (dir: string, name: string): string => `${dir}${dir.includes('\\') ? '\\' : '/'}${name}`
+
+const copiedPath = ref<string | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
+async function copyPath(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path)
+  } catch {
+    return
+  }
+  copiedPath.value = path
+  clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => (copiedPath.value = null), 1500)
+}
+onBeforeUnmount(() => clearTimeout(copiedTimer))
 
 onMounted(() => void ext.refresh())
 watch(() => ext.dir, () => void ext.refresh())
@@ -195,9 +218,11 @@ watch(() => ext.mode, () => void ext.refresh())
           <div class="ccm-group" data-ext-other>
             <p v-if="!other.servers.length && !other.plugins.length" class="px-3 py-3 text-xs text-ink-faint">{{ t('ext.sections.noOther') }}</p>
             <div v-for="row in other.servers" :key="`s:${row.name}`" class="flex min-h-10 min-w-0 items-center gap-2 px-3 py-1.5">
-              <component :is="serverMeta(row).icon" :size="13" class="shrink-0" :class="serverMeta(row).cls" aria-hidden="true" />
+              <component :is="brandIcon(row.name) ?? Server" :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
               <span class="min-w-0 truncate font-mono text-xs" :title="row.name">{{ row.name }}</span>
-              <span class="shrink-0 text-2xs" :class="serverMeta(row).cls">{{ ext.mcpLoading && row.state === 'unknown' ? t('ext.state.checking') : t(`ext.state.${row.state}`) }}</span>
+              <span class="inline-flex shrink-0 items-center gap-1 text-2xs" :class="serverMeta(row).cls">
+                <component :is="serverMeta(row).icon" :size="12" aria-hidden="true" />{{ ext.mcpLoading && row.state === 'unknown' ? t('ext.state.checking') : t(`ext.state.${row.state}`) }}
+              </span>
               <span class="ml-auto hidden shrink-0 truncate text-2xs text-ink-faint sm:inline">
                 {{ row.connector ? t('ext.other.connector') : row.plugin ? t('ext.other.plugin', { name: row.plugin }) : row.scopes.map((s) => t(`ext.scopeChip.${s}`)).join(' · ') }}
               </span>
@@ -226,7 +251,7 @@ watch(() => ext.mode, () => void ext.refresh())
               </button>
             </div>
             <div v-for="p in other.plugins" :key="`p:${p.id}:${p.scope}`" class="flex min-h-10 min-w-0 items-center gap-2 px-3 py-1.5">
-              <Puzzle :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+              <component :is="brandIcon(p.id) ?? Puzzle" :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
               <span class="min-w-0 truncate font-mono text-xs" :title="p.id">{{ p.id }}</span>
               <span v-if="!p.enabled" class="shrink-0 text-2xs text-ink-faint">{{ t('ext.other.disabled') }}</span>
               <span class="ml-auto shrink-0 text-2xs text-ink-faint">{{ t(`ext.scopeChip.${p.scope}`) }}</span>
@@ -246,20 +271,28 @@ watch(() => ext.mode, () => void ext.refresh())
           </div>
 
           <div class="flex min-w-0 flex-col gap-3">
-            <div>
-              <h4 class="text-xs font-medium text-ink-muted">{{ t('ext.sections.skillsUser') }}</h4>
-              <p class="mt-1 flex flex-wrap gap-1">
-                <span v-for="s in ext.status?.skills.user ?? []" :key="s" class="rounded-full bg-fill px-2 py-0.5 font-mono text-2xs">{{ s }}</span>
-                <span v-if="!ext.status?.skills.user.length" class="text-2xs text-ink-faint">{{ t('ext.other.none') }}</span>
-              </p>
+            <div v-for="g in skillGroups" :key="g.key" :data-ext-skills="g.key">
+              <h4 class="truncate text-xs font-medium text-ink-muted" :title="g.dir">{{ g.title }}</h4>
+              <div v-if="g.names.length" class="ccm-group mt-1 max-h-80 overflow-y-auto">
+                <div v-for="s in g.names" :key="s" class="flex min-h-8 min-w-0 items-center gap-2 px-3 py-1">
+                  <Sparkles :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="skillPath(g.dir, s)">{{ s }}</span>
+                  <button
+                    type="button"
+                    class="ccm-btn-plain shrink-0"
+                    :aria-label="`${t('ext.other.copyPath')}: ${s}`"
+                    :title="copiedPath === skillPath(g.dir, s) ? t('ext.other.copied') : t('ext.other.copyPath')"
+                    data-ext-copy-skill
+                    @click="copyPath(skillPath(g.dir, s))"
+                  >
+                    <Check v-if="copiedPath === skillPath(g.dir, s)" :size="13" class="text-success" aria-hidden="true" />
+                    <Copy v-else :size="13" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <p v-else class="mt-1 text-2xs text-ink-faint">{{ t('ext.other.none') }}</p>
             </div>
-            <div v-if="ext.mode === 'project'">
-              <h4 class="text-xs font-medium text-ink-muted">{{ t('ext.sections.skillsProject') }}</h4>
-              <p class="mt-1 flex flex-wrap gap-1">
-                <span v-for="s in ext.status?.skills.project ?? []" :key="s" class="rounded-full bg-fill px-2 py-0.5 font-mono text-2xs">{{ s }}</span>
-                <span v-if="!ext.status?.skills.project.length" class="text-2xs text-ink-faint">{{ t('ext.other.none') }}</span>
-              </p>
-            </div>
+            <p class="sr-only" role="status">{{ copiedPath ? t('ext.other.copied') : '' }}</p>
           </div>
         </div>
       </section>

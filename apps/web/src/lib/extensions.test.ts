@@ -11,6 +11,7 @@ const status = (over: Partial<ExtStatus> = {}): ExtStatus => ({
   marketplaces: [],
   configured: [],
   skills: { user: [], project: [] },
+  skillDirs: { user: '/home/u/.claude/skills', project: null },
   ...over,
 })
 

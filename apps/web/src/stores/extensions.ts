@@ -1,11 +1,17 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { ExtInstallRequest, ExtRemoveRequest, ExtResult, ExtSourceRequest, ExtStatus, McpServerRow } from '@ccm/shared'
-import { desktop } from '../lib/desktop'
+import { desktop, hasTerminals } from '../lib/desktop'
+import { useUiStore } from './ui'
+import { useWorkspaceStore } from './workspace'
 
 export type ExtMode = 'global' | 'project'
 
 const KEY = 'ccm.ext'
+/** Same charset ccm:ext-login accepts; the name is typed into a shell. */
+const SERVER_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/
+/** `claude mcp list` health-checks every server (seconds): coming back to the tab reuses a result this young. */
+const MCP_FRESH_MS = 5 * 60_000
 
 function load(): { mode: ExtMode; project: string | null } {
   try {
@@ -42,6 +48,9 @@ export const useExtensionsStore = defineStore('extensions', () => {
   /** Folder the project scopes act on; null in the global view or before one is picked. */
   const dir = computed(() => (mode.value === 'project' ? project.value : null))
   let gen = 0
+  const mcpByDir = new Map<string, { servers: McpServerRow[]; at: number }>()
+  /** Set when a change happened outside `act` (sign-in in a terminal): next refresh re-checks. */
+  let mcpDirty = false
 
   async function refresh(fresh = false): Promise<void> {
     if (!desktop?.extStatus) return
@@ -52,8 +61,12 @@ export const useExtensionsStore = defineStore('extensions', () => {
     }
     const my = ++gen
     const d = dir.value ?? undefined
+    const hit = mcpByDir.get(d ?? '')
+    mcp.value = hit?.servers ?? null
+    mcpAt.value = hit?.at ?? null
+    const recheck = fresh || mcpDirty || !hit || Date.now() - hit.at >= MCP_FRESH_MS
     loading.value = true
-    mcpLoading.value = true
+    mcpLoading.value = recheck
     failed.value = false
     const fast = desktop
       .extStatus(d)
@@ -64,8 +77,12 @@ export const useExtensionsStore = defineStore('extensions', () => {
       })
       .catch(() => my === gen && (failed.value = true))
       .finally(() => my === gen && (loading.value = false))
-    const slow = (desktop.extMcp?.(d, fresh) ?? Promise.resolve(null))
+    if (!recheck) return void (await fast)
+    const force = fresh || mcpDirty
+    mcpDirty = false
+    const slow = (desktop.extMcp?.(d, force) ?? Promise.resolve(null))
       .then((m) => {
+        if (m) mcpByDir.set(d ?? '', m)
         if (my !== gen) return
         mcp.value = m?.servers ?? null
         mcpAt.value = m?.at ?? null
@@ -95,7 +112,15 @@ export const useExtensionsStore = defineStore('extensions', () => {
 
   const install = (req: ExtInstallRequest) => act(req.id, () => desktop!.extInstall!(withDir(req)))
   const remove = (key: string, req: ExtRemoveRequest) => act(key, () => desktop!.extRemove!(withDir(req)))
-  const login = (key: string, name: string) => act(key, () => desktop!.extLogin!(name, dir.value ?? undefined))
+  /** `claude mcp login` needs a TTY (OAuth prompt), so it runs in a workspace terminal the user can see and answer. */
+  function login(key: string, name: string): Promise<ExtResult> {
+    if (!hasTerminals || !SERVER_NAME.test(name)) return act(key, () => desktop!.extLogin!(name, dir.value ?? undefined))
+    clearResult(key)
+    mcpDirty = true
+    useWorkspaceStore().runScript(dir.value ?? undefined, `claude mcp login ${name}`)
+    useUiStore().setView('workspace')
+    return Promise.resolve({ ok: true })
+  }
   const source = (key: string, req: ExtSourceRequest) =>
     act(key, () => desktop!.extSource!(req.type === 'marketplace' ? req : withDir(req)).then((r) => r ?? { ok: false as const, code: 'failed' as const }))
 

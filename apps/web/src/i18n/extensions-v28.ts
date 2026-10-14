@@ -59,6 +59,9 @@ const en = {
       meshy: 'Generate 3D models, textures and rigs with Meshy AI.',
       unity: 'Drive the Unity Editor: scenes, GameObjects, scripts, play mode.',
       blender: 'Control Blender: build scenes, materials and renders from prompts.',
+      godot: 'Drive Godot 4: launch the editor, run projects, read debug output, edit scenes.',
+      'godot-editor': 'Live link to an open Godot 4 editor through its plugin: scenes, nodes, scripts and project files.',
+      'godot-funplay': 'Godot 4.2+ editor plugin with a local MCP server: scenes, nodes, scripts, run and debug from Claude.',
       github: 'Repositories, issues, pull requests and Actions on GitHub.',
       gitlab: 'Projects, issues, merge requests and pipelines on GitLab.',
       discord: 'Read and send Discord messages, manage channels through a bot.',
@@ -73,6 +76,7 @@ const en = {
       GITLAB_HOST: { label: 'GitLab host', hint: 'gitlab.com, or your self-managed host. Sign in after install.' },
       DISCORD_TOKEN: { label: 'Discord bot token', hint: 'discord.com/developers → your app → Bot → Reset token.' },
       DISCORD_GUILD_ID: { label: 'Server (guild) ID', hint: 'Optional default server. Developer mode → right-click the server → Copy ID.' },
+      GODOT_PATH: { label: 'Godot executable', hint: 'Optional: full path to Godot 4 when it is not found automatically.' },
     },
     optional: 'optional',
     invalid: 'Check this value.',
@@ -116,6 +120,16 @@ const en = {
         1: 'In a terminal: uvx mcp-for-blender install-addon, then enable the add-on in Blender (Edit → Preferences → Add-ons).',
         2: 'In Blender’s 3D view press N → MCP tab → Start MCP Server, and keep Blender open.',
       },
+      'godot-editor': {
+        1: 'In Godot 4: AssetLib tab → search “mcp” → install “Godot AI Assistant tools MCP”, then enable Godot MCP in Project → Project Settings → Plugins.',
+        2: 'In a terminal: claude mcp add godot-editor -- npx -y godot-mcp-server (named godot-editor so it does not clash with the Godot card).',
+        3: 'Restart Claude Code, then click Restart Project in Godot; “MCP Connected” turns green top right. Keep the editor open (port 6505).',
+      },
+      'godot-funplay': {
+        1: 'Get Funplay MCP for Godot (GitHub release or the Godot Asset Store), copy addons/funplay_mcp into your project, then enable it in Project → Project Settings → Plugins (Godot 4.2+).',
+        2: 'Open the Funplay MCP dock and click Configure for Claude Code: it adds the server funplay with this project’s token (npx -y funplay-godot-mcp).',
+        3: 'Restart Claude Code and keep the Godot editor open (local server on 127.0.0.1:8765).',
+      },
     },
     source: {
       title: 'Add source',
@@ -135,7 +149,7 @@ const en = {
       headerHint: 'Optional, e.g. Authorization: Bearer … (stored in the config).',
       addServer: 'Add server',
     },
-    other: { connector: 'claude.ai connector', plugin: 'plugin {name}', disabled: 'disabled', none: 'None' },
+    other: { connector: 'claude.ai connector', plugin: 'plugin {name}', disabled: 'disabled', none: 'None', copyPath: 'Copy path', copied: 'Path copied' },
   },
 }
 
@@ -199,6 +213,9 @@ const vi: typeof en = {
       meshy: 'Tạo model 3D, texture và rig bằng Meshy AI.',
       unity: 'Điều khiển Unity Editor: scene, GameObject, script, play mode.',
       blender: 'Điều khiển Blender: dựng scene, vật liệu và render từ prompt.',
+      godot: 'Điều khiển Godot 4: mở editor, chạy project, đọc log debug, sửa scene.',
+      'godot-editor': 'Kết nối trực tiếp tới editor Godot 4 đang mở qua plugin: scene, node, script và file project.',
+      'godot-funplay': 'Plugin cho editor Godot 4.2+ kèm MCP server cục bộ: scene, node, script, chạy và debug từ Claude.',
       github: 'Repository, issue, pull request và Actions trên GitHub.',
       gitlab: 'Project, issue, merge request và pipeline trên GitLab.',
       discord: 'Đọc và gửi tin nhắn Discord, quản lý kênh qua bot.',
@@ -213,6 +230,7 @@ const vi: typeof en = {
       GITLAB_HOST: { label: 'Host GitLab', hint: 'gitlab.com hoặc host tự quản. Đăng nhập sau khi cài.' },
       DISCORD_TOKEN: { label: 'Discord bot token', hint: 'discord.com/developers → app của bạn → Bot → Reset token.' },
       DISCORD_GUILD_ID: { label: 'ID server (guild)', hint: 'Server mặc định, tuỳ chọn. Bật Developer mode → chuột phải server → Copy ID.' },
+      GODOT_PATH: { label: 'File chạy Godot', hint: 'Tuỳ chọn: đường dẫn đầy đủ tới Godot 4 khi app không tự tìm thấy.' },
     },
     optional: 'tuỳ chọn',
     invalid: 'Kiểm tra lại giá trị này.',
@@ -256,6 +274,16 @@ const vi: typeof en = {
         1: 'Trong terminal: uvx mcp-for-blender install-addon, rồi bật add-on trong Blender (Edit → Preferences → Add-ons).',
         2: 'Trong 3D view của Blender bấm N → tab MCP → Start MCP Server, và giữ Blender mở.',
       },
+      'godot-editor': {
+        1: 'Trong Godot 4: tab AssetLib → tìm “mcp” → cài “Godot AI Assistant tools MCP”, rồi bật Godot MCP ở Project → Project Settings → Plugins.',
+        2: 'Trong terminal: claude mcp add godot-editor -- npx -y godot-mcp-server (đặt tên godot-editor để không trùng thẻ Godot).',
+        3: 'Khởi động lại Claude Code, rồi bấm Restart Project trong Godot; góc phải hiện “MCP Connected” màu xanh. Giữ editor mở (cổng 6505).',
+      },
+      'godot-funplay': {
+        1: 'Tải Funplay MCP for Godot (GitHub release hoặc Godot Asset Store), chép addons/funplay_mcp vào project, rồi bật ở Project → Project Settings → Plugins (Godot 4.2+).',
+        2: 'Mở dock Funplay MCP, bấm Configure cho Claude Code: dock thêm server funplay kèm token của project (npx -y funplay-godot-mcp).',
+        3: 'Khởi động lại Claude Code và giữ editor Godot mở (server cục bộ ở 127.0.0.1:8765).',
+      },
     },
     source: {
       title: 'Thêm nguồn',
@@ -275,7 +303,7 @@ const vi: typeof en = {
       headerHint: 'Tuỳ chọn, ví dụ Authorization: Bearer … (được lưu trong cấu hình).',
       addServer: 'Thêm server',
     },
-    other: { connector: 'connector claude.ai', plugin: 'plugin {name}', disabled: 'đã tắt', none: 'Không có' },
+    other: { connector: 'connector claude.ai', plugin: 'plugin {name}', disabled: 'đã tắt', none: 'Không có', copyPath: 'Sao chép đường dẫn', copied: 'Đã chép đường dẫn' },
   },
 }
 

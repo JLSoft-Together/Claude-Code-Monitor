@@ -47,6 +47,8 @@ export interface CatalogEntry {
 }
 
 const TOKEN = '^[A-Za-z0-9_.\\-]{8,512}$'
+/** Absolute path (drive or /), so it never starts with '-'. */
+const ABS_PATH = '^(?:[A-Za-z]:[\\\\/]|/)[^"<>|?*\\x00-\\x1f]{1,500}$'
 
 export const PM_SKILLS = [
   'pm-product-discovery',
@@ -72,43 +74,6 @@ export const CATALOG: readonly CatalogEntry[] = [
     fields: [],
     prereqs: [],
     install: { type: 'http', url: 'https://mcp.figma.com/mcp', oauth: true },
-  },
-  {
-    id: 'meshy',
-    kind: 'mcp',
-    name: 'Meshy AI',
-    vendor: 'Meshy',
-    docs: 'https://docs.meshy.ai/api/ai',
-    server: 'meshy',
-    match: ['meshy-ai'],
-    fields: [{ key: 'MESHY_API_KEY', secret: true, required: true, pattern: TOKEN }],
-    prereqs: ['node'],
-    install: { type: 'stdio', command: 'npx', args: ['-y', '@meshy-ai/meshy-mcp-server'], env: ['MESHY_API_KEY'], winShim: true },
-  },
-  {
-    id: 'unity',
-    kind: 'mcp',
-    name: 'Unity',
-    vendor: 'CoplayDev (MCP for Unity)',
-    docs: 'https://github.com/CoplayDev/unity-mcp',
-    match: ['unityMCP', 'UnityMCP', 'unity-mcp', 'mcp-for-unity', 'unity'],
-    fields: [],
-    prereqs: ['uv'],
-    install: { type: 'guide' },
-    steps: 3,
-  },
-  {
-    id: 'blender',
-    kind: 'mcp',
-    name: 'Blender',
-    vendor: 'ahujasid/blender-mcp',
-    docs: 'https://github.com/ahujasid/blender-mcp',
-    server: 'blender',
-    match: ['blender-mcp'],
-    fields: [],
-    prereqs: ['uv'],
-    install: { type: 'stdio', command: 'uvx', args: ['mcp-for-blender'], env: [] },
-    steps: 2,
   },
   {
     id: 'github',
@@ -154,6 +119,82 @@ export const CATALOG: readonly CatalogEntry[] = [
       env: ['DISCORD_TOKEN', 'DISCORD_GUILD_ID'],
     },
   },
+  {
+    id: 'meshy',
+    kind: 'mcp',
+    name: 'Meshy AI',
+    vendor: 'Meshy',
+    docs: 'https://docs.meshy.ai/api/ai',
+    server: 'meshy',
+    match: ['meshy-ai'],
+    fields: [{ key: 'MESHY_API_KEY', secret: true, required: true, pattern: TOKEN }],
+    prereqs: ['node'],
+    install: { type: 'stdio', command: 'npx', args: ['-y', '@meshy-ai/meshy-mcp-server'], env: ['MESHY_API_KEY'], winShim: true },
+  },
+  {
+    id: 'unity',
+    kind: 'mcp',
+    name: 'Unity',
+    vendor: 'CoplayDev (MCP for Unity)',
+    docs: 'https://github.com/CoplayDev/unity-mcp',
+    match: ['unityMCP', 'UnityMCP', 'unity-mcp', 'mcp-for-unity', 'unity'],
+    fields: [],
+    prereqs: ['uv'],
+    install: { type: 'guide' },
+    steps: 3,
+  },
+  {
+    id: 'blender',
+    kind: 'mcp',
+    name: 'Blender',
+    vendor: 'ahujasid/blender-mcp',
+    docs: 'https://github.com/ahujasid/blender-mcp',
+    server: 'blender',
+    match: ['blender-mcp'],
+    fields: [],
+    prereqs: ['uv'],
+    install: { type: 'stdio', command: 'uvx', args: ['mcp-for-blender'], env: [] },
+    steps: 2,
+  },
+  {
+    id: 'godot',
+    kind: 'mcp',
+    name: 'Godot',
+    vendor: 'Coding-Solo/godot-mcp',
+    docs: 'https://github.com/Coding-Solo/godot-mcp',
+    server: 'godot',
+    match: ['godot-mcp'],
+    fields: [{ key: 'GODOT_PATH', secret: false, required: false, pattern: ABS_PATH }],
+    prereqs: ['node'],
+    install: { type: 'stdio', command: 'npx', args: ['-y', '@coding-solo/godot-mcp'], env: ['GODOT_PATH'], winShim: true },
+  },
+  {
+    id: 'godot-editor',
+    kind: 'mcp',
+    name: 'Godot Editor',
+    vendor: 'tomyud1/godot-mcp',
+    docs: 'https://github.com/tomyud1/godot-mcp',
+    match: ['godot-editor', 'godot-mcp-server', 'tomyud1-godot-mcp'],
+    fields: [],
+    prereqs: ['node'],
+    install: { type: 'guide' },
+    steps: 3,
+  },
+  {
+    id: 'godot-funplay',
+    kind: 'mcp',
+    name: 'Funplay MCP for Godot',
+    vendor: 'FunplayAI/funplay-godot-mcp',
+    docs: 'https://github.com/FunplayAI/funplay-godot-mcp',
+    match: ['funplay', 'funplay-godot-mcp', 'funplayai-funplay-godot-mcp'],
+    fields: [],
+    prereqs: ['node'],
+    install: { type: 'guide' },
+    steps: 3,
+  },
+
+
+
   {
     id: 'pm-skills',
     kind: 'plugin',
@@ -245,6 +286,8 @@ export interface ExtStatus {
   /** Configured servers read from the config files (names + scope only), fast, before health checks. */
   configured: { name: string; scopes: ExtScope[] }[]
   skills: { user: string[]; project: string[] }
+  /** Folders the skill names above live in, for copying a skill's path. */
+  skillDirs: { user: string; project: string | null }
 }
 
 export interface AvailablePlugin {

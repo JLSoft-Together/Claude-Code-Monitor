@@ -23,7 +23,7 @@ async function main() {
     await waitFor(`!!document.querySelector('[data-extensions]')`, 15000, 'view')
     await waitFor(`!${S}.get('extensions').loading`, 60000, 'status')
     const cards = await evaluate(`[...document.querySelectorAll('[data-ext-card]')].map(c => c.dataset.extCard).join(',')`)
-    check('catalog cards render', ['figma', 'meshy', 'unity', 'blender', 'github', 'gitlab', 'discord', 'pm-skills', 'ui-ux-pro-max', 'frontend-design'].every((id) => cards.includes(id)), cards)
+    check('catalog cards render', ['figma', 'meshy', 'unity', 'blender', 'godot', 'godot-editor', 'godot-funplay', 'github', 'gitlab', 'discord', 'pm-skills', 'ui-ux-pro-max', 'frontend-design'].every((id) => cards.includes(id)), cards)
     check('CLI found', await evaluate(`${S}.get('extensions').status?.cli === true`))
     await shot('ext-01-loading')
     await waitFor(`!${S}.get('extensions').mcpLoading`, 120000, 'mcp list')

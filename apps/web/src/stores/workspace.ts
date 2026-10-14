@@ -460,7 +460,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   /** New shell in `dir` that types `run` + Enter once its prompt is up: only ever from the user picking a script. */
-  function runScript(dir: string, run: string, opts: { split?: Placement } = {}): Pane {
+  function runScript(dir: string | undefined, run: string, opts: { split?: Placement } = {}): Pane {
     addPane('shell', dir)
     const pane = panes.value[panes.value.length - 1]!
     pane.command = run

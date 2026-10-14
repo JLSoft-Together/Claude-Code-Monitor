@@ -161,6 +161,7 @@ export function registerExtensionsIpc(deps: ExtensionsDeps): () => void {
           marketplaces(cli, cwd),
         ])
       : [[], []]
+    const skillDirs = { user: path.join(claudeRoot(env, home), 'skills'), project: dir ? path.join(dir, '.claude', 'skills') : null }
     return {
       cli: !!cli,
       dir,
@@ -168,7 +169,8 @@ export function registerExtensionsIpc(deps: ExtensionsDeps): () => void {
       plugins,
       marketplaces: markets,
       configured: readConfigured(claudeJsonFile(env, home), dir, platform),
-      skills: { user: listSkills(path.join(claudeRoot(env, home), 'skills')), project: dir ? listSkills(path.join(dir, '.claude', 'skills')) : [] },
+      skills: { user: listSkills(skillDirs.user), project: skillDirs.project ? listSkills(skillDirs.project) : [] },
+      skillDirs,
     }
   })
 

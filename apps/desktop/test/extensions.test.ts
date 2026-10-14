@@ -34,7 +34,7 @@ describe('catalog', () => {
   it('has unique ids and the requested entries', () => {
     const ids = CATALOG.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
-    for (const id of ['figma', 'meshy', 'unity', 'blender', 'github', 'gitlab', 'discord', 'pm-skills', 'ui-ux-pro-max', 'frontend-design']) expect(ids).toContain(id)
+    for (const id of ['figma', 'meshy', 'unity', 'blender', 'godot', 'godot-editor', 'godot-funplay', 'github', 'gitlab', 'discord', 'pm-skills', 'ui-ux-pro-max', 'frontend-design']) expect(ids).toContain(id)
   })
 
   it('validates fields', () => {
@@ -46,6 +46,13 @@ describe('catalog', () => {
     // Optional with a default
     expect(checkFields(catalogEntry('gitlab')!, {})).toBeNull()
     expect(checkFields(catalogEntry('gitlab')!, { GITLAB_HOST: 'evil.com/x?' })).toBe('GITLAB_HOST')
+    const godot = catalogEntry('godot')!
+    expect(checkFields(godot, {})).toBeNull()
+    expect(checkFields(godot, { GODOT_PATH: 'C:\\Program Files\\Godot\\Godot_v4.4-stable_win64.exe' })).toBeNull()
+    expect(checkFields(godot, { GODOT_PATH: '/Applications/Godot.app/Contents/MacOS/Godot' })).toBeNull()
+    expect(checkFields(godot, { GODOT_PATH: '-x' })).toBe('GODOT_PATH')
+    expect(checkFields(godot, { GODOT_PATH: 'godot/bin' })).toBe('GODOT_PATH')
+    expect(mcpConfig(godot, {}, 'win32')).toEqual({ type: 'stdio', command: 'cmd', args: ['/c', 'npx', '-y', '@coding-solo/godot-mcp'] })
   })
 })
 
@@ -252,9 +259,10 @@ describe('ipc', () => {
       stderr: '',
     })
     const { call } = setup(true, run)
-    const status = (await call('ccm:ext-status', project)) as { skills: { user: string[]; project: string[] }; marketplaces: string[]; plugins: unknown[]; cli: boolean }
+    const status = (await call('ccm:ext-status', project)) as { skills: { user: string[]; project: string[] }; skillDirs: { user: string; project: string | null }; marketplaces: string[]; plugins: unknown[]; cli: boolean }
     expect(status.cli).toBe(true)
     expect(status.skills).toEqual({ user: ['mine'], project: ['review'] })
+    expect(status.skillDirs).toEqual({ user: path.join(home, '.claude', 'skills'), project: path.join(project, '.claude', 'skills') })
     expect(status.marketplaces).toEqual(['claude-plugins-official'])
     expect(status.plugins).toHaveLength(1)
     expect(await call('ccm:ext-status', 'relative')).toBeNull()
