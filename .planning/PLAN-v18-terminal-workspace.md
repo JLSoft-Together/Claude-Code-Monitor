@@ -108,16 +108,14 @@ Chỉnh từ audit Deck vào các phase:
 - Đóng app = kill PTY = kill claude đang chạy. Cần confirm khi còn agent working; tray "quit" cũng phải hỏi.
 - Bộ nhớ: mỗi pane xterm ~10–30 MB; cap ~12 pane, pane ẩn dừng render.
 
-## 5b. Kết quả P0 (2026-10-14) — `spikes/pty/`
-
-Chạy: `cd spikes/pty && npm install --workspaces=false && npx electron .` (UI) / `npx electron . --selftest`.
+## 5b. Kết quả P0 (2026-10-14)
 
 - Package: **`@lydell/node-pty@1.2.0-beta.15`** — prebuilt N-API cho win/mac/linux x64+arm64 → **không cần electron-rebuild / VS build tools**. Chạy được trong `utilityProcess` Electron 44.4.5.
-- Selftest Windows PASS: không token / sai token / origin lạ đều bị từ chối; spawn 13 ms; round trip shell ~1.1 s (gồm thời gian PowerShell khởi động); reattach replay scrollback OK.
+- Windows PASS: không token / sai token / origin lạ đều bị từ chối; spawn 13 ms; round trip shell ~1.1 s (gồm thời gian PowerShell khởi động); reattach replay scrollback OK.
 - ConPTY trả `pid` **bất đồng bộ** (0 ngay sau spawn, có sau ~30 ms) → manager phải đợi/emit sau.
 - node-pty Windows giữ event loop sau khi tiến trình con exit → shutdown phải `process.exit` tường minh.
 - `claude.cmd` (npm) chỉ là shim gọi `node_modules\@anthropic-ai\claude-code\bin\claude.exe` → P2 resolve thẳng `claude.exe` để pid PTY = pid trong registry `<pid>.json`; fallback cmd.exe + tìm con qua `queryProcesses` (ppid).
-- Token qua `Sec-WebSocket-Protocol` (`ccm.pty.<hex>`), so sánh `timingSafeEqual`; cờ `--selftest` giữ lại làm test tích hợp.
+- Token qua `Sec-WebSocket-Protocol` (`ccm.pty.<hex>`), so sánh `timingSafeEqual`.
 
 Chờ chủ nhân test tay: gõ tiếng Việt (Unikey telex/VNI), Claude Code TUI hiển thị đúng, latency gõ phím (footer p50/p95), Ctrl+V ảnh vào Claude, Reload + reattach, resize cửa sổ. macOS chưa test.
 
