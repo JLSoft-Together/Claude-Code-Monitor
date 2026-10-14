@@ -31,6 +31,7 @@ import ChangesPane from './ChangesPane.vue'
 import ExplorerPanel from './ExplorerPanel.vue'
 import FilePane from './FilePane.vue'
 import LayoutsDialog from './LayoutsDialog.vue'
+import LogPane from './log/LogPane.vue'
 import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
@@ -1064,6 +1065,20 @@ onBeforeUnmount(() => {
               <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </FilePane>
+          <LogPane
+            v-else-if="pane.kind === 'log'"
+            class="min-h-0 flex-1"
+            :cwd="pane.cwd!"
+            :select="pane.select"
+            :active="visible && tabBoxes.has(pane.key)"
+            @selected="workspace.update(pane.key, { select: undefined })"
+            @root="(root) => workspace.update(pane.key, { root })"
+            @open="(path, line) => workspace.openFile(path, line, { cwd: pane.root ?? pane.cwd })"
+          >
+            <template #end>
+              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+            </template>
+          </LogPane>
           <ChangesPane
             v-else
             class="min-h-0 flex-1"
