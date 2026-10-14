@@ -10,6 +10,7 @@ import { workspaceChord } from './keys'
 import { GrantStore } from './grants'
 import { FileListCache } from './listFiles'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
+import { existingDir } from '../pick-start'
 import type { PreviewServer } from './server'
 import type { RootWatcher } from './watch'
 
@@ -196,11 +197,12 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return true
   })
 
-  ipcMain.handle('ccm:pick-file', async (event, kind: unknown) => {
+  // `near`: the focused terminal's folder; the dialog opens there.
+  ipcMain.handle('ccm:pick-file', async (event, kind: unknown, near: unknown) => {
     if (!isAppFrame(event)) return null
     const filters = kind === 'html' ? [{ name: 'HTML', extensions: ['html', 'htm'] }] : []
     const win = deps.getWindow()
-    const opts: Electron.OpenDialogOptions = { properties: ['openFile'], filters }
+    const opts: Electron.OpenDialogOptions = { properties: ['openFile'], filters, defaultPath: existingDir(near) }
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
     const file = res.canceled ? undefined : res.filePaths[0]
     if (!file) return null

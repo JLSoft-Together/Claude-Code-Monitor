@@ -10,7 +10,7 @@ function subscribe(channel: string, handler: (payload: unknown) => void): () => 
 contextBridge.exposeInMainWorld('ccmDesktop', {
   platform: process.platform,
   ptyEndpoint: (): Promise<unknown> => ipcRenderer.invoke('ccm:pty-endpoint'),
-  pickFolder: (): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder'),
+  pickFolder: (near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder', near),
   setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),
   logs: (action: 'copy' | 'save', report: string): Promise<unknown> => ipcRenderer.invoke('ccm:logs', action, report),
   /** Toast click: the page answers whether a workspace pane holds that session. */
@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   readFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:read-file', path),
   watch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:watch', root),
   unwatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:unwatch', root),
-  pickFile: (kind: 'html' | 'any'): Promise<unknown> => ipcRenderer.invoke('ccm:pick-file', kind),
+  pickFile: (kind: 'html' | 'any', near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-file', kind, near),
   openExternal: (url: string): Promise<unknown> => ipcRenderer.invoke('ccm:open-external', url),
   reveal: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:reveal', path),
   openPath: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:open-path', path),

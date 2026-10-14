@@ -64,7 +64,7 @@ async function browse(): Promise<void> {
   if (browsing.value || !desktop) return
   browsing.value = true
   try {
-    const dir = await desktop.pickFolder()
+    const dir = await desktop.pickFolder(workspace.recentDirs[0])
     // The popover may have closed while the native dialog was up.
     if (dir && !unmounted) emit('launch', dir)
   } finally {

@@ -14,7 +14,8 @@ export interface ForwardedKey {
 interface DesktopBridge {
   platform: string
   ptyEndpoint: () => Promise<PtyEndpoint | null>
-  pickFolder: () => Promise<string | null>
+  /** `near`: the last project; the dialog opens in its parent folder. */
+  pickFolder: (near?: string) => Promise<string | null>
   /** Theme canvas colour (#RRGGBB) for the native window background, kept for the next launch. */
   setWindowBackground?: (color: string) => Promise<boolean>
   logs?: (action: 'copy' | 'save', report: string) => Promise<{ ok: boolean; path?: string } | null>
@@ -25,7 +26,7 @@ interface DesktopBridge {
   watch?: (root: string) => Promise<boolean>
   unwatch?: (root: string) => Promise<boolean>
   onPreviewChanged?: (handler: (change: PreviewChange) => void) => () => void
-  pickFile?: (kind: 'html' | 'any') => Promise<string | null>
+  pickFile?: (kind: 'html' | 'any', near?: string) => Promise<string | null>
   openExternal?: (url: string) => Promise<boolean>
   reveal?: (path: string) => Promise<boolean>
   openPath?: (path: string) => Promise<string>

@@ -10,6 +10,7 @@ import { maskLog } from './log-mask'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
 import { errorPage, loadingPage, RETRY_URL } from './pages'
+import { pickStartDir } from './pick-start'
 import { hardenWebviews, PREVIEW_PARTITION, registerPreviewIpc, type PreviewIpc } from './preview/ipc'
 import { PreviewServer } from './preview/server'
 import { RootWatcher } from './preview/watch'
@@ -518,10 +519,10 @@ async function ready(): Promise<void> {
     return true
   })
   // Native picker so a folder for a terminal comes from the user, not from page script.
-  ipcMain.handle('ccm:pick-folder', async (event) => {
+  ipcMain.handle('ccm:pick-folder', async (event, near: unknown) => {
     if (!isAppFrame(event)) return null
     const win = BrowserWindow.fromWebContents(event.sender)
-    const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
+    const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'], defaultPath: pickStartDir(near) }
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
     const folder = res.canceled ? null : (res.filePaths[0] ?? null)
     // Readable before its terminal shows up in the census.

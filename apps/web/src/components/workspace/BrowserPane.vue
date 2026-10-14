@@ -54,7 +54,8 @@ interface WebviewEl extends HTMLElement {
 
 const PARTITION = 'persist:ccm-preview'
 
-const props = withDefaults(defineProps<{ url: string; active?: boolean }>(), { active: true })
+/** `cwd`: where "Open file" starts when the page is not a local file. */
+const props = withDefaults(defineProps<{ url: string; active?: boolean; cwd?: string }>(), { active: true })
 const emit = defineEmits<{
   navigate: [source: string]
   title: [title: string]
@@ -266,7 +267,8 @@ function setDevice(id: DeviceId): void {
 }
 
 async function openFile(): Promise<void> {
-  const file = await pickFile('html')
+  // A local page: its own folder (the main process walks up from the file path).
+  const file = await pickFile('html', target.value ? address.value : props.cwd)
   if (file) await open(file)
 }
 

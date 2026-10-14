@@ -72,7 +72,7 @@ interface PreviewBridge {
   watch?: (root: string) => Promise<boolean>
   unwatch?: (root: string) => Promise<boolean>
   onPreviewChanged?: (handler: (change: PreviewChange) => void) => () => void
-  pickFile?: (kind: 'html' | 'any') => Promise<string | null>
+  pickFile?: (kind: 'html' | 'any', near?: string) => Promise<string | null>
   openExternal?: (url: string) => Promise<boolean>
   reveal?: (path: string) => Promise<boolean>
   openPath?: (path: string) => Promise<string>
@@ -102,7 +102,8 @@ export const previewUrl = (path: string): Promise<PreviewTarget | null> => bridg
 export const readFile = (path: string): Promise<FileView | null> => bridge?.readFile?.(path) ?? Promise.resolve(null)
 export const watchRoot = (root: string): Promise<boolean> => bridge?.watch?.(root) ?? Promise.resolve(false)
 export const unwatchRoot = (root: string): Promise<boolean> => bridge?.unwatch?.(root) ?? Promise.resolve(false)
-export const pickFile = (kind: 'html' | 'any'): Promise<string | null> => bridge?.pickFile?.(kind) ?? Promise.resolve(null)
+/** `near`: folder the dialog opens in (the focused terminal's). */
+export const pickFile = (kind: 'html' | 'any', near?: string): Promise<string | null> => bridge?.pickFile?.(kind, near) ?? Promise.resolve(null)
 export const openExternal = (url: string): Promise<boolean> => bridge?.openExternal?.(url) ?? Promise.resolve(false)
 export const revealPath = (path: string): Promise<boolean> => bridge?.reveal?.(path) ?? Promise.resolve(false)
 export const openPath = (path: string): Promise<string> => bridge?.openPath?.(path) ?? Promise.resolve('denied')

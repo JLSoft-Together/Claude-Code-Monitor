@@ -167,7 +167,7 @@ function openBrowserTab(url: string): void {
 
 async function openFileTab(): Promise<void> {
   closeMenu(false)
-  const path = await pickFile('any')
+  const path = await pickFile('any', contextCwd.value ?? workspace.recentDirs[0])
   if (!path) return
   if (HTML.test(path)) workspace.openBrowser(path, { cwd: contextCwd.value })
   else workspace.openFile(path)
@@ -1039,6 +1039,7 @@ onBeforeUnmount(() => {
             v-if="pane.kind === 'browser'"
             class="min-h-0 flex-1"
             :url="pane.url ?? ''"
+            :cwd="workCwd(pane) ?? workspace.recentDirs[0]"
             :active="visible && tabBoxes.has(pane.key)"
             @navigate="(url) => workspace.update(pane.key, { url })"
             @title="(title) => workspace.update(pane.key, { title })"
