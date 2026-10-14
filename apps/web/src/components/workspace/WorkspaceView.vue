@@ -187,7 +187,7 @@ const scriptsReturn = ref<HTMLElement | null>(null)
 /** Root = git toplevel of the focused pane's folder (ls-files from a sub-folder lists only that sub-folder). */
 async function openQuick(): Promise<void> {
   const pane = workspace.active
-  const cwd = pane?.kind === 'changes' ? (pane.root ?? pane.cwd) : pane && workCwd(pane)
+  const cwd = pane?.kind === 'changes' || pane?.kind === 'log' ? (pane.root ?? pane.cwd) : pane && workCwd(pane)
   quickRoot.value = cwd ?? null
   if (!quickOpen.value) quickReturn = document.activeElement as HTMLElement | null
   quickOpen.value = true

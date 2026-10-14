@@ -19,6 +19,7 @@ export function usePaneInfo() {
   /** Browser: host[:port] or file name; file: name; changes: "Changes (N)". */
   function viewLabel(pane: Pane): string {
     if (pane.kind === 'file') return pane.path ? baseName(pane.path) : t('workspace.viewer.title')
+    if (pane.kind === 'log') return pane.root ? `${t('workspace.log.title')}: ${baseName(pane.root)}` : t('workspace.log.title')
     if (pane.kind === 'changes') return pane.count ? t('workspace.changes.titleCount', { n: pane.count }) : t('workspace.changes.title')
     const url = pane.url ?? ''
     if (/^https?:\/\//i.test(url)) {
@@ -34,7 +35,7 @@ export function usePaneInfo() {
   /** Full URL / path / repo root, for tooltips. */
   function viewDetail(pane: Pane): string | undefined {
     if (pane.kind === 'file') return pane.path
-    if (pane.kind === 'changes') return pane.root ?? pane.cwd
+    if (pane.kind === 'changes' || pane.kind === 'log') return pane.root ?? pane.cwd
     return pane.url || undefined
   }
 

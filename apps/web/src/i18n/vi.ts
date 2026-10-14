@@ -5,6 +5,7 @@ import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 import diff from './workspace-diff'
+import log from './workspace-log'
 import v28 from './extensions-v28'
 
 const vi: typeof en = {
@@ -28,6 +29,7 @@ const vi: typeof en = {
     ...tier2.vi,
     ...explorer.vi,
     ...diff.vi,
+    ...log.vi,
     tabs: 'Terminal',
     newLabel: 'Tab mới',
     close: 'Đóng terminal',

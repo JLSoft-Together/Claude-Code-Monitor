@@ -153,3 +153,34 @@ describe('explorer preview viewer', () => {
     expect(b.preview).toBeUndefined()
   })
 })
+
+describe('log panes', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('opens one Log pane per repo and selects a commit', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.openLog('/repo', { select: 'abcd1234' })
+    expect(a.kind).toBe('log')
+    expect(a.select).toBe('abcd1234')
+    const b = ws.openLog('/repo')
+    expect(b.key).toBe(a.key)
+    ws.update(a.key, { root: '/repo' })
+    expect(ws.openLog('/repo', { select: 'ffff' }).select).toBe('ffff')
+    expect(ws.panes.filter((p) => p.kind === 'log')).toHaveLength(1)
+  })
+
+  it('persists and restores a Log pane', async () => {
+    const ws = useWorkspaceStore()
+    ws.openLog('/repo')
+    await nextTick()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+    const next = useWorkspaceStore()
+    next.restoreLast()
+    expect(next.panes.map((p) => [p.kind, p.cwd])).toEqual([['log', '/repo']])
+  })
+})

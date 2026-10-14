@@ -23,7 +23,7 @@ export interface ScriptsResult {
 
 /** Mirrors `apps/desktop/src/layouts.ts`. */
 export interface LayoutPane {
-  kind: 'term' | 'browser' | 'file' | 'changes'
+  kind: 'term' | 'browser' | 'file' | 'changes' | 'log'
   preset?: PtyPreset
   cwd?: string
   url?: string

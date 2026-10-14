@@ -18,7 +18,7 @@ function specOf(pane: Pane, resume: boolean): LayoutPane {
   }
   if (pane.kind === 'browser') return { kind: 'browser', url: pane.url ?? '', cwd: pane.cwd }
   if (pane.kind === 'file') return { kind: 'file', path: pane.path, line: pane.line, cwd: pane.cwd }
-  return { kind: 'changes', cwd: pane.root ?? pane.cwd }
+  return { kind: pane.kind === 'log' ? 'log' : 'changes', cwd: pane.root ?? pane.cwd }
 }
 
 /** Tabs whose naming pane belongs to the project, with split trees and ratios; no output, no prompts. */
