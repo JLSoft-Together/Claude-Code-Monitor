@@ -1,4 +1,6 @@
+import type { EntryNameProblem } from '@ccm/shared'
 import { desktop } from './desktop'
+import type { DirEntry } from './explorer/tree'
 
 export type FileViewKind = 'text' | 'image' | 'binary' | 'too-large' | 'missing' | 'denied'
 
@@ -58,6 +60,11 @@ export interface FileList {
   source: 'git' | 'walk'
 }
 
+export type CreateEntryResult =
+  | { ok: true; path: string }
+  | { ok: false; error: 'invalid'; reason: EntryNameProblem }
+  | { ok: false; error: 'exists' | 'denied' | 'failed' | 'unavailable' }
+
 /** Preview methods added to `window.ccmDesktop` by the v21 preload (see .planning/PLAN-v21-integration.md). */
 interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
@@ -78,6 +85,8 @@ interface PreviewBridge {
   changesUnwatch?: (root: string) => Promise<boolean>
   onChangesUpdated?: (handler: (change: { root: string }) => void) => () => void
   listFiles?: (root: string) => Promise<FileList | null>
+  listDir?: (root: string, dir: string) => Promise<DirEntry[] | null>
+  createEntry?: (root: string, parent: string, name: string, kind: 'file' | 'directory') => Promise<CreateEntryResult>
   clipboardImage?: (pngDataUrl: string) => Promise<boolean>
   captureGuest?: (webContentsId: number) => Promise<boolean>
 }
@@ -108,6 +117,11 @@ export const changesDiscard = (root: string, path: string, hunk?: string): Promi
 export const changesWatch = (root: string): Promise<boolean> => bridge?.changesWatch?.(root) ?? Promise.resolve(false)
 export const changesUnwatch = (root: string): Promise<boolean> => bridge?.changesUnwatch?.(root) ?? Promise.resolve(false)
 export const listFiles = (root: string): Promise<FileList | null> => bridge?.listFiles?.(root) ?? Promise.resolve(null)
+export const hasExplorer = typeof bridge?.listDir === 'function'
+/** One folder of the project `root`; null when outside it or unreadable. */
+export const listDir = (root: string, dir: string): Promise<DirEntry[] | null> => bridge?.listDir?.(root, dir) ?? Promise.resolve(null)
+export const createEntry = (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<CreateEntryResult> =>
+  bridge?.createEntry?.(root, parent, name, kind) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const clipboardImage = (pngDataUrl: string): Promise<boolean> => bridge?.clipboardImage?.(pngDataUrl) ?? Promise.resolve(false)
 export const captureGuest = (webContentsId: number): Promise<boolean> => bridge?.captureGuest?.(webContentsId) ?? Promise.resolve(false)
 export const hasCaptureGuest = typeof bridge?.captureGuest === 'function'

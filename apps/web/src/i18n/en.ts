@@ -1,5 +1,6 @@
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
+import explorer from './workspace-explorer'
 
 export default {
   app: {
@@ -16,6 +17,7 @@ export default {
   workspace: {
     ...viewer.en,
     ...tier2.en,
+    ...explorer.en,
     tabs: 'Terminals',
     new: 'New',
     newLabel: 'New tab',
@@ -466,6 +468,7 @@ export default {
       wsTab: 'Go to tab 1 to 9',
       wsFocus: 'Move focus to the pane beside it',
       wsQuickOpen: 'Go to file in the project',
+      wsExplorer: 'Show the file explorer',
       wsFind: 'Find in the focused terminal',
     },
   },

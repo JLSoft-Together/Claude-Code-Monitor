@@ -18,12 +18,14 @@ import { pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, type Box, type Divider, type SplitDir } from '../../lib/splitLayout'
 import { workspaceAction } from '../../lib/workspaceKeys'
+import { shortcutText } from '../../lib/shortcuts'
 import { useTerminalsStore } from '../../stores/terminals'
 import { isTerm, primaryPaneKey, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import LaunchPicker from './LaunchPicker.vue'
 import BrowserPane from './BrowserPane.vue'
 import ChangesPane from './ChangesPane.vue'
+import ExplorerPanel from './ExplorerPanel.vue'
 import FilePane from './FilePane.vue'
 import LayoutsDialog from './LayoutsDialog.vue'
 import ScriptsDialog from './ScriptsDialog.vue'
@@ -62,6 +64,40 @@ watch(sidebarOpen, (open) => {
     // preference only
   }
 })
+
+/** What the sidebar shows: project groups or the file Explorer of the focused pane's project. */
+type SideView = 'projects' | 'explorer'
+const SIDE_VIEW_KEY = 'ccm.workspace.sideView'
+const SIDE_VIEWS: SideView[] = ['projects', 'explorer']
+const sideView = ref<SideView>(readSideView())
+function readSideView(): SideView {
+  try {
+    return localStorage.getItem(SIDE_VIEW_KEY) === 'explorer' ? 'explorer' : 'projects'
+  } catch {
+    return 'projects'
+  }
+}
+watch(sideView, (v) => {
+  try {
+    localStorage.setItem(SIDE_VIEW_KEY, v)
+  } catch {
+    // preference only
+  }
+})
+const sideTabs = ref<HTMLElement | null>(null)
+function onSideTabKey(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  sideView.value = sideView.value === 'projects' ? 'explorer' : 'projects'
+  sideTabs.value?.querySelector<HTMLElement>(`[data-side-view="${sideView.value}"]`)?.focus()
+}
+
+async function showExplorer(): Promise<void> {
+  if (!sidebarOpen.value) toggleSidebar()
+  sideView.value = 'explorer'
+  await nextTick()
+  ;(document.querySelector<HTMLElement>('[data-explorer-tree] [tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-explorer] [role="tab"][tabindex="0"]'))?.focus()
+}
 
 const closing = computed(() => (workspace.pendingClose ?? []).map((k) => workspace.panes.find((p) => p.key === k)).filter((p): p is Pane => !!p))
 const confirmButton = ref<HTMLButtonElement | null>(null)
@@ -189,6 +225,16 @@ function paneProject(pane: Pane): string | null {
 }
 
 const activeProject = computed(() => (workspace.active ? paneProject(workspace.active) : null))
+
+/** File shown by the focused viewer: the Explorer marks and reveals it. */
+const activeFile = computed(() => (workspace.active?.kind === 'file' ? (workspace.active.path ?? null) : null))
+
+/** Explorer click = preview viewer (the next click replaces it), double click = kept; the viewer stays in the project. */
+function openFromExplorer(path: string, keep: boolean): void {
+  const cwd = activeProject.value ?? undefined
+  if (keep) withViewTransition(() => workspace.openFile(path, undefined, { cwd, preview: false }))
+  else workspace.openFile(path, undefined, { cwd, preview: true })
+}
 
 const scripts = ref<{ dirs: string[]; query?: string } | null>(null)
 let scriptsSeq = 0
@@ -571,6 +617,9 @@ function onGlobalKey(e: KeyboardEvent): void {
       if (quickOpen.value) quickOpen.value = false
       else if (hasPreview) void openQuick()
       break
+    case 'explorer':
+      void showExplorer()
+      break
   }
 }
 
@@ -650,8 +699,30 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="flex h-[calc(100dvh-var(--ccm-header-h,52px))] min-h-0 w-full gap-3 px-3 pt-2 pb-3 sm:px-4">
-    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 md:block">
+    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 flex-col gap-1.5 md:flex">
+      <div ref="sideTabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.sideViews')" @keydown="onSideTabKey">
+        <button
+          v-for="v in SIDE_VIEWS"
+          :key="v"
+          type="button"
+          role="tab"
+          :data-side-view="v"
+          :aria-selected="sideView === v"
+          :tabindex="sideView === v ? 0 : -1"
+          :title="v === 'explorer' ? t('workspace.explorer.toggle', { keys: shortcutText('wsExplorer', isMac) }) : undefined"
+          class="h-6 min-w-0 flex-1 cursor-pointer rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast)"
+          :class="sideView === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
+          @click="sideView = v"
+        >
+          {{ v === 'projects' ? t('workspace.explorer.projects') : t('workspace.explorer.title') }}
+        </button>
+      </div>
+      <div v-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
+        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root) => withViewTransition(() => workspace.openChanges(root))" />
+      </div>
       <WorkspaceSidebar
+        v-else
+        class="min-h-0 flex-1"
         @scripts="(root) => openScripts([root])"
         @save-layout="(root, name) => showLayouts(root, name, 'save')"
         @manage-layouts="(root, name) => showLayouts(root, name, 'manage')"
@@ -700,7 +771,7 @@ onBeforeUnmount(() => {
           >
             <StatusIcon v-if="tabSession(tab)" :status="tabSession(tab)!.status" :size="13" />
             <PaneIcon v-else-if="tabPrimary(tab)" :pane="tabPrimary(tab)!" :size="13" class="shrink-0" />
-            <span class="max-w-[20ch] shrink-0 truncate font-medium" data-tab-label>{{ tabLabel(tab) }}</span>
+            <span class="max-w-[20ch] shrink-0 truncate font-medium" :class="tabPrimary(tab)?.preview ? 'italic' : ''" data-tab-label>{{ tabLabel(tab) }}</span>
             <span v-if="tabPrimary(tab) && isTerm(tabPrimary(tab)!) && workCwd(tabPrimary(tab)!)" class="min-w-0 truncate text-ink-faint">{{ shortPath(workCwd(tabPrimary(tab)!)) }}</span>
             <span v-if="leaves(tab.root).length > 1" class="shrink-0 rounded-[4px] bg-fill px-1 text-2xs text-ink-muted tabular" data-pane-count>
               {{ leaves(tab.root).length }}<span class="sr-only"> {{ t('workspace.panes') }}</span>

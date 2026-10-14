@@ -24,14 +24,14 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
     if (!meta || ctrl) return null
     if (alt) return null
     if (code === 'KeyT' || code === 'KeyW' || code === 'KeyK' || code === 'KeyP') return shift ? null : hit()
-    if (code === 'KeyA') return shift ? hit() : null
+    if (code === 'KeyA' || code === 'KeyE') return shift ? hit() : null
     if (code === 'KeyD') return hit()
     if (code === 'BracketLeft' || code === 'BracketRight') return shift ? hit() : null
     if (DIGIT.test(code)) return shift ? null : hit()
     return null
   }
   if (meta) return null
-  if (ctrl && shift && !alt && (code === 'KeyT' || code === 'KeyW' || code === 'KeyA' || code === 'KeyP')) return hit()
+  if (ctrl && shift && !alt && (code === 'KeyT' || code === 'KeyW' || code === 'KeyA' || code === 'KeyP' || code === 'KeyE')) return hit()
   if (alt && shift && !ctrl && ['KeyD', 'Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract'].includes(code)) return hit()
   if (ctrl && !alt && code === 'Tab') return hit()
   if (ctrl && !alt && !shift && code === 'KeyK') return hit()

@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell, WebContents } from 'electron'
 import { discardFile, discardHunk, diff as changesDiff, GitDirWatcher, status as changesStatus, toplevel } from './changes'
 import { electronClipboardImage, writeClipboardImage, type ClipboardImageDeps } from './clipboardImage'
+import { createEntry, listDir } from './explorer'
 import { readFileForView } from './files'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
@@ -73,7 +74,7 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:capture-guest', 'ccm:forget-grants',
-  'ccm:project-root', 'ccm:scripts',
+  'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -315,6 +316,24 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const dir = (await repoOf(root)) ?? (await allowedPath(root))?.real
     if (!dir || !(await fs.stat(dir).catch(() => null))?.isDirectory()) return null
     return fileLists.get(dir).catch(() => null)
+  })
+
+  /** Explorer root: a known repo toplevel, else an allowed folder (real path). */
+  const explorerRoot = async (root: unknown): Promise<string | null> => (await repoOf(root)) ?? (await allowedPath(root))?.real ?? null
+
+  ipcMain.handle('ccm:list-dir', async (event, req: unknown) => {
+    const { root, dir } = (req ?? {}) as { root?: unknown; dir?: unknown }
+    const real = isAppFrame(event) ? await explorerRoot(root) : null
+    return real ? listDir(real, dir) : null
+  })
+
+  ipcMain.handle('ccm:create-entry', async (event, req: unknown) => {
+    const { root, parent, name, kind } = (req ?? {}) as { root?: unknown; parent?: unknown; name?: unknown; kind?: unknown }
+    const real = isAppFrame(event) ? await explorerRoot(root) : null
+    if (!real) return { ok: false, error: 'denied' }
+    const res = await createEntry(real, parent, name, kind)
+    if (res.ok) fileLists.invalidate(real)
+    return res
   })
 
   let clipboardImpl: Promise<ClipboardImageDeps> | null = null

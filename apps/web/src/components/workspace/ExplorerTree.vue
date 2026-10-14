@@ -1,0 +1,257 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ChevronRight, ChevronsDownUp, Eye, File, FileCode, FileImage, FileJson, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Link2, RotateCw } from 'lucide-vue-next'
+import { samePath } from '../../lib/changesView'
+import { nextRevealStep } from '../../lib/explorer/reveal'
+import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
+import { useExplorerStore } from '../../stores/explorer'
+
+const props = defineProps<{
+  /** File shown by the focused viewer: marked, and revealed when it is inside the root. */
+  activePath: string | null
+}>()
+const emit = defineEmits<{
+  open: [path: string, keep: boolean]
+  create: [kind: 'file' | 'directory']
+}>()
+
+const { t } = useI18n()
+const explorer = useExplorerStore()
+
+/** Fixed row height and overscan: the window is index arithmetic over `explorer.rows`. */
+const ROW = 22
+const OVERSCAN = 8
+const INDENT = 14
+
+const GLYPH: Record<FileGlyph, typeof File> = { code: FileCode, json: FileJson, image: FileImage, text: FileText, file: File }
+
+const scroller = ref<HTMLElement | null>(null)
+const scrollTop = ref(0)
+const viewport = ref(0)
+let lastIndex = 0
+
+const rows = computed(() => explorer.rows)
+const focusIndex = computed(() => resolveFocusIndex(rows.value, explorer.state.focused, lastIndex))
+watch(focusIndex, (i) => (lastIndex = i))
+
+const windowed = computed(() => {
+  const first = Math.max(0, Math.floor(scrollTop.value / ROW) - OVERSCAN)
+  const last = Math.min(rows.value.length, Math.ceil((scrollTop.value + viewport.value) / ROW) + OVERSCAN)
+  return rows.value.slice(first, last).map((row, i) => ({ row, index: first + i }))
+})
+
+const rootListed = computed(() => !!explorer.root && explorer.state.listings.has(explorer.root))
+const failed = computed(() => explorer.openDirs.some((d) => explorer.state.errors.has(d)))
+const loading = computed(() => explorer.state.rootExpanded && !rootListed.value && !failed.value)
+const empty = computed(() => explorer.state.rootExpanded && rootListed.value && rows.value.length === 1)
+
+const isActive = (row: TreeRow): boolean => !!props.activePath && !row.directory && samePath(row.path, props.activePath)
+
+let resize: ResizeObserver | null = null
+onMounted(() => {
+  resize = new ResizeObserver(([e]) => (viewport.value = e?.contentRect.height ?? 0))
+  if (scroller.value) resize.observe(scroller.value)
+})
+onBeforeUnmount(() => resize?.disconnect())
+
+function onScroll(): void {
+  scrollTop.value = scroller.value?.scrollTop ?? 0
+}
+
+/** Keeps row `index` inside the scroller (nearest edge). */
+function scrollToIndex(index: number): void {
+  const el = scroller.value
+  if (!el) return
+  const top = index * ROW
+  if (top < el.scrollTop) el.scrollTop = top
+  else if (top + ROW > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW - el.clientHeight
+  scrollTop.value = el.scrollTop
+}
+
+async function focusRow(index: number): Promise<void> {
+  const row = rows.value[index]
+  if (!row) return
+  explorer.setFocused(index === 0 ? null : row.path)
+  scrollToIndex(index)
+  await nextTick()
+  scroller.value?.querySelector<HTMLElement>(`[data-row-index="${index}"]`)?.focus({ preventScroll: true })
+}
+
+function activate(row: TreeRow, index: number, keep = false): void {
+  explorer.setFocused(index === 0 ? null : row.path)
+  if (row.depth === 0) explorer.toggleRoot()
+  else if (row.directory) {
+    if (!row.outOfRoot) explorer.toggle(row.path)
+  } else emit('open', row.path, keep)
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if ((e.target as HTMLElement).closest('[data-root-action]')) return
+  const i = focusIndex.value
+  const row = rows.value[i]
+  if (!row) return
+  const expandable = row.directory && !row.outOfRoot
+  switch (e.key) {
+    case 'ArrowDown':
+      void focusRow(Math.min(rows.value.length - 1, i + 1))
+      break
+    case 'ArrowUp':
+      void focusRow(Math.max(0, i - 1))
+      break
+    case 'Home':
+      void focusRow(0)
+      break
+    case 'End':
+      void focusRow(rows.value.length - 1)
+      break
+    case 'ArrowRight':
+      if (expandable && !row.expanded) activate(row, i)
+      else if (expandable && rows.value[i + 1]?.depth === row.depth + 1) void focusRow(i + 1)
+      break
+    case 'ArrowLeft':
+      if (expandable && row.expanded) activate(row, i)
+      else if (row.depth > 0) {
+        const parent = parentDirectory(row.path)
+        const at = row.depth === 1 ? 0 : rows.value.findIndex((r) => r.path === parent)
+        if (at >= 0) void focusRow(at)
+      }
+      break
+    case 'Enter':
+    case ' ':
+      activate(row, i)
+      break
+    default:
+      return
+  }
+  e.preventDefault()
+}
+
+// A created row: focus it once it renders.
+watch(
+  () => [explorer.pendingFocus, rows.value] as const,
+  ([path]) => {
+    if (!path) return
+    const at = rows.value.findIndex((r) => r.path === path)
+    if (at < 0) return
+    explorer.pendingFocus = null
+    void focusRow(at)
+  },
+)
+
+// Reveal the active file: open its ancestors one listing at a time, then scroll it into view without taking focus.
+const revealFor = ref<string | null>(null)
+watch(
+  () => [props.activePath, explorer.root] as const,
+  ([path]) => (revealFor.value = path),
+  { immediate: true },
+)
+watch(
+  () => explorer.state.showHidden,
+  (on) => {
+    if (on) revealFor.value = props.activePath
+  },
+)
+watchEffect(() => {
+  const target = revealFor.value
+  const root = explorer.root
+  if (!target || !root) return
+  const s = explorer.state
+  const step = nextRevealStep({ target, root, listings: s.listings, expanded: s.expanded, rootExpanded: s.rootExpanded, showHidden: s.showHidden, errors: s.errors })
+  if (step.kind === 'open-root') explorer.toggleRoot()
+  else if (step.kind === 'expand') explorer.expand(step.directory)
+  else if (step.kind === 'none') revealFor.value = null
+  else if (step.kind === 'done') {
+    revealFor.value = null
+    const at = rows.value.findIndex((r) => !r.directory && samePath(r.path, target))
+    if (at >= 0) void nextTick(() => scrollToIndex(at))
+  }
+})
+
+const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-ink-faint hover:bg-fill-strong hover:text-ink aria-pressed:text-accent-ink'
+</script>
+
+<template>
+  <div class="flex min-h-0 flex-1 flex-col">
+    <p v-if="failed" class="mx-1 mb-1 flex items-center gap-1.5 rounded-inner bg-st-waiting-soft px-2 py-1 text-xs text-ink" role="alert">
+      <span class="min-w-0 flex-1 truncate">{{ t('workspace.explorer.loadError') }}</span>
+      <button type="button" class="shrink-0 cursor-pointer text-xs font-medium text-accent-ink hover:underline" @click="explorer.refresh()">{{ t('workspace.explorer.retry') }}</button>
+    </p>
+    <div
+      ref="scroller"
+      class="ccm-scroll relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
+      role="tree"
+      :aria-label="t('workspace.explorer.tree', { name: rows[0]?.name ?? '' })"
+      data-explorer-tree
+      @scroll.passive="onScroll"
+      @keydown="onKey"
+    >
+      <div class="relative w-full" :style="{ height: `${rows.length * ROW}px` }">
+        <div
+          v-for="{ row, index } in windowed"
+          :key="row.path"
+          role="treeitem"
+          :aria-level="row.depth + 1"
+          :aria-expanded="row.directory && !row.outOfRoot ? row.expanded : undefined"
+          :aria-selected="isActive(row)"
+          :tabindex="index === focusIndex ? 0 : -1"
+          :data-row-index="index"
+          :data-path="row.path"
+          class="group/row absolute right-0 left-0 flex cursor-pointer items-center gap-1 rounded-inner pr-1 text-xs outline-none select-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
+          :class="[
+            isActive(row) ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill',
+            row.depth === 0 ? 'font-semibold' : '',
+            row.outOfRoot ? 'text-ink-faint' : '',
+          ]"
+          :style="{ top: `${index * ROW}px`, height: `${ROW}px`, paddingLeft: `${4 + Math.max(0, row.depth - 1) * INDENT}px` }"
+          :title="row.depth === 0 ? (explorer.root ?? undefined) : row.outOfRoot ? t('workspace.explorer.outOfRoot') : row.directory ? row.name : t('workspace.explorer.openHint')"
+          @focus="explorer.setFocused(index === 0 ? null : row.path)"
+          @click="activate(row, index)"
+          @dblclick="!row.directory && emit('open', row.path, true)"
+        >
+          <span class="inline-flex w-3.5 shrink-0 justify-center" aria-hidden="true">
+            <ChevronRight
+              v-if="row.directory && !row.outOfRoot"
+              :size="12"
+              class="text-ink-faint transition-transform duration-(--ccm-dur-fast)"
+              :class="row.expanded ? 'rotate-90' : ''"
+            />
+          </span>
+          <template v-if="row.depth > 0">
+            <Link2 v-if="row.outOfRoot" :size="13" class="shrink-0" aria-hidden="true" />
+            <component :is="row.expanded ? FolderOpen : Folder" v-else-if="row.directory" :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
+            <component :is="GLYPH[fileGlyph(row.name)]" v-else :size="13" class="shrink-0" :class="isActive(row) ? 'text-accent-ink' : 'text-agent-file'" aria-hidden="true" />
+          </template>
+          <span class="min-w-0 flex-1 truncate" :class="row.depth === 0 ? 'text-2xs tracking-wide uppercase' : ''">{{ row.name }}</span>
+          <span v-if="row.depth === 0" class="flex shrink-0 items-center gap-0.5" data-root-action @click.stop @dblclick.stop>
+            <button type="button" :class="ACTION" :title="t('workspace.explorer.newFile')" :aria-label="t('workspace.explorer.newFile')" data-explorer-new-file @click="emit('create', 'file')">
+              <FilePlus :size="13" aria-hidden="true" />
+            </button>
+            <button type="button" :class="ACTION" :title="t('workspace.explorer.newFolder')" :aria-label="t('workspace.explorer.newFolder')" data-explorer-new-folder @click="emit('create', 'directory')">
+              <FolderPlus :size="13" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              :class="ACTION"
+              :title="t('workspace.explorer.showHidden')"
+              :aria-label="t('workspace.explorer.showHidden')"
+              :aria-pressed="explorer.state.showHidden"
+              @click="explorer.setShowHidden(!explorer.state.showHidden)"
+            >
+              <Eye :size="13" aria-hidden="true" />
+            </button>
+            <button type="button" :class="ACTION" :title="t('workspace.explorer.refresh')" :aria-label="t('workspace.explorer.refresh')" @click="explorer.refresh()">
+              <RotateCw :size="12" aria-hidden="true" />
+            </button>
+            <button type="button" :class="ACTION" :title="t('workspace.explorer.collapseAll')" :aria-label="t('workspace.explorer.collapseAll')" @click="explorer.collapseAll()">
+              <ChevronsDownUp :size="13" aria-hidden="true" />
+            </button>
+          </span>
+        </div>
+      </div>
+      <p v-if="loading" class="px-3 py-2 text-xs text-ink-muted" role="status">{{ t('workspace.explorer.loading') }}</p>
+      <p v-else-if="empty" class="px-3 py-2 text-xs text-ink-faint">{{ t('workspace.explorer.empty') }}</p>
+    </div>
+  </div>
+</template>

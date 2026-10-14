@@ -129,3 +129,27 @@ describe('workspace viewer panes', () => {
     expect(ws.activeKey).toBe(claude.key)
   })
 })
+
+describe('explorer preview viewer', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('a single click reuses one preview viewer in place; a double click keeps it', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.openFile('C:\repo\a.ts', undefined, { preview: true })
+    const b = ws.openFile('C:\repo\b.ts', undefined, { preview: true })
+    expect(b.key).toBe(a.key)
+    expect(b.path).toBe('C:\repo\b.ts')
+    expect(ws.tabs).toHaveLength(1)
+    ws.openFile('C:\repo\b.ts', undefined, { preview: false })
+    expect(b.preview).toBeUndefined()
+    const c = ws.openFile('C:\repo\c.ts', undefined, { preview: true })
+    expect(c.key).not.toBe(b.key)
+    expect(ws.tabs).toHaveLength(2)
+    expect(ws.openFile('C:\repo\b.ts', 3, { preview: true }).key).toBe(b.key)
+    expect(b.preview).toBeUndefined()
+  })
+})

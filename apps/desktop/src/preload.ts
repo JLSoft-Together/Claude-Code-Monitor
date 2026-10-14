@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   changesUnwatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-unwatch', root),
   onChangesUpdated: (handler: (change: unknown) => void): (() => void) => subscribe('ccm:changes-updated', handler),
   listFiles: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:list-files', root),
+  listDir: (root: string, dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:list-dir', { root, dir }),
+  createEntry: (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<unknown> =>
+    ipcRenderer.invoke('ccm:create-entry', { root, parent, name, kind }),
   clipboardImage: (pngDataUrl: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image', pngDataUrl),
   captureGuest: (webContentsId: number): Promise<unknown> => ipcRenderer.invoke('ccm:capture-guest', webContentsId),
   projectRoot: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir),

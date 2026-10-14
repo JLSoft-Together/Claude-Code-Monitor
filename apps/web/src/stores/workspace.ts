@@ -29,6 +29,8 @@ export interface Pane {
   /** File viewer: absolute path, opened at `line`. */
   path?: string
   line?: number
+  /** File viewer opened by a single click in the Explorer: the next single click replaces it. Runtime only. */
+  preview?: boolean
   /** Changes: git toplevel once known, and the number of changed files. */
   root?: string
   count?: number
@@ -338,15 +340,28 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
-  /** One viewer per file: an open one jumps to `line` instead. */
-  function openFile(path: string, line?: number, opts: { cwd?: string; split?: Placement } = {}): Pane {
+  /**
+   * One viewer per file: an open one jumps to `line` instead. `preview: true` (Explorer single click) reuses the
+   * window's preview viewer in place; `preview: false` (double click) keeps the viewer. Unset = a kept viewer.
+   */
+  function openFile(path: string, line?: number, opts: { cwd?: string; split?: Placement; preview?: boolean } = {}): Pane {
     const same = panes.value.find((p) => p.kind === 'file' && sameDir(p.path, path))
     if (same) {
       same.line = line
+      if (opts.preview === false) same.preview = undefined
       activate(same.key)
       return same
     }
+    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview) : undefined
+    if (slot) {
+      slot.path = path
+      slot.line = line
+      slot.cwd = opts.cwd ?? dirOfPath(path)
+      activate(slot.key)
+      return slot
+    }
     const pane = addView({ kind: 'file', path, line }, opts.cwd ?? dirOfPath(path))
+    if (opts.preview) pane.preview = true
     placeNew(pane, opts.split)
     return pane
   }

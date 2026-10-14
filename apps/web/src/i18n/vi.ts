@@ -1,6 +1,7 @@
 import type en from './en'
 import viewer from './workspace-viewer'
 import tier2 from './workspace-tier2'
+import explorer from './workspace-explorer'
 
 const vi: typeof en = {
   app: {
@@ -17,6 +18,7 @@ const vi: typeof en = {
   workspace: {
     ...viewer.vi,
     ...tier2.vi,
+    ...explorer.vi,
     tabs: 'Terminal',
     new: 'Mới',
     newLabel: 'Tab mới',
@@ -467,6 +469,7 @@ const vi: typeof en = {
       wsTab: 'Tới tab 1 đến 9',
       wsFocus: 'Chuyển sang pane bên cạnh',
       wsQuickOpen: 'Mở nhanh tệp trong dự án',
+      wsExplorer: 'Hiện cây thư mục (Explorer)',
       wsFind: 'Tìm trong terminal đang chọn',
     },
   },

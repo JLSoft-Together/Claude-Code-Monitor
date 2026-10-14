@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { FileWarning, GitBranch, GitCompare, RotateCw, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
+import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
 import { grammarFor } from '../../lib/codeView'
 import { firstChangedLine, hunkPatch, parseUnifiedDiff, type DiffFile } from '../../lib/diff'
 import { isMac } from '../../lib/platform'
@@ -32,16 +33,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const LAYOUT_KEY = 'ccm.workspace.diffLayout'
-const KIND_LETTER: Record<ChangeEntry['kind'], string> = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U', conflict: '!' }
-const KIND_CLASS: Record<ChangeEntry['kind'], string> = {
-  modified: 'text-ink-muted',
-  added: 'text-diff-add',
-  untracked: 'text-diff-add',
-  deleted: 'text-diff-del',
-  renamed: 'text-ink-muted',
-  conflict: 'text-warning',
-}
-
 const repoRoot = ref<string | null>(null)
 const branch = ref<string | null>(null)
 const entries = shallowRef<ChangeEntry[]>([])
@@ -80,28 +71,12 @@ watch(layout, (v) => {
   }
 })
 
-const groups = computed(() => {
-  const conflicts = entries.value.filter((e) => e.kind === 'conflict')
-  const untracked = entries.value.filter((e) => e.kind === 'untracked')
-  const changed = entries.value.filter((e) => e.kind !== 'conflict' && e.kind !== 'untracked')
-  return (
-    [
-      { key: 'conflicts', items: conflicts },
-      { key: 'changed', items: changed },
-      { key: 'untracked', items: untracked },
-    ] as const
-  ).filter((g) => g.items.length)
-})
+const groups = computed(() => groupChanges(entries.value))
 const ordered = computed(() => groups.value.flatMap((g) => g.items))
 const selectedEntry = computed(() => entries.value.find((e) => e.path === selected.value) ?? null)
 const canDiscardHunks = computed(() => selectedEntry.value?.kind === 'modified' && !!diffFile.value?.hunks.length)
 
-const sep = (root: string): string => (root.includes('\\') ? '\\' : '/')
-const absolute = (rel: string): string => {
-  const root = repoRoot.value ?? props.cwd
-  return `${root.replace(/[\\/]$/, '')}${sep(root)}${rel.split('/').join(sep(root))}`
-}
-const dirOfRel = (rel: string): string => (rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '')
+const absolute = (rel: string): string => absoluteIn(repoRoot.value ?? props.cwd, rel)
 
 async function loadStatus(): Promise<void> {
   const run = ++statusSeq
@@ -174,11 +149,6 @@ function scheduleRefresh(): void {
     refreshTimer = null
     void loadStatus()
   }, 250)
-}
-
-const samePath = (a: string, b: string): boolean => {
-  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
-  return isMac || /^[A-Za-z]:/.test(a) ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b)
 }
 
 const offUpdated = onChangesUpdated((c) => {

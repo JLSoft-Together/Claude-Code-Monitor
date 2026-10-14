@@ -33,6 +33,7 @@ export function workspaceShortcuts(mac: boolean): Shortcut[] {
       { id: 'wsTab', keys: ['⌘', '1', '…', '9'], group },
       { id: 'wsFocus', keys: ['⌥', '⌘', '←↑↓→'], group },
       { id: 'wsQuickOpen', keys: ['⌘', 'P'], group },
+      { id: 'wsExplorer', keys: ['⌘', '⇧', 'E'], group },
       { id: 'wsFind', keys: ['⌘', 'F'], group },
     ]
   return [
@@ -46,8 +47,15 @@ export function workspaceShortcuts(mac: boolean): Shortcut[] {
     { id: 'wsTab', keys: ['Ctrl', 'Alt', '1', '…', '9'], group },
     { id: 'wsFocus', keys: ['Alt', '←↑↓→'], group },
     { id: 'wsQuickOpen', keys: ['Ctrl', 'Shift', 'P'], group },
+    { id: 'wsExplorer', keys: ['Ctrl', 'Shift', 'E'], group },
     { id: 'wsFind', keys: ['Ctrl', 'Shift', 'F'], group },
   ]
+}
+
+/** One workspace chord as text: "Ctrl+Shift+T", or "⌘T" on macOS. */
+export function shortcutText(id: string, mac: boolean): string {
+  const keys = workspaceShortcuts(mac).find((s) => s.id === id)?.keys ?? []
+  return keys.join(mac ? '' : '+')
 }
 
 export function isTyping(target: EventTarget | null): boolean {
