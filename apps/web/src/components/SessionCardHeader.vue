@@ -132,7 +132,7 @@ function clearAlias(): void {
     >
       {{ terminal.kind }}
     </span>
-    <span v-if="versionWarning" class="shrink-0 pt-1 text-st-waiting" :title="versionWarning" role="img" :aria-label="versionWarning">
+    <span v-if="versionWarning" class="shrink-0 pt-1 text-warning" :title="versionWarning" role="img" :aria-label="versionWarning">
       <TriangleAlert :size="15" aria-hidden="true" />
     </span>
     <button
@@ -148,7 +148,7 @@ function clearAlias(): void {
     <button
       v-if="pane"
       type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 text-accent!"
+      class="ccm-btn-plain relative z-10 -my-1 shrink-0 text-accent-ink!"
       :aria-label="t('workspace.reopen.show')"
       :title="t('workspace.reopen.show')"
       @click="showInWorkspace"
@@ -158,7 +158,7 @@ function clearAlias(): void {
     <button
       v-else-if="canReopen"
       type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent!"
+      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent-ink!"
       :aria-label="t('workspace.reopen.action')"
       :title="t('workspace.reopen.action')"
       :aria-expanded="confirmReopen"
@@ -169,7 +169,7 @@ function clearAlias(): void {
     <button
       v-if="canJump && !pane"
       type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent! disabled:cursor-wait!"
+      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent-ink! disabled:cursor-wait!"
       :aria-label="t('terminal.jump', { title })"
       :title="t('terminal.jumpTitle')"
       :disabled="jumping"
@@ -182,7 +182,7 @@ function clearAlias(): void {
       v-if="!ended"
       type="button"
       class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="pinned ? 'text-accent!' : ''"
+      :class="pinned ? 'text-accent-ink!' : ''"
       :aria-label="pinLabel"
       :aria-pressed="pinned"
       :title="pinLabel"
@@ -194,7 +194,7 @@ function clearAlias(): void {
       v-if="terminal.cwd && !codex"
       type="button"
       class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="starred ? 'text-st-waiting!' : ''"
+      :class="starred ? 'text-favorite!' : ''"
       :aria-label="starLabel"
       :aria-pressed="starred"
       :title="starLabel"
@@ -206,7 +206,7 @@ function clearAlias(): void {
       v-if="!codex"
       type="button"
       class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="terminal.note ? 'text-accent!' : ''"
+      :class="terminal.note ? 'text-accent-ink!' : ''"
       :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
       :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
       @click="emit('note')"
@@ -249,8 +249,8 @@ function clearAlias(): void {
   <p v-else-if="!editing && autoNamed" class="mt-0.5 truncate text-2xs text-ink-faint" :title="t('terminal.nameHintLong')">
     {{ t('terminal.nameHint') }}
   </p>
-  <div v-if="confirmReopen" class="relative z-10 mt-2 flex flex-col gap-2 rounded-inner bg-st-waiting-soft p-2.5 text-xs text-ink" role="alertdialog" :aria-label="t('workspace.reopen.action')">
-    <p class="flex gap-1.5"><TriangleAlert :size="14" class="mt-px shrink-0 text-st-waiting" aria-hidden="true" />{{ t('workspace.reopen.liveWarning') }}</p>
+  <div v-if="confirmReopen" class="relative z-10 mt-2 flex flex-col gap-2 rounded-inner bg-warning-soft p-2.5 text-xs text-ink" role="alertdialog" :aria-label="t('workspace.reopen.action')">
+    <p class="flex gap-1.5"><TriangleAlert :size="14" class="mt-px shrink-0 text-warning" aria-hidden="true" />{{ t('workspace.reopen.liveWarning') }}</p>
     <div class="flex justify-end gap-1.5">
       <button type="button" class="ccm-btn h-7" @click="confirmReopen = false">{{ t('workspace.reopen.cancel') }}</button>
       <button type="button" class="ccm-btn ccm-btn-primary h-7" @click="reopen(true)">{{ t('workspace.reopen.confirm') }}</button>

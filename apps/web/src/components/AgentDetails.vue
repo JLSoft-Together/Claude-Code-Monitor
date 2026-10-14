@@ -105,14 +105,14 @@ const origin = computed(() => {
 
 <template>
   <Transition
-    enter-active-class="transition-[opacity,scale] duration-200 ease-out-quint"
-    enter-from-class="opacity-0 scale-[0.94]"
-    leave-active-class="transition-[opacity,scale] duration-120 ease-in"
+    enter-active-class="transition-[opacity,scale] duration-(--ccm-dur-base) ease-out-quint"
+    enter-from-class="opacity-0 scale-[0.96]"
+    leave-active-class="transition-[opacity,scale] duration-(--ccm-dur-fast) ease-exit"
     leave-to-class="opacity-0 scale-[0.97]"
   >
     <aside
       v-if="agent"
-      class="absolute z-10 rounded-card border border-accent bg-surface shadow-pop"
+      class="absolute z-10 rounded-card border border-focus bg-surface shadow-pop"
       :class="place ? '' : 'top-3 right-3 w-[300px] max-w-[calc(100%-24px)]'"
       :style="[place?.style, { transformOrigin: origin }]"
       :aria-label="eyebrow"
@@ -120,7 +120,7 @@ const origin = computed(() => {
       <span
         v-if="place?.side"
         aria-hidden="true"
-        class="absolute size-2.5 rotate-45 border-accent bg-surface"
+        class="absolute size-2.5 rotate-45 border-focus bg-surface"
         :class="place.side === 'left' ? '-left-[6px] border-b border-l' : '-right-[6px] border-t border-r'"
         :style="{ top: `${place.arrow}px` }"
       />

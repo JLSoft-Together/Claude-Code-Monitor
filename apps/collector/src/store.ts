@@ -321,7 +321,13 @@ export class MonitorStore implements UsageSink {
     if (this.pending.length === 0) return
     const message: ServerMessage = { seq: ++this.seqValue, events: this.pending }
     this.pending = []
-    for (const listener of this.listeners) listener(message)
+    for (const listener of this.listeners) {
+      try {
+        listener(message)
+      } catch (err) {
+        console.error('[collector] store listener:', err instanceof Error ? err.message : err)
+      }
+    }
   }
 
   private emit(event: MonitorEvent): void {

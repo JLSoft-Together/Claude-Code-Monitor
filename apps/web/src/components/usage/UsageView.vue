@@ -61,7 +61,7 @@ const empty = computed(() => usage.received && !usage.hasData && usage.scan.stat
         <button
           type="button"
           class="ccm-btn max-w-[260px] px-2.5!"
-          :class="usage.project ? 'text-accent!' : ''"
+          :class="usage.project ? 'text-accent-ink!' : ''"
           aria-haspopup="dialog"
           :aria-expanded="pickerOpen"
           :title="usage.project ?? undefined"
@@ -80,7 +80,7 @@ const empty = computed(() => usage.received && !usage.hasData && usage.scan.stat
       <button
         v-if="usage.model"
         type="button"
-        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent"
+        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent-ink"
         :aria-label="t('usage.removeFilter', { name: usage.model })"
         @click="usage.model = null"
       >
@@ -89,7 +89,7 @@ const empty = computed(() => usage.received && !usage.hasData && usage.scan.stat
       <button
         v-if="usage.project"
         type="button"
-        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent"
+        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent-ink"
         :title="usage.project"
         :aria-label="t('usage.removeFilter', { name: baseName(usage.project) })"
         @click="usage.project = null"
@@ -99,9 +99,9 @@ const empty = computed(() => usage.received && !usage.hasData && usage.scan.stat
     </div>
 
     <Transition
-      enter-active-class="transition duration-200 ease-out"
+      enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
       enter-from-class="opacity-0 -translate-y-1"
-      leave-active-class="transition duration-200 ease-in"
+      leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
       leave-to-class="opacity-0"
     >
       <div v-if="scanning" class="mt-4 flex items-center gap-3 rounded-card bg-surface px-4 py-3 shadow-card" role="status">
@@ -109,7 +109,7 @@ const empty = computed(() => usage.received && !usage.hasData && usage.scan.stat
         <div class="min-w-0 flex-1">
         <p class="text-sm text-ink">{{ t('usage.scanning', { done: usage.scan.filesDone, total: usage.scan.filesTotal }) }}</p>
         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-fill" aria-hidden="true">
-          <div class="h-full origin-left rounded-full bg-accent transition-transform duration-300" :style="{ transform: `scaleX(${progress})` }" />
+          <div class="h-full origin-left rounded-full bg-accent transition-transform duration-(--ccm-dur-slow) ease-out-quint" :style="{ transform: `scaleX(${progress})` }" />
         </div>
         </div>
       </div>

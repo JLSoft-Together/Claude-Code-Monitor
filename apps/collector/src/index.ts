@@ -8,12 +8,12 @@ import { SessionHistory } from './history'
 import { StatusTimeline } from './timeline'
 import { JsonFile } from './json-file'
 import { SnoozeStore } from './snooze'
-import { defaultToastDeps, TEXT, Toaster } from './toast'
+import { defaultToastDeps, Toaster } from './toast'
 import { electronToastDeps } from './toast-electron'
 import { Monitor } from './monitor'
 import { RepoRoots } from './repo'
 import { ResponseTracker } from './response'
-import { isCollectorAt, isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
+import { isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
 import { MonitorStore } from './store'
 import { UsageIndex } from './usage'
 import { CodexMonitor } from './codex/monitor'
@@ -107,10 +107,10 @@ async function main(): Promise<void> {
     },
     onSnoozeLink: (terminalId, key, minutes) => {
       const terminal = store.getTerminal(terminalId)
-      if (!toaster.accepts(key) || !terminal || !snoozes.set(terminal, minutes)) return null
+      if (!toaster.accepts(key) || !terminal || !snoozes.set(terminal, minutes)) return false
       store.setSnoozes(snoozes.all())
       toaster.hideFor(terminalId)
-      return TEXT[toaster.locale].page.snoozed(minutes)
+      return true
     },
     onClientMessage: (message, ctx) => {
       switch (message.type) {
@@ -206,7 +206,18 @@ async function main(): Promise<void> {
     clearInterval(toastTimer)
     monitor.stop()
     server.close()
-    void Promise.all([toaster.clear(), usage.stop(), response.save(), limitHistory.save(), codexLimitHistory.save(), history.save(), timeline.save(), dismissedJobs.flush()]).finally(() => process.exit(0))
+    void Promise.all([
+      toaster.clear(),
+      toaster.flush(),
+      snoozes.flush(),
+      usage.stop(),
+      response.save(),
+      limitHistory.save(),
+      codexLimitHistory.save(),
+      history.save(),
+      timeline.save(),
+      dismissedJobs.flush(),
+    ]).finally(() => process.exit(0))
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
@@ -220,17 +231,17 @@ async function main(): Promise<void> {
 process.on('unhandledRejection', (err: unknown) => {
   console.error('[collector] unhandled rejection:', err instanceof Error ? err.message : err)
 })
+// State after an uncaught exception is unknown; the desktop host restarts the collector.
 process.on('uncaughtException', (err: Error) => {
-  console.error('[collector] uncaught exception:', err.message)
+  console.error('[collector] uncaught exception:', err.stack ?? err.message)
+  process.exit(1)
 })
 
-main().catch(async (err: unknown) => {
+main().catch((err: unknown) => {
   if (isPortInUse(err)) {
     const port = loadConfig().port
     console.error(
-      (await isCollectorAt(port))
-        ? `[collector] Agent Monitor is already running on port ${port}. Quit it first, or set CCM_PORT to run both.`
-        : `[collector] port ${port} is already in use by another app (4317 is also the OpenTelemetry OTLP/gRPC default). Stop the other app or set CCM_PORT.`,
+      `[collector] port ${port} is already in use (another Agent Monitor, or another app: 4317 is also the OpenTelemetry OTLP/gRPC default). Quit it or set CCM_PORT.`,
     )
     process.exit(PORT_IN_USE_EXIT)
   }

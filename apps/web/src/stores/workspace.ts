@@ -1,15 +1,44 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { isAgentSessionId, isPtyPreset, type PtyPreset } from '@ccm/shared'
 import { isLayout, leaves, neighbor, removeLeaf, setRatio as setTreeRatio, splitLeaf, type FocusDir, type LayoutNode, type SplitDir } from '../lib/splitLayout'
 import { dirKey } from './favorites'
 
 export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
+/** Missing = 'term' (state saved before v21). */
+export type PaneKind = 'term' | 'browser' | 'file' | 'changes'
+
+export type PaneSpec =
+  | { kind: 'term'; preset: PtyPreset }
+  | { kind: 'browser'; url: string }
+  | { kind: 'file'; path: string; line?: number }
+  | { kind: 'changes' }
+
+/** Split menu entries. */
+export type SplitChoice = PtyPreset | 'browser'
+
 export interface Pane {
   key: string
+  kind?: PaneKind
+  /** Terms only; viewer panes keep 'shell' as a placeholder. */
   preset: PtyPreset
+  /** Browser: http(s) URL or absolute file path (preview URLs change every run). Empty = blank page. */
+  url?: string
+  /** File viewer: absolute path, opened at `line`. */
+  path?: string
+  line?: number
+  /** Changes: git toplevel once known, and the number of changed files. */
+  root?: string
+  count?: number
+  /** Browser page title / favicon, runtime only. */
+  title?: string
+  favicon?: string | null
+  /** Last time this pane took focus: picks the agent a browser pane sends to. */
+  focusedAt?: number
   cwd?: string
+  /** Shell's current folder reported via OSC 7 / 9;9 after `cd`; runtime only, `cwd` stays the starting folder. */
+  liveCwd?: string
   /** PTY host session id once spawned; lets a reload re-attach instead of starting over. */
   sessionId?: string
   pid?: number
@@ -23,6 +52,8 @@ export interface Pane {
   attention?: 'waiting' | 'done'
   /** Git branch of the pane's folder, pushed by the PTY host when HEAD changes. */
   branch?: string
+  /** A command was entered in this shell: closing it may stop a dev server or build the monitor cannot see. */
+  ranCommand?: boolean
   state: PaneState
   exitCode?: number
   error?: string
@@ -42,11 +73,64 @@ const RECENT_LIMIT = 8
 // Survives app restarts (unlike the per-window session state): what "Restore previous workspace" rebuilds.
 const LAST_KEY = 'ccm.workspace.last'
 
-interface LastPane {
+interface ViewFields {
+  kind?: PaneKind
+  url?: string
+  path?: string
+  line?: number
+}
+
+interface LastPane extends ViewFields {
   key: string
   preset: PtyPreset
   cwd?: string
   resume?: string
+}
+
+export const isTerm = (p: Pick<Pane, 'kind'>): boolean => !p.kind || p.kind === 'term'
+
+/** Folder the pane works in now: links, quick open and the branch chip follow the shell's `cd`. */
+export const workCwd = (p: Pick<Pane, 'cwd' | 'liveCwd'>): string | undefined => p.liveCwd ?? p.cwd
+
+/** Pane that names a tab: first terminal in layout order, else the first leaf, so focus moves never relabel it. */
+export function primaryPaneKey(root: LayoutNode, paneOf: (key: string) => Pick<Pane, 'kind'> | undefined): string {
+  const keys = leaves(root)
+  return keys.find((k) => {
+    const p = paneOf(k)
+    return !!p && isTerm(p)
+  }) ?? keys[0]!
+}
+
+const isAbs = (p: unknown): p is string => typeof p === 'string' && (/^[A-Za-z]:[\\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\'))
+const isWeb = (u: unknown): u is string => typeof u === 'string' && /^https?:\/\//i.test(u)
+
+/** Keeps only what a pane of that kind needs; null when the stored entry is unusable. */
+function viewFields(p: ViewFields): ViewFields | null {
+  switch (p.kind) {
+    case undefined:
+    case 'term':
+      return {}
+    case 'browser':
+      return p.url === undefined || p.url === '' || isWeb(p.url) || isAbs(p.url) ? { kind: 'browser', url: p.url ?? '' } : null
+    case 'file':
+      return isAbs(p.path) ? { kind: 'file', path: p.path, line: typeof p.line === 'number' && p.line > 0 ? Math.floor(p.line) : undefined } : null
+    case 'changes':
+      return { kind: 'changes' }
+    default:
+      return null
+  }
+}
+
+function cleanPane<T extends ViewFields & { key: string; preset: unknown; cwd?: string }>(p: T): T | null {
+  if (!p || typeof p.key !== 'string' || !isPtyPreset(p.preset)) return null
+  const view = viewFields(p)
+  if (!view) return null
+  if (view.kind === 'changes' && !isAbs(p.cwd)) return null
+  return { ...p, kind: undefined, url: undefined, path: undefined, line: undefined, ...view }
+}
+
+function viewOf(p: ViewFields): ViewFields {
+  return isTerm(p) ? {} : { kind: p.kind, url: p.url, path: p.path, line: p.line }
 }
 
 export interface LastWorkspace {
@@ -59,7 +143,7 @@ function loadLast(): LastWorkspace | null {
   try {
     const raw = JSON.parse(readLocal(LAST_KEY) ?? 'null') as LastWorkspace | null
     if (!raw || !Array.isArray(raw.panes) || !Array.isArray(raw.tabs)) return null
-    const panes = raw.panes.filter((p) => p && typeof p.key === 'string' && isPtyPreset(p.preset))
+    const panes = raw.panes.map(cleanPane).filter((p): p is LastPane => !!p)
     const known = new Set(panes.map((p) => p.key))
     const tabs = raw.tabs.filter((t) => t && isLayout(t.root) && leaves(t.root).every((k) => known.has(k)))
     return tabs.length ? { at: String(raw.at ?? ''), panes, tabs } : null
@@ -93,11 +177,15 @@ function loadRecent(): string[] {
   }
 }
 
-interface SavedPane {
+interface SavedPane extends ViewFields {
   key: string
   preset: PtyPreset
   cwd?: string
-  sessionId: string
+  /** Terms only. */
+  sessionId?: string
+  resume?: string
+  agentSessionId?: string
+  ranCommand?: boolean
 }
 
 interface Saved {
@@ -114,7 +202,10 @@ function loadSaved(): Saved {
     if (!raw) return empty
     // P1 stored a bare pane list: one tab per pane.
     const list = Array.isArray(raw) ? raw : (raw.panes ?? [])
-    const panes = list.filter((p) => p && typeof p.key === 'string' && p.sessionId && isPtyPreset(p.preset))
+    const panes = list
+      .map((p) => cleanPane(p))
+      .filter((p): p is SavedPane => !!p && (!isTerm(p) || !!p.sessionId))
+      .map((p) => ({ ...p, resume: agentId(p.resume), agentSessionId: agentId(p.agentSessionId), ranCommand: p.ranCommand === true || undefined }))
     const known = new Set(panes.map((p) => p.key))
     const rawTabs = Array.isArray(raw) ? panes.map((p) => ({ key: `t${p.key}`, root: { pane: p.key }, focus: p.key })) : (raw.tabs ?? [])
     const tabs: Tab[] = []
@@ -133,12 +224,21 @@ function loadSaved(): Saved {
   }
 }
 
+const agentId = (v: unknown): string | undefined => (typeof v === 'string' && isAgentSessionId(v) ? v : undefined)
+
+export type InsertRequest = { id: number; paneKey: string; text: string; image?: undefined } | { id: number; paneKey: string; image: true; text?: undefined }
+
+function dirOfPath(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i > 0 ? p.slice(0, i) : p
+}
+
 let seq = 0
 const newKey = (prefix: string): string => `${prefix}${Date.now().toString(36)}${(seq++).toString(36)}`
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const saved = loadSaved()
-  const panes = ref<Pane[]>(saved.panes.map((p) => ({ ...p, state: 'starting' })))
+  const panes = ref<Pane[]>(saved.panes.map((p) => ({ ...p, state: isTerm(p) ? 'starting' : 'running' })))
   const tabs = ref<Tab[]>(saved.tabs)
   const activeKey = ref<string | null>(panes.value.some((p) => p.key === saved.active) ? saved.active : (tabs.value[0]?.focus ?? null))
 
@@ -155,14 +255,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const attentionPanes = computed(() => panes.value.filter((p) => p.attention))
   /** Panes waiting on a yes before they (and their agents) are killed. */
   const pendingClose = ref<string[] | null>(null)
-  const liveCount = computed(() => panes.value.filter((p) => p.state === 'running' || p.state === 'starting').length)
 
   watch(
     [panes, tabs, activeKey],
     () => {
-      const kept = panes.value.filter((p) => p.sessionId && p.state !== 'gone')
+      const kept = panes.value.filter((p) => !isTerm(p) || (p.sessionId && p.state !== 'gone'))
       const data: Saved = {
-        panes: kept.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, sessionId: p.sessionId! })),
+        panes: kept.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, sessionId: p.sessionId, resume: p.resume, agentSessionId: p.agentSessionId, ranCommand: p.ranCommand, ...viewOf(p) })),
         tabs: tabs.value,
         active: activeKey.value,
       }
@@ -175,7 +274,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (!panes.value.length) return
       const snapshot: LastWorkspace = {
         at: new Date().toISOString(),
-        panes: panes.value.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, resume: p.preset === 'shell' ? undefined : (p.agentSessionId ?? p.resume) })),
+        panes: panes.value.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, resume: !isTerm(p) || p.preset === 'shell' ? undefined : (p.agentSessionId ?? p.resume), ...viewOf(p) })),
         tabs: tabs.value,
       }
       writeLocal(LAST_KEY, JSON.stringify(snapshot))
@@ -190,23 +289,120 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
+  function addView(view: ViewFields, cwd?: string): Pane {
+    panes.value.push({ key: newKey('p'), preset: 'shell', cwd, state: 'running', ...view })
+    // The reactive proxy: later writes through it must reach watchers.
+    return panes.value[panes.value.length - 1]!
+  }
+
+  function addSpec(spec: PaneSpec, cwd?: string): Pane {
+    switch (spec.kind) {
+      case 'term':
+        return addPane(spec.preset, cwd)
+      case 'browser':
+        return addView({ kind: 'browser', url: spec.url }, cwd)
+      case 'file':
+        return addView({ kind: 'file', path: spec.path, line: spec.line }, cwd)
+      case 'changes':
+        return addView({ kind: 'changes' }, cwd)
+    }
+  }
+
+  type Placement = { key: string; dir: SplitDir }
+
+  function placeNew(pane: Pane, split?: Placement): void {
+    const tab = split ? tabOf(split.key) : undefined
+    if (tab && split) {
+      tab.root = splitLeaf(tab.root, split.key, pane.key, split.dir)
+      tab.focus = pane.key
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key })
+    activate(pane.key)
+  }
+
+  const sameDir = (a: string | undefined, b: string | undefined): boolean => !!a && !!b && dirKey(a) === dirKey(b)
+
+  /** Reuses a browser pane already showing `url`; else a new tab (or a split next to `split.key`). */
+  function openBrowser(url: string, opts: { cwd?: string; split?: Placement } = {}): Pane {
+    const same = url ? panes.value.find((p) => p.kind === 'browser' && (p.url === url || (isAbs(url) && sameDir(p.url, url)))) : undefined
+    if (same) {
+      activate(same.key)
+      return same
+    }
+    const pane = addView({ kind: 'browser', url }, opts.cwd)
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /** One viewer per file: an open one jumps to `line` instead. */
+  function openFile(path: string, line?: number, opts: { cwd?: string; split?: Placement } = {}): Pane {
+    const same = panes.value.find((p) => p.kind === 'file' && sameDir(p.path, path))
+    if (same) {
+      same.line = line
+      activate(same.key)
+      return same
+    }
+    const pane = addView({ kind: 'file', path, line }, opts.cwd ?? dirOfPath(path))
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /** One Changes pane per repo (git toplevel once known, else the folder it was opened for). */
+  function openChanges(cwd: string, opts: { split?: Placement } = {}): Pane {
+    const same = panes.value.find((p) => p.kind === 'changes' && (sameDir(p.root, cwd) || sameDir(p.cwd, cwd)))
+    if (same) {
+      activate(same.key)
+      return same
+    }
+    const pane = addView({ kind: 'changes' }, cwd)
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /** Text or a clipboard image (^V) for an agent pane's input line; never followed by Enter. */
+  const insertRequest = shallowRef<InsertRequest | null>(null)
+  let insertSeq = 0
+  function insertInto(paneKey: string, text: string): void {
+    insertRequest.value = { id: ++insertSeq, paneKey, text }
+    activate(paneKey)
+  }
+  function insertImage(paneKey: string): void {
+    insertRequest.value = { id: ++insertSeq, paneKey, image: true }
+    activate(paneKey)
+  }
+
+  const isAgentPane = (p: Pane): boolean => isTerm(p) && p.preset !== 'shell' && (p.state === 'running' || p.state === 'starting')
+
+  /**
+   * Where a browser pane's "Send to agent" lands: a Claude/Codex pane in the same tab (linked to a monitor
+   * session first, then most recently focused), else the most recently focused agent anywhere, else a picker.
+   */
+  function resolveAgentPane(browserKey: string): { pane: Pane } | { choices: Pane[] } {
+    const byRecent = (a: Pane, b: Pane): number => (b.terminalId ? 1 : 0) - (a.terminalId ? 1 : 0) || (b.focusedAt ?? 0) - (a.focusedAt ?? 0)
+    const tab = tabOf(browserKey)
+    const local = tab ? leaves(tab.root).map((k) => panes.value.find((p) => p.key === k)).filter((p): p is Pane => !!p && isAgentPane(p)) : []
+    if (local.length) return { pane: local.sort(byRecent)[0]! }
+    const all = panes.value.filter(isAgentPane).sort((a, b) => (b.focusedAt ?? 0) - (a.focusedAt ?? 0))
+    const recent = all.find((p) => p.focusedAt)
+    return recent ? { pane: recent } : { choices: all }
+  }
+
   /** New tab holding one new pane. */
   function open(preset: PtyPreset, cwd?: string, resume?: string): Pane {
     const pane = addPane(preset, cwd, resume)
     tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key })
-    activeKey.value = pane.key
+    activate(pane.key)
     return pane
   }
 
   /** Same folder as the target, next to it; same agent unless one is picked (Windows Terminal's "duplicate" split). */
-  function split(targetKey: string, dir: SplitDir, preset?: PtyPreset): Pane | null {
+  function split(targetKey: string, dir: SplitDir, spec?: PaneSpec): Pane | null {
     const tab = tabOf(targetKey)
     const target = panes.value.find((p) => p.key === targetKey)
     if (!tab || !target) return null
-    const pane = addPane(preset ?? target.preset, target.cwd)
+    const pane = addSpec(spec ?? { kind: 'term', preset: isTerm(target) ? target.preset : preset.value }, workCwd(target))
     tab.root = splitLeaf(tab.root, targetKey, pane.key, dir)
     tab.focus = pane.key
-    activeKey.value = pane.key
+    activate(pane.key)
     return pane
   }
 
@@ -226,7 +422,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     writeLocal(LAST_KEY, 'null')
     if (!snap) return
     const keys = new Map<string, string>()
-    for (const p of snap.panes) keys.set(p.key, addPane(p.preset, p.cwd, p.resume).key)
+    for (const p of snap.panes) keys.set(p.key, (isTerm(p) ? addPane(p.preset, p.cwd, p.resume) : addView(viewOf(p), p.cwd)).key)
     const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
     for (const tab of snap.tabs) tabs.value.push({ key: newKey('t'), root: remap(tab.root), focus: keys.get(tab.focus) ?? keys.get(leaves(tab.root)[0]!)! })
     activeKey.value = tabs.value[0]?.focus ?? null
@@ -271,6 +467,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tab.focus = key
     activeKey.value = key
     const pane = panes.value.find((p) => p.key === key)
+    if (pane) pane.focusedAt = Date.now()
     if (pane?.attention) pane.attention = undefined
   }
 
@@ -344,7 +541,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     active,
     activeTab,
     paneByTerminal,
-    liveCount,
     recentDirs,
     preset,
     last,
@@ -352,6 +548,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingClose,
     tabOf,
     open,
+    openBrowser,
+    openFile,
+    openChanges,
+    insertRequest,
+    insertInto,
+    insertImage,
+    resolveAgentPane,
     nextAttention,
     requestClose,
     confirmClose,

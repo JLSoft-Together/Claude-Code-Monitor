@@ -81,9 +81,9 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
 
 <template>
   <Transition
-    enter-active-class="transition duration-200 ease-out motion-reduce:transition-none"
+    enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
     enter-from-class="opacity-0 -translate-y-1"
-    leave-active-class="transition duration-150 ease-in motion-reduce:transition-none"
+    leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
     leave-to-class="opacity-0"
   >
     <section
@@ -95,12 +95,12 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
         <h2 id="waiting-title" class="inline-flex items-center gap-1.5 text-sm font-semibold text-st-waiting">
           <Hand :size="16" aria-hidden="true" />{{ t('waiting.title', { n: active }) }}
         </h2>
-        <TransitionGroup tag="ul" name="ccm-list" class="relative flex min-w-0 flex-1 flex-wrap gap-2">
+        <TransitionGroup tag="ul" name="ccm-list" class="ccm-list-inflow relative flex min-w-0 flex-1 flex-wrap gap-2">
           <li
             v-for="item in queue"
             :key="item.id"
             class="flex h-7 min-w-0 items-stretch rounded-inner bg-control shadow-control *:first:rounded-l-inner *:last:rounded-r-inner"
-            :class="[item.snoozedUntil ? 'opacity-60' : '', item.long && !item.snoozedUntil ? 'ring-1 ring-st-error/50' : '']"
+            :class="[item.snoozedUntil ? 'text-ink-muted' : '', item.long && !item.snoozedUntil ? 'ring-1 ring-st-error/50' : '']"
           >
             <component
               :is="item.job ? 'span' : 'button'"

@@ -46,7 +46,7 @@ const budget = computed(() => {
     status: pct !== null && pct >= 100 ? 'error' : pct !== null && pct >= 80 ? 'waiting' : null,
     sub: pct === null ? t('dashboard.costTodaySub') : t('dashboard.budgetSub', { budget: formatCost(limit, locale.value), pct }),
     title: t('dashboard.costTodayTitle'),
-    bar: pct === null ? null : { pct: Math.min(100, pct), cls: pct >= 100 ? 'bg-st-error' : pct >= 80 ? 'bg-st-waiting' : 'bg-accent' },
+    bar: pct === null ? null : { pct: Math.min(100, pct), cls: pct >= 100 ? 'bg-st-error' : pct >= 80 ? 'bg-warning' : 'bg-accent' },
   }
 })
 
@@ -104,7 +104,7 @@ const metrics = computed(() => {
       <dd v-if="'sub' in m" class="truncate text-2xs text-ink-faint">{{ m.sub }}</dd>
       <dd v-if="'bar' in m && m.bar" class="mt-1.5 h-1 overflow-hidden rounded-full bg-fill" aria-hidden="true">
         <span
-          class="block h-full origin-left rounded-full transition-[transform,background-color] duration-500 ease-out-quint"
+          class="block h-full origin-left rounded-full transition-[transform,background-color] duration-(--ccm-dur-slow) ease-out-quint"
           :class="m.bar.cls"
           :style="{ transform: `scaleX(${m.bar.pct / 100})` }"
         />

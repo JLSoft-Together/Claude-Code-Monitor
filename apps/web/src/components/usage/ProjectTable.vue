@@ -302,7 +302,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
       <button
         type="button"
         class="ccm-btn-plain px-2! text-xs font-medium"
-        :class="usage.groupRepos ? 'text-accent!' : ''"
+        :class="usage.groupRepos ? 'text-accent-ink!' : ''"
         :aria-pressed="usage.groupRepos"
         :title="t('projects.groupReposHint')"
         @click="usage.groupRepos = !usage.groupRepos"
@@ -394,7 +394,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
               <div class="flex min-w-0 items-center gap-2">
                 <span class="w-7 shrink-0 self-start rounded-sm bg-fill py-px text-center font-mono text-2xs text-ink-muted">{{ r.drive }}</span>
                 <div class="min-w-0 flex-1">
-                  <p class="font-medium" :class="[wrapText, usage.project === r.id ? 'text-accent' : '']" :title="r.id">{{ baseName(r.id) }}</p>
+                  <p class="font-medium" :class="[wrapText, usage.project === r.id ? 'text-accent-ink' : '']" :title="r.id">{{ baseName(r.id) }}</p>
                   <p v-if="density !== 'compact'" class="font-mono text-2xs text-ink-faint" :class="wrapText" :title="r.id">
                     {{ r.id }}<template v-if="r.folders > 1"> · {{ t('projects.folders', { n: r.folders }) }}</template>
                   </p>

@@ -49,7 +49,7 @@ const rows = computed(() =>
             <th scope="col" class="py-2 pl-2 text-right font-medium">{{ t('usage.total') }}</th>
           </tr>
         </thead>
-        <TransitionGroup tag="tbody" name="ccm-list" class="relative">
+        <TransitionGroup tag="tbody" name="ccm-list" class="ccm-list-inflow relative">
           <tr v-for="row in rows" :key="row.term.id" class="border-b border-line last:border-b-0">
             <th scope="row" class="max-w-[260px] py-2.5 pr-3 font-normal">
               <span class="flex min-w-0 items-center gap-2">

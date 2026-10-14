@@ -202,12 +202,7 @@ const triggerCls = computed(() =>
   </button>
 
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      :enter-from-class="pos.up ? 'opacity-0 translate-y-1 scale-[0.98]' : 'opacity-0 -translate-y-1 scale-[0.98]'"
-      leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-menu">
       <ul
         v-if="open"
         :id="`${id}-list`"
@@ -216,8 +211,7 @@ const triggerCls = computed(() =>
         :aria-label="label"
         tabindex="-1"
         class="ccm-menu fixed z-[70] overflow-y-auto overscroll-contain text-sm"
-        :class="pos.up ? 'origin-bottom' : 'origin-top'"
-        :style="{ left: `${pos.left}px`, [pos.up ? 'bottom' : 'top']: `${pos.y}px`, minWidth: `${pos.minWidth}px`, maxWidth: `calc(100vw - ${2 * MARGIN}px)`, maxHeight: `${pos.maxHeight}px` }"
+        :style="{ '--ccm-origin': pos.up ? 'bottom center' : 'top center', left: `${pos.left}px`, [pos.up ? 'bottom' : 'top']: `${pos.y}px`, minWidth: `${pos.minWidth}px`, maxWidth: `calc(100vw - ${2 * MARGIN}px)`, maxHeight: `${pos.maxHeight}px` }"
         @mousedown.prevent
       >
         <li
@@ -234,7 +228,7 @@ const triggerCls = computed(() =>
         >
           <Check :size="14" :stroke-width="2.5" class="shrink-0" :class="i === selectedIndex ? '' : 'invisible'" aria-hidden="true" />
           <span class="min-w-0 flex-1 truncate">{{ o.label }}</span>
-          <span v-if="o.hint" class="shrink-0 text-xs tabular" :class="i === active ? 'text-on-accent/80' : 'text-ink-faint'">{{ o.hint }}</span>
+          <span v-if="o.hint" class="shrink-0 text-xs tabular" :class="i === active ? 'text-on-accent' : 'text-ink-faint'">{{ o.hint }}</span>
         </li>
       </ul>
     </Transition>

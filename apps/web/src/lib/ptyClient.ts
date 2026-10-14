@@ -30,11 +30,22 @@ export class PtyConnection {
   static async killById(id: string): Promise<void> {
     const ep = await endpoint().catch(() => null)
     if (!ep) return
-    const ws = new WebSocket(ep.url, [ep.protocol])
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ t: 'kill', id } satisfies PtyClientMessage))
-      ws.close()
-    }
+    await new Promise<void>((resolve) => {
+      const ws = new WebSocket(ep.url, [ep.protocol])
+      const done = (): void => {
+        clearTimeout(timer)
+        ws.onopen = ws.onerror = ws.onclose = null
+        ws.close()
+        resolve()
+      }
+      const timer = setTimeout(done, 5_000)
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ t: 'kill', id } satisfies PtyClientMessage))
+        done()
+      }
+      ws.onerror = done
+      ws.onclose = done
+    })
   }
 
   /** One question to the host over a throwaway socket; null on failure or timeout. */
@@ -104,6 +115,10 @@ export class PtyConnection {
 
   resize(cols: number, rows: number): void {
     this.control({ t: 'resize', cols, rows })
+  }
+
+  reportCwd(cwd: string): void {
+    this.control({ t: 'cwd', cwd })
   }
 
   kill(): void {

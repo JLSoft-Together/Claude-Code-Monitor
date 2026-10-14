@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue'
+import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { Check, FolderOpen, FolderPlus, GripVertical, History, LoaderCircle, Pencil, SquareTerminal, Star, X } from 'lucide-vue-next'
 import type { Favorite, LaunchMode } from '@ccm/shared'
@@ -249,20 +250,20 @@ watch(
 )
 
 const actionCls =
-  'ccm-btn-plain relative shrink-0 hover:text-accent!'
+  'ccm-btn-plain relative shrink-0 hover:text-accent-ink!'
 </script>
 
 <template>
   <section v-if="favorites.list.length || connection.hasData" class="mb-4" aria-labelledby="favorites-title">
     <div class="mb-2 flex items-center gap-1.5 px-0.5">
       <h3 id="favorites-title" class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold text-ink-muted">
-        <Star :size="13" fill="currentColor" class="text-st-waiting" aria-hidden="true" />{{ t('favorites.title') }}
+        <Star :size="13" fill="currentColor" class="text-favorite" aria-hidden="true" />{{ t('favorites.title') }}
         <span v-if="favorites.list.length" class="font-normal text-ink-faint tabular">{{ favorites.list.length }}</span>
       </h3>
       <button
         v-if="!adding"
         type="button"
-        class="ccm-btn-plain -my-1 gap-1! px-2! text-xs font-medium hover:text-accent!"
+        class="ccm-btn-plain -my-1 gap-1! px-2! text-xs font-medium hover:text-accent-ink!"
         :title="t('favorites.addTitle')"
         @click="openAdd"
       >
@@ -271,9 +272,9 @@ const actionCls =
     </div>
 
     <Transition
-      enter-active-class="transition duration-200 ease-out-quint"
+      enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
       enter-from-class="opacity-0 -translate-y-1"
-      leave-active-class="transition duration-120 ease-in"
+      leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
       leave-to-class="opacity-0"
     >
       <form v-if="adding" class="mb-2 rounded-card bg-surface p-2.5 shadow-card" @submit.prevent="submitAdd" @keydown.esc.prevent.stop="closeAdd">
@@ -336,13 +337,13 @@ const actionCls =
     </p>
 
     <p class="sr-only" aria-live="polite">{{ announce }}</p>
-    <TransitionGroup ref="listEl" tag="ul" name="ccm-list" class="relative space-y-1.5" :class="dragging ? 'cursor-grabbing select-none' : ''">
+    <TransitionGroup ref="listEl" tag="ul" name="ccm-list" @before-leave="pinLeaving" class="relative space-y-1.5" :class="dragging ? 'cursor-grabbing select-none' : ''">
       <li
         v-for="(f, i) in shown"
         :key="f.dir"
         :data-fav-index="i"
         class="flex items-center gap-1 rounded-card bg-surface py-1.5 pr-1.5 pl-0.5 shadow-card transition-shadow"
-        :class="[justAdded === f.dir ? 'ccm-highlight' : '', dragging === f.dir ? 'relative z-10 shadow-pop ring-2 ring-accent' : '']"
+        :class="[justAdded === f.dir ? 'ccm-highlight' : '', dragging === f.dir ? 'relative z-10 shadow-pop ring-2 ring-focus' : '']"
         @animationend="justAdded === f.dir && (justAdded = null)"
       >
         <button
@@ -350,7 +351,7 @@ const actionCls =
           :ref="(el) => setHandle(f.dir, el)"
           type="button"
           class="inline-flex h-7 w-6 shrink-0 touch-none items-center justify-center rounded-inner text-ink-faint transition-colors hover:bg-fill hover:text-ink focus-visible:text-ink"
-          :class="dragging === f.dir ? 'cursor-grabbing text-accent' : 'cursor-grab'"
+          :class="dragging === f.dir ? 'cursor-grabbing text-accent-ink' : 'cursor-grab'"
           :aria-label="t('favorites.moveName', { name: f.label })"
           :aria-describedby="'fav-move-hint'"
           :title="t('favorites.move')"
@@ -408,7 +409,7 @@ const actionCls =
         </button>
         <button
           type="button"
-          class="ccm-btn-plain shrink-0 text-st-waiting!"
+          class="ccm-btn-plain shrink-0 text-favorite!"
           :aria-label="t('favorites.removeName', { name: f.label })"
           :title="t('favorites.unstar')"
           @click="connection.removeFavorite(f.dir)"

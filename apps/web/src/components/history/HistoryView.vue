@@ -140,7 +140,7 @@ const rangeLabel = computed(() => {
               <th scope="col" class="hidden px-3 py-2 text-right font-medium md:table-cell">{{ t('history.col.cost') }}</th>
             </tr>
           </thead>
-          <TransitionGroup tag="tbody" name="ccm-list" class="relative divide-y divide-line">
+          <TransitionGroup tag="tbody" name="ccm-list" class="ccm-list-inflow relative divide-y divide-line">
             <tr v-for="r in rows" :key="r.id" class="align-top">
               <td class="min-w-0 px-4 py-2.5 sm:px-5">
                 <p class="truncate font-medium" :title="r.title">{{ r.title }}</p>

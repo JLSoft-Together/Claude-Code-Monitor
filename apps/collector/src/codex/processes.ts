@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { windowsPowerShell } from '../win-exe'
 
 export type ProcessMode = 'exec' | 'tui' | 'app-server' | 'other'
 
@@ -190,7 +191,7 @@ function run(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<str
 /** All running Codex CLI processes, or null when the platform query failed (callers keep their last view). */
 export async function listCodexProcesses(platform: NodeJS.Platform = process.platform): Promise<CodexProcess[] | null> {
   if (platform === 'win32') {
-    const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_SCRIPT])
+    const out = await run(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_SCRIPT])
     if (out === null) return null
     try {
       return parseWindowsProcesses(out)

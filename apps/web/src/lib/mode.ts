@@ -7,11 +7,11 @@ export interface ModeMeta {
 }
 
 const KNOWN: Record<string, ModeMeta> = {
-  bypassPermissions: { icon: ShieldAlert, cls: 'border-st-error/40 bg-st-error-soft text-st-error', labelKey: 'mode.bypassPermissions' },
-  dontAsk: { icon: ShieldAlert, cls: 'border-st-waiting/40 bg-st-waiting-soft text-st-waiting', labelKey: 'mode.dontAsk' },
+  bypassPermissions: { icon: ShieldAlert, cls: 'border-warning/40 bg-warning-soft text-warning', labelKey: 'mode.bypassPermissions' },
+  dontAsk: { icon: ShieldAlert, cls: 'border-warning/40 bg-warning-soft text-warning', labelKey: 'mode.dontAsk' },
   auto: { icon: Zap, cls: 'border-line bg-raised text-ink-muted', labelKey: 'mode.auto' },
   acceptEdits: { icon: FilePen, cls: 'border-line bg-raised text-ink-muted', labelKey: 'mode.acceptEdits' },
-  plan: { icon: ClipboardList, cls: 'border-accent/40 bg-accent-soft text-accent', labelKey: 'mode.plan' },
+  plan: { icon: ClipboardList, cls: 'border-accent/40 bg-accent-soft text-accent-ink', labelKey: 'mode.plan' },
 }
 
 /** `default` is the normal ask-every-time mode and gets no badge; unknown values show raw. */

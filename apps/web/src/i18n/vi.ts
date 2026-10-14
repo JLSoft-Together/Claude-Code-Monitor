@@ -1,4 +1,5 @@
 import type en from './en'
+import viewer from './workspace-viewer'
 
 const vi: typeof en = {
   app: {
@@ -13,11 +14,13 @@ const vi: typeof en = {
     workspace: 'Workspace',
   },
   workspace: {
+    ...viewer.vi,
     tabs: 'Terminal',
-    new: 'Terminal mới',
+    new: 'Mới',
+    newLabel: 'Tab mới',
     close: 'Đóng terminal',
     closeTab: 'Đóng tab',
-    newHint: 'Terminal mới ({keys})',
+    newHint: 'Tab mới: terminal, trình duyệt, file hoặc thay đổi ({keys})',
     splitPane: 'Chia đôi terminal',
     splitMenu: { title: 'Mở bên cạnh' },
     resize: 'Đổi kích thước terminal',
@@ -105,7 +108,7 @@ const vi: typeof en = {
       cancel: 'Huỷ',
     },
     launch: {
-      title: 'Terminal mới',
+      title: 'Tab mới',
       agent: 'Chạy',
       recent: 'Gần đây',
       favorites: 'Yêu thích',
@@ -438,7 +441,8 @@ const vi: typeof en = {
     subtitle: 'Dùng ở tab Monitor khi không gõ trong ô nhập.',
     hints: 'Hiện gợi ý phím trên nút',
     hintsHint: 'Nhãn phím nhỏ cạnh nút tương ứng. Bấm H để bật/tắt.',
-    group: { panels: 'Panel và thanh', map: 'Map và tab', help: 'Trợ giúp' },
+    group: { panels: 'Panel và thanh', map: 'Map và tab', workspace: 'Workspace', help: 'Trợ giúp' },
+    workspaceNote: 'Dùng ở tab Workspace, kể cả khi đang gõ trong terminal.',
     item: {
       sessions: 'Hiện/ẩn Sessions',
       sessionsPin: 'Ghim Sessions thành cột hoặc cho nổi',
@@ -452,6 +456,17 @@ const vi: typeof en = {
       hints: 'Hiện/ẩn gợi ý phím',
       help: 'Mở danh sách này',
       palette: 'Bảng lệnh',
+      wsNew: 'Tab mới',
+      wsSplit: 'Chia đôi pane theo cạnh dài hơn',
+      wsSplitRight: 'Chia pane sang phải',
+      wsSplitDown: 'Chia pane xuống dưới',
+      wsClose: 'Đóng pane đang chọn',
+      wsAttention: 'Tới pane tiếp theo đang cần bạn',
+      wsCycle: 'Tab kế tiếp (thêm Shift để lùi)',
+      wsTab: 'Tới tab 1 đến 9',
+      wsFocus: 'Chuyển sang pane bên cạnh',
+      wsQuickOpen: 'Mở nhanh tệp trong dự án',
+      wsFind: 'Tìm trong terminal đang chọn',
     },
   },
   wait: {
@@ -580,7 +595,7 @@ const vi: typeof en = {
     breakHintAt: 'Cứ {n} phút một lần, tính từ {since} (lần bật collector đầu tiên hôm nay). Lần tới: {next}.',
     subtitle: 'Lưu trên máy này.',
     close: 'Đóng cài đặt',
-    section: { appearance: 'Giao diện', notifications: 'Thông báo', reminders: 'Nhắc nhở và ngân sách', help: 'Trợ giúp', launch: 'Session mới' },
+    section: { appearance: 'Giao diện', notifications: 'Thông báo', reminders: 'Nhắc nhở và ngân sách', help: 'Trợ giúp', launch: 'Session mới', access: 'Quyền truy cập tệp' },
     launchTerminal: 'Mở session bằng',
     launchTerminalHint: 'Thư mục đã đánh dấu sao sẽ mở trong một cửa sổ mới của app này.',
     launchTerminalApp: { terminal: 'Terminal', iterm: 'iTerm2' },
@@ -591,6 +606,9 @@ const vi: typeof en = {
     bridgeOff: 'Chưa cài',
     tourHint: 'Đi qua từng phần của dashboard trong một phút',
     diagHint: 'Collector đang thấy gì, dùng khi có gì đó không ổn',
+    forgetGrants: 'Quên các thư mục đã cho phép',
+    forgetGrantsHint: 'Trang và tệp ngoài thư mục terminal sẽ hỏi lại',
+    forgetGrantsDone: 'Đã quên các thư mục đã cho phép',
     notifyLoop: 'Khi session lỗi liên tục',
     notifyLimit: 'Khi sắp hết giới hạn gói hoặc ngân sách',
     budget: 'Ngân sách ngày',

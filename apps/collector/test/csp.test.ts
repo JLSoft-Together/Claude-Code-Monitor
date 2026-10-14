@@ -13,6 +13,15 @@ describe('contentSecurityPolicy', () => {
     expect(csp).toContain("object-src 'none'")
   })
 
+  it('lets workspace browser panes frame web pages and show loopback images, nothing more', () => {
+    const csp = contentSecurityPolicy('<script src="/a.js"></script>')
+    expect(csp).toContain('frame-src http://127.0.0.1:* http://localhost:* https: http:')
+    expect(csp).toContain("img-src 'self' data: blob: http://127.0.0.1:* http://localhost:*")
+    expect(csp).toContain("default-src 'self'")
+    expect(csp).toContain("frame-ancestors 'none'")
+    expect(csp).not.toMatch(/(script|connect)-src[^;]*https:/)
+  })
+
   it('has no hash without inline scripts', () => {
     expect(contentSecurityPolicy('<script src="/a.js"></script>')).toContain("script-src 'self';")
   })

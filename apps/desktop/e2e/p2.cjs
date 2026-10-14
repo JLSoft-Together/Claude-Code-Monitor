@@ -77,8 +77,10 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     const header = await evaluate(`document.querySelectorAll('section header')[1]?.innerText`)
     check('pane header shows session status', !!header && /Working|Waiting|Idle|Đang|Chờ|Rảnh/i.test(header), JSON.stringify(header))
 
-    // New terminal popover.
-    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/New terminal|Terminal mới/.test(b.textContent)).click()`)
+    // "+ New" popover: label is just "New", the accessible name says what it makes.
+    const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b && b.textContent.trim() })()`)
+    check('+ button reads New / Mới', /^(New|Mới)$/.test(plus ?? ''), plus)
+    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
     await sleep(400)
     const pop = await evaluate(`!!document.querySelector('[role=dialog] [data-launch-row]')`)
     check('new-terminal popover opens', pop)

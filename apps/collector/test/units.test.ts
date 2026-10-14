@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, appendFile, rm, writeFile } from 'node:fs/promises'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -168,6 +169,21 @@ describe('MonitorStore', () => {
     expect(msg.events.filter((e) => e.type === 'terminal.updated')).toHaveLength(1)
     expect(store.snapshot().activity).toHaveLength(3)
   })
+
+  it('keeps broadcasting when one listener throws', () => {
+    const store = new MonitorStore({ activityLimit: 3, batchMs: 5 })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const got: unknown[] = []
+    store.subscribe(() => {
+      throw new Error('toast observer')
+    })
+    store.subscribe((m) => got.push(m))
+    store.upsertTerminal({ id: 't', title: 'A', status: 'idle' })
+    store.flush()
+    expect(got).toHaveLength(1)
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
 })
 
 describe('context window and launcher', () => {
@@ -190,18 +206,22 @@ describe('context window and launcher', () => {
     const { launchClaude } = await import('../src/launcher')
     const calls: string[][] = []
     const dir = process.cwd()
-    await launchClaude(
-      dir,
-      'continue',
-      async (cmd, args, cwd) => {
-        calls.push([cmd, ...args, `cwd=${cwd}`])
-        if (cmd === 'wt.exe') throw new Error('ENOENT')
-      },
-      undefined,
-      'win32',
-    )
-    expect(calls[0]).toEqual(['wt.exe', '-w', '0', 'nt', '-d', dir, 'powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
-    expect(calls[1]).toEqual(['powershell.exe', '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
+    const local = mkdtempSync(path.join(os.tmpdir(), 'ccm-wt-'))
+    const wt = path.join(local, 'Microsoft', 'WindowsApps', 'wt.exe')
+    mkdirSync(path.dirname(wt), { recursive: true })
+    writeFileSync(wt, '')
+    const env = { LOCALAPPDATA: local, SystemRoot: 'C:\\Win', PATH: '' }
+    const ps = 'C:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+    const spawner = async (cmd: string, args: string[], cwd: string) => {
+      calls.push([cmd, ...args, `cwd=${cwd}`])
+      if (cmd === wt) throw new Error('ENOENT')
+    }
+    await launchClaude(dir, 'continue', spawner, undefined, 'win32', undefined, env)
+    expect(calls[0]).toEqual([wt, '-w', '0', 'nt', '-d', dir, ps, '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
+    expect(calls[1]).toEqual([ps, '-NoLogo', '-NoExit', '-Command', 'claude --continue', `cwd=${dir}`])
+    calls.length = 0
+    await launchClaude(dir, 'new', spawner, undefined, 'win32', undefined, { SystemRoot: 'C:\\Win', PATH: dir })
+    expect(calls.map((c) => c[0])).toEqual([ps])
     await expect(launchClaude(`${dir}/does-not-exist`, 'new', async () => {}, undefined, 'win32')).rejects.toThrow('directory not found')
   })
 })

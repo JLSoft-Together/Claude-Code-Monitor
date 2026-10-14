@@ -2,7 +2,10 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
-import { SHORTCUTS, type Shortcut } from '../lib/shortcuts'
+import { hasTerminals } from '../lib/desktop'
+import { isMac } from '../lib/platform'
+import { retireOverlay } from '../lib/motion'
+import { SHORTCUTS, workspaceShortcuts, type Shortcut } from '../lib/shortcuts'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -13,9 +16,14 @@ const settings = useSettingsStore()
 const dialog = ref<HTMLElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
-const groups = computed(() =>
-  (['panels', 'map', 'help'] as const).map((g) => ({ id: g, items: SHORTCUTS.filter((s: Shortcut) => s.group === g) })),
-)
+const groups = computed(() => {
+  const list: { id: Shortcut['group']; items: Shortcut[] }[] = (['panels', 'map', 'help'] as const).map((g) => ({
+    id: g,
+    items: SHORTCUTS.filter((s: Shortcut) => s.group === g),
+  }))
+  if (hasTerminals) list.splice(2, 0, { id: 'workspace', items: workspaceShortcuts(isMac) })
+  return list
+})
 
 function close(): void {
   ui.shortcutsOpen = false
@@ -57,19 +65,14 @@ watch(
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
       <div v-if="ui.shortcutsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="keys-title"
-          class="ccm-pop w-full max-w-[520px] ccm-sheet"
+          class="w-full max-w-[520px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex items-center gap-2 border-b border-line px-5 py-4">
@@ -93,6 +96,7 @@ watch(
             </div>
             <section v-for="g in groups" :key="g.id" :aria-labelledby="`keys-${g.id}`">
               <h3 :id="`keys-${g.id}`" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t(`keys.group.${g.id}`) }}</h3>
+              <p v-if="g.id === 'workspace'" class="-mt-1 mb-1.5 px-3 text-2xs text-ink-faint">{{ t('keys.workspaceNote') }}</p>
               <dl class="ccm-group">
                 <div v-for="s in g.items" :key="s.id" class="flex items-center justify-between gap-4 px-3 py-2 text-sm">
                   <dt class="min-w-0 text-ink">{{ t(`keys.item.${s.id}`) }}</dt>

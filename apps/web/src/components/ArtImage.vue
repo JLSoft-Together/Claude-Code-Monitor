@@ -19,13 +19,13 @@ const props = defineProps<{ name: ArtName }>()
 const files = import.meta.glob<string>('../assets/art/*.svg', { query: '?raw', import: 'default', eager: true })
 
 // The art was drawn with fixed warm colours; swap them for theme tokens so it follows the theme + dark mode.
+// The logo keeps its own colours on purpose: it is the fixed brand mark, not themed art.
 const TOKENS: Record<string, string> = {
   '#8a8880': 'var(--ccm-ink-faint)',
-  '#b4532f': 'var(--ccm-accent)',
-  '#e08a68': 'var(--ccm-accent)',
-  '#1b1b19': 'var(--ccm-ink)',
+  '#b4532f': 'var(--ccm-agent-claude)',
+  '#e08a68': 'var(--ccm-agent-claude)',
   '#121211': 'var(--ccm-surface)',
-  '#e3b552': 'var(--ccm-waiting)',
+  '#e3b552': 'var(--ccm-ink-faint)',
 }
 
 const markup = computed(() => {

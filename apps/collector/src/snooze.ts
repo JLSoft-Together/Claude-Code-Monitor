@@ -58,6 +58,10 @@ export class SnoozeStore {
     return Object.fromEntries(this.entries)
   }
 
+  flush(): Promise<void> {
+    return this.file?.flush() ?? Promise.resolve()
+  }
+
   private save(): void {
     this.file?.schedule(() => this.all())
   }

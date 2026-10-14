@@ -6,30 +6,36 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import type { PtyPreset, PtyServerMessage } from '@ccm/shared'
+import type { IDisposable } from '@xterm/xterm'
+import type { PtyServerMessage } from '@ccm/shared'
+import { DevServerDetector, rememberDevUrl } from '../../lib/devServer'
+import { createFileLinkProvider, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
 import { shortPath } from '../../lib/format'
 import { contextPctOf } from '../../lib/provider'
-import { usePaneInfo } from '../../composables/usePaneInfo'
+import { retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
 import { useAgentsStore } from '../../stores/agents'
 import { useSettingsStore } from '../../stores/settings'
 import { useTerminalsStore } from '../../stores/terminals'
-import { useWorkspaceStore, type Pane } from '../../stores/workspace'
+import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
+import { useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
+import DevServerChip from './DevServerChip.vue'
+import TermFind from './TermFind.vue'
 import StatusBadge from '../StatusBadge.vue'
 import PresetIcon from './PresetIcon.vue'
 import SplitMenu from './SplitMenu.vue'
 import WorktreeMenu from './WorktreeMenu.vue'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean }>()
-const emit = defineEmits<{ split: [preset: PtyPreset] }>()
+const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const settings = useSettingsStore()
-const { isBusy } = usePaneInfo()
 const terminals = useTerminalsStore()
 const agents = useAgentsStore()
 
@@ -38,15 +44,50 @@ let term: Terminal | null = null
 let fit: FitAddon | null = null
 let webgl: WebglAddon | null = null
 let conn: PtyConnection | null = null
+let search: SearchAddon | null = null
+let linkProvider: IDisposable | null = null
 let resizeObserver: ResizeObserver | null = null
 let restoredOnMount = false
+const findOpen = ref(false)
+const find = ref<InstanceType<typeof TermFind> | null>(null)
+const searchAddon = ref<SearchAddon | null>(null)
+const devUrls = ref<string[]>([])
+const linkHint = ref<string | undefined>(undefined)
+const dev = new DevServerDetector()
+const decoder = new TextDecoder('utf-8')
+// Bulk output (cat of a big file, replay) is never a dev server banner.
+const DEV_CHUNK_MAX = 64 * 1024
+
+function feedDev(bytes: Uint8Array): void {
+  if (bytes.length > DEV_CHUNK_MAX) return
+  const found = dev.feed(decoder.decode(bytes, { stream: true }))
+  if (!found.length) return
+  devUrls.value = [...devUrls.value, ...found]
+  for (const url of found) rememberDevUrl(cwd.value ?? '', url)
+}
+
+function resetDev(): void {
+  dev.reset()
+  devUrls.value = []
+}
+
+async function openFind(): Promise<void> {
+  findOpen.value = true
+  await nextTick()
+  find.value?.focus()
+}
+
+function closeFind(): void {
+  findOpen.value = false
+  term?.focus()
+}
 
 const status = computed(() => {
   switch (props.pane.state) {
     case 'starting':
       return { icon: LoaderCircle, label: t('workspace.state.starting'), cls: 'text-ink-faint', spin: true }
     case 'running':
-      return { icon: CircleDot, label: t('workspace.state.running'), cls: 'text-st-done', spin: false }
+      return { icon: CircleDot, label: t('workspace.state.running'), cls: 'text-ink-muted', spin: false }
     case 'exited':
       return { icon: CircleCheck, label: t('workspace.state.exited', { code: props.pane.exitCode ?? 0 }), cls: 'text-st-idle', spin: false }
     default:
@@ -83,19 +124,47 @@ function toggleSplit(): void {
   splitAnchor.value = splitAnchor.value ? null : (splitButton.value?.getBoundingClientRect() ?? null)
 }
 
+// Menus are placed from a rect taken at open time: a hidden pane or a resized window would leave them floating.
+function dropMenus(): void {
+  splitAnchor.value = null
+  wtAnchor.value = null
+}
+
+const ended = computed(() => props.pane.state === 'exited' || props.pane.state === 'error' || props.pane.state === 'gone')
+const chipKey = computed(() => (session.value && props.pane.state === 'running' ? `s:${session.value.status}` : `p:${props.pane.state}`))
+
+const cwd = computed(() => workCwd(props.pane))
+let reportedCwd: string | null = null
+
+/** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
+function onShellCwd(dir: string | null): void {
+  if (!dir || dir === reportedCwd) return
+  reportedCwd = dir
+  conn?.reportCwd(dir)
+}
+
 const sessionTitle = computed(() => session.value?.alias || session.value?.title || '')
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const
+
 function theme(): Terminal['options']['theme'] {
+  const ansi: Record<string, string> = {}
+  ANSI.forEach((name, i) => {
+    ansi[name] = cssVar(`--ccm-ansi-${i}`)
+    ansi[`bright${name.charAt(0).toUpperCase()}${name.slice(1)}`] = cssVar(`--ccm-ansi-${i + 8}`)
+  })
   return {
+    ...ansi,
     background: cssVar('--ccm-well'),
     foreground: cssVar('--ccm-well-ink'),
     cursor: cssVar('--ccm-accent'),
     cursorAccent: cssVar('--ccm-well'),
-    selectionBackground: cssVar('--ccm-accent-soft'),
+    selectionBackground: cssVar('--ccm-well-selection'),
+    selectionInactiveBackground: cssVar('--ccm-well-selection'),
   }
 }
 
@@ -125,13 +194,20 @@ function refit(): void {
   }
 }
 
-async function paste(textOnly: boolean): Promise<void> {
+async function clipboardHasImage(): Promise<boolean> {
   try {
-    // Claude Code reads clipboard images itself on ^V, so forward the raw key when one is there.
-    if (!textOnly) {
-      const items = await navigator.clipboard.read()
-      if (items.some((it) => it.types.some((type) => type.startsWith('image/')))) return conn?.write('\x16')
-    }
+    const items = await navigator.clipboard.read()
+    return items.some((it) => it.types.some((type) => type.startsWith('image/')))
+  } catch {
+    // read() rejects on some clipboard formats while plain text is still readable
+    return false
+  }
+}
+
+async function paste(textOnly: boolean): Promise<void> {
+  // Claude Code reads clipboard images itself on ^V, so forward the raw key when one is there.
+  if (!textOnly && (await clipboardHasImage())) return conn?.write('\x16')
+  try {
     const text = await navigator.clipboard.readText()
     if (text) term?.paste(text)
   } catch {
@@ -144,6 +220,12 @@ function onKey(e: KeyboardEvent): boolean {
   // Ink (Claude Code) reads ESC+CR as a newline inside the prompt instead of submit.
   if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     conn?.write('\x1b\r')
+    return false
+  }
+  // Plain Ctrl+F stays with the shell (readline forward-char).
+  if (e.code === 'KeyF' && !e.altKey && (isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey)) {
+    e.preventDefault()
+    void openFind()
     return false
   }
   if (isMac) return true
@@ -177,7 +259,11 @@ function onMessage(msg: PtyServerMessage): void {
     case 'branch':
       workspace.update(key, { branch: msg.branch ?? undefined })
       break
+    case 'cwd':
+      if (msg.cwd) workspace.update(key, { liveCwd: msg.cwd })
+      break
     case 'exit':
+      resetDev()
       workspace.update(key, { state: 'exited', exitCode: msg.code })
       break
     case 'gone':
@@ -195,7 +281,10 @@ function onMessage(msg: PtyServerMessage): void {
 async function connect(start: PtyStart): Promise<void> {
   conn?.close()
   conn = new PtyConnection({
-    onOutput: (bytes) => term?.write(bytes),
+    onOutput: (bytes) => {
+      term?.write(bytes)
+      feedDev(bytes)
+    },
     onMessage,
     onClose: () => {
       if (props.pane.state === 'running' || props.pane.state === 'starting')
@@ -219,7 +308,9 @@ function restart(): void {
   killSession()
   restoredOnMount = false
   term?.reset()
-  workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, branch: undefined, exitCode: undefined, error: undefined })
+  resetDev()
+  reportedCwd = null
+  workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
   void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume } })
 }
 
@@ -232,7 +323,7 @@ function reconnect(): void {
 }
 
 function close(): void {
-  workspace.requestClose([props.pane.key], isBusy)
+  emit('close')
 }
 
 onMounted(() => {
@@ -245,6 +336,8 @@ onMounted(() => {
     lineHeight: 1.25,
     scrollback: 5000,
     smoothScrollDuration: 0,
+    // CLIs paint with ANSI black/dim colours that vanish on the dark well; xterm lifts them per cell.
+    minimumContrastRatio: 4.5,
     theme: theme(),
   })
   fit = new FitAddon()
@@ -254,14 +347,36 @@ onMounted(() => {
   term.unicode.activeVersion = '15-graphemes'
   term.open(host.value!)
   term.attachCustomKeyEventHandler(onKey)
-  term.onData((data) => conn?.write(data))
+  term.parser.registerOscHandler(7, (data) => (onShellCwd(parseOsc7(data)), true))
+  term.parser.registerOscHandler(9, (data) => {
+    const dir = parseOsc9(data)
+    if (dir) onShellCwd(dir)
+    return !!dir
+  })
+  linkProvider = term.registerLinkProvider(
+    createFileLinkProvider(term, {
+      cwd: () => cwd.value,
+      isMac,
+      onOpen: (target, opts) => emit('openLink', target, opts),
+      onHover: () => (linkHint.value = t('workspace.open.linkHint', { key: isMac ? '⌘' : 'Ctrl' })),
+      onLeave: () => (linkHint.value = undefined),
+    }),
+  )
+  term.onData((data) => {
+    conn?.write(data)
+    if (props.pane.preset === 'shell' && !props.pane.ranCommand && data.includes('\r')) workspace.update(props.pane.key, { ranCommand: true })
+  })
   term.onBinary((data) => conn?.writeBinary(data))
   term.onResize(({ cols, rows }) => conn?.resize(cols, rows))
   term.textarea?.addEventListener('focus', () => workspace.activate(props.pane.key))
   setRenderer(props.visible)
   refit()
+  search = new SearchAddon({ highlightLimit: 1000 })
+  term.loadAddon(search)
+  searchAddon.value = search
   resizeObserver = new ResizeObserver(() => refit())
   resizeObserver.observe(host.value!)
+  window.addEventListener('resize', dropMenus)
 
   restoredOnMount = !!props.pane.sessionId
   void connect(props.pane.sessionId ? { attach: props.pane.sessionId } : { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume } })
@@ -271,10 +386,22 @@ watch(
   () => props.visible,
   async (visible) => {
     setRenderer(visible)
-    if (!visible) return
+    if (!visible) return dropMenus()
     await nextTick()
     refit()
     if (props.focused) term?.focus()
+  },
+)
+
+// Browser → agent: lands in the input line only; the user presses Enter.
+watch(
+  () => workspace.insertRequest,
+  (req) => {
+    if (!req || req.paneKey !== props.pane.key || props.pane.state !== 'running') return
+    if (req.image) {
+      if (props.pane.preset !== 'shell') conn?.write('\x16')
+    } else term?.paste(req.text)
+    term?.focus()
   },
 )
 
@@ -296,6 +423,8 @@ watch(
 // Leaving the view only detaches; a pane gone from the store was closed, so its process goes too.
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  window.removeEventListener('resize', dropMenus)
+  linkProvider?.dispose()
   if (!workspace.panes.some((p) => p.key === props.pane.key)) killSession()
   conn?.close()
   webgl?.dispose()
@@ -304,13 +433,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 min-w-0 flex-col gap-1.5" :aria-label="t(`workspace.preset.${pane.preset}`)" @pointerdown="workspace.activate(pane.key)">
+  <section
+    class="flex min-h-0 min-w-0 flex-col gap-1.5"
+    :data-pane="pane.key"
+    :style="visible ? `view-transition-name: ccm-pane-${pane.key}; view-transition-class: ccm-pane` : undefined"
+    :aria-label="t(`workspace.preset.${pane.preset}`)"
+    @pointerdown="workspace.activate(pane.key)"
+  >
     <header class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs">
-      <PresetIcon :preset="pane.preset" :size="15" class="shrink-0 text-ink-muted" />
+      <PresetIcon :preset="pane.preset" :size="15" class="shrink-0" />
       <span class="shrink-0 font-semibold text-ink">{{ t(`workspace.preset.${pane.preset}`) }}</span>
-      <span v-if="pane.cwd" class="min-w-0 shrink truncate text-ink-faint" :title="pane.cwd">{{ shortPath(pane.cwd) }}</span>
+      <span v-if="cwd" class="min-w-0 shrink truncate text-ink-faint" :title="cwd" data-cwd>{{ shortPath(cwd) }}</span>
+      <DevServerChip v-if="devUrls.length" class="min-w-0 shrink" :urls="devUrls" @open="(url) => emit('openLink', { kind: 'url', url }, {})" />
       <button
-        v-if="pane.cwd && pane.state === 'running'"
+        v-if="cwd && pane.state === 'running'"
         ref="wtButton"
         type="button"
         class="inline-flex h-6 min-w-0 shrink cursor-pointer items-center gap-1 rounded-[5px] px-1.5 text-ink-faint hover:bg-fill hover:text-ink aria-expanded:bg-fill aria-expanded:text-ink"
@@ -323,14 +459,23 @@ onBeforeUnmount(() => {
         <span v-if="branch" class="max-w-[16ch] truncate">{{ branch }}</span>
         <span v-else class="sr-only">{{ t('workspace.wt.title') }}</span>
       </button>
-      <WorktreeMenu v-if="wtAnchor && pane.cwd" :cwd="pane.cwd" :anchor="wtAnchor" :trigger="wtButton" @close="closeWorktrees" />
+      <Teleport to="body">
+        <Transition name="ccm-menu" @before-leave="retireOverlay">
+          <WorktreeMenu v-if="wtAnchor && cwd" :cwd="cwd" :anchor="wtAnchor" :trigger="wtButton" @close="closeWorktrees" />
+        </Transition>
+      </Teleport>
       <span v-if="session && sessionTitle" class="hidden min-w-0 flex-1 truncate text-ink-muted lg:inline" :title="sessionTitle">{{ sessionTitle }}</span>
       <span class="ml-auto" aria-hidden="true" />
       <ContextGauge v-if="context" class="hidden w-24 shrink-0 sm:block" :tokens="context.tokens" :window="context.window" :pct="context.pct" compact />
-      <StatusBadge v-if="session && pane.state === 'running'" :status="session.status" />
-      <span v-else class="inline-flex shrink-0 items-center gap-1" :class="status.cls">
-        <component :is="status.icon" :size="13" :class="status.spin ? 'ccm-spin' : ''" aria-hidden="true" />
-        <span>{{ status.label }}</span>
+      <!-- One grid cell: the old chip fades out under the new one instead of the header reflowing twice. -->
+      <span class="grid shrink-0 justify-items-end *:[grid-area:1/1]">
+        <Transition name="ccm-fade">
+          <StatusBadge v-if="session && pane.state === 'running'" :key="chipKey" :status="session.status" />
+          <span v-else :key="chipKey" class="inline-flex shrink-0 items-center gap-1" :class="status.cls">
+            <component :is="status.icon" :size="13" :class="status.spin ? 'ccm-spin' : ''" aria-hidden="true" />
+            <span>{{ status.label }}</span>
+          </span>
+        </Transition>
       </span>
       <button
         v-if="pane.state === 'error' && pane.sessionId"
@@ -357,16 +502,31 @@ onBeforeUnmount(() => {
       >
         <Columns2 :size="14" aria-hidden="true" />
       </button>
-      <SplitMenu v-if="splitAnchor" :anchor="splitAnchor" :current="pane.preset" :trigger="splitButton" @pick="(p) => emit('split', p)" @close="splitAnchor = null" />
+      <Teleport to="body">
+        <Transition name="ccm-menu" @before-leave="retireOverlay">
+          <SplitMenu v-if="splitAnchor" :anchor="splitAnchor" :current="pane.preset" :trigger="splitButton" @pick="(p) => emit('split', p)" @close="splitAnchor = null" />
+        </Transition>
+      </Teleport>
       <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.close')" :aria-label="t('workspace.close')" @click="close">
         <X :size="14" aria-hidden="true" />
       </button>
     </header>
     <div
-      class="min-h-0 flex-1 overflow-hidden rounded-card bg-well p-2 shadow-card outline-1 -outline-offset-1 transition-[outline-color] duration-150"
-      :class="multi && focused ? 'outline-accent' : 'outline-transparent'"
+      class="relative min-h-0 flex-1 rounded-card bg-well shadow-card outline-1 -outline-offset-1 transition-[outline-color] duration-(--ccm-dur-fast)"
+      :class="multi && focused ? 'outline-focus' : 'outline-transparent'"
     >
-      <div ref="host" class="size-full" />
+      <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
+      <div class="size-full overflow-hidden rounded-card p-2 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
+        <div ref="host" class="size-full" :title="linkHint" />
+      </div>
+      <TermFind v-if="findOpen" ref="find" :addon="searchAddon" class="absolute top-1 right-2 z-10" @close="closeFind" />
+      <span
+        v-if="pane.attention"
+        :key="`${pane.attention}:${visible}`"
+        class="ccm-flash pointer-events-none absolute inset-0 rounded-card"
+        :class="pane.attention === 'waiting' ? 'text-st-waiting' : 'text-st-done'"
+        aria-hidden="true"
+      />
     </div>
   </section>
 </template>

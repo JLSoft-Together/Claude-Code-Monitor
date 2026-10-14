@@ -177,7 +177,7 @@ function commitNote(): void {
 <template>
   <article
     class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200"
-    :class="[focused ? 'ring-2 ring-accent' : '', ended ? 'opacity-70' : '']"
+    :class="[focused ? 'ring-2 ring-focus' : '', ended ? 'text-ink-muted' : '']"
   >
     <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
@@ -214,7 +214,7 @@ function commitNote(): void {
       :title="t('terminal.noteEdit')"
       @click="startNote"
     >
-      <StickyNote :size="13" class="mt-px shrink-0 text-accent" aria-hidden="true" />
+      <StickyNote :size="13" class="mt-px shrink-0 text-accent-ink" aria-hidden="true" />
       <span class="min-w-0 break-words">{{ terminal.note }}</span>
     </button>
 
@@ -228,7 +228,7 @@ function commitNote(): void {
     <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
       <template v-if="snoozedUntil">
         <span class="inline-flex items-center gap-1 text-ink-muted"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.until', { at: snoozedUntil }) }}</span>
-        <button type="button" class="cursor-pointer rounded px-1 font-medium text-accent hover:underline" @click="snooze.clear(terminal.id)">{{ t('snooze.undo') }}</button>
+        <button type="button" class="cursor-pointer rounded px-1 font-medium text-link hover:underline" @click="snooze.clear(terminal.id)">{{ t('snooze.undo') }}</button>
       </template>
       <template v-else>
         <span class="inline-flex items-center gap-1 text-ink-faint"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.label') }}</span>
@@ -271,8 +271,8 @@ function commitNote(): void {
     <p v-if="diff" class="mt-2 flex min-w-0 items-center gap-1.5 text-xs tabular" :title="diff.title">
       <FileDiff :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
       <span class="sr-only">{{ t('terminal.diffLabel') }}</span>
-      <span class="font-medium text-st-done">+{{ fullNumber(diff.insertions, locale) }}</span>
-      <span class="font-medium text-st-error">−{{ fullNumber(diff.deletions, locale) }}</span>
+      <span class="font-medium text-diff-add">+{{ fullNumber(diff.insertions, locale) }}</span>
+      <span class="font-medium text-diff-del">−{{ fullNumber(diff.deletions, locale) }}</span>
       <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
     </p>
 
@@ -312,7 +312,7 @@ function commitNote(): void {
         <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
       </span>
       <span v-if="tokens || cost || codexTokens" class="ml-auto inline-flex items-center gap-2 tabular">
-        <span v-if="codexTokens" class="inline-flex items-center gap-1 text-codex" :title="codexTokens.title">
+        <span v-if="codexTokens" class="inline-flex items-center gap-1 text-agent-codex" :title="codexTokens.title">
           <ProviderBadge variant="icon" />{{ codexTokens.label }}
         </span>
         <span v-if="cost" :key="costBump" class="text-ink-muted" :class="costBump ? 'ccm-tick' : ''" :title="t('terminal.costTitle')">{{ cost }}</span>

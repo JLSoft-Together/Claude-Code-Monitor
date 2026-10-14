@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { ListFilter, X } from 'lucide-vue-next'
 import { waitReason, type ActivityEvent } from '@ccm/shared'
@@ -192,7 +193,7 @@ const rows = computed(() =>
       <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line bg-surface px-3.5 py-1.5 text-xs text-ink-muted">
         <AppSelect v-model="settings.activityPageSize" :options="pageSizeOptions" :label="t('projects.perPage')" size="sm" />
         <label class="flex cursor-pointer items-center gap-2">
-          <input v-model="settings.hideTools" type="checkbox" class="size-4 cursor-pointer accent-[var(--ccm-accent)]" />
+          <input v-model="settings.hideTools" type="checkbox" class="size-4 cursor-pointer accent-accent" />
           {{ t('activity.hideTools') }}
         </label>
         <button
@@ -203,7 +204,7 @@ const rows = computed(() =>
           :title="t('activity.filterClear')"
           @click="ui.filterActivity(null)"
         >
-          <ListFilter :size="13" class="shrink-0 text-accent" aria-hidden="true" />
+          <ListFilter :size="13" class="shrink-0 text-accent-ink" aria-hidden="true" />
           <span class="truncate">{{ t('activity.filterOn', { title: scopeTitle }) }}</span>
           <X :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
         </button>
@@ -222,7 +223,7 @@ const rows = computed(() =>
         <ArtImage name="empty-activity" class="w-36 max-w-full" />
         <p class="text-sm text-ink-muted">{{ scopeId ? t('activity.emptyFiltered') : t('activity.empty') }}</p>
       </div>
-      <TransitionGroup v-else tag="ol" name="ccm-list" class="relative divide-y divide-line" aria-live="off">
+      <TransitionGroup v-else tag="ol" name="ccm-list" @before-leave="pinLeaving" class="relative divide-y divide-line" aria-live="off">
         <li
           v-for="{ e, text, sub, codex } in rows"
           :key="e.id"

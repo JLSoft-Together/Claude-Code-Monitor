@@ -4,6 +4,8 @@ import { isAgentSessionId, type PtyPreset } from '../../../../packages/shared/sr
 export interface LaunchSpec {
   file: string
   args: string[]
+  /** Added to the child env (shell hooks that report the current folder). */
+  env?: Record<string, string>
 }
 
 // Absolute paths: a bare name would resolve through PATH/cwd, which a project folder could shadow.
@@ -24,15 +26,51 @@ function agentCommand(preset: Exclude<PtyPreset, 'shell'>, resume?: string): str
   return preset === 'claude' ? `claude --resume ${resume}` : `codex resume ${resume}`
 }
 
-export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string): LaunchSpec {
+/**
+ * Shells report their folder after every prompt so links and the branch chip follow `cd`: PowerShell via
+ * Windows Terminal's OSC 9;9, bash/zsh via OSC 7. `initDir` holds the zsh startup wrappers (see shellInit.ts).
+ */
+export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string, initDir?: string): LaunchSpec {
   if (platform === 'win32') {
     const file = windowsPowerShell(env.SystemRoot ?? env.SYSTEMROOT)
-    if (preset === 'shell') return { file, args: ['-NoLogo'] }
-    return { file, args: ['-NoLogo', '-NoExit', '-Command', agentCommand(preset, resume)] }
+    const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, resume)}`
+    // Encoded: no quoting rules between node-pty's command line and PowerShell's parser to get wrong.
+    return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)] }
   }
   const shell = safeShell(env.SHELL, platform)
-  if (preset === 'shell') return { file: shell, args: ['-l'] }
-  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, resume)}; exec ${shell} -l`] }
+  const hook = posixHook(shell, env, initDir)
+  if (preset === 'shell') return { file: shell, args: ['-l'], env: hook.env }
+  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, resume)}; ${hook.reexec}${shell} -l`], env: hook.env }
+}
+
+// Wraps whatever prompt the profile defined (oh-my-posh, starship…) and appends the folder; the visible prompt is unchanged.
+export const PS_CWD_HOOK = [
+  'if (-not $global:__AgentMonitorPrompt) {',
+  '$global:__AgentMonitorPrompt = $function:prompt',
+  'function global:prompt {',
+  "$out = (& $global:__AgentMonitorPrompt) -join ''",
+  '$loc = $executionContext.SessionState.Path.CurrentLocation',
+  "if ($loc.Provider.Name -eq 'FileSystem') { $out += \"$([char]27)]9;9;`\"$($loc.ProviderPath)`\"$([char]27)\\\" }",
+  '$out',
+  '}',
+  '}',
+].join('\n')
+
+export const encodePowerShell = (script: string): string => Buffer.from(script, 'utf16le').toString('base64')
+
+export const BASH_PROMPT_COMMAND = "printf '\\e]7;file://%s%s\\e\\\\' \"$HOSTNAME\" \"$PWD\""
+
+/** zsh has no env hook: ZDOTDIR points at wrappers that source the user's files, then add a precmd. */
+function posixHook(shell: string, env: NodeJS.ProcessEnv, initDir?: string): { env?: Record<string, string>; reexec: string } {
+  const name = path.posix.basename(shell)
+  if (name === 'bash') return { env: { PROMPT_COMMAND: BASH_PROMPT_COMMAND }, reexec: 'exec ' }
+  if (name !== 'zsh' || !initDir || initDir.includes("'")) return { reexec: 'exec ' }
+  const user = env.ZDOTDIR && path.posix.isAbsolute(env.ZDOTDIR) ? env.ZDOTDIR : ''
+  return {
+    env: { ZDOTDIR: initDir, AGENT_MONITOR_ZDOTDIR: user },
+    // The agent's shell restored the user's ZDOTDIR; the shell left after it exits needs the wrappers again.
+    reexec: `exec /usr/bin/env ZDOTDIR='${initDir}' AGENT_MONITOR_ZDOTDIR="\${ZDOTDIR:-$HOME}" `,
+  }
 }
 
 export function taskkillPath(env: NodeJS.ProcessEnv): string {

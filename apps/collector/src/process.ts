@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { windowsPowerShell } from './win-exe'
 
 export type ProcessStart = { kind: 'filetime'; value: bigint } | { kind: 'lstart'; value: string }
 
@@ -119,7 +120,7 @@ async function queryProcessesUnix(pids: number[]): Promise<Map<number, ProcessIn
 function queryProcessesWindows(pids: number[]): Promise<Map<number, ProcessInfo> | null> {
   return new Promise((resolve) => {
     execFile(
-      'powershell.exe',
+      windowsPowerShell(),
       ['-NoProfile', '-NonInteractive', '-Command', buildScript(pids)],
       { timeout: 8_000, windowsHide: true, maxBuffer: 1_000_000 },
       (err, stdout) => {

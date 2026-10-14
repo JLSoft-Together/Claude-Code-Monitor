@@ -10,9 +10,9 @@ const props = withDefaults(defineProps<{ tokens: number; window: number; pct?: n
 const { t, locale } = useI18n()
 
 const LEVEL: Record<ContextLevel, { bar: string; text: string; icon: typeof Gauge }> = {
-  ok: { bar: 'bg-st-idle', text: 'text-ink-muted', icon: Gauge },
-  notice: { bar: 'bg-accent', text: 'text-accent', icon: Gauge },
-  warning: { bar: 'bg-st-waiting', text: 'text-st-waiting', icon: TriangleAlert },
+  ok: { bar: 'bg-accent', text: 'text-ink-muted', icon: Gauge },
+  notice: { bar: 'bg-accent', text: 'text-accent-ink', icon: Gauge },
+  warning: { bar: 'bg-warning', text: 'text-warning', icon: TriangleAlert },
   critical: { bar: 'bg-st-error', text: 'text-st-error', icon: OctagonAlert },
 }
 
@@ -48,7 +48,7 @@ const tooltip = computed(() =>
       :aria-label="t('context.meter')"
     >
       <div
-        class="h-full origin-left rounded-full transition-transform duration-500 ease-out-quint motion-reduce:transition-none"
+        class="h-full origin-left rounded-full transition-transform duration-(--ccm-dur-slow) ease-out-quint"
         :class="view.bar"
         :style="{ transform: `scaleX(${pct / 100})` }"
       />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ArtImage from './ArtImage.vue'
-import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -10,7 +10,7 @@ import { useTerminalsStore } from '../stores/terminals'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type MapView } from '../stores/ui'
 import { columnsFor, computeLayout, visibleAgents } from '../lib/layout'
-import { nextMapIsSwitch, reducedMotion } from '../lib/motion'
+import { motionMs, nextMapIsSwitch, reducedMotion } from '../lib/motion'
 import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
@@ -76,14 +76,14 @@ function syncNodes(fit = false): void {
   const wanted = new Set(shownList.value.map((a) => a.id))
   const current = new Map(getNodes.value.map((n) => [n.id, n]))
 
-  const stale = [...current.keys()].filter((id) => !wanted.has(id))
-  if (stale.length) removeNodes(stale)
+  retireNodes([...current.keys()].filter((id) => !wanted.has(id)))
 
   const fresh: Node[] = []
   for (const id of wanted) {
     const position = (scoped ? undefined : ui.nodePos[id]) ?? placed.get(id)
     if (!position) continue
     const node = current.get(id)
+    if (node && leaving.has(id)) keepNode(id)
     if (!node) {
       fresh.push({ id, type: 'agent', position: { ...position }, data: { agentId: id }, draggable: true, selectable: false })
     } else if (node.position.x !== position.x || node.position.y !== position.y) {
@@ -99,9 +99,39 @@ function syncNodes(fit = false): void {
     didInitialFit = true
     pendingFit = true
   } else if (fit) {
-    void nextTick(() => autoFit(250))
+    void nextTick(() => autoFit(motionMs(250)))
   }
 }
+
+// A node that goes away fades out first; one that comes back meanwhile keeps its place.
+const NODE_EXIT_MS = 150
+const leaving = new Map<string, number>()
+function retireNodes(ids: string[]): void {
+  const fresh = ids.filter((id) => !leaving.has(id))
+  if (!fresh.length) return
+  if (!motionMs(NODE_EXIT_MS)) return removeNodes(fresh)
+  for (const id of fresh) {
+    updateNode(id, { class: 'ccm-node-leaving' })
+    leaving.set(
+      id,
+      window.setTimeout(() => {
+        leaving.delete(id)
+        removeNodes([id])
+      }, NODE_EXIT_MS),
+    )
+  }
+}
+function keepNode(id: string): void {
+  window.clearTimeout(leaving.get(id))
+  leaving.delete(id)
+  updateNode(id, { class: '' })
+}
+
+// Re-layouts glide nodes to their new slots; off for the first placement so the map does not fly in from 0,0.
+const nodeMotion = ref(false)
+onBeforeUnmount(() => {
+  for (const timer of leaving.values()) window.clearTimeout(timer)
+})
 
 function isPicked(agentId: string): boolean {
   const terminalId = agents.byId[agentId]?.terminalId
@@ -224,7 +254,7 @@ watch(
 )
 watch(
   () => ui.fitRequest,
-  () => void fitView({ padding: 0.2, duration: 250, maxZoom: 1.1 }),
+  () => void fitView({ padding: 0.2, duration: motionMs(250), maxZoom: 1.1 }),
 )
 watch(
   () => ui.focusRequest,
@@ -232,7 +262,7 @@ watch(
     const id = ui.focusedTerminalId
     if (!id) return
     const ids = (shownByTerminal.value[id] ?? []).map((a) => a.id)
-    if (ids.length) void fitView({ nodes: ids, padding: 0.35, duration: 300, maxZoom: 1.1 })
+    if (ids.length) void fitView({ nodes: ids, padding: 0.35, duration: motionMs(300), maxZoom: 1.1 })
   },
 )
 
@@ -249,6 +279,7 @@ watch(
 )
 
 onNodesInitialized(() => {
+  if (!nodeMotion.value) requestAnimationFrame(() => (nodeMotion.value = true))
   if (!pendingFit) return
   pendingFit = false
   void autoFit().then(() => (flyIn ? flyToFit() : undefined))
@@ -297,8 +328,8 @@ const CHROME_BTN =
   'ccm-material ccm-press pointer-events-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-control px-2 text-xs text-ink-muted shadow-pop transition-colors hover:text-ink'
 
 const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
-  { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },
-  { key: 'zoomOut', label: t('map.zoomOut'), icon: Minus, run: () => zoomOut({ duration: 150 }) },
+  { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: motionMs(150) }) },
+  { key: 'zoomOut', label: t('map.zoomOut'), icon: Minus, run: () => zoomOut({ duration: motionMs(150) }) },
   { key: 'fit', label: t('map.fit'), icon: Maximize, hint: 'F', run: () => ui.requestFit() },
   { key: 'reset', label: t('map.reset'), icon: LayoutGrid, run: () => ui.resetLayout() },
 ])
@@ -315,6 +346,7 @@ const views = computed(() => [
     <div
       ref="canvas"
       class="relative min-h-0 flex-1 overflow-hidden bg-surface"
+      :class="nodeMotion ? 'ccm-map-motion' : ''"
       role="region"
       :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
     >

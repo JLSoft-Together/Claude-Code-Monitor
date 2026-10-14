@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { FocusWindowResult } from '@ccm/shared'
 import { focusMacWindow } from './focus-mac'
+import { windowsPowerShell } from './win-exe'
 
 // First asks the session's own console: ConPTY's hidden pseudo-console window is owned by the hosting terminal window
 // (Windows Terminal sets it per tab), and a classic console window is the console itself, so this names the exact
@@ -92,7 +93,7 @@ export function focusProcessWindow(pid: number): Promise<FocusWindowResult> {
   if (!Number.isInteger(pid) || pid <= 4) return Promise.resolve('notFound')
   return new Promise((resolve) => {
     execFile(
-      'powershell.exe',
+      windowsPowerShell(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
       { timeout: 15_000, windowsHide: true, maxBuffer: 64_000, env: { ...process.env, CCM_FOCUS_PID: String(pid) } },
       (err, stdout) => resolve(err ? 'failed' : parseFocusOutput(stdout)),

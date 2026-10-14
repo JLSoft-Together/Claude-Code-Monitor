@@ -1,15 +1,21 @@
 import { execFile } from 'node:child_process'
 import type { GitDiffStat } from '@ccm/shared'
+import { findOnPath } from './win-exe'
 
 export function parseShortstat(out: string): { files: number; insertions: number; deletions: number } {
   const n = (re: RegExp) => Number(out.match(re)?.[1] ?? 0)
   return { files: n(/(\d+) files? changed/), insertions: n(/(\d+) insertions?\(\+\)/), deletions: n(/(\d+) deletions?\(-\)/) }
 }
 
+let gitPath: string | null | undefined
+
 function git(cwd: string, args: string[]): Promise<string | null> {
+  gitPath ??= process.platform === 'win32' ? findOnPath('git.exe') : 'git'
+  const file = gitPath
+  if (!file) return Promise.resolve(null)
   return new Promise((resolve) => {
     execFile(
-      'git',
+      file,
       ['-C', cwd, ...args],
       // Optional locks off: a status read must never contend with the session's own git commands for index.lock.
       { timeout: 5_000, windowsHide: true, maxBuffer: 1_000_000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' } },

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { Layers, Loader2, Square, Trash2, X } from 'lucide-vue-next'
 import type { JobState } from '@ccm/shared'
@@ -103,12 +104,12 @@ onBeforeUnmount(() => {
         <Trash2 :size="13" aria-hidden="true" />{{ t('jobs.clearDone', { n: doneCount }) }}
       </button>
     </div>
-    <TransitionGroup tag="ul" name="ccm-list" class="relative space-y-1.5">
+    <TransitionGroup tag="ul" name="ccm-list" @before-leave="pinLeaving" class="relative space-y-1.5">
       <li
         v-for="j in rows"
         :key="j.id"
-        class="flex items-center gap-1 rounded-card bg-surface pe-1.5 shadow-card transition-[box-shadow,opacity] duration-300"
-        :class="[j.state === 'blocked' ? 'ring-1 ring-st-waiting/50' : '', j.state === 'done' ? 'opacity-70 hover:opacity-100' : '']"
+        class="flex items-center gap-1 rounded-card bg-surface pe-1.5 shadow-card transition-[box-shadow,color] duration-300"
+        :class="[j.state === 'blocked' ? 'ring-1 ring-st-waiting/50' : '', j.state === 'done' ? 'text-ink-muted hover:text-ink' : '']"
       >
         <component
           :is="j.terminalId ? 'button' : 'div'"

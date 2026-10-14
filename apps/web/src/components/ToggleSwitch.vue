@@ -19,13 +19,13 @@ function flip(): void {
       :aria-checked="modelValue"
       :aria-label="label"
       :disabled="disabled"
-      class="relative inline-flex h-[22px] w-[38px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-out-quint disabled:cursor-not-allowed"
+      class="group relative inline-flex h-[22px] w-[38px] shrink-0 cursor-pointer items-center rounded-full transition-colors duration-(--ccm-dur-base) ease-out-quint disabled:cursor-not-allowed"
       :class="modelValue ? 'bg-accent' : 'bg-fill-strong'"
       @click="flip"
     >
       <span
-        class="inline-block size-[18px] rounded-full bg-on-accent shadow-control transition-transform duration-200 ease-out-quint motion-reduce:transition-none"
-        :class="modelValue ? 'translate-x-[18px]' : 'translate-x-[2px]'"
+        class="inline-block size-[18px] rounded-full bg-on-accent shadow-control transition-transform duration-(--ccm-dur-base) ease-spring group-enabled:group-active:scale-x-[1.2]"
+        :class="modelValue ? 'origin-right translate-x-[18px]' : 'origin-left translate-x-[2px]'"
         aria-hidden="true"
       />
     </button>

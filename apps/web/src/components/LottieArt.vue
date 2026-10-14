@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { reducedMotion } from '../lib/motion'
+import { useSettingsStore } from '../stores/settings'
 import type { AnimationItem } from 'lottie-web'
 
 export type LottieName = 'radar-scan' | 'check-pop' | 'notification-bell'
@@ -10,9 +12,9 @@ const files = import.meta.glob<unknown>('../assets/art/*.json', { import: 'defau
 
 // Source colours baked into the exported files → theme tokens, resolved at load time.
 const SOURCE: [number[], string][] = [
-  [[0.702, 0.325, 0.184], '--ccm-accent'],
+  [[0.702, 0.325, 0.184], '--ccm-agent-claude'],
   [[0.106, 0.106, 0.098], '--ccm-ink'],
-  [[0.247, 0.478, 0.231], '--ccm-done'],
+  [[0.247, 0.478, 0.231], '--ccm-success'],
 ]
 
 const host = ref<HTMLElement | null>(null)
@@ -53,13 +55,17 @@ async function load(): Promise<void> {
   })
   recolor(animationData, map)
   anim?.destroy()
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reduced = reducedMotion()
   anim = lottie.loadAnimation({ container: el, renderer: 'svg', loop: props.loop && !reduced, autoplay: !reduced, animationData })
   if (reduced) anim.goToAndStop(props.loop ? 0 : anim.totalFrames - 1, true)
 }
 
+const settings = useSettingsStore()
+
 onMounted(load)
 watch(() => props.playKey, load)
+// Colours are baked into the animation data at load, so a theme switch has to rebuild it.
+watch(() => settings.theme, load)
 onBeforeUnmount(() => {
   disposed = true
   anim?.destroy()

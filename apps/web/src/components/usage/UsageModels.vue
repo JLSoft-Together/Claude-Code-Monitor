@@ -9,9 +9,10 @@ const usage = useUsageStore()
 
 const max = computed(() => Math.max(0, ...usage.byModel.map((r) => r.value)))
 const fmt = (v: number) => (usage.metric === 'cost' ? formatCost(v, locale.value) : compactNumber(v))
-const slotColor = (model: string) => {
+const MODEL_BG = ['bg-model-1', 'bg-model-2', 'bg-model-3', 'bg-model-4', 'bg-model-5', 'bg-model-6', 'bg-model-7', 'bg-model-8']
+const slotClass = (model: string) => {
   const slot = usage.modelSlot[model]
-  return slot ? `var(--ccm-cat-${slot})` : 'var(--ccm-ink-faint)'
+  return slot ? MODEL_BG[slot - 1] : 'bg-ink-faint'
 }
 
 function toggle(model: string): void {
@@ -42,7 +43,7 @@ const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) =>
             <th scope="col" class="py-2 pl-2 text-right font-medium">{{ t('usage.cost') }}</th>
           </tr>
         </thead>
-        <TransitionGroup tag="tbody" name="ccm-list" class="relative">
+        <TransitionGroup tag="tbody" name="ccm-list" class="ccm-list-inflow relative">
           <tr v-for="row in usage.byModel" :key="row.id" class="border-b border-line last:border-b-0">
             <th scope="row" class="py-2.5 pr-3 font-normal">
               <button
@@ -53,14 +54,15 @@ const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) =>
                 @click="toggle(row.id)"
               >
                 <span class="flex items-center gap-2">
-                  <span class="size-2.5 shrink-0 rounded-sm" :style="{ background: slotColor(row.id) }" aria-hidden="true" />
-                  <span class="truncate font-medium group-hover:underline" :class="usage.model === row.id ? 'text-accent' : 'text-ink'">{{ row.id }}</span>
+                  <span class="size-2.5 shrink-0 rounded-sm" :class="slotClass(row.id)" aria-hidden="true" />
+                  <span class="truncate font-medium group-hover:underline" :class="usage.model === row.id ? 'text-accent-ink' : 'text-ink'">{{ row.id }}</span>
                   <span class="ml-auto text-xs text-ink-muted tabular-nums">{{ fmt(row.value) }}</span>
                 </span>
                 <span class="block h-1.5 w-full rounded-full bg-fill" aria-hidden="true">
                   <span
-                    class="ccm-grow-x block h-full rounded-full transition-[width] duration-500"
-                    :style="{ width: `${max > 0 ? Math.max(1, (row.value / max) * 100) : 0}%`, background: slotColor(row.id) }"
+                    class="ccm-grow-x block h-full origin-left rounded-full transition-transform duration-(--ccm-dur-slow) ease-out-quint"
+                    :class="slotClass(row.id)"
+                    :style="{ transform: `scaleX(${max > 0 ? Math.max(0.01, row.value / max) : 0})` }"
                   />
                 </span>
               </button>

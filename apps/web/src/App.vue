@@ -43,6 +43,11 @@ desktop?.onFocus?.((terminalId) => {
   ui.setView('workspace')
   return true
 })
+// Chords pressed while a browser pane's page has focus come back from the main process; replay them on the
+// window (not inside .xterm) so the workspace / palette handlers see them as usual.
+desktop?.onForwardKey?.((key) => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { ...key, bubbles: true, cancelable: true }))
+})
 desktop?.onSelect?.((terminalId) => {
   ui.setView('monitor')
   ui.focusTerminal(terminalId)
@@ -52,6 +57,12 @@ const showWorkspace = computed(() => hasTerminals && !ui.compact && ui.view === 
 const workspaceOpened = ref(false)
 watch(showWorkspace, (shown) => shown && (workspaceOpened.value = true), { immediate: true })
 
+// The outgoing view lingers for its fade; it must not keep the #main skip target or take clicks.
+function retireView(el: Element): void {
+  el.removeAttribute('id')
+  el.setAttribute('inert', '')
+}
+
 const header = ref<ComponentPublicInstance | null>(null)
 const headerObserver = new ResizeObserver(([entry]) => {
   if (entry) document.documentElement.style.setProperty('--ccm-header-h', `${Math.ceil(entry.target.getBoundingClientRect().height)}px`)
@@ -59,7 +70,7 @@ const headerObserver = new ResizeObserver(([entry]) => {
 
 // The mac menu leaves Cmd+W to the page; the workspace closes a pane with it, every other view closes the window.
 function onCloseKey(e: KeyboardEvent): void {
-  if (!isMac || !e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.code !== 'KeyW' || ui.view === 'workspace') return
+  if (!isMac || !e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.code !== 'KeyW' || showWorkspace.value) return
   e.preventDefault()
   window.close()
 }
@@ -86,14 +97,19 @@ onBeforeUnmount(() => {
       {{ t('app.skipToContent') }}
     </a>
     <AppHeader ref="header" />
-    <Transition name="ccm-view" mode="out-in">
-      <CompactView v-if="ui.compact" id="main" key="compact" />
-      <MonitorView v-else-if="ui.view === 'monitor'" id="main" key="monitor" />
-      <UsageView v-else-if="ui.view === 'usage'" id="main" key="usage" />
-      <HistoryView v-else-if="ui.view === 'history'" id="main" key="history" />
-    </Transition>
-    <!-- Kept mounted once opened: switching views must not tear down the terminals' xterm state. -->
-    <WorkspaceView v-if="workspaceOpened" v-show="showWorkspace" :id="showWorkspace ? 'main' : undefined" />
+    <!-- Views share one grid cell so the switch is a crossfade in place, never the old view pushing the new one down. -->
+    <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] *:[grid-area:1/1]">
+      <Transition name="ccm-view" @before-leave="retireView">
+        <CompactView v-if="ui.compact" id="main" key="compact" />
+        <MonitorView v-else-if="ui.view === 'monitor'" id="main" key="monitor" />
+        <UsageView v-else-if="ui.view === 'usage'" id="main" key="usage" />
+        <HistoryView v-else-if="ui.view === 'history'" id="main" key="history" />
+      </Transition>
+      <!-- Kept mounted once opened: switching views must not tear down the terminals' xterm state. -->
+      <Transition name="ccm-view">
+        <WorkspaceView v-if="workspaceOpened" v-show="showWorkspace" :id="showWorkspace ? 'main' : undefined" :visible="showWorkspace" />
+      </Transition>
+    </div>
     <CommandPalette />
     <RecapDialog />
     <DiagnosticsDialog />

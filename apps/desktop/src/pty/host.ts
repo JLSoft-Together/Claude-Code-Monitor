@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { realpathSync, statSync, watch, type FSWatcher } from 'node:fs'
 import http from 'node:http'
@@ -19,6 +19,7 @@ import {
 import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, runGit, worktreeDest } from './git'
 import { ownersOf, readPidTable } from './owners'
 import { childEnv, clampDim, presetCommand, taskkillPath } from './presets'
+import { writeShellInit } from './shellInit'
 
 // Native module ships outside the bundle (resources/pty in a packaged app), so it is required by path.
 const pty = require(process.env.CCM_NODE_PTY || '@lydell/node-pty') as typeof import('@lydell/node-pty')
@@ -33,11 +34,14 @@ const EXITED_TTL_MS = 30 * 60_000
 // Deck's numbers: past ~512 KB unsent the renderer is behind; pausing the PTY lets the agent block instead of us buffering.
 const PAUSE_AT = 512 * 1024
 const RESUME_AT = 128 * 1024
+const INIT_DIR = !IS_WIN && process.env.CCM_PTY_INIT_DIR && writeShellInit(process.env.CCM_PTY_INIT_DIR) ? process.env.CCM_PTY_INIT_DIR : undefined
 
 interface Session {
   id: string
   preset: PtyPreset
   cwd: string
+  /** Folder the shell last reported after a `cd` (validated); preview roots and the branch follow it. */
+  liveCwd: string | null
   proc: IPty
   pid: number
   ring: string
@@ -49,6 +53,8 @@ interface Session {
   paused: boolean
   branch: string | null
   headWatcher: FSWatcher | null
+  /** Bumped per folder change so a slow `git rev-parse` for an old folder never wins. */
+  branchGen: number
 }
 
 const sessions = new Map<string, Session>()
@@ -103,9 +109,9 @@ function flush(s: Session): void {
 }
 
 function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string): Session {
-  const spec = presetCommand(preset, process.platform, process.env, resume)
-  const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env: childEnv(process.env), useConptyDll: false })
-  const s: Session = { id: randomUUID(), preset, cwd, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null }
+  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR)
+  const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env: { ...childEnv(process.env), ...spec.env }, useConptyDll: false })
+  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0 }
   proc.onData((d) => {
     s.ring += d
     // Amortised trim; a replay may start mid escape sequence, which xterm shrugs off.
@@ -132,16 +138,23 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
     }, 25)
   }
   sessions.set(s.id, s)
-  void trackBranch(s)
+  void trackBranch(s, cwd)
   return s
 }
 
 // Event driven: git rewrites HEAD (via HEAD.lock rename) on checkout / switch, so watch its folder, not the file.
-async function trackBranch(s: Session): Promise<void> {
-  const res = await runGit(s.cwd, ['rev-parse', '--absolute-git-dir'], 10_000)
+async function trackBranch(s: Session, dir: string): Promise<void> {
+  const gen = ++s.branchGen
+  dropWatcher(s)
+  const res = await runGit(dir, ['rev-parse', '--absolute-git-dir'], 10_000)
+  if (gen !== s.branchGen || !sessions.has(s.id)) return
   const gitDir = res.ok ? res.stdout.trim() : ''
-  if (!gitDir || !sessions.has(s.id)) return
+  if (!gitDir) {
+    if (s.branch !== null) send(s.ws, { t: 'branch', branch: (s.branch = null) })
+    return
+  }
   const update = (): void => {
+    if (gen !== s.branchGen) return
     const branch = readHeadBranch(gitDir)
     if (branch === s.branch) return
     s.branch = branch
@@ -149,6 +162,7 @@ async function trackBranch(s: Session): Promise<void> {
   }
   update()
   let timer: NodeJS.Timeout | null = null
+  dropWatcher(s)
   try {
     s.headWatcher = watch(gitDir, (_event, file) => {
       if (file !== 'HEAD') return
@@ -170,12 +184,14 @@ function dropWatcher(s: Session): void {
   s.headWatcher = null
 }
 
+const treePid = (s: Session): number | null => (IS_WIN && s.exitCode === null ? s.proc.pid || s.pid || null : null)
+
 // node-pty's kill only ends the shell; agents and their tool processes would survive it on Windows.
-function kill(s: Session): void {
+function kill(s: Session, treeKilled = false): void {
   sessions.delete(s.id)
   dropWatcher(s)
-  const pid = s.proc.pid || s.pid
-  if (IS_WIN && pid && s.exitCode === null) execFile(taskkillPath(process.env), ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, () => undefined)
+  const pid = treeKilled ? null : treePid(s)
+  if (pid) execFile(taskkillPath(process.env), ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, () => undefined)
   try {
     s.proc.kill()
   } catch {
@@ -188,6 +204,7 @@ function attachTo(ws: WebSocket, s: Session, replay: boolean): void {
   s.ws = ws
   s.pending = []
   send(ws, { t: 'ready', id: s.id, preset: s.preset, pid: s.pid, cwd: s.cwd, replay })
+  if (s.liveCwd) send(ws, { t: 'cwd', cwd: s.liveCwd })
   if (replay && s.ring) ws.send(Buffer.from(s.ring, 'utf8'), { binary: true })
   if (s.branch !== null) send(ws, { t: 'branch', branch: s.branch })
   if (s.exitCode !== null) send(ws, { t: 'exit', code: s.exitCode })
@@ -251,7 +268,7 @@ async function answerWorktree(ws: WebSocket, msg: Extract<PtyClientMessage, { t:
     const target = list.find((w) => typeof msg.path === 'string' && path.resolve(w.path) === path.resolve(msg.path))
     if (!target) return wtError(ws, 'unknown')
     if (target.main) return wtError(ws, 'main')
-    if ([...sessions.values()].some((s) => s.exitCode === null && isInside(s.cwd, target.path))) return wtError(ws, 'busy')
+    if ([...sessions.values()].some((s) => s.exitCode === null && (isInside(s.cwd, target.path) || (!!s.liveCwd && isInside(s.liveCwd, target.path))))) return wtError(ws, 'busy')
     if (!target.prunable) {
       const status = await runGit(target.path, ['status', '--porcelain'])
       if (!status.ok) return wtError(ws, 'git', status.stderr)
@@ -264,6 +281,19 @@ async function answerWorktree(ws: WebSocket, msg: Extract<PtyClientMessage, { t:
   } finally {
     worktreeBusy = false
   }
+}
+
+/**
+ * The page relays what the shell printed, so it is untrusted: real existing folder only, never a filesystem
+ * root (it widens preview roots, like a terminal opened there would).
+ */
+function reportCwd(ws: WebSocket, s: Session, raw: unknown): void {
+  const real = typeof raw === 'string' && raw !== '' ? resolveCwd(raw) : null
+  const ok = real && path.parse(real).root !== real ? real : null
+  send(ws, { t: 'cwd', cwd: ok })
+  if (!ok || ok === (s.liveCwd ?? s.cwd)) return
+  s.liveCwd = ok
+  void trackBranch(s, ok)
 }
 
 function onText(ws: WebSocket, current: Session | null, raw: string): Session | null {
@@ -319,6 +349,8 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
   } else if (msg.t === 'kill') {
     kill(current)
     return null
+  } else if (msg.t === 'cwd') {
+    reportCwd(ws, current, msg.cwd)
   }
   return current
 }
@@ -360,10 +392,20 @@ wss.on('connection', (ws) => {
 })
 
 const census = (): PtySessionInfo[] =>
-  [...sessions.values()].map((s) => ({ id: s.id, preset: s.preset, cwd: s.cwd, pid: s.pid, alive: s.exitCode === null }))
+  [...sessions.values()].map((s) => ({ id: s.id, preset: s.preset, cwd: s.cwd, liveCwd: s.liveCwd ?? undefined, pid: s.pid, alive: s.exitCode === null }))
 
+// Sync: the process exits right after, and an async taskkill still pending then would never run (orphaned agents).
 function shutdown(): void {
-  for (const s of [...sessions.values()]) kill(s)
+  const all = [...sessions.values()]
+  const pids = all.map(treePid).filter((p): p is number => p !== null)
+  if (pids.length) {
+    try {
+      execFileSync(taskkillPath(process.env), ['/T', '/F', ...pids.flatMap((p) => ['/PID', String(p)])], { windowsHide: true, timeout: 2_500, stdio: 'ignore' })
+    } catch {
+      // some trees already gone (exit 128) or timeout; node-pty kill below still ends the shells
+    }
+  }
+  for (const s of all) kill(s, true)
   // node-pty's ConPTY worker keeps the event loop alive after kill.
   setTimeout(() => process.exit(0), 300)
 }

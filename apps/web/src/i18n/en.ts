@@ -1,3 +1,5 @@
+import viewer from './workspace-viewer'
+
 export default {
   app: {
     title: 'Agent Monitor',
@@ -11,11 +13,13 @@ export default {
     workspace: 'Workspace',
   },
   workspace: {
+    ...viewer.en,
     tabs: 'Terminals',
-    new: 'New terminal',
+    new: 'New',
+    newLabel: 'New tab',
     close: 'Close terminal',
     closeTab: 'Close tab',
-    newHint: 'New terminal ({keys})',
+    newHint: 'New tab: terminal, browser, file or changes ({keys})',
     splitPane: 'Split terminal',
     splitMenu: { title: 'Open next to it' },
     resize: 'Resize terminals',
@@ -103,7 +107,7 @@ export default {
       cancel: 'Cancel',
     },
     launch: {
-      title: 'New terminal',
+      title: 'New tab',
       agent: 'Start',
       recent: 'Recent',
       favorites: 'Favorites',
@@ -436,7 +440,8 @@ export default {
     subtitle: 'Work on the Monitor tab when you are not typing in a field.',
     hints: 'Show key hints on buttons',
     hintsHint: 'Small key badges next to the buttons they trigger. Press H to toggle.',
-    group: { panels: 'Panels and bar', map: 'Map and tabs', help: 'Help' },
+    group: { panels: 'Panels and bar', map: 'Map and tabs', workspace: 'Workspace', help: 'Help' },
+    workspaceNote: 'Work on the Workspace tab, also while a terminal has focus.',
     item: {
       sessions: 'Show or hide Sessions',
       sessionsPin: 'Pin Sessions as a column, or float it',
@@ -450,6 +455,17 @@ export default {
       hints: 'Show or hide key hints',
       help: 'Open this list',
       palette: 'Command palette',
+      wsNew: 'New tab',
+      wsSplit: 'Split the pane along its longer side',
+      wsSplitRight: 'Split the pane to the right',
+      wsSplitDown: 'Split the pane downward',
+      wsClose: 'Close the focused pane',
+      wsAttention: 'Jump to the next pane that needs you',
+      wsCycle: 'Next tab (add Shift to go back)',
+      wsTab: 'Go to tab 1 to 9',
+      wsFocus: 'Move focus to the pane beside it',
+      wsQuickOpen: 'Go to file in the project',
+      wsFind: 'Find in the focused terminal',
     },
   },
   wait: {
@@ -578,7 +594,7 @@ export default {
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',
     close: 'Close settings',
-    section: { appearance: 'Appearance', notifications: 'Notifications', reminders: 'Reminders and budget', help: 'Help', launch: 'New sessions' },
+    section: { appearance: 'Appearance', notifications: 'Notifications', reminders: 'Reminders and budget', help: 'Help', launch: 'New sessions', access: 'File access' },
     launchTerminal: 'Open sessions with',
     launchTerminalHint: 'Starred folders open in a new window of this app.',
     launchTerminalApp: { terminal: 'Terminal', iterm: 'iTerm2' },
@@ -589,6 +605,9 @@ export default {
     bridgeOff: 'Not set up',
     tourHint: 'A short walk through each part of the dashboard',
     diagHint: 'What the collector can see, for when something looks wrong',
+    forgetGrants: 'Forget allowed folders',
+    forgetGrantsHint: 'Pages and files outside your terminal folders will ask again',
+    forgetGrantsDone: 'Allowed folders forgotten',
     notifyLoop: 'When a session keeps failing',
     notifyLimit: 'When a plan limit or budget runs low',
     budget: 'Daily budget',

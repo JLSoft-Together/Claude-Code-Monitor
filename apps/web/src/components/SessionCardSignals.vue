@@ -60,25 +60,25 @@ const coldBump = useBump(() => cache.value?.cold)
 </script>
 
 <template>
-  <p v-if="quiet" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-st-waiting" :title="t('terminal.quietTitle')">
+  <p v-if="quiet" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-warning" :title="t('terminal.quietTitle')">
     <Hourglass :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ quiet }}</span>
   </p>
   <p
     v-if="cache"
     class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs transition-colors duration-300"
-    :class="cache.cold ? 'font-medium text-st-waiting' : 'text-ink-muted'"
+    :class="cache.cold ? 'font-medium text-warning' : 'text-ink-muted'"
     :title="cache.title"
   >
     <Snowflake :key="coldBump" :size="13" class="shrink-0" :class="coldBump ? 'ccm-pop' : ''" aria-hidden="true" /><span class="truncate">{{ cache.label }}</span>
   </p>
-  <p v-if="loop" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-st-error" :title="loop.title">
+  <p v-if="loop" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-warning" :title="loop.title">
     <Repeat :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ loop.label }}</span>
   </p>
   <button
     v-if="conflict"
     type="button"
     class="ccm-enter relative z-10 mt-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded text-left text-xs transition-colors duration-300 hover:underline"
-    :class="conflict.hot ? 'font-medium text-st-waiting' : 'text-ink-muted'"
+    :class="conflict.hot ? 'font-medium text-warning' : 'text-ink-muted'"
     :title="t('terminal.conflictTitle')"
     @click="conflict.first && ui.focusTerminal(conflict.first)"
   >

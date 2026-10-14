@@ -1,3 +1,6 @@
+import { mkdtemp } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ActivityEvent, BackgroundJob, PlanLimits, TerminalSession, TerminalStatus } from '@ccm/shared'
 import { SnoozeStore } from '../src/snooze'
@@ -122,6 +125,7 @@ describe('Toaster', () => {
     expect(toaster.accepts(toaster.key)).toBe(true)
     expect(toaster.accepts('nope')).toBe(false)
     expect(toaster.accepts(null)).toBe(false)
+    expect(toaster.accepts(toaster.key.slice(1))).toBe(false)
     expect(toaster.linkFor()).toBe(`http://127.0.0.1:4317/focus?k=${toaster.key}`)
   })
 
@@ -395,18 +399,31 @@ describe('snooze route', () => {
       port: 0,
       webDist: '.',
       store: new MonitorStore({ activityLimit: 10, batchMs: 10 }),
-      onSnoozeLink: (t, key, m) => (key === 'good' ? (calls.push(`${t}:${m}`), `Snoozed <${m}>`) : null),
+      onSnoozeLink: (t, key, m) => key === 'good' && calls.push(`${t}:${m}`) > 0,
     })
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
     try {
       expect((await fetch(`${base}/snooze?k=bad&t=a&m=15`)).status).toBe(404)
       expect((await fetch(`${base}/snooze?k=good&t=a&m=x`)).status).toBe(404)
       const ok = await fetch(`${base}/snooze?k=good&t=a&m=15`)
-      expect(ok.status).toBe(200)
-      expect(await ok.text()).toContain('Snoozed &lt;15>')
+      expect(ok.status).toBe(204)
       expect(calls).toEqual(['a:15'])
     } finally {
       server.close()
     }
+  })
+})
+
+describe('toast link key', () => {
+  it('survives a restart so toasts left in the Action Center keep working', async () => {
+    const file = path.join(await mkdtemp(path.join(os.tmpdir(), 'ccm-key-')), 'notify.json')
+    const first = new Toaster({ supported: true, port: 4317, file })
+    await first.load()
+    await first.flush()
+    const second = new Toaster({ supported: true, port: 4317, file })
+    await second.load()
+    expect(second.key).toMatch(/^[0-9a-f]{32}$/)
+    expect(second.key).toBe(first.key)
+    expect(second.accepts(first.key)).toBe(true)
   })
 })

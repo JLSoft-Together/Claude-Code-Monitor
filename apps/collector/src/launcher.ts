@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import type { LaunchErrorCode, LaunchMode, TerminalApp } from '@ccm/shared'
 import { parseOsaError, runCommand, type Runner } from './osascript'
+import { windowsPowerShell, windowsTerminal } from './win-exe'
 
 export type Spawner = (command: string, args: string[], cwd: string) => Promise<void>
 
@@ -62,6 +63,7 @@ export async function launchClaude(
   terminalApp: TerminalApp = 'terminal',
   platform: NodeJS.Platform = process.platform,
   run: Runner = (command, args) => runCommand(command, args, LAUNCH_TIMEOUT_MS),
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const mac = platform === 'darwin'
   if (!mac && platform !== 'win32' && spawner === defaultSpawner) throw new Error('unsupported platform')
@@ -74,13 +76,15 @@ export async function launchClaude(
     const code = parseOsaError(r.stderr)
     throw new LaunchError(code === 'denied' || code === 'notInstalled' ? code : 'failed')
   }
-  if (wtSafe(dir)) {
+  const powershell = windowsPowerShell(env)
+  const wt = wtSafe(dir) ? windowsTerminal(env) : null
+  if (wt) {
     try {
-      await spawner('wt.exe', ['-w', '0', 'nt', '-d', dir, 'powershell.exe', ...claudeArgs(mode)], dir)
+      await spawner(wt, ['-w', '0', 'nt', '-d', dir, powershell, ...claudeArgs(mode)], dir)
       return
     } catch {
       // Windows Terminal not installed → plain console below.
     }
   }
-  await spawner('powershell.exe', claudeArgs(mode), dir)
+  await spawner(powershell, claudeArgs(mode), dir)
 }

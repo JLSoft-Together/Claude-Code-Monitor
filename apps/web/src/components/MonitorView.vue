@@ -63,7 +63,7 @@ function panelTransition(p: Panel): string {
 
 <template>
   <main
-    class="flex h-[calc(100dvh-var(--ccm-header-h,4.5rem))] min-h-[420px] w-full flex-col overflow-hidden"
+    class="flex h-[calc(100dvh-var(--ccm-header-h,4.5rem))] min-h-[420px] w-full flex-col overflow-hidden transition-opacity duration-(--ccm-dur-slow) ease-out-quint"
     :class="connection.state !== 'connected' && connection.hasData ? 'opacity-90' : ''"
   >
     <SessionBar v-if="ui.barDock === 'top'" data-tour="metrics" />

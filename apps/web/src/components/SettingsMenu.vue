@@ -2,10 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
+import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FolderX, GraduationCap, Moon, Send, Settings2, Stethoscope, Sun, X } from 'lucide-vue-next'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
+import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
+import { forgetGrants, hasGrants } from '../lib/preview'
 import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -21,6 +23,12 @@ const extras = useExtrasStore()
 const connection = useConnectionStore()
 const ui = useUiStore()
 const panel = ref<HTMLElement | null>(null)
+const grantsForgotten = ref(false)
+
+async function onForgetGrants(): Promise<void> {
+  grantsForgotten.value = await forgetGrants()
+  if (grantsForgotten.value) setTimeout(() => (grantsForgotten.value = false), 4000)
+}
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
@@ -191,8 +199,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
     :disabled="unsupported"
     @click="settings.toggleNotifications()"
   >
-    <LottieArt v-if="ringing" name="notification-bell" :play-key="ringing" class="size-6 text-accent" />
-    <Bell v-else-if="settings.notifyEnabled" :size="18" class="text-accent" aria-hidden="true" />
+    <LottieArt v-if="ringing" name="notification-bell" :play-key="ringing" class="size-6 text-accent-ink" />
+    <Bell v-else-if="settings.notifyEnabled" :size="18" class="text-accent-ink" aria-hidden="true" />
     <BellOff v-else :size="18" aria-hidden="true" />
   </button>
 
@@ -210,20 +218,10 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
   </button>
 
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition-opacity duration-200 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition-opacity duration-150 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-scrim">
       <div v-if="ui.settingsOpen" class="fixed inset-0 z-50 ccm-scrim" @mousedown.self="close" />
     </Transition>
-    <Transition
-      enter-active-class="transition-transform duration-250 ease-out-quint motion-reduce:transition-none"
-      enter-from-class="translate-x-full"
-      leave-active-class="transition-transform duration-150 ease-in motion-reduce:transition-none"
-      leave-to-class="translate-x-full"
-    >
+    <Transition name="ccm-side" @before-leave="retireOverlay">
       <aside
         v-if="ui.settingsOpen"
         id="settings-panel"
@@ -411,7 +409,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           <section v-if="snippet" aria-labelledby="set-statusline" class="mt-6">
             <div class="mb-1.5 flex items-center justify-between gap-3 px-3">
               <h3 id="set-statusline" class="text-2xs font-semibold text-ink-muted">{{ t('limits.setupTitle') }}</h3>
-              <span class="inline-flex items-center gap-1 text-2xs font-medium" :class="extras.limits ? 'text-st-done' : 'text-st-waiting'">
+              <span class="inline-flex items-center gap-1 text-2xs font-medium" :class="extras.limits ? 'text-success' : 'text-warning'">
                 <CircleCheck v-if="extras.limits" :size="13" aria-hidden="true" /><CircleAlert v-else :size="13" aria-hidden="true" />
                 {{ extras.limits ? t('settings.bridgeOn') : t('settings.bridgeOff') }}
               </span>
@@ -428,11 +426,30 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                     :title="copied ? t('limits.copied') : t('limits.copy')"
                     @click="copySnippet"
                   >
-                    <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />
+                    <Check v-if="copied" :size="14" class="ccm-pop text-success" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />
                   </button>
                 </div>
                 <p class="mt-2 text-2xs leading-relaxed text-ink-faint">{{ t('limits.chainHint') }}</p>
               </div>
+            </div>
+          </section>
+
+          <section v-if="hasGrants" aria-labelledby="set-access" class="mt-6">
+            <h3 id="set-access" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.access') }}</h3>
+            <div class="ccm-group overflow-hidden">
+              <button
+                type="button"
+                class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill disabled:cursor-default"
+                :disabled="grantsForgotten"
+                data-forget-grants
+                @click="onForgetGrants"
+              >
+                <component :is="grantsForgotten ? CircleCheck : FolderX" :size="16" class="shrink-0" :class="grantsForgotten ? 'text-success' : 'text-ink-muted'" aria-hidden="true" />
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm">{{ grantsForgotten ? t('settings.forgetGrantsDone') : t('settings.forgetGrants') }}</span>
+                  <span class="mt-0.5 block text-2xs text-ink-faint">{{ t('settings.forgetGrantsHint') }}</span>
+                </span>
+              </button>
             </div>
           </section>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { reducedMotion, pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { ArrowDownUp, Trash2 } from 'lucide-vue-next'
 import { readSessionSort, saveSessionSort, SESSION_SORTS, sortSessions } from '../lib/sessionSort'
@@ -65,7 +66,7 @@ watch(
     const root = listEl.value?.$el
     if (!id || !root || ui.isCollapsed('sessions')) return
     const item = [...root.querySelectorAll<HTMLElement>('[data-terminal-id]')].find((el) => el.dataset.terminalId === id)
-    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const smooth = !reducedMotion()
     item?.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
   },
 )
@@ -114,7 +115,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       v-else
       ref="listEl"
       tag="ul"
-      name="ccm-list"
+      name="ccm-list" @before-leave="pinLeaving"
       class="relative grid grid-cols-1 gap-2.5"
       @pointerenter="freeze(true)"
       @pointerleave="onPointerLeave"

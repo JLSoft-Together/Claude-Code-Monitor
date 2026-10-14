@@ -28,6 +28,17 @@ import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints } f
 import { CodexMonitor } from './codex/monitor'
 import type { ClaudeTarget } from './codex/link'
 
+/** A watcher that errored is dead (dir deleted / handle lost); close it so the next setupWatchers() starts a fresh one. */
+function retireWatcher(watchers: FSWatcher[], w: FSWatcher): void {
+  try {
+    w.close()
+  } catch {
+    // already closed
+  }
+  const i = watchers.indexOf(w)
+  if (i !== -1) watchers.splice(i, 1)
+}
+
 const SESSION_ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
 /** Persisted side stores; tests leave them in memory. */
@@ -468,6 +479,8 @@ export class Monitor {
     this.diffs.delete(tracker.terminalId)
     clearTimeout(this.diffTimers.get(tracker.terminalId))
     this.diffTimers.delete(tracker.terminalId)
+    clearTimeout(this.syncTimers.get(tracker.terminalId))
+    this.syncTimers.delete(tracker.terminalId)
     this.store.removeTerminal(tracker.terminalId)
     this.aliases.delete(tracker.terminalId)
     this.notes.delete(tracker.terminalId)
@@ -712,6 +725,7 @@ export class Monitor {
         const w = watch(this.sessionsDir, () => this.scheduleRegistry())
         w.on('error', () => {
           this.sessionsWatched = false
+          retireWatcher(this.watchers, w)
         })
         this.watchers.push(w)
         this.sessionsWatched = true
@@ -728,6 +742,7 @@ export class Monitor {
         })
         w.on('error', () => {
           this.projectsWatched = false
+          retireWatcher(this.watchers, w)
         })
         this.watchers.push(w)
         this.projectsWatched = true

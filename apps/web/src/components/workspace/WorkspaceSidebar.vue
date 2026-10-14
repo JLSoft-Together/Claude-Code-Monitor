@@ -5,13 +5,13 @@ import { Folder, GitBranch, Plus } from 'lucide-vue-next'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { leaves } from '../../lib/splitLayout'
 import { dirKey } from '../../stores/favorites'
-import { useWorkspaceStore, type Pane } from '../../stores/workspace'
+import { isTerm, useWorkspaceStore, type Pane } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
-import PresetIcon from './PresetIcon.vue'
+import PaneIcon from './PaneIcon.vue'
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
-const { sessionOf, labelOf } = usePaneInfo()
+const { sessionOf, labelOf, viewDetail } = usePaneInfo()
 
 interface Group {
   key: string
@@ -51,6 +51,9 @@ function paneBranch(pane: Pane): string | undefined {
 }
 
 function statusText(pane: Pane): string {
+  if (pane.kind === 'browser') return t('workspace.open.browser')
+  if (pane.kind === 'file') return t('workspace.viewer.title')
+  if (pane.kind === 'changes') return t('workspace.changes.title')
   const session = sessionOf(pane)
   if (pane.attention === 'waiting') return t('workspace.attention.waiting')
   if (pane.attention === 'done') return t('workspace.attention.done')
@@ -71,10 +74,10 @@ function onKey(e: KeyboardEvent): void {
 
 <template>
   <nav class="ccm-material ccm-scroll flex h-full w-full flex-col gap-3 overflow-y-auto rounded-card p-2" :aria-label="t('workspace.side.title')" @keydown="onKey">
-    <section v-for="g in groups" :key="g.key" class="flex flex-col" :aria-labelledby="`side-${g.key}`">
+    <section v-for="(g, gi) in groups" :key="g.key" class="flex flex-col" :aria-labelledby="`ws-side-${gi}`">
       <div class="group flex h-7 items-center gap-1.5 px-2">
         <Folder :size="13" class="shrink-0 text-ink-faint" aria-hidden="true" />
-        <h3 :id="`side-${g.key}`" class="min-w-0 flex-1 truncate text-xs font-semibold text-ink-muted" :title="g.root ?? undefined">{{ g.name }}</h3>
+        <h3 :id="`ws-side-${gi}`" class="min-w-0 flex-1 truncate text-xs font-semibold text-ink-muted" :title="g.root ?? undefined">{{ g.name }}</h3>
         <span
           v-if="g.waiting"
           class="shrink-0 rounded-full bg-st-waiting-soft px-1.5 text-2xs font-semibold text-st-waiting tabular"
@@ -99,23 +102,26 @@ function onKey(e: KeyboardEvent): void {
             type="button"
             data-side-row
             class="flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pr-2 pl-5 text-left text-xs"
-            :class="pane.key === workspace.activeKey ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-fill'"
+            :class="pane.key === workspace.activeKey ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill'"
             :aria-current="pane.key === workspace.activeKey ? 'true' : undefined"
-            :title="pane.cwd"
+            :title="isTerm(pane) ? pane.cwd : viewDetail(pane)"
             @click="workspace.activate(pane.key)"
           >
             <StatusIcon v-if="sessionOf(pane)" :status="sessionOf(pane)!.status" :size="13" />
-            <PresetIcon v-else :preset="pane.preset" :size="13" class="shrink-0 opacity-80" />
+            <PaneIcon v-else :pane="pane" :size="13" class="shrink-0" />
             <span class="min-w-0 flex-1 truncate">{{ labelOf(pane) }}</span>
-            <span v-if="paneBranch(pane)" class="inline-flex max-w-[45%] min-w-0 shrink items-center gap-0.5 opacity-60">
+            <span v-if="paneBranch(pane)" class="inline-flex max-w-[45%] min-w-0 shrink items-center gap-0.5 text-ink-faint">
               <GitBranch :size="11" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ paneBranch(pane) }}</span>
             </span>
             <span
               v-if="pane.attention"
-              class="size-2 shrink-0 rounded-full"
-              :class="pane.attention === 'waiting' ? 'bg-st-waiting' : 'bg-st-done'"
+              :key="pane.attention"
+              class="ccm-flash relative inline-flex shrink-0 rounded-full"
+              :class="pane.attention === 'waiting' ? 'text-st-waiting' : 'text-st-done'"
               aria-hidden="true"
-            />
+            >
+              <StatusIcon :status="pane.attention === 'waiting' ? 'waiting' : 'completed'" :size="12" :animate="false" />
+            </span>
             <span class="sr-only">{{ statusText(pane) }}</span>
           </button>
         </li>

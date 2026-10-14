@@ -101,7 +101,7 @@ function outcomeOf(bar: Bar): 'ok' | 'error' | 'interrupted' | 'running' {
 }
 
 const BAR_CLASS = {
-  ok: 'inset-y-1 rounded-sm bg-ink-faint/40 text-ink',
+  ok: 'inset-y-1 rounded-sm bg-ink-faint text-surface',
   error: 'inset-y-0 rounded-none bg-st-error text-surface',
   interrupted: 'inset-y-1 rounded-sm ccm-stripe text-ink',
   running: 'inset-y-1 rounded-l-sm border-r-2 border-dashed border-ink bg-st-working text-surface ccm-breathe',
@@ -183,8 +183,8 @@ function percent(rate: number): string {
                 v-for="(bar, i) in lane.bars"
                 :key="bar.span.id"
                 type="button"
-                class="absolute flex cursor-default items-center gap-0.5 px-0.5 text-2xs leading-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-accent"
-                :class="[BAR_CLASS[outcomeOf(bar)], hoveredTool === bar.span.tool ? 'z-10 ring-2 ring-accent' : '']"
+                class="absolute flex cursor-default items-center gap-0.5 px-0.5 text-2xs leading-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-focus"
+                :class="[BAR_CLASS[outcomeOf(bar)], hoveredTool === bar.span.tool ? 'z-10 ring-2 ring-focus' : '']"
                 :style="{ left: `${bar.left}%`, width: `${bar.width}%`, minWidth: '2px' }"
                 :tabindex="i === activeIndex(lane.key, lane.bars.length) ? 0 : -1"
                 :title="barLabel(bar, lane.name)"
@@ -220,7 +220,7 @@ function percent(rate: number): string {
             :key="row.tool"
             tabindex="0"
             class="border-b border-line text-ink outline-none focus-visible:bg-fill"
-            :class="hoveredTool === row.tool ? 'bg-fill ring-2 ring-accent ring-inset' : ''"
+            :class="hoveredTool === row.tool ? 'bg-fill ring-2 ring-focus ring-inset' : ''"
             @mouseenter="hoveredTool = row.tool"
             @mouseleave="hoveredTool = null"
             @focus="hoveredTool = row.tool"
@@ -247,6 +247,6 @@ function percent(rate: number): string {
 
 <style scoped>
 .ccm-stripe {
-  background: repeating-linear-gradient(135deg, var(--color-st-waiting) 0 3px, var(--color-st-waiting-soft) 3px 6px);
+  background: repeating-linear-gradient(135deg, var(--ccm-waiting) 0 3px, var(--ccm-waiting-soft) 3px 6px);
 }
 </style>

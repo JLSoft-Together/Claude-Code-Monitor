@@ -17,6 +17,8 @@ export type PtyClientMessage =
   | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string }
   | { t: 'attach'; id: string }
   | { t: 'resize'; cols: number; rows: number }
+  /** Folder the attached shell reported (OSC 7 / 9;9) after a `cd`; answered with `cwd` once validated. */
+  | { t: 'cwd'; cwd: string }
   /** Without id: the attached session. With id: any session (closing a pane whose socket already dropped). */
   | { t: 'kill'; id?: string }
   /** Which of these process ids run inside a CCM terminal (any depth), answered with `owners`. */
@@ -39,6 +41,8 @@ export type PtyServerMessage =
   | { t: 'owners'; owners: Record<string, string> | null }
   /** Current branch of the attached session's folder (short commit id when detached); pushed on change. */
   | { t: 'branch'; branch: string | null }
+  /** Validated (real, existing) shell folder; null = the reported one was refused. Re-sent on attach. */
+  | { t: 'cwd'; cwd: string | null }
   | { t: 'wt.list'; repo: string | null; worktrees: PtyWorktree[] }
   | { t: 'wt.added'; path: string; branch: string }
   | { t: 'wt.removed'; path: string }
@@ -66,6 +70,8 @@ export interface PtySessionInfo {
   id: string
   preset: PtyPreset
   cwd: string
+  /** Shell's current folder after `cd`, when the shell reported one. */
+  liveCwd?: string
   pid: number
   alive: boolean
 }

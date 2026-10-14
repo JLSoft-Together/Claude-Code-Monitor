@@ -8,6 +8,8 @@ export interface PtySupervisorOptions {
   nodePty: string
   origins: string[]
   logFile: string
+  /** zsh startup wrappers that report the current folder (posix only). */
+  shellInitDir?: string
 }
 
 const START_TIMEOUT_MS = 10_000
@@ -24,10 +26,12 @@ export class PtySupervisor {
   private log: WriteStream | null = null
   private token = ''
   private censusWaiters: ((sessions: PtySessionInfo[]) => void)[] = []
+  private stopped = false
 
   constructor(private readonly opts: PtySupervisorOptions) {}
 
   endpoint(): Promise<PtyEndpoint> {
+    if (this.stopped) return Promise.reject(new Error('pty host stopped'))
     this.starting ??= this.start().catch((err: unknown) => {
       this.starting = null
       throw err
@@ -39,7 +43,7 @@ export class PtySupervisor {
     this.token = randomBytes(32).toString('hex')
     this.log ??= createWriteStream(this.opts.logFile, { flags: 'w' })
     const child = utilityProcess.fork(this.opts.script, [], {
-      env: { ...process.env, CCM_PTY_TOKEN: this.token, CCM_PTY_ORIGINS: this.opts.origins.join(','), CCM_NODE_PTY: this.opts.nodePty },
+      env: { ...process.env, CCM_PTY_TOKEN: this.token, CCM_PTY_ORIGINS: this.opts.origins.join(','), CCM_NODE_PTY: this.opts.nodePty, ...(this.opts.shellInitDir ? { CCM_PTY_INIT_DIR: this.opts.shellInitDir } : {}) },
       stdio: 'pipe',
       serviceName: 'Agent Monitor terminals',
     })
@@ -90,6 +94,7 @@ export class PtySupervisor {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true
     const child = this.child
     if (!child) return
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))

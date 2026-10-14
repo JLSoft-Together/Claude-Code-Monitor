@@ -26,17 +26,6 @@ export function isPortInUse(err: unknown): boolean {
   return err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
 }
 
-/** True when the port answers /health the way this collector does (another CCM instance or the desktop app). */
-export async function isCollectorAt(port: number): Promise<boolean> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) })
-    const body = (await res.json()) as { ok?: unknown; seq?: unknown }
-    return res.ok && body.ok === true && typeof body.seq === 'number'
-  } catch {
-    return false
-  }
-}
-
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 function hostOf(value: string | undefined): string | null {
@@ -136,6 +125,8 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
 /**
  * The desktop app gives this page a shell (embedded terminals), so script injection must not run: only our bundle
  * and the inline pre-paint script (hashed as served) execute. ws://127.0.0.1:* reaches the desktop PTY host.
+ * frame-src: workspace browser panes are <webview> guests (sandboxed, own partition) subject to the embedder's CSP;
+ * img-src loopback: file viewer images and preview favicons come from the desktop preview server.
  */
 export function contentSecurityPolicy(html: string): string {
   const hashes = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
@@ -146,10 +137,11 @@ export function contentSecurityPolicy(html: string): string {
     "default-src 'self'",
     `script-src 'self' ${hashes.join(' ')}`.trim(),
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: http://127.0.0.1:* http://localhost:*",
     "font-src 'self' data:",
     "connect-src 'self' ws://127.0.0.1:*",
     "worker-src 'self'",
+    'frame-src http://127.0.0.1:* http://localhost:* https: http:',
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -162,11 +154,6 @@ export interface ClientContext {
   reply: (event: MonitorEvent) => void
   clients: number
   clientId: number
-}
-
-export function snoozePage(text: string): string {
-  const safe = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-  return `<!doctype html><meta charset="utf-8"><title>Agent Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p>${safe}</p><script>window.close()</script>`
 }
 
 function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
@@ -200,7 +187,7 @@ export function startServer(options: {
   onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
   onClientClose?: (clientId: number) => void
   onFocusRun?: (terminalId: string, key: string | null) => Promise<FocusWindowResult | null>
-  onSnoozeLink?: (terminalId: string, key: string | null, minutes: number) => string | null
+  onSnoozeLink?: (terminalId: string, key: string | null, minutes: number) => boolean
 }): Promise<Server> {
   const { store } = options
   const ports = [options.port, ...(options.devOriginPorts ?? [])]
@@ -222,11 +209,8 @@ export function startServer(options: {
       const q = new URL(req.url, 'http://127.0.0.1').searchParams
       const terminalId = q.get('t')
       const minutes = Number(q.get('m'))
-      const text =
-        terminalId && terminalId.length <= 256 && Number.isInteger(minutes) && minutes > 0 ? (options.onSnoozeLink?.(terminalId, q.get('k'), minutes) ?? null) : null
-      res
-        .writeHead(text ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
-        .end(text ? snoozePage(text) : '')
+      const ok = !!terminalId && terminalId.length <= 256 && Number.isInteger(minutes) && minutes > 0 && options.onSnoozeLink?.(terminalId, q.get('k'), minutes) === true
+      res.writeHead(ok ? 204 : 404, { 'cache-control': 'no-store' }).end()
       return
     }
     if (req.url === '/focus' && req.method === 'POST') {
@@ -253,7 +237,8 @@ export function startServer(options: {
     })
   })
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 })
+  // favorite.reorder carries up to 100 dirs of 1024 chars.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 })
   const clients = new Set<WebSocket>()
   const alive = new WeakMap<WebSocket, boolean>()
 

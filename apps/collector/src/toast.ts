@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   CONTEXT_THRESHOLDS,
   DEFAULT_QUIET,
@@ -28,6 +28,7 @@ import {
   type ToastTestResult,
 } from '@ccm/shared'
 import { JsonFile } from './json-file'
+import { windowsPowerShell } from './win-exe'
 
 export type ToastLocale = 'en' | 'vi'
 
@@ -85,7 +86,7 @@ function runPs(env: Record<string, string>): Promise<string | null> {
   if (process.platform !== 'win32') return Promise.resolve(null)
   return new Promise((resolve) => {
     execFile(
-      'powershell.exe',
+      windowsPowerShell(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
       { timeout: 15_000, windowsHide: true, maxBuffer: 64_000, env: { ...process.env, CCM_TOAST_APP: APP_ID, ...env } },
       (err, stdout) => resolve(err ? null : (stdout.trim().split(/\r?\n/).at(-1)?.trim() ?? null)),
@@ -143,7 +144,6 @@ interface Texts {
   open: string
   openDashboard: string
   dismiss: string
-  page: { opening: string; opened: string; snoozed: (minutes: number) => string }
 }
 
 export const TEXT: Record<ToastLocale, Texts> = {
@@ -174,11 +174,6 @@ export const TEXT: Record<ToastLocale, Texts> = {
     open: 'Open terminal',
     openDashboard: 'Open dashboard',
     dismiss: 'Dismiss',
-    page: {
-      opening: 'Opening terminal…',
-      opened: 'Terminal opened. You can close this tab.',
-      snoozed: (minutes) => `Snoozed for ${minutes} min. You can close this tab.`,
-    },
   },
   vi: {
     waitingTitle: (name) => `${name} đang chờ chủ nhân`,
@@ -207,11 +202,6 @@ export const TEXT: Record<ToastLocale, Texts> = {
     open: 'Mở terminal',
     openDashboard: 'Mở dashboard',
     dismiss: 'Bỏ qua',
-    page: {
-      opening: 'Đang mở terminal…',
-      opened: 'Đã mở terminal. Bạn có thể đóng tab này.',
-      snoozed: (minutes) => `Đã hoãn nhắc ${minutes} phút. Bạn có thể đóng tab này.`,
-    },
   },
 }
 
@@ -253,7 +243,7 @@ export interface NotifyPatch {
 }
 
 export class Toaster {
-  readonly key = randomBytes(16).toString('hex')
+  private keyValue = randomBytes(16).toString('hex')
   snoozed: (terminal: TerminalSession) => boolean = () => false
   private enabled = true
   private kinds: Record<ToastKind, boolean> = { ...DEFAULT_TOAST_KINDS }
@@ -284,7 +274,10 @@ export class Toaster {
   }
 
   async load(): Promise<void> {
-    const raw = (await this.file?.read()) as { toast?: unknown; locale?: unknown; kinds?: unknown; quiet?: unknown; stuckMinutes?: unknown } | null
+    const raw = (await this.file?.read()) as { toast?: unknown; locale?: unknown; kinds?: unknown; quiet?: unknown; stuckMinutes?: unknown; key?: unknown } | null
+    // Toasts still in the Action Center carry the key of the run that showed them.
+    if (typeof raw?.key === 'string' && /^[0-9a-f]{32}$/.test(raw.key)) this.keyValue = raw.key
+    else this.save()
     if (typeof raw?.toast === 'boolean') this.enabled = raw.toast
     if (raw?.locale === 'en' || raw?.locale === 'vi') this.localeValue = raw.locale
     Object.assign(this.kinds, sanitizeKinds(raw?.kinds) ?? {})
@@ -311,6 +304,10 @@ export class Toaster {
 
   snoozeLink(terminalId: string, minutes = TOAST_SNOOZE_MIN): string {
     return `${this.linkBase}snooze?k=${this.key}&t=${encodeURIComponent(terminalId)}&m=${minutes}`
+  }
+
+  get key(): string {
+    return this.keyValue
   }
 
   get state(): ToastState {
@@ -378,7 +375,13 @@ export class Toaster {
   }
 
   accepts(key: string | null): boolean {
-    return key === this.key
+    if (key === null) return false
+    const digest = (v: string) => createHash('sha256').update(v).digest()
+    return timingSafeEqual(digest(key), digest(this.keyValue))
+  }
+
+  flush(): Promise<void> {
+    return this.file?.flush() ?? Promise.resolve()
   }
 
   hideFor(terminalId: string): void {
@@ -618,6 +621,6 @@ export class Toaster {
   }
 
   private save(): void {
-    this.file?.schedule(() => ({ toast: this.enabled, locale: this.localeValue, kinds: this.kinds, quiet: this.quiet, stuckMinutes: this.stuckMinutes }))
+    this.file?.schedule(() => ({ toast: this.enabled, locale: this.localeValue, kinds: this.kinds, quiet: this.quiet, stuckMinutes: this.stuckMinutes, key: this.keyValue }))
   }
 }

@@ -182,16 +182,16 @@ onBeforeUnmount(() => stop?.())
   <div v-if="agent" class="ccm-pop" :style="popDelay ? { animationDelay: `${popDelay}ms` } : undefined">
     <div
       ref="box"
-      class="group/node relative rounded-card border bg-surface shadow-card transition-[opacity,border-color,box-shadow] duration-200"
+      class="group/node relative rounded-card border bg-surface shadow-card transition-[opacity,color,border-color,box-shadow] duration-200"
       :style="{ width: `${size?.w ?? (isMain ? MAIN_WIDTH : SUB_WIDTH)}px`, minHeight: size?.h ? `${size.h}px` : undefined }"
       :class="[
         isMain ? 'px-3.5 py-3' : 'px-3 py-2.5',
-        resizing ? 'border-accent' : '',
-        selected ? 'border-accent shadow-[0_0_0_3px_var(--ccm-accent-soft)]' : working || agent.status === 'waiting' || agent.status === 'error' ? meta.border : 'border-transparent',
+        resizing ? 'border-focus' : '',
+        selected ? 'border-focus ring-2 ring-focus' : working || agent.status === 'waiting' || agent.status === 'error' ? meta.border : 'border-transparent',
         working && !selected ? 'ccm-breathe' : '',
-        quiet && !selected ? 'opacity-60' : '',
+        quiet && !selected ? 'text-ink-muted' : '',
         dimmed ? 'opacity-30' : '',
-        picked ? 'outline-2 outline-offset-4 outline-accent outline-dashed' : '',
+        picked ? 'outline-2 outline-offset-4 outline-focus outline-dashed' : '',
       ]"
     >
       <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />

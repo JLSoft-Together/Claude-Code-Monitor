@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { FavoriteStore } from '../src/favorites'
+import { favoriteKey, FavoriteStore } from '../src/favorites'
 
 describe('FavoriteStore order', () => {
   it('sorts legacy files by label, then keeps and persists manual order', async () => {
@@ -19,7 +19,7 @@ describe('FavoriteStore order', () => {
         { dir: b, label: 'Bravo', addedAt: '2026-01-03T00:00:00.000Z' },
       ]),
     )
-    const store = new FavoriteStore(file)
+    const store = new FavoriteStore(file, 'win32')
     await store.load()
     expect(store.list().map((f) => f.label)).toEqual(['Alpha', 'Bravo', 'Charlie'])
 
@@ -37,5 +37,13 @@ describe('FavoriteStore order', () => {
     const again = new FavoriteStore(file)
     await again.load()
     expect(again.list().map((f) => f.label)).toEqual(['Charlie', 'Zulu', 'Bravo', 'Delta'])
+  })
+})
+
+describe('favoriteKey', () => {
+  it('folds case only on Windows', () => {
+    expect(favoriteKey('/Work/App', 'win32')).toBe(favoriteKey('/work/app', 'win32'))
+    expect(favoriteKey('/Work/App', 'darwin')).not.toBe(favoriteKey('/work/app', 'darwin'))
+    expect(favoriteKey('/Work/App', 'linux')).not.toBe(favoriteKey('/work/app', 'linux'))
   })
 })

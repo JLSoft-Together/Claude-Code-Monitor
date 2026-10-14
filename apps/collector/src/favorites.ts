@@ -5,14 +5,23 @@ import { sanitizeAlias } from './aliases'
 
 export const MAX_FAVORITES = 50
 
-const keyOf = (dir: string): string => path.resolve(dir).toLowerCase()
+// Only Windows paths are case-insensitive; macOS volumes can be case-sensitive, Linux always is.
+export const favoriteKey = (dir: string, platform: NodeJS.Platform = process.platform): string =>
+  platform === 'win32' ? path.resolve(dir).toLowerCase() : path.resolve(dir)
 
 /** Starred working directories; the launcher only opens dirs listed here. */
 export class FavoriteStore {
   private readonly map = new Map<string, Favorite>()
   private saving: Promise<void> = Promise.resolve()
 
-  constructor(private readonly file: string | null = null) {}
+  constructor(
+    private readonly file: string | null = null,
+    private readonly platform: NodeJS.Platform = process.platform,
+  ) {}
+
+  private keyOf(dir: string): string {
+    return favoriteKey(dir, this.platform)
+  }
 
   async load(): Promise<void> {
     if (!this.file) return
@@ -42,7 +51,7 @@ export class FavoriteStore {
               ? 1
               : a.favorite.label.localeCompare(b.favorite.label),
       )
-      for (const { favorite } of items) this.map.set(keyOf(favorite.dir), favorite)
+      for (const { favorite } of items) this.map.set(this.keyOf(favorite.dir), favorite)
     } catch {
       return
     }
@@ -53,11 +62,11 @@ export class FavoriteStore {
   }
 
   get(dir: string): Favorite | undefined {
-    return this.map.get(keyOf(dir))
+    return this.map.get(this.keyOf(dir))
   }
 
   toggle(dir: string, label: string): boolean {
-    const key = keyOf(dir)
+    const key = this.keyOf(dir)
     if (this.map.delete(key)) {
       void this.save()
       return false
@@ -69,7 +78,7 @@ export class FavoriteStore {
   }
 
   add(dir: string, label: unknown): 'ok' | 'exists' | 'limit' {
-    const key = keyOf(dir)
+    const key = this.keyOf(dir)
     if (this.map.has(key)) return 'exists'
     if (this.map.size >= MAX_FAVORITES) return 'limit'
     this.map.set(key, { dir: path.resolve(dir), label: sanitizeAlias(label) ?? path.basename(path.resolve(dir)), addedAt: new Date().toISOString() })
@@ -78,17 +87,17 @@ export class FavoriteStore {
   }
 
   rename(dir: string, label: unknown): boolean {
-    const current = this.map.get(keyOf(dir))
+    const current = this.map.get(this.keyOf(dir))
     if (!current) return false
     const next = sanitizeAlias(label) ?? path.basename(current.dir)
     if (next === current.label) return false
-    this.map.set(keyOf(dir), { ...current, label: next })
+    this.map.set(this.keyOf(dir), { ...current, label: next })
     void this.save()
     return true
   }
 
   remove(dir: string): boolean {
-    const removed = this.map.delete(keyOf(dir))
+    const removed = this.map.delete(this.keyOf(dir))
     if (removed) void this.save()
     return removed
   }
@@ -97,7 +106,7 @@ export class FavoriteStore {
     const before = [...this.map.keys()]
     const next = new Map<string, Favorite>()
     for (const dir of dirs) {
-      const key = keyOf(dir)
+      const key = this.keyOf(dir)
       const favorite = this.map.get(key)
       if (favorite && !next.has(key)) next.set(key, favorite)
     }

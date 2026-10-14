@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, CircleAlert, CircleCheck, CircleMinus, ClipboardCopy, Download, RefreshCw, X } from 'lucide-vue-next'
+import { retireOverlay } from '../lib/motion'
 import { desktop } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
@@ -22,7 +23,7 @@ let poll: number | undefined
 
 type Level = 'ok' | 'warn' | 'off'
 const ICON = { ok: CircleCheck, warn: CircleAlert, off: CircleMinus } as const
-const TONE = { ok: 'text-st-done', warn: 'text-st-waiting', off: 'text-ink-faint' } as const
+const TONE = { ok: 'text-success', warn: 'text-warning', off: 'text-ink-faint' } as const
 
 const ago = (iso: string | undefined) => relativeTime(iso, locale.value, now.value) ?? '—'
 
@@ -148,19 +149,14 @@ onBeforeUnmount(() => window.clearInterval(poll))
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
       <div v-if="ui.diagnosticsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="diag-title"
-          class="ccm-pop w-full max-w-[600px] ccm-sheet"
+          class="w-full max-w-[600px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex items-center gap-2 border-b border-line px-5 py-4">
@@ -207,11 +203,11 @@ onBeforeUnmount(() => window.clearInterval(poll))
             <template v-if="logs">
               <p class="mr-auto min-w-0 basis-full text-2xs text-ink-faint sm:basis-auto sm:flex-1">{{ t('diag.logHint') }}</p>
               <button type="button" class="ccm-btn" @click="exportLog('save')">
-                <Check v-if="logDone === 'save'" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><Download v-else :size="14" aria-hidden="true" />
+                <Check v-if="logDone === 'save'" :size="14" class="ccm-pop text-success" aria-hidden="true" /><Download v-else :size="14" aria-hidden="true" />
                 {{ logDone === 'save' ? t('diag.savedLog') : t('diag.saveLog') }}
               </button>
               <button type="button" class="ccm-btn" @click="exportLog('copy')">
-                <Check v-if="logDone === 'copy'" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
+                <Check v-if="logDone === 'copy'" :size="14" class="ccm-pop text-success" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
                 {{ logDone === 'copy' ? t('limits.copied') : t('diag.copyLog') }}
               </button>
             </template>
@@ -222,7 +218,7 @@ onBeforeUnmount(() => window.clearInterval(poll))
               :disabled="!rows.length"
               @click="copy"
             >
-              <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
+              <Check v-if="copied" :size="14" class="ccm-pop text-success" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
               {{ copied ? t('limits.copied') : t('diag.copy') }}
             </button>
           </div>

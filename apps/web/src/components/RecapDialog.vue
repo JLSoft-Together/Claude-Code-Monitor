@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ClipboardCopy, FileDown, FileSpreadsheet, X } from 'lucide-vue-next'
+import { retireOverlay } from '../lib/motion'
 import { buildRecap, download, recapCsv, type Recap } from '../lib/recap'
 import { baseName, compactNumber, duration, formatCost, formatDay, now } from '../lib/format'
 import { modelLabel } from '../lib/model'
@@ -141,19 +142,14 @@ watch(
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
       <div v-if="ui.recapOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="recap-title"
-          class="ccm-pop w-full max-w-[680px] ccm-sheet"
+          class="w-full max-w-[680px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
@@ -210,7 +206,7 @@ watch(
               class="ccm-btn"
               @click="copy"
             >
-              <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
+              <Check v-if="copied" :size="14" class="ccm-pop text-success" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
               {{ copied ? t('limits.copied') : t('recap.copy') }}
             </button>
             <button

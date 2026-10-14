@@ -18,14 +18,18 @@
   --color-ink: var(--ccm-ink);
   --color-ink-muted: var(--ccm-ink-muted);
   --color-ink-faint: var(--ccm-ink-faint);
+  --color-ink-disabled: var(--ccm-ink-disabled);
+  /* accent = fill (buttons, toggles, selected menu rows, progress); accent-ink = accent-coloured text. */
   --color-accent: var(--ccm-accent);
+  --color-accent-ink: var(--ccm-accent-ink);
   --color-accent-soft: var(--ccm-accent-soft);
   --color-on-accent: var(--ccm-on-accent);
+  --color-link: var(--ccm-link);
+  --color-focus: var(--ccm-focus);
+  --color-selection: var(--ccm-selection);
   --color-fill: var(--ccm-fill);
   --color-fill-strong: var(--ccm-fill-strong);
   --color-control: var(--ccm-control);
-  --color-material: var(--ccm-material);
-  --color-material-pop: var(--ccm-material-pop);
   --color-well: var(--ccm-well);
   --color-well-ink: var(--ccm-well-ink);
   --color-well-line: var(--ccm-well-line);
@@ -39,12 +43,37 @@
   --color-st-working-soft: var(--ccm-working-soft);
   --color-st-waiting-soft: var(--ccm-waiting-soft);
   --color-st-error-soft: var(--ccm-error-soft);
+  --color-st-done-soft: var(--ccm-done-soft);
+
+  --color-success: var(--ccm-success);
+  --color-warning: var(--ccm-warning);
+  --color-warning-soft: var(--ccm-warning-soft);
+  --color-favorite: var(--ccm-favorite);
+  --color-diff-add: var(--ccm-diff-add);
+  --color-diff-add-soft: var(--ccm-diff-add-soft);
+  --color-diff-del: var(--ccm-diff-del);
+  --color-diff-del-soft: var(--ccm-diff-del-soft);
+
+  --color-agent-claude: var(--ccm-agent-claude);
+  --color-agent-claude-ink: var(--ccm-agent-claude-ink);
+  --color-agent-codex: var(--ccm-agent-codex);
+  --color-agent-shell: var(--ccm-agent-shell);
+  --color-agent-browser: var(--ccm-agent-browser);
+  --color-agent-file: var(--ccm-agent-file);
+  --color-page: var(--ccm-page);
 
   --color-series-input: var(--ccm-cat-1);
   --color-series-output: var(--ccm-cat-2);
   --color-series-write: var(--ccm-cat-3);
   --color-series-read: var(--ccm-cat-4);
-  --color-codex: var(--ccm-cat-7);
+  --color-model-1: var(--ccm-model-1);
+  --color-model-2: var(--ccm-model-2);
+  --color-model-3: var(--ccm-model-3);
+  --color-model-4: var(--ccm-model-4);
+  --color-model-5: var(--ccm-model-5);
+  --color-model-6: var(--ccm-model-6);
+  --color-model-7: var(--ccm-model-7);
+  --color-model-8: var(--ccm-model-8);
 
   /* macOS-sized type: body 14, controls 13, footnote 12. */
   --text-2xs: 0.75rem;
@@ -66,6 +95,9 @@
   --shadow-pop: var(--ccm-shadow-pop);
 
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Peaks 3.4% past the target: a thumb settles, a .96 → 1 scale overshoots by 0.14%. A macOS pop, not a bounce. */
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 :root {
@@ -77,14 +109,20 @@
   --ccm-line-strong: rgb(0 0 0 / 0.18);
   --ccm-ink: #1d1d1f;
   --ccm-ink-muted: #5c5c61;
-  --ccm-ink-faint: #6e6e73;
-  /* systemBlue nudged darker so accent text clears 4.5:1 on white. */
+  --ccm-ink-faint: #6c6c70;
+  --ccm-ink-disabled: rgb(0 0 0 / 0.26);
   --ccm-accent: #0071e3;
-  --ccm-accent-soft: rgb(0 122 255 / 0.12);
+  --ccm-accent-ink: #0066cc;
+  --ccm-link: var(--ccm-accent-ink);
+  /* .10 keeps accent-ink ≥4.5:1 on the soft row over raised as well as surface. */
+  --ccm-accent-soft: rgb(0 122 255 / 0.1);
   --ccm-on-accent: #ffffff;
+  --ccm-focus: #0071e3;
+  --ccm-selection: #b3d7ff;
   --ccm-fill: rgb(116 116 128 / 0.12);
   --ccm-fill-strong: rgb(116 116 128 / 0.2);
   --ccm-control: #ffffff;
+  /* CSS only (.ccm-material / .ccm-menu), no utility on purpose: translucency is for chrome layers. */
   --ccm-material: rgb(246 246 248 / 0.78);
   --ccm-material-pop: rgb(248 248 250 / 0.94);
   --ccm-well: #111113;
@@ -97,16 +135,71 @@
   --ccm-shadow-accent: 0 0 0 0.5px rgb(0 0 0 / 0.12), 0 1px 1.5px rgb(0 0 0 / 0.1);
   --ccm-scrim: rgb(12 13 17 / 0.45);
 
+  /* Motion: enter base/slow with quint or spring, exit fast with ease-exit; transform and opacity only. */
+  --ccm-dur-press: 100ms;
+  --ccm-dur-fast: 150ms;
+  --ccm-dur-base: 220ms;
+  --ccm-dur-slow: 300ms;
+
   /* Light status inks use Apple's high-contrast variants (text must clear 4.5:1). */
   --ccm-working: #c93400;
   --ccm-waiting: #8f5f00;
   --ccm-idle: #636366;
-  --ccm-done: #248a3d;
+  --ccm-done: #1f7a35;
   --ccm-error: #d70015;
-  --ccm-stale: #8e8e93;
+  --ccm-stale: #76767b;
   --ccm-working-soft: rgb(255 149 0 / 0.14);
   --ccm-waiting-soft: rgb(255 204 0 / 0.2);
   --ccm-error-soft: rgb(255 59 48 / 0.12);
+  --ccm-done-soft: rgb(52 199 89 / 0.12);
+
+  /* Non-lifecycle meanings get their own names so status colours stay reserved (.planning/COLOR-SYSTEM.md). */
+  --ccm-success: var(--ccm-done);
+  --ccm-warning: #c93400;
+  --ccm-warning-soft: rgb(255 149 0 / 0.14);
+  --ccm-favorite: #b38600;
+  --ccm-diff-add: #1f7a35;
+  --ccm-diff-add-soft: rgb(52 199 89 / 0.15);
+  --ccm-diff-del: #d70015;
+  --ccm-diff-del-soft: rgb(255 59 48 / 0.12);
+
+  --ccm-agent-claude: #c15f3c;
+  --ccm-agent-claude-ink: #ae4a26;
+  --ccm-agent-codex: #5e4fc0;
+  --ccm-agent-shell: var(--ccm-ink-muted);
+  --ccm-agent-browser: #0071a4;
+  --ccm-agent-file: #7f6545;
+
+  /* Terminal.app dark set + Xcode Default Dark: the well is dark in both themes, so one set. */
+  --ccm-ansi-0: #1c1c1e;
+  --ccm-ansi-1: #ff453a;
+  --ccm-ansi-2: #30d158;
+  --ccm-ansi-3: #ffd60a;
+  --ccm-ansi-4: #0a84ff;
+  --ccm-ansi-5: #bf5af2;
+  --ccm-ansi-6: #64d2ff;
+  --ccm-ansi-7: #d1d1d6;
+  --ccm-ansi-8: #8e8e93;
+  --ccm-ansi-9: #ff6961;
+  --ccm-ansi-10: #4ae36d;
+  --ccm-ansi-11: #ffe55c;
+  --ccm-ansi-12: #409cff;
+  --ccm-ansi-13: #da8fff;
+  --ccm-ansi-14: #8be3ff;
+  --ccm-ansi-15: #f5f5f7;
+  --ccm-well-selection: #3f638b;
+  --ccm-syn-keyword: #ff7ab2;
+  --ccm-syn-string: #ff8170;
+  --ccm-syn-number: #d9c97c;
+  --ccm-syn-comment: #7f8c98;
+  --ccm-syn-type: #6bdfff;
+  --ccm-syn-func: #67b7a4;
+  --ccm-syn-var: var(--ccm-well-ink);
+  /* diff ink on the always-dark well: the light-theme diff-* are too dark there */
+  --ccm-diff-add-well: #30d158;
+  --ccm-diff-del-well: #ff6961;
+  /* default canvas of a web page in the browser pane: white in both themes, like any browser */
+  --ccm-page: #fff;
 
   /* dataviz categorical slots, validated against the light surface */
   --ccm-cat-1: #2a78d6;
@@ -117,6 +210,16 @@
   --ccm-cat-6: #008300;
   --ccm-cat-7: #4a3aa7;
   --ccm-cat-8: #e34948;
+
+  /* Model slots start where the token-type series end, so a model never shares a hue with a series in one view. */
+  --ccm-model-1: var(--ccm-cat-5);
+  --ccm-model-2: var(--ccm-cat-6);
+  --ccm-model-3: var(--ccm-cat-8);
+  --ccm-model-4: var(--ccm-cat-1);
+  --ccm-model-5: var(--ccm-cat-2);
+  --ccm-model-6: var(--ccm-cat-3);
+  --ccm-model-7: var(--ccm-cat-4);
+  --ccm-model-8: var(--ccm-cat-7);
 
   --ccm-grid: #e3e3e6;
   --ccm-flow-dot: #d1d1d6;
@@ -132,10 +235,16 @@
   --ccm-line-strong: rgb(255 255 255 / 0.18);
   --ccm-ink: #f5f5f7;
   --ccm-ink-muted: #a1a1a6;
-  --ccm-ink-faint: #8e8e93;
-  --ccm-accent: #0a84ff;
-  --ccm-accent-soft: rgb(10 132 255 / 0.22);
+  --ccm-ink-faint: #98989d;
+  --ccm-ink-disabled: rgb(255 255 255 / 0.25);
+  /* Fill a step darker than systemBlue so white text on it clears 4.5:1; text uses accent-ink. */
+  --ccm-accent: #0a6cdf;
+  --ccm-accent-ink: #409cff;
+  /* Deeper blue tint: a .22 systemBlue wash left accent-ink at ~4:1. */
+  --ccm-accent-soft: rgb(10 92 192 / 0.24);
   --ccm-on-accent: #ffffff;
+  --ccm-focus: #409cff;
+  --ccm-selection: #3f638b;
   --ccm-fill: rgb(118 118 128 / 0.24);
   --ccm-fill-strong: rgb(118 118 128 / 0.36);
   --ccm-control: #3a3a3c;
@@ -155,11 +264,26 @@
   --ccm-waiting: #ffd60a;
   --ccm-idle: #98989d;
   --ccm-done: #30d158;
-  --ccm-error: #ff453a;
-  --ccm-stale: #636366;
+  --ccm-error: #ff6961;
+  --ccm-stale: #8e8e93;
   --ccm-working-soft: rgb(255 159 10 / 0.18);
   --ccm-waiting-soft: rgb(255 214 10 / 0.16);
-  --ccm-error-soft: rgb(255 69 58 / 0.18);
+  --ccm-error-soft: rgb(215 0 21 / 0.2);
+  --ccm-done-soft: rgb(48 209 88 / 0.16);
+
+  --ccm-warning: #ff9f0a;
+  --ccm-warning-soft: rgb(255 159 10 / 0.18);
+  --ccm-favorite: #ffd60a;
+  --ccm-diff-add: #30d158;
+  --ccm-diff-add-soft: rgb(48 209 88 / 0.18);
+  --ccm-diff-del: #ff6961;
+  --ccm-diff-del-soft: rgb(215 0 21 / 0.2);
+
+  --ccm-agent-claude: #d97757;
+  --ccm-agent-claude-ink: #d97757;
+  --ccm-agent-codex: #a49cf0;
+  --ccm-agent-browser: #64d2ff;
+  --ccm-agent-file: #b59469;
 
   /* dataviz categorical slots, dark steps validated against the dark surface */
   --ccm-cat-1: #3987e5;
@@ -208,8 +332,12 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--ccm-accent) 55%, transparent);
-  outline-offset: 1px;
+  outline: 2px solid var(--ccm-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--ccm-selection);
 }
 
 /* macOS control kit (spec: .planning/AUDIT-v18-deck-reference.md §4). Components layer so any
@@ -249,13 +377,18 @@ body {
     font-weight: 500;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color 150ms var(--ease-out-quint), scale 150ms var(--ease-out-quint);
+    transition:
+      background-color var(--ccm-dur-fast) var(--ease-out-quint),
+      scale var(--ccm-dur-press) var(--ease-out-quint);
     &:hover:not(:disabled) {
       background: color-mix(in srgb, var(--ccm-control) 92%, var(--ccm-ink));
     }
     &:active:not(:disabled),
     &[aria-expanded='true'] {
       background: color-mix(in srgb, var(--ccm-control) 84%, var(--ccm-ink));
+    }
+    &:active:not(:disabled) {
+      scale: 0.985;
     }
     &:disabled {
       opacity: 0.45;
@@ -291,13 +424,17 @@ body {
     border-radius: 7px;
     color: var(--ccm-ink-muted);
     cursor: pointer;
-    transition: background-color 150ms var(--ease-out-quint), color 150ms var(--ease-out-quint);
+    transition:
+      background-color var(--ccm-dur-fast) var(--ease-out-quint),
+      color var(--ccm-dur-fast) var(--ease-out-quint),
+      scale var(--ccm-dur-press) var(--ease-out-quint);
     &:hover:not(:disabled) {
       background: var(--ccm-fill);
       color: var(--ccm-ink);
     }
     &:active:not(:disabled) {
       background: var(--ccm-fill-strong);
+      scale: 0.95;
     }
     &[aria-pressed='true'],
     &[aria-expanded='true'] {
@@ -319,7 +456,7 @@ body {
     color: var(--ccm-ink);
     font-size: var(--text-xs);
     outline: none;
-    transition: box-shadow 150ms var(--ease-out-quint);
+    transition: box-shadow var(--ccm-dur-fast) var(--ease-out-quint);
     &::placeholder {
       color: var(--ccm-ink-faint);
     }
@@ -328,8 +465,8 @@ body {
     &:focus-within {
       outline: none;
       box-shadow:
-        0 0 0 0.5px var(--ccm-accent),
-        0 0 0 3.5px color-mix(in srgb, var(--ccm-accent) 45%, transparent);
+        0 0 0 2px var(--ccm-focus),
+        0 0 0 4.5px color-mix(in srgb, var(--ccm-focus) 30%, transparent);
     }
   }
 
@@ -351,7 +488,7 @@ body {
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
+  animation-duration: var(--ccm-dur-base);
 }
 
 @keyframes ccm-spin {
@@ -403,7 +540,7 @@ body {
   border-radius: inherit;
   border: 2px solid currentColor;
   pointer-events: none;
-  animation: ccm-flash 900ms ease-out forwards;
+  animation: ccm-flash 900ms var(--ease-out-quint) forwards;
 }
 
 @keyframes ccm-breathe {
@@ -456,7 +593,7 @@ body {
 }
 
 .ccm-highlight {
-  animation: ccm-highlight 1.6s ease-out;
+  animation: ccm-highlight 1.6s var(--ease-out-quint);
 }
 
 @keyframes ccm-shimmer {
@@ -560,7 +697,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ccm-quota-delta {
-    animation: ccm-quota-fade 2.2s linear forwards;
+    animation: ccm-quota-fade 2.2s var(--ease-exit) forwards;
   }
 }
 
@@ -581,8 +718,8 @@ body {
 
 @keyframes ccm-token-glow {
   0% {
-    color: var(--ccm-accent);
-    text-shadow: 0 0 10px color-mix(in srgb, var(--ccm-accent) 45%, transparent);
+    color: var(--ccm-accent-ink);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--ccm-accent-ink) 45%, transparent);
   }
 }
 
@@ -600,20 +737,27 @@ body {
     animation: none;
   }
   .ccm-token-delta {
-    animation: ccm-quota-fade 1.8s linear forwards;
+    animation: ccm-quota-fade 1.8s var(--ease-exit) forwards;
   }
 }
 
-/* list transitions (TransitionGroup name="ccm-list") */
+/* list transitions (TransitionGroup name="ccm-list" @before-leave="pinLeaving"; container position:relative).
+   Leaving rows go absolute so the rows below slide up through -move instead of jumping. */
 .ccm-list-enter-active {
   transition:
-    opacity 260ms var(--ease-out-quint),
-    transform 260ms var(--ease-out-quint);
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    transform var(--ccm-dur-base) var(--ease-out-quint);
+}
+/* Rows of a table and wrapping chips cannot leave the flow: they fade where they are (add ccm-list-inflow). */
+.ccm-list-inflow > .ccm-list-leave-active {
+  position: static;
 }
 .ccm-list-leave-active {
+  position: absolute;
+  pointer-events: none;
   transition:
-    opacity 160ms ease-in,
-    transform 160ms ease-in;
+    opacity var(--ccm-dur-fast) var(--ease-exit),
+    transform var(--ccm-dur-fast) var(--ease-exit);
 }
 .ccm-list-enter-from {
   opacity: 0;
@@ -624,32 +768,28 @@ body {
   transform: scale(0.98);
 }
 .ccm-list-move {
-  transition: transform 260ms var(--ease-out-quint);
+  transition: transform var(--ccm-dur-base) var(--ease-out-quint);
 }
 
-/* view switch (Transition name="ccm-view") */
+/* view switch (Transition name="ccm-view"): views share one grid cell in App.vue, so this is a pure crossfade */
 .ccm-view-enter-active {
-  transition:
-    opacity 200ms var(--ease-out-quint),
-    transform 200ms var(--ease-out-quint);
+  transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-view-leave-active {
-  transition: opacity 120ms ease-in;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+  pointer-events: none;
 }
-.ccm-view-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
+.ccm-view-enter-from,
 .ccm-view-leave-to {
   opacity: 0;
 }
 
 /* content swap in place (Transition name="ccm-fade") */
 .ccm-fade-enter-active {
-  transition: opacity 180ms var(--ease-out-quint);
+  transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-fade-leave-active {
-  transition: opacity 110ms ease-in;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
 }
 .ccm-fade-enter-from,
 .ccm-fade-leave-to {
@@ -660,14 +800,14 @@ body {
 .ccm-panel-left-enter-active,
 .ccm-panel-right-enter-active {
   transition:
-    opacity 220ms var(--ease-out-quint),
-    translate 260ms var(--ease-out-quint);
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    translate var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-panel-left-leave-active,
 .ccm-panel-right-leave-active {
   transition:
-    opacity 150ms ease-in,
-    translate 150ms ease-in;
+    opacity var(--ccm-dur-fast) var(--ease-exit),
+    translate var(--ccm-dur-fast) var(--ease-exit);
 }
 .ccm-panel-left-enter-from,
 .ccm-panel-left-leave-to {
@@ -684,14 +824,14 @@ body {
 @keyframes ccm-kbd-in {
   from {
     opacity: 0;
-    transform: translateY(3px) scale(0.6);
+    transform: scale(0.85);
   }
 }
 .ccm-kbd-enter-active {
-  animation: ccm-kbd-in 260ms var(--ease-out-quint) both;
+  animation: ccm-kbd-in var(--ccm-dur-base) var(--ease-spring) both;
 }
 .ccm-kbd-leave-active {
-  transition: opacity 120ms ease-in;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
 }
 .ccm-kbd-leave-to {
   opacity: 0;
@@ -700,11 +840,11 @@ body {
 /* tool buttons sink a little while pressed */
 .ccm-press {
   transition-property: color, background-color, border-color, scale;
-  transition-duration: 150ms;
+  transition-duration: var(--ccm-dur-fast), var(--ccm-dur-fast), var(--ccm-dur-fast), var(--ccm-dur-press);
   transition-timing-function: var(--ease-out-quint);
 }
 .ccm-press:active:not(:disabled) {
-  scale: 0.96;
+  scale: 0.95;
 }
 
 /* session bar: first appearance, and a slow amber pulse while collapsed with a session waiting */
@@ -721,10 +861,10 @@ body {
   }
 }
 .ccm-bar-in-top {
-  animation: ccm-bar-in-top 360ms 120ms var(--ease-out-quint) both;
+  animation: ccm-bar-in-top var(--ccm-dur-slow) 120ms var(--ease-out-quint) both;
 }
 .ccm-bar-in-bottom {
-  animation: ccm-bar-in-bottom 360ms 120ms var(--ease-out-quint) both;
+  animation: ccm-bar-in-bottom var(--ccm-dur-slow) 120ms var(--ease-out-quint) both;
 }
 .ccm-bar-alert::after {
   content: '';
@@ -741,7 +881,7 @@ body {
 }
 
 ::view-transition-group(ccm-bar) {
-  animation-duration: 340ms;
+  animation-duration: var(--ccm-dur-slow);
   animation-timing-function: var(--ease-out-quint);
 }
 
@@ -755,7 +895,9 @@ body {
   .ccm-bar-alert::after {
     opacity: 0.6;
   }
-  .ccm-press:active:not(:disabled) {
+  .ccm-press:active:not(:disabled),
+  .ccm-btn:active:not(:disabled),
+  .ccm-btn-plain:active:not(:disabled) {
     scale: none;
   }
 }
@@ -771,16 +913,122 @@ body {
   .ccm-tick,
   .ccm-pulse,
   .ccm-quota-shine,
-  .ccm-quota-flash,
-  .ccm-breathe::before,
-  .ccm-flash::after {
+  .ccm-breathe::before {
     animation: none;
   }
+  /* HIG Reduce Motion: dissolves stay, movement goes. Transitions keep fading opacity and colour while
+     transform / translate / scale / size changes snap; keyframes that move are switched off one by one above. */
   *,
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    transition-duration: 0ms !important;
+  *::before,
+  *::after {
+    transition-property: opacity, color, background-color, border-color, outline-color, box-shadow, fill, stroke, visibility !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
     animation-duration: 0ms !important;
+  }
+}
+
+/* Menus and popovers (Transition name="ccm-menu"): appear quickly with a slight scale from the trigger
+   corner (`--ccm-origin` set by the menu), leave with a short fade only, like an NSMenu. */
+.ccm-menu-enter-active {
+  transform-origin: var(--ccm-origin, top right);
+  transition:
+    opacity var(--ccm-dur-fast) var(--ease-out-quint),
+    scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-menu-leave-active {
+  pointer-events: none;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-menu-enter-from {
+  opacity: 0;
+  scale: 0.96;
+}
+.ccm-menu-leave-to {
+  opacity: 0;
+}
+
+/* Dialogs (Transition name="ccm-dialog" on the scrim that holds the .ccm-sheet): scrim dissolves, sheet scales
+   from the centre. Both run on the scrim's duration, which is the one Vue waits for. */
+.ccm-dialog-enter-active {
+  transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-dialog-enter-active .ccm-sheet {
+  transition: scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-dialog-leave-active {
+  pointer-events: none;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-dialog-leave-active .ccm-sheet {
+  transition: scale var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-dialog-enter-from,
+.ccm-dialog-leave-to {
+  opacity: 0;
+}
+.ccm-dialog-enter-from .ccm-sheet {
+  scale: 0.96;
+}
+.ccm-dialog-leave-to .ccm-sheet {
+  scale: 0.98;
+}
+
+/* Same pattern when scrim and sheet are siblings (Transition name="ccm-scrim" / "ccm-sheet"). */
+.ccm-scrim-enter-active {
+  transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-scrim-leave-active {
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-scrim-enter-from,
+.ccm-scrim-leave-to {
+  opacity: 0;
+}
+.ccm-sheet-enter-active {
+  transition:
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-sheet-leave-active {
+  pointer-events: none;
+  transition:
+    opacity var(--ccm-dur-fast) var(--ease-exit),
+    scale var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-sheet-enter-from {
+  opacity: 0;
+  scale: 0.96;
+}
+.ccm-sheet-leave-to {
+  opacity: 0;
+  scale: 0.98;
+}
+
+/* Settings side sheet slides from the window edge (Transition name="ccm-side"); reduced motion dissolves it. */
+.ccm-side-enter-active {
+  transition: translate var(--ccm-dur-slow) var(--ease-out-quint);
+}
+.ccm-side-leave-active {
+  transition: translate var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-side-enter-from,
+.ccm-side-leave-to {
+  translate: 100% 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccm-side-enter-active {
+    transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
+  }
+  .ccm-side-leave-active {
+    transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+  }
+  .ccm-side-enter-from,
+  .ccm-side-leave-to {
+    translate: none;
+    opacity: 0;
   }
 }
 
@@ -798,7 +1046,7 @@ body {
 
 /* hand-off into another CLI keeps the Codex hue even while running, so the boundary stays visible in a busy tree */
 .vue-flow__edge.ccm-edge-codex .vue-flow__edge-path {
-  stroke: var(--ccm-cat-7);
+  stroke: var(--ccm-agent-codex);
 }
 
 @keyframes ccm-dash {
@@ -834,6 +1082,54 @@ body {
 
 .vue-flow__node {
   cursor: pointer;
+}
+
+/* AgentMap adds .ccm-map-motion after the first placement; a dragged node follows the pointer untouched. */
+.ccm-map-motion .vue-flow__node:not(.dragging) {
+  transition: transform var(--ccm-dur-slow) var(--ease-out-quint);
+}
+.vue-flow__node.ccm-node-leaving,
+.ccm-map-motion .vue-flow__node.ccm-node-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+
+/* Workspace panes morph on split / close / sidebar toggle (View Transitions). Snapshots are clipped, not
+   stretched, so terminal text never scales while the box resizes. */
+::view-transition-group(*.ccm-pane) {
+  animation-duration: var(--ccm-dur-base);
+  animation-timing-function: var(--ease-out-quint);
+  overflow: clip;
+}
+::view-transition-old(*.ccm-pane),
+::view-transition-new(*.ccm-pane) {
+  width: 100%;
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+
+/* Workspace tabs (TransitionGroup name="ccm-tab"); WorkspaceView pins a leaving tab where it stood. */
+.ccm-tab-enter-active {
+  transition:
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-tab-leave-active {
+  position: absolute;
+  pointer-events: none;
+  transition:
+    opacity var(--ccm-dur-fast) var(--ease-exit),
+    scale var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-tab-enter-from,
+.ccm-tab-leave-to {
+  opacity: 0;
+  scale: 0.96;
+}
+.ccm-tab-move {
+  transition: transform var(--ccm-dur-base) var(--ease-out-quint);
 }
 
 .vue-flow__handle {

@@ -91,8 +91,8 @@ function open(app: OpenApp): void {
       <GitBranch :size="12" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ branch }}</span>
     </span>
     <span v-if="diff" class="inline-flex shrink-0 items-center gap-1 tabular">
-      <span class="font-medium text-st-done">+<CountNum :value="diff.insertions" :format="fmtCount" /></span>
-      <span class="font-medium text-st-error">−<CountNum :value="diff.deletions" :format="fmtCount" /></span>
+      <span class="font-medium text-diff-add">+<CountNum :value="diff.insertions" :format="fmtCount" /></span>
+      <span class="font-medium text-diff-del">−<CountNum :value="diff.deletions" :format="fmtCount" /></span>
     </span>
     <span v-if="terminal.costUsd !== undefined" class="shrink-0 tabular" :title="t('terminal.costTitle')"><CountNum :value="terminal.costUsd" :format="formatUsd" /></span>
 

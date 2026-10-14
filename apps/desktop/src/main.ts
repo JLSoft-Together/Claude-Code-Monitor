@@ -6,9 +6,14 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, scre
 import { defaultDataDir } from '../../collector/src/datadir'
 import { createAttention, type Attention } from './attention'
 import { installBridge } from './bridge'
+import { maskLog } from './log-mask'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
 import { errorPage, loadingPage, RETRY_URL } from './pages'
+import { hardenWebviews, PREVIEW_PARTITION, registerPreviewIpc, type PreviewIpc } from './preview/ipc'
+import { PreviewServer } from './preview/server'
+import { RootWatcher } from './preview/watch'
+import { GrantStore, GRANTS_FILE } from './preview/grants'
 import { PtySupervisor } from './pty/supervisor'
 import { stringsFor, type Strings } from './strings'
 
@@ -43,6 +48,11 @@ let sessionEnding = false
 const QUIT_DEADLINE_MS = 8_000
 let showingError = false
 let hiddenNoticeShown = false
+const preview = new PreviewServer()
+const previewWatch = new RootWatcher()
+let previewIpc: PreviewIpc | null = null
+const ROOTS_TTL_MS = 2_000
+let rootsCache: { at: number; dirs: string[] } | null = null
 
 const isAppUrl = (url: string): boolean => {
   try {
@@ -50,6 +60,27 @@ const isAppUrl = (url: string): boolean => {
   } catch {
     return false
   }
+}
+
+/** Gate for every privileged ccm:* handler: top-level app frame, and the collector on the port is ours. */
+const isAppFrame = (event: Electron.IpcMainInvokeEvent): boolean => {
+  const frame = event.senderFrame
+  return !!frame && !frame.parent && isAppUrl(frame.url) && !!host?.ownsPort
+}
+
+/** Preview roots = start + current (after `cd`) folders of live embedded terminals; a census timeout keeps the last answer. */
+async function paneRoots(): Promise<string[]> {
+  if (rootsCache && Date.now() - rootsCache.at < ROOTS_TTL_MS) return rootsCache.dirs
+  const census = ptys ? await ptys.census() : []
+  if (census) rootsCache = { at: Date.now(), dirs: [...new Set(census.flatMap((s) => (s.liveCwd ? [s.cwd, s.liveCwd] : [s.cwd])))] }
+  return rootsCache?.dirs ?? []
+}
+
+function stopPreview(): Promise<void> {
+  previewIpc?.dispose()
+  previewIpc = null
+  previewWatch.closeAll()
+  return preview.close()
 }
 
 function openExternal(url: string): void {
@@ -114,7 +145,7 @@ function saveBounds(win: BrowserWindow): void {
   }
 }
 
-function baseWindow(options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
+function baseWindow(options: Electron.BrowserWindowConstructorOptions, prefs: Electron.WebPreferences = {}): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     // macOS takes the window icon from the app bundle.
@@ -122,7 +153,7 @@ function baseWindow(options: Electron.BrowserWindowConstructorOptions): BrowserW
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ececee',
     autoHideMenuBar: true,
     title: t.appName,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs') },
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs'), ...prefs },
     ...options,
   })
   win.removeMenu()
@@ -132,7 +163,8 @@ function baseWindow(options: Electron.BrowserWindowConstructorOptions): BrowserW
 
 function createMainWindow(): BrowserWindow {
   const saved = loadBounds()
-  const win = baseWindow({ width: saved?.width ?? 1360, height: saved?.height ?? 860, x: saved?.x, y: saved?.y, minWidth: 420, minHeight: 480 })
+  const win = baseWindow({ width: saved?.width ?? 1360, height: saved?.height ?? 860, x: saved?.x, y: saved?.y, minWidth: 420, minHeight: 480 }, { webviewTag: true })
+  hardenWebviews(win.webContents, { previewSession: session.fromPartition(PREVIEW_PARTITION), openExternal, mac: IS_MAC })
   if (saved?.maximized) win.maximize()
   win.once('ready-to-show', () => {
     if (!START_HIDDEN) win.show()
@@ -144,6 +176,7 @@ function createMainWindow(): BrowserWindow {
     sessionEnding = true
     void host.stop()
     void ptys?.stop()
+    void stopPreview()
   })
   win.on('close', (event) => {
     saveBounds(win)
@@ -311,7 +344,7 @@ function logReport(pageReport: string): string {
   ]
   const sections = [head.join('\n'), pageReport && `## Diagnostics\n${pageReport}`]
   for (const name of LOG_FILES) sections.push(`## ${name}\n${tailOf(path.join(app.getPath('logs'), name)).trimEnd()}`)
-  return sections.filter(Boolean).join('\n\n').replace(/[A-Za-z0-9+_=]{32,}/g, '[masked]') + '\n'
+  return maskLog(sections.filter(Boolean).join('\n\n'), os.homedir(), process.platform) + '\n'
 }
 
 function sendAppKey(): void {
@@ -358,7 +391,8 @@ async function openLink(raw: string): Promise<void> {
     await collectorFetch(`/snooze?${url.searchParams}`).catch(() => undefined)
     return
   }
-  if (url.hostname !== 'focus') return
+  // Every real toast link carries the key; a keyless one can only come from another app.
+  if (url.hostname !== 'focus' || !k) return
   if (!terminalId) return showMain()
   if (await paneHandles(terminalId)) return showMain()
   const result = await collectorFetch('/focus', { method: 'POST', body: JSON.stringify({ t: terminalId, k }) })
@@ -414,23 +448,46 @@ async function ready(): Promise<void> {
     nodePty: resource('pty/node_modules/@lydell/node-pty', 'node_modules/@lydell/node-pty'),
     origins: [ORIGIN],
     logFile: path.join(app.getPath('logs'), 'pty.log'),
+    shellInitDir: path.join(DATA_DIR, 'shell-init'),
   })
   // The token is the only gate on a shell; hand it out to top-level app frames only.
-  ipcMain.handle('ccm:pty-endpoint', (event) => {
-    const frame = event.senderFrame
-    if (!frame || frame.parent || !isAppUrl(frame.url)) return null
-    // A borrowed collector (or any process that grabbed the port) serves its own page: no shell for it.
-    if (!host.ownsPort) return null
-    return ptys?.endpoint() ?? null
-  })
+  // Any other process that grabbed the port serves its own page: no shell for it.
+  ipcMain.handle('ccm:pty-endpoint', (event) => (isAppFrame(event) ? (ptys?.endpoint() ?? null) : null))
   // Native picker so a folder for a terminal comes from the user, not from page script.
   ipcMain.handle('ccm:pick-folder', async (event) => {
-    const frame = event.senderFrame
-    if (!frame || frame.parent || !isAppUrl(frame.url) || !host.ownsPort) return null
+    if (!isAppFrame(event)) return null
     const win = BrowserWindow.fromWebContents(event.sender)
     const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
-    return res.canceled ? null : (res.filePaths[0] ?? null)
+    const folder = res.canceled ? null : (res.filePaths[0] ?? null)
+    // Readable before its terminal shows up in the census.
+    if (folder) previewIpc?.grant(folder)
+    return folder
+  })
+  await preview.start()
+  previewIpc = registerPreviewIpc({
+    ipcMain,
+    isAppFrame,
+    server: preview,
+    watcher: previewWatch,
+    shell,
+    dialog,
+    getWindow: () => mainWindow,
+    getRoots: paneRoots,
+    grants: new GrantStore(path.join(DATA_DIR, GRANTS_FILE)),
+    confirmAccess: async (folder) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'question',
+        message: t.accessTitle(folder),
+        detail: t.accessDetail,
+        buttons: [t.accessAllow, t.accessDeny],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+      return response === 0
+    },
   })
   ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {
     const frame = event.senderFrame
@@ -448,7 +505,11 @@ async function ready(): Promise<void> {
     }
     const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
     if (res.canceled || !res.filePath) return { ok: false }
-    writeFileSync(res.filePath, text)
+    try {
+      writeFileSync(res.filePath, text)
+    } catch {
+      return { ok: false }
+    }
     shell.showItemInFolder(res.filePath)
     return { ok: true, path: res.filePath }
   })
@@ -470,6 +531,12 @@ if (!app.requestSingleInstanceLock()) {
     else showMain()
   })
   app.on('activate', showMain)
+  app.on('web-contents-created', (_event, contents) => {
+    // Only the dashboard window hosts <webview>; hardenWebviews vets partition and src there.
+    contents.on('will-attach-webview', (event) => {
+      if (contents !== mainWindow?.webContents) event.preventDefault()
+    })
+  })
   app.on('window-all-closed', () => {
     // Closing windows only hides the dashboard; quitting goes through the tray.
   })
@@ -493,7 +560,7 @@ if (!app.requestSingleInstanceLock()) {
         attention?.clear()
         // A hung child must never leave the app unquittable.
         const hardExit = setTimeout(() => app.exit(0), QUIT_DEADLINE_MS)
-        stopping = Promise.allSettled([host.stop(), ptys?.stop()]).then(() => {
+        stopping = Promise.allSettled([host.stop(), ptys?.stop(), stopPreview()]).then(() => {
           clearTimeout(hardExit)
           stopped = true
           app.quit()

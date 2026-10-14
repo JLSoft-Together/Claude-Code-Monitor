@@ -68,11 +68,11 @@ const TOOL = 'ccm-btn-plain ccm-press'
           aria-keyshortcuts="B"
           @click="ui.toggleBar()"
         >
-          <ChevronUp :size="16" aria-hidden="true" class="transition-transform duration-200 ease-out-quint" :class="chevronDown ? 'rotate-180' : ''" /><KeyHint keys="B" />
+          <ChevronUp :size="16" aria-hidden="true" class="transition-transform duration-(--ccm-dur-base) ease-out-quint" :class="chevronDown ? 'rotate-180' : ''" /><KeyHint keys="B" />
         </button>
       </div>
     </div>
-    <div class="grid transition-[grid-template-rows] duration-200 ease-out-quint" :class="ui.barMin ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'" :inert="ui.barMin || undefined">
+    <div class="grid transition-[grid-template-rows] duration-(--ccm-dur-base) ease-out-quint" :class="ui.barMin ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'" :inert="ui.barMin || undefined">
       <div class="min-h-0 overflow-hidden">
         <div class="flex min-h-11 min-w-0 items-center border-line px-3 py-1 sm:px-4" :class="top ? 'border-t' : 'border-b'">
           <Transition name="ccm-fade" mode="out-in">

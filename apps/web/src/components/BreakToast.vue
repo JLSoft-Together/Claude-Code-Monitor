@@ -35,9 +35,9 @@ function turnOff(): void {
 
 <template>
   <Transition
-    enter-active-class="transition duration-300 ease-out-quint motion-reduce:transition-none"
+    enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
     enter-from-class="opacity-0 translate-y-3"
-    leave-active-class="transition duration-150 ease-in motion-reduce:transition-none"
+    leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
     leave-to-class="opacity-0 translate-y-2"
   >
     <aside

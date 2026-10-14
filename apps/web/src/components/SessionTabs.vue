@@ -112,7 +112,7 @@ function close(id: string): void {
       class="pointer-events-none absolute top-1 left-0 h-7 rounded-inner shadow-control"
       :class="[
         pill.waiting ? 'bg-st-waiting-soft' : 'bg-control',
-        pillReady ? 'transition-[transform,width,background-color] duration-300 ease-out-quint' : '',
+        pillReady ? 'transition-[transform,width,background-color] duration-(--ccm-dur-slow) ease-spring' : '',
       ]"
       :style="{ width: `${pill.w}px`, transform: `translateX(${pill.x}px)` }"
     />
@@ -144,7 +144,6 @@ function close(id: string): void {
       :class="[
         ui.sessionTab === tab.id ? '' : 'hover:bg-fill',
         tab.waiting && ui.sessionTab !== tab.id ? 'bg-st-waiting-soft/60' : '',
-        tab.ended ? 'opacity-60' : '',
       ]"
     >
       <button
@@ -155,7 +154,7 @@ function close(id: string): void {
         :aria-keyshortcuts="i < 9 ? String(i + 1) : undefined"
         :title="tab.title"
         class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-1.5 pl-2.5 text-left text-xs font-medium"
-        :class="ui.sessionTab === tab.id ? 'text-ink' : 'text-ink-muted hover:text-ink'"
+        :class="ui.sessionTab === tab.id ? 'text-ink' : tab.ended ? 'text-ink-faint hover:text-ink' : 'text-ink-muted hover:text-ink'"
         @click="select(tab.id)"
       >
         <StatusIcon :status="tab.status" :size="14" class="shrink-0" />

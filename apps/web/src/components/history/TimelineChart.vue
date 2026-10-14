@@ -18,7 +18,7 @@ const ui = useUiStore()
 const HOUR = 3_600_000
 const STATUSES: LaneStatus[] = ['working', 'waiting', 'idle']
 // Idle is the background state, so it is drawn as a quiet tint instead of competing with the two that matter.
-const FILL: Record<LaneStatus, string> = { working: 'bg-st-working', waiting: 'bg-st-waiting', idle: 'bg-st-idle/30' }
+const FILL: Record<LaneStatus, string> = { working: 'bg-st-working', waiting: 'bg-st-waiting', idle: 'bg-st-idle' }
 const TEXT: Record<LaneStatus, string> = { working: 'text-st-working', waiting: 'text-st-waiting', idle: 'text-ink-muted' }
 const clock = computed(() => new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }))
 const dur = (msVal: number) => duration(new Date(0).toISOString(), msVal) ?? ''
@@ -121,7 +121,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
       <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(3.5rem,auto))] items-center gap-x-3 border-b border-line pb-2 text-xs text-ink-muted sm:gap-x-6">
         <span>{{ t('history.col.session') }}</span>
         <span v-for="k in STATUSES" :key="k" class="inline-flex items-center justify-end gap-1.5">
-          <span class="size-2 rounded-full" :class="k === 'idle' ? 'bg-st-idle/50' : FILL[k]" aria-hidden="true" />{{ t(`status.${k}`) }}
+          <span class="size-2 rounded-full" :class="FILL[k]" aria-hidden="true" />{{ t(`status.${k}`) }}
         </span>
       </div>
       <ul>

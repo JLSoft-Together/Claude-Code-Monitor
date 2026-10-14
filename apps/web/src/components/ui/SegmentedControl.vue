@@ -1,10 +1,11 @@
 <script setup lang="ts" generic="T extends string | number">
-import type { Component } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 
 export interface Segment<V> {
   value: V
   label: string
   icon?: Component
+  iconClass?: string
   lang?: string
   title?: string
 }
@@ -14,6 +15,25 @@ const props = withDefaults(defineProps<{ options: Segment<T>[]; label: string; f
   iconOnly: false,
 })
 const model = defineModel<T>({ required: true })
+
+// One thumb slides to the picked segment (NSSegmentedControl) instead of the highlight jumping between buttons.
+const root = ref<HTMLElement | null>(null)
+const thumb = ref<{ x: number; y: number; w: number; h: number } | null>(null)
+const thumbReady = ref(false)
+function measure(): void {
+  const el = root.value?.querySelector<HTMLElement>('[aria-checked="true"]')
+  if (!el) return void (thumb.value = null)
+  if (!el.offsetWidth) return
+  thumb.value = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }
+  if (!thumbReady.value) requestAnimationFrame(() => (thumbReady.value = true))
+}
+const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure())
+watch([model, () => props.options.map((o) => o.label).join()], measure, { flush: 'post' })
+onMounted(() => {
+  measure()
+  if (root.value) observer?.observe(root.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
 
 function onKey(e: KeyboardEvent): void {
   const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
@@ -29,12 +49,20 @@ function onKey(e: KeyboardEvent): void {
 
 <template>
   <div
-    class="rounded-control bg-fill p-0.5"
+    ref="root"
+    class="relative rounded-control bg-fill p-0.5"
     :class="fill ? 'grid auto-cols-fr grid-flow-col' : 'inline-flex'"
     role="radiogroup"
     :aria-label="label"
     @keydown="onKey"
   >
+    <span
+      v-if="thumb"
+      aria-hidden="true"
+      class="pointer-events-none absolute top-0 left-0 rounded-inner bg-control shadow-control"
+      :class="thumbReady ? 'transition-[transform,width] duration-(--ccm-dur-slow) ease-spring' : ''"
+      :style="{ width: `${thumb.w}px`, height: `${thumb.h}px`, transform: `translate(${thumb.x}px, ${thumb.y}px)` }"
+    />
     <button
       v-for="o in options"
       :key="String(o.value)"
@@ -45,11 +73,11 @@ function onKey(e: KeyboardEvent): void {
       :title="o.title ?? (iconOnly ? o.label : undefined)"
       :tabindex="model === o.value ? 0 : -1"
       :lang="o.lang"
-      class="inline-flex h-6 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-inner px-2.5 text-xs font-medium whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 ease-out-quint"
-      :class="model === o.value ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
+      class="relative inline-flex h-6 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-inner px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-(--ccm-dur-fast) ease-out-quint"
+      :class="model === o.value ? (thumb ? 'text-ink' : 'bg-control text-ink shadow-control') : 'text-ink-muted hover:text-ink'"
       @click="model = o.value"
     >
-      <component :is="o.icon" v-if="o.icon" :size="14" aria-hidden="true" />
+      <component :is="o.icon" v-if="o.icon" :size="14" :class="o.iconClass" aria-hidden="true" />
       <span v-if="!iconOnly" class="truncate">{{ o.label }}</span>
     </button>
   </div>

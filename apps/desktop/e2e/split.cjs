@@ -1,4 +1,4 @@
-// Split button opens a menu: the new pane runs the picked agent in the same folder.
+// Split button opens a menu: the new pane runs the picked agent (or a browser) in the same folder.
 const { launch, OUT } = require('./cdp.cjs')
 const S = `document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s`
 const W = `${S}.get('workspace')`
@@ -22,8 +22,9 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await evaluate(`document.querySelector('[aria-haspopup=menu]').click()`)
     await waitFor(`!!document.querySelector('[role=menu]')`, 5000, 'menu')
     const items = await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent.trim())`)
-    check('menu lists Claude, Codex, Shell', items.length === 3 && /Claude/.test(items[0]) && /Codex/.test(items[1]) && /Shell/.test(items[2]), JSON.stringify(items))
+    check('menu lists Claude, Codex, Shell, Browser', items.length === 4 && /Claude/.test(items[0]) && /Codex/.test(items[1]) && /Shell/.test(items[2]) && /Browser/.test(items[3]), JSON.stringify(items))
     check('current agent is focused', await evaluate(`/Shell/.test(document.activeElement?.textContent ?? '')`))
+    await key('ArrowDown', 'ArrowDown', 40)
     await key('ArrowDown', 'ArrowDown', 40)
     check('arrows wrap through the items', await evaluate(`/Claude/.test(document.activeElement?.textContent ?? '')`))
     await shot('split-menu')

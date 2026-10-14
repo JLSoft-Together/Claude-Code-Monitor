@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { FolderPickResult } from '@ccm/shared'
 import { parseOsaError, runCommand, type Runner } from './osascript'
+import { windowsPowerShell } from './win-exe'
 
 // Vista-style IFileOpenDialog in folder mode, owned by an invisible topmost form so it opens above the browser
 // (a background process cannot take the foreground otherwise). The path goes out base64 UTF-8 so non-ASCII folder
@@ -117,7 +118,7 @@ export function pickFolder(platform: NodeJS.Platform = process.platform, run: Ru
   if (platform !== 'win32') return Promise.resolve({ result: 'unsupported' })
   return new Promise((resolve) => {
     execFile(
-      'powershell.exe',
+      windowsPowerShell(),
       ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
       // The dialog waits on the user; the cap only reaps a dialog left open and forgotten.
       { timeout: 10 * 60_000, windowsHide: true, maxBuffer: 64_000 },

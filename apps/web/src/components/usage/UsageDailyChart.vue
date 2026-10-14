@@ -220,9 +220,9 @@ function onKey(e: KeyboardEvent): void {
       </svg>
 
       <Transition
-        enter-active-class="transition duration-150 ease-out"
+        enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
         enter-from-class="opacity-0 translate-y-1"
-        leave-active-class="transition duration-100 ease-in"
+        leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
         leave-to-class="opacity-0"
       >
         <div

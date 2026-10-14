@@ -63,6 +63,7 @@ Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc pu
 
 - **Giám sát**: hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới terminal, hoãn nhắc), Agent Map main → subagent, luồng hoạt động.
 - **Workspace**: terminal trong app (Claude Code / Codex / shell), tab + chia ô, worktree `<repo>-wt/<branch>`, khôi phục workspace lần trước (`--resume`), chấm báo ô nào cần bạn. Phím tắt kiểu Windows Terminal.
+- **Xem lại ngay trong Workspace**: tab Trình duyệt (mở file HTML agent vừa viết hoặc `localhost`, tự tải lại khi file đổi, giả lập iPhone / iPad, gửi ảnh chụp / lỗi console / phần tử cho agent mà không tự Enter), tab xem file có tô màu cú pháp, tab **Thay đổi** (diff git, bỏ từng hunk / file, file chưa theo dõi vào Thùng rác), chip dev server, mở nhanh file (Ctrl+Shift+P, ⌘P trên mac), tìm trong terminal (Ctrl+Shift+F, ⌘F). Ctrl/⌘+click đường dẫn trong terminal để mở.
 - **Codex CLI**: lần `codex exec` / plugin Codex do Claude Code gọi hiện thành node con (badge Codex) dưới đúng agent đã gọi; Codex chạy riêng ở terminal khác là session riêng; chip giới hạn Codex 5h / tuần trên header. Chi tiết: `docs/codex-integration.md`.
 - **Thống kê**: token theo ngày / model / project, chi phí ước tính, tỉ lệ cache.
 - **Lịch sử**: thời gian làm việc / chờ của từng session trong ngày, xuất recap Markdown.

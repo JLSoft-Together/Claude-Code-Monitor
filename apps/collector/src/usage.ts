@@ -200,7 +200,7 @@ export class UsageIndex {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     for (const t of this.fileTimers.values()) clearTimeout(t)
     if (this.saveTimer) clearTimeout(this.saveTimer)
-    await this.chain.catch(() => undefined)
+    // Not awaiting the scan chain: a first scan can outlast the host's kill deadline; offsets saved so far resume it.
     await this.saving
     await this.save()
   }

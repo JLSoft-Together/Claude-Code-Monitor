@@ -8,6 +8,27 @@ export function reducedMotion(): boolean {
   }
 }
 
+/** Animation length for camera moves and other JS-driven motion; 0 when the user asked for less motion. */
+export function motionMs(ms: number): number {
+  return reducedMotion() ? 0 : ms
+}
+
+/** `@before-leave` for menus and dialogs: a closing overlay stops being one for assistive tech and queries. */
+export function retireOverlay(el: Element): void {
+  el.removeAttribute('role')
+  el.removeAttribute('aria-modal')
+  el.setAttribute('aria-hidden', 'true')
+}
+
+/**
+ * `@before-leave` for TransitionGroups whose leaving item goes `position: absolute` (ccm-list, ccm-tab): pins it
+ * where it stood, since flex and grid parents would otherwise drop it at their start edge.
+ */
+export function pinLeaving(el: Element): void {
+  const item = el as HTMLElement
+  Object.assign(item.style, { top: `${item.offsetTop}px`, left: `${item.offsetLeft}px`, width: `${item.offsetWidth}px`, margin: '0' })
+}
+
 /** Runs a state change inside a View Transition when the browser supports it. */
 export function withViewTransition(change: () => void): void {
   const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown }

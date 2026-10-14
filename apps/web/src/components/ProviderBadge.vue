@@ -14,12 +14,12 @@ const title = computed(() => (known.value ? t(`provider.modeTitle.${known.value}
 </script>
 
 <template>
-  <span v-if="variant === 'icon'" class="inline-flex shrink-0 items-center text-codex" role="img" :aria-label="t('provider.codex')" :title="title">
+  <span v-if="variant === 'icon'" class="inline-flex shrink-0 items-center text-agent-codex" role="img" :aria-label="t('provider.codex')" :title="title">
     <Hexagon :size="12" :stroke-width="2.25" aria-hidden="true" />
   </span>
   <span
     v-else
-    class="inline-flex shrink-0 items-center gap-1 rounded-inner bg-codex/12 px-1.5 py-px text-2xs font-medium text-codex"
+    class="inline-flex shrink-0 items-center gap-1 rounded-inner bg-agent-codex/10 px-1.5 py-px text-2xs font-medium text-agent-codex"
     :title="title"
   >
     <Hexagon :size="11" :stroke-width="2.25" aria-hidden="true" />{{ t('provider.codex') }}<span v-if="variant === 'full' && modeLabel" class="font-normal text-ink-faint">· {{ modeLabel }}</span>

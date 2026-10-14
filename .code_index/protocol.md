@@ -52,3 +52,4 @@ Separate WS from the dashboard socket (desktop `pty-host.cjs`, not the collector
 - P2: client `{t:'owners', pids}` (any authenticated socket, no session needed) → `{t:'owners', owners: {pid: sessionId} | null}` (null = process scan failed). Used by web `useWorkspaceLinks` over `PtyConnection.request` (throwaway socket).
 - P4: client `wt.list {cwd}` / `wt.add {cwd, branch}` / `wt.remove {cwd, path}` → `wt.list {repo, worktrees: PtyWorktree[]}` | `wt.added {path, branch}` | `wt.removed {path}` | `wt.error {code: WorktreeError, detail?}`; host → attached socket `branch {branch|null}` on spawn/attach/HEAD change.
 - P5: `spawn.resume` = UUID (`isAgentSessionId`), claude/codex only; host refuses otherwise (`error preset`); presets build `claude --resume <id>` / `codex resume <id>`.
+- v2.1.0 PTY: client `cwd {cwd}` (shell folder from OSC 7 / 9;9, attached session) → host `cwd {cwd|null}` (validated real dir, re-sent on attach); `PtySessionInfo.liveCwd`.

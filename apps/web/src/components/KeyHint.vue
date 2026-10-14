@@ -9,6 +9,8 @@ const settings = useSettingsStore()
 const ui = useUiStore()
 const kbd = ref<HTMLElement | null>(null)
 
+// WAAPI cannot read the @theme easings: same curves as --ease-spring / --ease-out-quint in style.css.
+const SPRING = 'cubic-bezier(0.34, 1.32, 0.64, 1)'
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 watch(
@@ -24,14 +26,14 @@ watch(
     if (el.offsetParent) {
       el.animate(
         [
-          { transform: 'translateY(1px) scale(0.88)', borderBottomWidth: '1px', color: token('--ccm-accent') },
+          { transform: 'translateY(1px) scale(0.88)', borderBottomWidth: '1px', color: token('--ccm-accent-ink') },
           { transform: 'none', borderBottomWidth: '2px' },
         ],
-        { duration: 280, easing: EASE },
+        { duration: 220, easing: SPRING },
       )
     }
     const glow = token('--ccm-accent-soft')
-    if (glow) host.animate([{ backgroundColor: glow }, {}], { duration: 420, easing: 'ease-out' })
+    if (glow) host.animate([{ backgroundColor: glow }, {}], { duration: 300, easing: EASE })
   },
   { flush: 'post' },
 )

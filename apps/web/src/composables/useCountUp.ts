@@ -1,12 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
-
-const reducedMotion = (): boolean => {
-  try {
-    return matchMedia('(prefers-reduced-motion: reduce)').matches
-  } catch {
-    return true
-  }
-}
+import { reducedMotion } from '../lib/motion'
 
 /** Animates a displayed number toward its source value so changes read as motion, not a jump. */
 export function useCountUp(source: Ref<number>, durationMs = 450): Ref<number> {

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, SquareTerminal, Sun } from 'lucide-vue-next'
 import { hasTerminals } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
+import { withViewTransition } from '../lib/motion'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
@@ -34,9 +35,9 @@ const activeIndex = computed(() => tabs.value.findIndex((x) => x.id === ui.view)
 const connectionView = computed(() => {
   switch (connection.state) {
     case 'connected':
-      return { label: t('connection.connected'), glyph: 'live', cls: 'text-st-done' }
+      return { label: t('connection.connected'), glyph: 'live', cls: 'text-success' }
     case 'reconnecting':
-      return { label: t('connection.reconnecting'), glyph: 'half', cls: 'text-st-waiting' }
+      return { label: t('connection.reconnecting'), glyph: 'half', cls: 'text-warning' }
     case 'connecting':
       return { label: t('connection.connecting'), glyph: 'half', cls: 'text-st-idle' }
     default:
@@ -59,10 +60,7 @@ const showClaudeLimits = computed(() => !!(extras.limits?.fiveHour || extras.lim
 const showCodexLimits = computed(() => !!(extras.codexLimits?.fiveHour || extras.codexLimits?.sevenDay))
 
 function toggleTheme(): void {
-  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (doc.startViewTransition && !reduce) doc.startViewTransition(() => settings.toggleTheme())
-  else settings.toggleTheme()
+  withViewTransition(() => settings.toggleTheme())
 }
 
 function onTabKey(e: KeyboardEvent): void {
@@ -86,7 +84,7 @@ function onTabKey(e: KeyboardEvent): void {
                 v-for="(c, i) in titleChars"
                 :key="i"
                 class="ccm-title-char"
-                :class="i < accentUntil ? 'text-accent' : 'text-ink'"
+                :class="i < accentUntil ? 'text-accent-ink' : 'text-ink'"
                 :style="{ '--i': i }"
                 >{{ c }}</span
               ><span class="ccm-caret ml-0.5 inline-block h-[0.9em] w-[0.42em] translate-y-[0.1em] rounded-[1px] bg-accent"
@@ -104,7 +102,7 @@ function onTabKey(e: KeyboardEvent): void {
         class="relative order-3 grid w-full shrink-0 auto-cols-fr grid-flow-col rounded-control bg-fill p-0.5 sm:order-none sm:w-auto"
       >
         <span
-          class="absolute inset-y-0.5 left-0.5 rounded-inner bg-control shadow-control transition-transform duration-300 ease-out-quint"
+          class="absolute inset-y-0.5 left-0.5 rounded-inner bg-control shadow-control transition-transform duration-(--ccm-dur-slow) ease-spring"
           :style="{ width: `calc((100% - 4px) / ${tabs.length})`, transform: `translateX(${activeIndex * 100}%)` }"
           aria-hidden="true"
         />
@@ -197,9 +195,9 @@ function onTabKey(e: KeyboardEvent): void {
           >
             <Transition
               mode="out-in"
-              enter-active-class="transition duration-200 ease-out"
+              enter-active-class="transition duration-(--ccm-dur-base) ease-spring"
               enter-from-class="opacity-0 rotate-[-60deg] scale-75"
-              leave-active-class="transition duration-100 ease-in"
+              leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
               leave-to-class="opacity-0 rotate-[60deg] scale-75"
             >
               <Sun v-if="settings.theme === 'dark'" key="sun" :size="16" aria-hidden="true" />
@@ -210,11 +208,15 @@ function onTabKey(e: KeyboardEvent): void {
         </div>
       </div>
     </div>
-    <div
-      v-if="connection.state !== 'connected' && connection.hasData"
-      class="border-t border-line bg-st-waiting-soft px-4 py-1.5 text-center text-xs text-st-waiting sm:px-6"
-    >
-      {{ t('connection.stale') }}
-    </div>
+    <!-- Overlays the content edge instead of growing the header, so the page does not jump on every reconnect. -->
+    <Transition name="ccm-fade">
+      <div
+        v-if="connection.state !== 'connected' && connection.hasData"
+        role="status"
+        class="ccm-material absolute inset-x-0 top-full border-b border-line text-center text-xs text-warning"
+      >
+        <p class="bg-warning-soft px-4 py-1.5 sm:px-6">{{ t('connection.stale') }}</p>
+      </div>
+    </Transition>
   </header>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { reducedMotion } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-vue-next'
 import { TOUR_STEPS, markTourDone, tourDone } from '../lib/tour'
@@ -41,7 +42,7 @@ function measure(): void {
 async function show(): Promise<void> {
   await nextTick()
   const el = target()
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reduce = reducedMotion()
   el?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
   measure()
   // Smooth scrolling moves the target after the first measurement.
@@ -131,18 +132,13 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-200 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-150 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-scrim">
       <div v-if="ui.tourOpen" class="fixed inset-0 z-[60]" @keydown="onKey">
         <div v-if="!spot" class="ccm-tour-scrim absolute inset-0" />
         <div
           v-else
-          class="ccm-tour-spot absolute rounded-card ring-2 ring-accent transition-all duration-300 ease-out motion-reduce:transition-none"
-          :style="{ top: `${spot.top}px`, left: `${spot.left}px`, width: `${spot.width}px`, height: `${spot.height}px` }"
+          class="ccm-tour-spot absolute top-0 left-0 rounded-card ring-2 ring-focus transition-[translate,width,height] duration-(--ccm-dur-slow) ease-out-quint"
+          :style="{ translate: `${spot.left}px ${spot.top}px`, width: `${spot.width}px`, height: `${spot.height}px` }"
           aria-hidden="true"
         />
 
@@ -158,7 +154,7 @@ onBeforeUnmount(() => {
             narrow
               ? 'inset-x-4 bottom-4'
               : spot
-                ? 'w-[360px] transition-[top,left,bottom] duration-300 ease-out motion-reduce:transition-none'
+                ? 'w-[360px]'
                 : 'top-1/2 left-1/2 w-[420px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2'
           "
           :style="cardStyle"
@@ -189,7 +185,7 @@ onBeforeUnmount(() => {
               <span
                 v-for="(s, i) in TOUR_STEPS"
                 :key="s.id"
-                class="h-1.5 rounded-full transition-all duration-200"
+                class="h-1.5 rounded-full transition-[width,background-color] duration-(--ccm-dur-base) ease-out-quint"
                 :class="i === index ? 'w-4 bg-accent' : i < index ? 'w-1.5 bg-accent/50' : 'w-1.5 bg-line-strong'"
               />
             </div>
@@ -219,9 +215,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ccm-tour-scrim {
-  background: color-mix(in oklab, var(--ccm-canvas) 75%, transparent);
+  background: var(--ccm-scrim);
 }
 .ccm-tour-spot {
-  box-shadow: 0 0 0 9999px color-mix(in oklab, var(--ccm-canvas) 75%, transparent);
+  box-shadow: 0 0 0 9999px var(--ccm-scrim);
 }
 </style>

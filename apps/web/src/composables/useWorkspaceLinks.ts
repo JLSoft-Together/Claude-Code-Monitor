@@ -1,7 +1,6 @@
 import { onBeforeUnmount, watch } from 'vue'
 import { PtyConnection } from '../lib/ptyClient'
 import { useTerminalsStore } from '../stores/terminals'
-import { useUiStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 
 const RETRY_MS = 10_000
@@ -12,10 +11,9 @@ const SETTLE_MS = 4_000
  * Ties monitor sessions to the panes they run in: the PTY host walks each agent's process ancestry
  * up to a pane's shell. Status, context and branch then come from the collector, never from output.
  */
-export function useWorkspaceLinks(): void {
+export function useWorkspaceLinks(viewShown: () => boolean): void {
   const workspace = useWorkspaceStore()
   const terminals = useTerminalsStore()
-  const ui = useUiStore()
   // An agent's parent chain is fixed at birth, so one settled answer per terminal is final.
   const resolved = new Set<string>()
   const firstSeen = new Map<string, number>()
@@ -81,7 +79,7 @@ export function useWorkspaceLinks(): void {
 
   // Attention latches on the transition, so an agent that asked and then moved on is still flagged until seen.
   const seen = (key: string): boolean =>
-    ui.view === 'workspace' && workspace.activeKey === key && document.visibilityState === 'visible' && document.hasFocus()
+    viewShown() && workspace.activeKey === key && document.visibilityState === 'visible' && document.hasFocus()
   watch(
     () => workspace.panes.map((p) => [p.key, p.terminalId ? terminals.byId[p.terminalId]?.status : undefined] as const),
     (now, before) => {

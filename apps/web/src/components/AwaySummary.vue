@@ -28,7 +28,7 @@ const groups = computed(() => {
   return [
     { key: 'waiting', icon: Hand, cls: 'text-st-waiting', label: t('away.waiting', { n: v.waiting.length }), items: sessionsOf(v.waiting) },
     { key: 'done', icon: CheckCheck, cls: 'text-st-done', label: t('away.done', { n: v.done.length }), items: sessionsOf(v.done) },
-    { key: 'loops', icon: Repeat, cls: 'text-st-error', label: t('away.loops', { n: v.loops.length }), items: sessionsOf(v.loops) },
+    { key: 'loops', icon: Repeat, cls: 'text-warning', label: t('away.loops', { n: v.loops.length }), items: sessionsOf(v.loops) },
   ].filter((g) => g.items.length)
 })
 
@@ -53,9 +53,9 @@ function open(id: string): void {
 
 <template>
   <Transition
-    enter-active-class="transition duration-300 ease-out-quint motion-reduce:transition-none"
+    enter-active-class="transition duration-(--ccm-dur-base) ease-out-quint"
     enter-from-class="opacity-0 -translate-y-2"
-    leave-active-class="transition duration-150 ease-in motion-reduce:transition-none"
+    leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
     leave-to-class="opacity-0"
   >
     <section
@@ -65,7 +65,7 @@ function open(id: string): void {
     >
       <span class="absolute inset-y-2.5 left-0 w-[3px] rounded-full bg-accent" aria-hidden="true" />
       <h2 id="away-title" class="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
-        <Coffee :size="16" class="text-accent" aria-hidden="true" />{{ t('away.title') }}
+        <Coffee :size="16" class="text-accent-ink" aria-hidden="true" />{{ t('away.title') }}
         <span class="text-xs font-normal text-ink-muted tabular">{{ t('away.duration', { d: awayFor }) }}</span>
       </h2>
       <div v-if="groups.length" class="mt-2 flex flex-col gap-1.5">

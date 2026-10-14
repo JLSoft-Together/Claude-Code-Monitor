@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
+import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import type { TerminalSession } from '@ccm/shared'
 import { AlarmClock, AppWindow, BellOff, BellRing, Hand, Info, LoaderCircle } from 'lucide-vue-next'
@@ -130,12 +131,12 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
       <p v-if="!waiting.length" class="rounded-card bg-surface px-4 py-5 text-base text-ink-muted shadow-card">
         {{ t('compact.allClear') }}
       </p>
-      <TransitionGroup v-else tag="ul" name="ccm-list" class="relative flex flex-col gap-2">
+      <TransitionGroup v-else tag="ul" name="ccm-list" @before-leave="pinLeaving" class="relative flex flex-col gap-2">
         <li
           v-for="r in waiting"
           :key="r.id"
           class="flex min-w-0 items-stretch overflow-hidden rounded-card bg-surface shadow-card"
-          :class="[r.snoozedUntil ? 'opacity-60' : r.long ? 'ring-1 ring-st-error/60' : 'ring-1 ring-st-waiting/50']"
+          :class="[r.snoozedUntil ? 'text-ink-muted' : r.long ? 'ring-1 ring-st-error/60' : 'ring-1 ring-st-waiting/50']"
         >
           <component
             :is="r.job ? 'div' : 'button'"
@@ -187,7 +188,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
 
     <section v-for="group in [{ key: 'working', rows: working }, { key: 'other', rows: others }]" v-show="group.rows.length" :key="group.key" :aria-labelledby="`compact-${group.key}`" class="flex flex-col gap-2">
       <h2 :id="`compact-${group.key}`" class="text-sm font-semibold text-ink-muted">{{ t(`compact.${group.key}`, { n: group.rows.length }) }}</h2>
-      <TransitionGroup tag="ul" name="ccm-list" class="relative flex flex-col overflow-hidden rounded-card bg-surface shadow-card">
+      <TransitionGroup tag="ul" name="ccm-list" @before-leave="pinLeaving" class="relative flex flex-col overflow-hidden rounded-card bg-surface shadow-card">
         <li v-for="r in group.rows" :key="r.id" class="border-b border-line last:border-b-0">
           <button
             type="button"

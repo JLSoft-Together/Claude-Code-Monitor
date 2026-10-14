@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { FolderX, Maximize2, Minimize2, MoveDiagonal2, X } from 'lucide-vue-next'
 import { useUsageStore } from '../../stores/usage'
+import { retireOverlay } from '../../lib/motion'
 import ProjectTable from './ProjectTable.vue'
 
 const open = defineModel<boolean>({ required: true })
@@ -137,20 +138,10 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition-opacity duration-200 ease-out"
-      enter-from-class="opacity-0"
-      leave-active-class="transition-opacity duration-150 ease-in"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-scrim">
       <div v-if="open" class="fixed inset-0 z-50 ccm-scrim" aria-hidden="true" @click="close" />
     </Transition>
-    <Transition
-      enter-active-class="transition duration-250 ease-out-quint motion-reduce:transition-none"
-      enter-from-class="opacity-0 translate-y-3 scale-[0.97]"
-      leave-active-class="transition duration-150 ease-in"
-      leave-to-class="opacity-0 translate-y-2 scale-[0.98]"
-    >
+    <Transition name="ccm-sheet" @before-leave="retireOverlay">
       <div
         v-if="open"
         ref="panel"
@@ -202,7 +193,7 @@ onBeforeUnmount(() => {
           tabindex="0"
           :aria-label="t('projects.resizeDialog')"
           :title="t('projects.resizeDialog')"
-          class="absolute right-1 bottom-1 hidden size-6 cursor-nwse-resize touch-none items-center justify-center rounded-md text-ink-faint outline-none hover:text-accent focus-visible:text-accent focus-visible:ring-2 focus-visible:ring-accent sm:inline-flex"
+          class="absolute right-1 bottom-1 hidden size-6 cursor-nwse-resize touch-none items-center justify-center rounded-md text-ink-faint outline-none hover:text-accent-ink focus-visible:text-accent-ink focus-visible:ring-2 focus-visible:ring-focus sm:inline-flex"
           @pointerdown.prevent="startResize"
           @dblclick="resetSize"
           @keydown.left.prevent="nudgeSize(-32, 0)"

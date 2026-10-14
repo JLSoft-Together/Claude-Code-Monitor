@@ -23,6 +23,10 @@ const en = {
   quitDetail: 'These terminals run inside Agent Monitor and stop when it quits:',
   quitConfirm: 'Quit',
   quitCancel: 'Cancel',
+  accessTitle: (folder: string) => `Allow Agent Monitor to open files in ${folder}?`,
+  accessDetail: 'The link points outside the folders of your open terminals. Allowing lets the browser and file tabs read this folder until the app quits.',
+  accessAllow: 'Allow',
+  accessDeny: 'Cancel',
 }
 
 const vi: typeof en = {
@@ -50,6 +54,10 @@ const vi: typeof en = {
   quitDetail: 'Các terminal này chạy bên trong Agent Monitor và sẽ dừng khi thoát:',
   quitConfirm: 'Thoát',
   quitCancel: 'Huỷ',
+  accessTitle: (folder) => `Cho phép Agent Monitor mở file trong ${folder}?`,
+  accessDetail: 'Liên kết trỏ ra ngoài thư mục của các terminal đang mở. Cho phép thì tab trình duyệt và tab file đọc được thư mục này tới khi thoát app.',
+  accessAllow: 'Cho phép',
+  accessDeny: 'Huỷ',
 }
 
 export type Strings = typeof en

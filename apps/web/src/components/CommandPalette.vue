@@ -23,6 +23,7 @@ import {
   Volume2,
   X,
 } from 'lucide-vue-next'
+import { retireOverlay } from '../lib/motion'
 import { shortPath } from '../lib/format'
 import { statusMeta } from '../lib/status'
 import { isCodex } from '../lib/provider'
@@ -258,18 +259,13 @@ const HINTS = [
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out motion-reduce:transition-none"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
-      leave-to-class="opacity-0"
-    >
+    <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
       <div v-if="ui.paletteOpen" class="fixed inset-0 z-50 flex items-start justify-center ccm-scrim px-3 pt-[8vh] sm:px-4 sm:pt-[12vh]" @mousedown.self="close">
         <div
           role="dialog"
           aria-modal="true"
           :aria-label="t('palette.title')"
-          class="ccm-pop flex max-h-[min(78vh,620px)] w-full max-w-[640px] flex-col overflow-hidden ccm-sheet"
+          class="flex max-h-[min(78vh,620px)] w-full max-w-[640px] flex-col overflow-hidden ccm-sheet"
         >
           <div class="flex items-center gap-3 px-5 pt-2">
             <Search :size="19" class="shrink-0 text-ink-muted" aria-hidden="true" />
@@ -317,7 +313,7 @@ const HINTS = [
               @click="scope = s"
             >
               {{ t(`palette.scope.${s}`) }}
-              <span class="tabular text-2xs" :class="scope === s ? 'text-accent' : 'text-ink-faint'">{{ scopeCounts[s] }}</span>
+              <span class="tabular text-2xs" :class="scope === s ? 'text-accent-ink' : 'text-ink-faint'">{{ scopeCounts[s] }}</span>
             </button>
           </div>
 
@@ -362,21 +358,21 @@ const HINTS = [
                   <span class="min-w-0 flex-1">
                     <span class="block truncate"
                       ><template v-for="(p, pi) in parts(item.label)" :key="pi"
-                        ><mark v-if="p.hit" class="bg-transparent font-semibold" :class="item.index === active ? 'text-on-accent' : 'text-accent'">{{ p.text }}</mark
+                        ><mark v-if="p.hit" class="bg-transparent font-semibold" :class="item.index === active ? 'text-on-accent' : 'text-accent-ink'">{{ p.text }}</mark
                         ><template v-else>{{ p.text }}</template></template
                       ></span
                     >
-                    <span v-if="item.sub" class="mt-0.5 block truncate text-2xs" :class="item.index === active ? 'text-on-accent/80' : 'text-ink-faint'">{{ item.sub }}</span>
+                    <span v-if="item.sub" class="mt-0.5 block truncate text-2xs" :class="item.index === active ? 'text-on-accent' : 'text-ink-faint'">{{ item.sub }}</span>
                   </span>
                   <span
                     v-if="item.on !== undefined"
                     class="inline-flex shrink-0 items-center gap-1.5 text-xs"
-                    :class="item.index === active ? 'text-on-accent/80' : item.on ? 'text-st-done' : 'text-ink-faint'"
+                    :class="item.index === active ? 'text-on-accent' : item.on ? 'text-success' : 'text-ink-faint'"
                   >
-                    <span class="size-1.5 rounded-full" :class="item.on ? (item.index === active ? 'bg-on-accent' : 'bg-st-done') : 'border border-current'" aria-hidden="true" />
+                    <span class="size-1.5 rounded-full" :class="item.on ? (item.index === active ? 'bg-on-accent' : 'bg-success') : 'border border-current'" aria-hidden="true" />
                     {{ item.on ? t('palette.on') : t('palette.off') }}
                   </span>
-                  <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-on-accent/80 sm:inline-flex">
+                  <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-on-accent sm:inline-flex">
                     <span v-if="item.alt" class="inline-flex items-center gap-1"
                       ><AppWindow v-if="item.group === 'sessions'" :size="12" aria-hidden="true" />{{ item.altHint }}
                       <kbd class="rounded-inner bg-on-accent/20 px-1 font-sans">⇧↵</kbd></span

@@ -10,6 +10,17 @@ import type { CodexProcess } from './processes'
 import { readSessionMeta, RolloutTailer } from './reader'
 import { CodexThreadState, extractCodexSignals, modeOf, type CodexLimits, type CodexMeta, type CodexMode } from './rollout'
 
+/** A watcher that errored is dead (dir deleted / handle lost); close it so the next setupWatchers() starts a fresh one. */
+function retireWatcher(watchers: FSWatcher[], w: FSWatcher): void {
+  try {
+    w.close()
+  } catch {
+    // already closed
+  }
+  const i = watchers.indexOf(w)
+  if (i !== -1) watchers.splice(i, 1)
+}
+
 export interface CodexMonitorOptions {
   codexHome: string
   staleTtlMs: number
@@ -321,6 +332,7 @@ export class CodexMonitor {
         })
         w.on('error', () => {
           this.sessionsWatched = false
+          retireWatcher(this.watchers, w)
         })
         this.watchers.push(w)
         this.sessionsWatched = true
@@ -335,6 +347,7 @@ export class CodexMonitor {
         })
         w.on('error', () => {
           this.homeWatched = false
+          retireWatcher(this.watchers, w)
         })
         this.watchers.push(w)
         this.homeWatched = true
