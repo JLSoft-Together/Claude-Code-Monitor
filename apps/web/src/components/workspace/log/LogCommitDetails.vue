@@ -16,14 +16,18 @@ watch(
   () => ok.value?.hash,
   () => {
     branches.value = null
+    finding.value = false
     showAll.value = false
   },
 )
 
 async function findBranches(): Promise<void> {
   if (!ok.value || finding.value) return
+  const hash = ok.value.hash
   finding.value = true
-  branches.value = await props.contains(ok.value.hash)
+  const res = await props.contains(hash)
+  if (ok.value?.hash !== hash) return
+  branches.value = res
   finding.value = false
 }
 

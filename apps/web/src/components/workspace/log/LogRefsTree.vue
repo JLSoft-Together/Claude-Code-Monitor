@@ -11,6 +11,7 @@ const filter = ref('')
 const collapsed = ref<Set<string>>(new Set())
 const rows = computed(() => (props.refs ? refTree(props.refs, filter.value, collapsed.value) : []))
 const focusId = ref<string | null>(null)
+const tabId = computed(() => (rows.value.some((r) => r.id === focusId.value) ? focusId.value : rows.value[0]?.id))
 
 function toggle(id: string): void {
   const next = new Set(collapsed.value)
@@ -69,9 +70,9 @@ function onKey(e: KeyboardEvent): void {
         :key="r.id"
         role="treeitem"
         :aria-level="r.depth + 1"
-        :aria-expanded="r.kind === 'ref' ? undefined : r.expanded"
+        :aria-expanded="r.kind === 'ref' || (r.kind === 'section' && r.section === 'head') ? undefined : r.expanded"
         :aria-selected="r.kind === 'ref' ? r.ref === branch : r.kind === 'section' && r.section === 'head' && branch === 'HEAD'"
-        :tabindex="(focusId ?? rows[0]?.id) === r.id ? 0 : -1"
+        :tabindex="tabId === r.id ? 0 : -1"
         class="flex h-[22px] min-w-0 cursor-pointer items-center gap-1 rounded-inner pr-2 text-xs outline-none hover:bg-fill focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
         :class="[(r.kind === 'ref' && r.ref === branch) || (r.kind === 'section' && r.section === 'head' && branch === 'HEAD') ? 'bg-selection' : '', r.kind === 'section' ? 'font-semibold text-ink' : 'text-ink']"
         :style="{ paddingLeft: `${6 + r.depth * 14}px` }"
