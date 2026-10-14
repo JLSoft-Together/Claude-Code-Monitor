@@ -8,13 +8,14 @@ import { dirKey } from './favorites'
 export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
 /** Missing = 'term' (state saved before v21). */
-export type PaneKind = 'term' | 'browser' | 'file' | 'changes'
+export type PaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log'
 
 export type PaneSpec =
   | { kind: 'term'; preset: PtyPreset }
   | { kind: 'browser'; url: string }
   | { kind: 'file'; path: string; line?: number }
   | { kind: 'changes' }
+  | { kind: 'log' }
 
 /** Split menu entries. */
 export type SplitChoice = PtyPreset | 'browser'
@@ -31,10 +32,10 @@ export interface Pane {
   line?: number
   /** File viewer opened by a single click in the Explorer: the next single click replaces it. Runtime only. */
   preview?: boolean
-  /** Changes: git toplevel once known, and the number of changed files. */
+  /** Changes / Log: git toplevel once known; Changes: number of changed files. */
   root?: string
   count?: number
-  /** Changes: absolute path of the file to select next (Show diff / Ctrl+D); runtime only, cleared once shown. */
+  /** Changes: absolute path of the file to select; Log: commit hash to select. Runtime only, cleared once shown. */
   select?: string
   /** Browser page title / favicon, runtime only. */
   title?: string
@@ -124,6 +125,8 @@ function viewFields(p: ViewFields): ViewFields | null {
       return isAbs(p.path) ? { kind: 'file', path: p.path, line: typeof p.line === 'number' && p.line > 0 ? Math.floor(p.line) : undefined } : null
     case 'changes':
       return { kind: 'changes' }
+    case 'log':
+      return { kind: 'log' }
     default:
       return null
   }
@@ -133,7 +136,7 @@ function cleanPane<T extends ViewFields & { key: string; preset: unknown; cwd?: 
   if (!p || typeof p.key !== 'string' || !isPtyPreset(p.preset)) return null
   const view = viewFields(p)
   if (!view) return null
-  if (view.kind === 'changes' && !isAbs(p.cwd)) return null
+  if ((view.kind === 'changes' || view.kind === 'log') && !isAbs(p.cwd)) return null
   return { ...p, kind: undefined, url: undefined, path: undefined, line: undefined, ...view }
 }
 
@@ -314,6 +317,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return addView({ kind: 'file', path: spec.path, line: spec.line }, cwd)
       case 'changes':
         return addView({ kind: 'changes' }, cwd)
+      case 'log':
+        return addView({ kind: 'log' }, cwd)
     }
   }
 
@@ -377,6 +382,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return same
     }
     const pane = addView({ kind: 'changes' }, cwd)
+    if (opts.select) pane.select = opts.select
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /** One Log pane per repo, like Changes; `select` = commit hash to show. */
+  function openLog(cwd: string, opts: { split?: Placement; select?: string } = {}): Pane {
+    const same = panes.value.find((p) => p.kind === 'log' && (sameDir(p.root, cwd) || sameDir(p.cwd, cwd)))
+    if (same) {
+      if (opts.select) same.select = opts.select
+      activate(same.key)
+      return same
+    }
+    const pane = addView({ kind: 'log' }, cwd)
     if (opts.select) pane.select = opts.select
     placeNew(pane, opts.split)
     return pane
@@ -480,7 +499,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
               ? addView({ kind: 'browser', url: spec.url ?? '' }, spec.cwd)
               : spec.kind === 'file'
                 ? addView({ kind: 'file', path: spec.path, line: spec.line }, spec.cwd)
-                : addView({ kind: 'changes' }, spec.cwd)
+                : addView({ kind: spec.kind === 'log' ? 'log' : 'changes' }, spec.cwd)
         keys.set(id, pane.key)
       }
       if (!root) continue
@@ -637,6 +656,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openBrowser,
     openFile,
     openChanges,
+    openLog,
     insertRequest,
     insertInto,
     insertImage,

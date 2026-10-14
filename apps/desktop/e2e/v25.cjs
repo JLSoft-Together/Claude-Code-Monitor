@@ -68,7 +68,7 @@ async function main() {
     await evaluate(`${S}.get('ui').shortcutsOpen = false`)
 
     // Themes: data-theme + mode class + tokens from themes.css; one screenshot each.
-    for (const [id, mode] of [['dracula', 'dark'], ['monokai', 'dark'], ['solarized-light', 'light'], ['github-dark', 'dark'], ['xcode-light', 'light'], ['material', 'dark'], ['one-dark', 'dark'], ['github-light', 'light']]) {
+    for (const [id, mode] of [['dracula', 'dark'], ['monokai', 'dark'], ['solarized-light', 'light'], ['github-dark', 'dark'], ['xcode-light', 'light'], ['material', 'dark'], ['one-dark', 'dark'], ['github-light', 'light'], ['islands-light', 'light'], ['islands-dark', 'dark']]) {
       await evaluate(`${S}.get('settings').setTheme('${id}')`)
       await sleep(350)
       const st = await evaluate(`(() => { const r = document.documentElement; return { theme: r.dataset.theme, dark: r.classList.contains('dark'), surface: getComputedStyle(r).getPropertyValue('--ccm-surface').trim(), soft: getComputedStyle(r).getPropertyValue('--ccm-accent-soft').trim() } })()`)

@@ -88,3 +88,8 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## v29 git diff
 - `preview/changes.ts`: `DiffOptions` / `cleanDiffOptions` / `diffArgs` (`-U1000000` for 'full', whitespace `--ignore-space-at-eol` / `-w` / `-w --ignore-blank-lines`), `diff(root, rel, opts)` → `diffEntry` (full diff over `MAX_FULL_DIFF_BYTES` 3 MB → 3-line context + `partial`), `fileDiff(abs, repoRoot)` (`ChangesFile`, kind null when clean/ignored). `ipc.ts` `ccm:changes-diff` passes `opts`, new `ccm:changes-file(path)` (allowedPath + file, toplevel registered in `repos` so the rollback's `changes-discard` is accepted). Preload `changesDiff(root, path, opts?)`, `changesFile`. Rollback of one block reuses `discardHunk`. Tests `test/changes.test.ts` (opts, fileDiff, block revert LF/CRLF). E2E `e2e/diff.cjs` in `run.cjs`.
+
+## v30 Git Log (`.planning/PLAN-v30-git-log.md`, docs §11s)
+- `preview/log.ts`: `listRefs`, `logPage` (`cleanLogQuery` → `logArgs`, hash text resolved with `rev-parse --verify`), `commitDetail` (first parent or empty tree), `branchesContaining`, `commitDiff`; parsers `parseLog`, `parseRefLines`, `parseTrack`, `parseNameStatus`.
+- `preview/ipc.ts`: `ccm:log-refs|page|commit|contains|diff` (app-frame only), `registerRepo(dir)` shared with `changes-status` (known repo, else toplevel once the folder is allowed); `GitDirWatcher` (`changes.ts` `GIT_DIR_FILES`) also reacts to `packed-refs`, `FETCH_HEAD`, `ORIG_HEAD`, `refs/` recursive.
+- Preload `logRefs logPage logCommit logContains logDiff`. E2E `e2e/log.cjs` (also in `run.cjs`).

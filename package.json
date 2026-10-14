@@ -20,5 +20,10 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "vue-demi@0.14.10": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true
   }
 }

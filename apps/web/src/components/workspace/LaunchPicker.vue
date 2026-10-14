@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Asterisk, FileText, Folder, FolderOpen, GitCompare, Globe, Hexagon, House, SquareTerminal, Star, X } from 'lucide-vue-next'
+import { Asterisk, FileText, Folder, FolderOpen, GitCompare, GitGraph, Globe, Hexagon, House, SquareTerminal, Star, X } from 'lucide-vue-next'
 import type { PtyPreset } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
 import { devUrlLabel, lastDevUrl } from '../../lib/devServer'
 import { shortPath } from '../../lib/format'
-import { hasChanges, hasPreview } from '../../lib/preview'
+import { hasChanges, hasLog, hasPreview } from '../../lib/preview'
 import { dirKey, useFavoritesStore } from '../../stores/favorites'
 import { useTerminalsStore } from '../../stores/terminals'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -14,7 +14,7 @@ import SegmentedControl from '../ui/SegmentedControl.vue'
 
 /** `cwd`: folder of the focused pane, for Changes and the remembered dev server URL. */
 const props = defineProps<{ cwd?: string }>()
-const emit = defineEmits<{ launch: [cwd: string | undefined]; browser: [url: string]; openFile: []; changes: [] }>()
+const emit = defineEmits<{ launch: [cwd: string | undefined]; browser: [url: string]; openFile: []; changes: []; log: [] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
@@ -153,6 +153,9 @@ defineExpose({ focusFirst })
         @click="emit('changes')"
       >
         <GitCompare :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.open.changes') }}
+      </button>
+      <button v-if="hasLog && cwd" type="button" data-launch-row data-launch="log" :class="ROW" :title="cwd" @click="emit('log')">
+        <GitGraph :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('workspace.log.open') }}
       </button>
     </div>
 

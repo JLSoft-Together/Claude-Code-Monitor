@@ -211,11 +211,16 @@ async function hasHead(root: string): Promise<boolean> {
   return (await execGit(root, ['rev-parse', '--verify', '-q', 'HEAD'], { maxBytes: 4096 })).code === 0
 }
 
-/** HEAD, or the empty tree in a repo without commits. */
-async function baseRev(root: string): Promise<string | null> {
-  if (await hasHead(root)) return 'HEAD'
+/** Empty tree id of this repo's hash algorithm (sha1 / sha256). */
+export async function emptyTree(root: string): Promise<string | null> {
   const res = await execGit(root, ['hash-object', '-t', 'tree', '--stdin'], { input: '', maxBytes: 4096 })
   return res.code === 0 ? res.stdout.trim() : null
+}
+
+/** HEAD, or the empty tree in a repo without commits. */
+export async function baseRev(root: string): Promise<string | null> {
+  if (await hasHead(root)) return 'HEAD'
+  return emptyTree(root)
 }
 
 async function countLines(abs: string): Promise<{ added?: number; binary: boolean }> {
@@ -368,8 +373,10 @@ export async function discardHunk(root: string, relInput: unknown, patch: unknow
  * Watches the git dir (index / HEAD) of a repo: commits, staging and checkouts never touch the
  * working tree the RootWatcher sees (it ignores .git).
  */
+const GIT_DIR_FILES = new Set(['index', 'HEAD', 'MERGE_HEAD', 'packed-refs', 'FETCH_HEAD', 'ORIG_HEAD'])
+
 export class GitDirWatcher {
-  private entries = new Map<string, { refs: number; watcher: FSWatcher | null; timer: NodeJS.Timeout | null }>()
+  private entries = new Map<string, { refs: number; watchers: FSWatcher[]; timer: NodeJS.Timeout | null }>()
 
   constructor(private readonly onChange: (root: string) => void) {}
 
@@ -380,24 +387,30 @@ export class GitDirWatcher {
       known.refs++
       return
     }
-    const entry = { refs: 1, watcher: null as FSWatcher | null, timer: null as NodeJS.Timeout | null }
+    const entry = { refs: 1, watchers: [] as FSWatcher[], timer: null as NodeJS.Timeout | null }
     this.entries.set(key, entry)
     const res = await execGit(root, ['rev-parse', '--absolute-git-dir'], { maxBytes: 16_384 })
     if (res.code !== 0 || this.entries.get(key) !== entry) return
-    try {
-      entry.watcher = fsWatch(path.normalize(res.stdout.trim()), (_event, file) => {
-        const name = file ? String(file) : ''
-        if (name !== 'index' && name !== 'HEAD' && name !== 'MERGE_HEAD') return
-        if (entry.timer) clearTimeout(entry.timer)
-        entry.timer = setTimeout(() => {
-          entry.timer = null
-          if (this.entries.get(key) === entry) this.onChange(root)
-        }, 200)
-      })
-      entry.watcher.on('error', () => this.drop(key))
-    } catch {
-      // git dir not watchable; working tree events still arrive
+    const gitDir = path.normalize(res.stdout.trim())
+    const fire = (): void => {
+      if (entry.timer) clearTimeout(entry.timer)
+      entry.timer = setTimeout(() => {
+        entry.timer = null
+        if (this.entries.get(key) === entry) this.onChange(root)
+      }, 200)
     }
+    const watchOne = (dir: string, opts: { recursive: boolean }, accept: (name: string) => boolean): void => {
+      try {
+        const w = fsWatch(dir, opts, (_event, file) => accept(file ? String(file) : '') && fire())
+        w.on('error', () => this.drop(key))
+        entry.watchers.push(w)
+      } catch {
+        // not watchable (e.g. recursive unsupported); the other watcher and working tree events still arrive
+      }
+    }
+    watchOne(gitDir, { recursive: false }, (name) => GIT_DIR_FILES.has(name))
+    // Commits, fetches and new branches only touch refs/ (Log pane).
+    watchOne(path.join(gitDir, 'refs'), { recursive: true }, (name) => !name.endsWith('.lock'))
   }
 
   remove(root: string): void {
@@ -415,10 +428,12 @@ export class GitDirWatcher {
     if (!entry) return
     this.entries.delete(key)
     if (entry.timer) clearTimeout(entry.timer)
-    try {
-      entry.watcher?.close()
-    } catch {
-      // already closed
+    for (const w of entry.watchers) {
+      try {
+        w.close()
+      } catch {
+        // already closed
+      }
     }
   }
 }

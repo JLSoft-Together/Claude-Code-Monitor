@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
+import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
 import { blockPatch, changeBlocks } from '../../lib/diffBlocks'
+import { CONTEXTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
 import { isMac } from '../../lib/platform'
 import {
   baseName,
@@ -16,10 +17,10 @@ import {
   changesUnwatch,
   changesWatch,
   hasChanges,
+  hasLog,
   onChangesUpdated,
   type ChangeEntry,
   type ChangesError,
-  type DiffWhitespace,
 } from '../../lib/preview'
 import DiffView from './DiffView.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
@@ -34,22 +35,13 @@ const emit = defineEmits<{
   root: [root: string]
   /** `select` was applied (or cannot be): the owner clears it. */
   selected: []
+  /** Open the Log pane for this repo. */
+  log: [root: string]
 }>()
 
 const { t } = useI18n()
 
-interface DiffOpts {
-  layout: 'inline' | 'split'
-  collapse: boolean
-  context: number
-  whitespace: DiffWhitespace
-  words: boolean
-}
-const OPTS_KEY = 'ccm.workspace.diffOpts'
-const OLD_LAYOUT_KEY = 'ccm.workspace.diffLayout'
 const TREE_KEY = 'ccm.workspace.changesTree'
-const CONTEXTS = [3, 5, 10]
-const WHITESPACE: DiffWhitespace[] = ['none', 'eol', 'all', 'all-blank']
 /** Past this many rows the viewer always folds unchanged runs. */
 const FORCE_COLLAPSE_LINES = 20_000
 
@@ -66,7 +58,7 @@ const diffState = ref<'idle' | 'loading' | 'binary' | 'too-large' | 'empty' | 'e
 const diffError = ref<ChangesError | null>(null)
 const notice = ref<string | null>(null)
 const currentBlock = ref(0)
-const opts = ref<DiffOpts>(readOpts())
+const opts = ref<DiffOpts>(readDiffOpts())
 const treeMode = ref(readLocal(TREE_KEY) === '1')
 const collapsedDirs = ref<Set<string>>(new Set())
 /** Tree cursor: `d:<group>:<path>` or `f:<path>`. */
@@ -102,24 +94,7 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
-function readOpts(): DiffOpts {
-  const base: DiffOpts = { layout: readLocal(OLD_LAYOUT_KEY) === 'split' ? 'split' : 'inline', collapse: true, context: 3, whitespace: 'none', words: true }
-  try {
-    const raw = JSON.parse(readLocal(OPTS_KEY) ?? 'null') as Partial<DiffOpts> | null
-    if (!raw || typeof raw !== 'object') return base
-    return {
-      layout: raw.layout === 'split' ? 'split' : raw.layout === 'inline' ? 'inline' : base.layout,
-      collapse: typeof raw.collapse === 'boolean' ? raw.collapse : base.collapse,
-      context: CONTEXTS.includes(raw.context as number) ? (raw.context as number) : base.context,
-      whitespace: WHITESPACE.includes(raw.whitespace as DiffWhitespace) ? (raw.whitespace as DiffWhitespace) : base.whitespace,
-      words: typeof raw.words === 'boolean' ? raw.words : base.words,
-    }
-  } catch {
-    return base
-  }
-}
-
-watch(opts, (v) => writeLocal(OPTS_KEY, JSON.stringify(v)), { deep: true })
+watch(opts, writeDiffOpts, { deep: true })
 watch(treeMode, (v) => writeLocal(TREE_KEY, v ? '1' : '0'))
 watch(
   () => opts.value.whitespace,
@@ -662,6 +637,9 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           </div>
         </Transition>
       </div>
+      <button v-if="hasLog && repoRoot" type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.log.open')" :aria-label="t('workspace.log.open')" data-changes-log @click="emit('log', repoRoot)">
+        <GitGraph :size="14" aria-hidden="true" />
+      </button>
       <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.changes.refresh')" :aria-label="t('workspace.changes.refresh')" @click="loadStatus">
         <RotateCw :size="14" aria-hidden="true" />
       </button>

@@ -30,9 +30,11 @@ import {
   X,
   Palette,
   Lightbulb,
+  GitGraph,
 } from 'lucide-vue-next'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
+import { hasLog } from '../lib/preview'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -45,6 +47,7 @@ import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
+import { useWorkspaceStore, workCwd } from '../stores/workspace'
 import ArtImage from './ArtImage.vue'
 import StatusIcon from './StatusIcon.vue'
 
@@ -69,6 +72,7 @@ interface Item {
 
 const { t } = useI18n()
 const ui = useUiStore()
+const workspace = useWorkspaceStore()
 const tips = useTipsStore()
 const terminals = useTerminalsStore()
 const favorites = useFavoritesStore()
@@ -128,6 +132,23 @@ const items = computed<Item[]>(() => {
     { id: 'c:usage', group: 'nav', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
     { id: 'c:history', group: 'nav', label: t('palette.goHistory'), icon: History, run: () => ui.setView('history') },
     ...(hasExtensions ? [{ id: 'c:extensions', group: 'nav' as const, label: t('palette.goExtensions'), icon: Puzzle, run: () => ui.setView('extensions') }] : []),
+    ...(hasTerminals && hasLog
+      ? [
+          {
+            id: 'c:gitlog',
+            group: 'nav' as const,
+            label: t('workspace.log.palette'),
+            icon: GitGraph,
+            run: () => {
+              const pane = workspace.active
+              const cwd = pane ? (pane.kind === 'changes' || pane.kind === 'log' ? (pane.root ?? pane.cwd) : workCwd(pane)) : workspace.recentDirs[0]
+              if (!cwd) return
+              ui.setView('workspace')
+              workspace.openLog(cwd)
+            },
+          },
+        ]
+      : []),
     { id: 'c:compact', group: 'nav', label: ui.compact ? t('compact.exit') : t('compact.enter'), icon: Minimize2, run: () => ui.toggleCompact() },
     { id: 'c:recap', group: 'actions', label: t('palette.recap'), icon: FileDown, run: () => ui.openRecap() },
     ...(ended ? [{ id: 'c:clear', group: 'actions' as const, label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),

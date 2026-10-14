@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GitBranch, GitCompare, RotateCw } from 'lucide-vue-next'
+import { GitBranch, GitCompare, GitGraph, RotateCw } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, isShowDiffKey, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
 import { setDragPath } from '../../lib/explorer/dragPath'
 import { isMac } from '../../lib/platform'
-import { baseName, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
+import { baseName, hasLog, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
 
 const props = defineProps<{ status: ChangesStatus | null; reading: boolean }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; refresh: [] }>()
+const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string]; refresh: [] }>()
 
 const { t } = useI18n()
 const listEl = ref<HTMLElement | null>(null)
@@ -77,6 +77,17 @@ const title = (e: ChangeEntry): string =>
         @click="emit('openDiff', ok.root)"
       >
         <GitCompare :size="13" aria-hidden="true" />
+      </button>
+      <button
+        v-if="ok && hasLog"
+        type="button"
+        class="inline-flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-ink-faint hover:bg-fill-strong hover:text-ink"
+        :title="t('workspace.log.open')"
+        :aria-label="t('workspace.log.open')"
+        data-explorer-log
+        @click="emit('openLog', ok.root)"
+      >
+        <GitGraph :size="13" aria-hidden="true" />
       </button>
       <button
         type="button"

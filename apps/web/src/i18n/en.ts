@@ -4,6 +4,7 @@ import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 import diff from './workspace-diff'
+import log from './workspace-log'
 import v28 from './extensions-v28'
 
 export default {
@@ -27,11 +28,12 @@ export default {
     ...tier2.en,
     ...explorer.en,
     ...diff.en,
+    ...log.en,
     tabs: 'Terminals',
     newLabel: 'New tab',
     close: 'Close terminal',
     closeTab: 'Close tab',
-    newHint: 'New tab: terminal, browser, file or changes ({keys})',
+    newHint: 'New tab: terminal, browser, file, changes or log ({keys})',
     splitPane: 'Split terminal',
     splitMenu: { title: 'Open next to it' },
     resize: 'Resize terminals',

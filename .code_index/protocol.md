@@ -54,3 +54,5 @@ Separate WS from the dashboard socket (desktop `pty-host.cjs`, not the collector
 - P5: `spawn.resume` = UUID (`isAgentSessionId`), claude/codex only; host refuses otherwise (`error preset`); presets build `claude --resume <id>` / `codex resume <id>`.
 - v2.1.0 PTY: client `cwd {cwd}` (shell folder from OSC 7 / 9;9, attached session) → host `cwd {cwd|null}` (validated real dir, re-sent on attach); `PtySessionInfo.liveCwd`.
 - v28 Extensions (desktop IPC only, no WS events) — `packages/shared/src/extensions.ts`: `ExtScope` user|project|local, `CatalogEntry` (`install`: http | stdio | plugins | guide; `fields` with anchored `pattern`; `match` alias names), `CATALOG`, `PM_SKILLS`, `checkFields`, name regexes (`MARKETPLACE_REPO`, `MCP_NAME`, `PLUGIN_NAME`, no leading `-`), status `ExtStatus` / `McpServerRow` / `PluginRow`, `ExtResult` codes noCli|busy|cancelled|badInput|needsTerminal|failed|timeout, requests `ExtInstallRequest` / `ExtRemoveRequest` / `ExtSourceRequest`, `parseMcpLine`.
+
+- v30 Git Log: desktop IPC only (`ccm:log-*`, no WebSocket events); shared types in `packages/shared/src/gitlog.ts` (`LOG_PAGE`, `LogQuery`, `LogCommit`, detail / diff results).
