@@ -46,3 +46,9 @@ Tokens: input = input + cache_creation; cacheRead separate; total = input + outp
 - Wait labels: shared `status.ts` `waitReason(waitingFor)` → `WaitReason` `permission|question|other` (permission prompt/sandbox/worker request → permission; input needed/dialog open → question; else other, shown raw). Tool-specific text is web-side.
 - C2b: shared `notify.ts` `ToastMessage` (`toast.show {tag,title,persistent}` | `toast.hide {tag}`), `parseToastMessage`, `badgeCount`; collector → desktop over parentPort only (no body/url).
 - `favorite.open {dir, mode, terminalApp?}` (client): `TerminalApp = 'terminal'|'iterm'`, used on macOS only; server drops any other value (field removed). `launch.failed` activity `data.error`: `LaunchErrorCode` = notFound|denied|notInstalled|failed (denied/notInstalled macOS only).
+
+## PTY channel (v18, desktop only) — `packages/shared/src/pty.ts`
+Separate WS from the dashboard socket (desktop `pty-host.cjs`, not the collector). `PTY_PRESETS` claude|codex|shell, `PtyClientMessage` spawn/attach/resize/kill, `PtyServerMessage` ready/pid/exit/gone/error(message: preset|cwd|limit), `PtyEndpoint` {url, protocol} from preload, `PtySessionInfo` for quit census. Keystrokes/output are binary frames.
+- P2: client `{t:'owners', pids}` (any authenticated socket, no session needed) → `{t:'owners', owners: {pid: sessionId} | null}` (null = process scan failed). Used by web `useWorkspaceLinks` over `PtyConnection.request` (throwaway socket).
+- P4: client `wt.list {cwd}` / `wt.add {cwd, branch}` / `wt.remove {cwd, path}` → `wt.list {repo, worktrees: PtyWorktree[]}` | `wt.added {path, branch}` | `wt.removed {path}` | `wt.error {code: WorktreeError, detail?}`; host → attached socket `branch {branch|null}` on spawn/attach/HEAD change.
+- P5: `spawn.resume` = UUID (`isAgentSessionId`), claude/codex only; host refuses otherwise (`error preset`); presets build `claude --resume <id>` / `codex resume <id>`.

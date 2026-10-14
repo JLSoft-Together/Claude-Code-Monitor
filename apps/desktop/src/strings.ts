@@ -7,10 +7,9 @@ const en = {
   logHint: 'Recent log',
   collectorExited: (code: number | null) => `Collector stopped (code ${code ?? '?'}). Is port in use by another app?`,
   collectorTimeout: 'Collector did not respond within 30 s.',
-  portInUse: (port: number) => `Port ${port} is used by another app (4317 is also the OpenTelemetry collector default). Close that app or set CCM_PORT.`,
+  portInUse: (port: number) => `Port ${port} is taken: an older Agent Monitor (.bat / npm start) or another app (4317 is also the OpenTelemetry collector default). Close it or set CCM_PORT.`,
   trayOpen: 'Open dashboard',
   trayCompact: 'Compact window',
-  trayBrowser: 'Open in browser',
   trayLogin: 'Start with Windows',
   trayLoginMac: 'Open at login',
   trayLogs: 'Open log folder',
@@ -20,6 +19,10 @@ const en = {
   moveDetail: "Claude Code's status line runs through this app, so it should not run from the disk image or Downloads.",
   moveConfirm: 'Move to Applications',
   moveLater: 'Not now',
+  quitTitle: (n: number) => (n === 0 ? 'Quit and close the open terminals?' : n === 1 ? 'Quit and close 1 terminal?' : `Quit and close ${n} terminals?`),
+  quitDetail: 'These terminals run inside Agent Monitor and stop when it quits:',
+  quitConfirm: 'Quit',
+  quitCancel: 'Cancel',
 }
 
 const vi: typeof en = {
@@ -31,10 +34,9 @@ const vi: typeof en = {
   logHint: 'Log gần nhất',
   collectorExited: (code) => `Collector đã dừng (mã ${code ?? '?'}). Port có đang bị app khác dùng?`,
   collectorTimeout: 'Collector không phản hồi sau 30 giây.',
-  portInUse: (port) => `Port ${port} đang bị app khác dùng (4317 cũng là cổng mặc định của OpenTelemetry collector). Hãy tắt app đó hoặc đặt CCM_PORT.`,
+  portInUse: (port) => `Cổng ${port} đang bị chiếm: Agent Monitor bản cũ (.bat / npm start) hoặc app khác (4317 cũng là cổng mặc định của OpenTelemetry collector). Hãy tắt nó hoặc đặt CCM_PORT.`,
   trayOpen: 'Mở dashboard',
   trayCompact: 'Cửa sổ gọn',
-  trayBrowser: 'Mở trong trình duyệt',
   trayLogin: 'Chạy cùng Windows',
   trayLoginMac: 'Mở khi đăng nhập',
   trayLogs: 'Mở thư mục log',
@@ -44,6 +46,10 @@ const vi: typeof en = {
   moveDetail: 'Status line của Claude Code chạy qua app này, nên đừng chạy app từ ổ đĩa DMG hay thư mục Downloads.',
   moveConfirm: 'Chuyển vào Applications',
   moveLater: 'Để sau',
+  quitTitle: (n) => (n === 0 ? 'Thoát và đóng các terminal đang mở?' : `Thoát và đóng ${n} terminal?`),
+  quitDetail: 'Các terminal này chạy bên trong Agent Monitor và sẽ dừng khi thoát:',
+  quitConfirm: 'Thoát',
+  quitCancel: 'Huỷ',
 }
 
 export type Strings = typeof en

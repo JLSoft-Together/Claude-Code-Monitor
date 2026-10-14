@@ -153,7 +153,7 @@ function percent(rate: number): string {
 
 <template>
   <div class="absolute inset-0 overflow-x-hidden overflow-y-auto p-3 text-xs">
-    <p v-if="connection.state === 'reconnecting'" class="mb-2 rounded-md bg-raised px-2 py-1.5 text-ink-muted" role="status">{{ t('connection.stale') }}</p>
+    <p v-if="connection.state === 'reconnecting'" class="mb-2 rounded-inner bg-fill px-2 py-1.5 text-ink-muted" role="status">{{ t('connection.stale') }}</p>
 
     <div v-if="!groups.length" class="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-ink-muted">
       <p>{{ t('tools.empty', { n: ui.timelineWindow }) }}</p>
@@ -177,7 +177,7 @@ function percent(rate: number): string {
           </h3>
           <div v-for="lane in group.lanes" :key="lane.key" class="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-x-2 py-0.5">
             <span class="truncate text-ink-muted" :style="{ paddingLeft: `${lane.depth * 12}px` }" :title="lane.name">{{ lane.name }}</span>
-            <div class="relative h-6 overflow-hidden rounded bg-raised/60" role="group" :aria-label="lane.name" @keydown="move($event, lane.key, lane.bars.length)">
+            <div class="relative h-6 overflow-hidden rounded-sm bg-fill" role="group" :aria-label="lane.name" @keydown="move($event, lane.key, lane.bars.length)">
               <span v-for="tick in axisTicks" :key="tick.ms" class="absolute inset-y-0 w-px bg-line" :style="{ left: `${tick.left}%` }" aria-hidden="true" />
               <button
                 v-for="(bar, i) in lane.bars"
@@ -219,8 +219,8 @@ function percent(rate: number): string {
             v-for="row in stats"
             :key="row.tool"
             tabindex="0"
-            class="border-b border-line text-ink outline-none focus-visible:bg-raised"
-            :class="hoveredTool === row.tool ? 'bg-raised ring-2 ring-accent ring-inset' : ''"
+            class="border-b border-line text-ink outline-none focus-visible:bg-fill"
+            :class="hoveredTool === row.tool ? 'bg-fill ring-2 ring-accent ring-inset' : ''"
             @mouseenter="hoveredTool = row.tool"
             @mouseleave="hoveredTool = null"
             @focus="hoveredTool = row.tool"

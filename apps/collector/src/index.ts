@@ -22,6 +22,10 @@ import { isPidAlive } from './process'
 
 async function main(): Promise<void> {
   const config = loadConfig()
+  if (!config.appKey && !config.dev) {
+    console.error('[collector] Agent Monitor runs inside its desktop app: npm run desktop (UI work: npm run dev).')
+    process.exit(1)
+  }
   const store = new MonitorStore({ activityLimit: config.activityLimit, batchMs: config.batchMs })
   store.statusLineCommand = config.statusLineCommand
   store.dayStartedAt = await firstStartToday(path.join(config.dataDir, 'day-start.json'))
@@ -67,7 +71,7 @@ async function main(): Promise<void> {
   const hostPort = (process as unknown as { parentPort?: { postMessage: (msg: unknown) => void } }).parentPort
   const electronToast = config.toastBackend === 'electron' && hostPort !== undefined
   const toaster = new Toaster(
-    { supported: config.toast && (config.toastBackend !== 'electron' || electronToast), port: config.port, file: path.join(config.dataDir, 'notify.json') },
+    { supported: config.toast && (config.toastBackend !== 'electron' || electronToast), port: config.port, file: path.join(config.dataDir, 'notify.json'), link: config.toastLink },
     electronToast ? { ...defaultToastDeps, ...electronToastDeps((m) => hostPort.postMessage(m)) } : defaultToastDeps,
   )
   await toaster.load()
@@ -92,13 +96,9 @@ async function main(): Promise<void> {
     port: config.port,
     webDist: config.webDist,
     devOriginPorts: config.devOriginPorts,
+    appKey: config.appKey,
     store,
     onClientClose: (clientId) => toaster.dropClient(clientId),
-    onFocusLink: (terminalId, key) => {
-      if (!toaster.accepts(key)) return null
-      if (terminalId !== null) toaster.hideFor(terminalId)
-      return TEXT[toaster.locale].page
-    },
     onFocusRun: async (terminalId, key) => {
       if (!toaster.accepts(key)) return null
       if (!store.getTerminal(terminalId)) return 'notFound'
@@ -229,7 +229,7 @@ main().catch(async (err: unknown) => {
     const port = loadConfig().port
     console.error(
       (await isCollectorAt(port))
-        ? `[collector] Claude Code Monitor is already running on port ${port} (desktop app or another npm start) — open http://127.0.0.1:${port}, quit it first, or set CCM_PORT to run both.`
+        ? `[collector] Agent Monitor is already running on port ${port}. Quit it first, or set CCM_PORT to run both.`
         : `[collector] port ${port} is already in use by another app (4317 is also the OpenTelemetry OTLP/gRPC default). Stop the other app or set CCM_PORT.`,
     )
     process.exit(PORT_IN_USE_EXIT)

@@ -141,7 +141,7 @@ onBeforeUnmount(() => {
         <div v-if="!spot" class="ccm-tour-scrim absolute inset-0" />
         <div
           v-else
-          class="ccm-tour-spot absolute rounded-xl ring-2 ring-accent transition-all duration-300 ease-out motion-reduce:transition-none"
+          class="ccm-tour-spot absolute rounded-card ring-2 ring-accent transition-all duration-300 ease-out motion-reduce:transition-none"
           :style="{ top: `${spot.top}px`, left: `${spot.left}px`, width: `${spot.width}px`, height: `${spot.height}px` }"
           aria-hidden="true"
         />
@@ -153,7 +153,7 @@ onBeforeUnmount(() => {
           aria-labelledby="tour-title"
           aria-describedby="tour-body"
           tabindex="-1"
-          class="ccm-pop absolute flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 shadow-lg outline-none"
+          class="ccm-pop ccm-sheet absolute flex flex-col gap-3 p-5 outline-none"
           :class="
             narrow
               ? 'inset-x-4 bottom-4'
@@ -170,17 +170,17 @@ onBeforeUnmount(() => {
             </div>
             <button
               type="button"
-              class="-mt-1 -mr-1 inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain -mt-1 -mr-1 shrink-0"
               :aria-label="t('tour.skip')"
               :title="t('tour.skip')"
               @click="finish"
             >
-              <X :size="17" aria-hidden="true" />
+              <X :size="16" aria-hidden="true" />
             </button>
           </div>
           <ArtImage v-if="step.id === 'welcome'" name="tour-welcome" class="mx-auto w-36 max-w-full py-1" />
           <p id="tour-body" class="text-sm leading-relaxed text-ink-muted">{{ t(`tour.steps.${step.id}.body`) }}</p>
-          <p v-if="step.target && !spot && step.absent" class="rounded-lg bg-raised px-3 py-2 text-xs text-ink-muted">
+          <p v-if="step.target && !spot && step.absent" class="rounded-control bg-fill px-3 py-2 text-xs text-ink-muted">
             {{ t(`tour.steps.${step.id}.absent`) }}
           </p>
 
@@ -196,19 +196,19 @@ onBeforeUnmount(() => {
             <button
               v-if="index > 0"
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn"
               @click="go(-1)"
             >
-              <ArrowLeft :size="15" aria-hidden="true" />{{ t('tour.back') }}
+              <ArrowLeft :size="14" aria-hidden="true" />{{ t('tour.back') }}
             </button>
             <button
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-opacity hover:opacity-90"
+              class="ccm-btn ccm-btn-primary"
               @click="go(1)"
             >
-              <template v-if="last"><Check :size="15" aria-hidden="true" />{{ t('tour.done') }}</template>
-              <template v-else-if="index === 0">{{ t('tour.start') }}<ArrowRight :size="15" aria-hidden="true" /></template>
-              <template v-else>{{ t('tour.next') }}<ArrowRight :size="15" aria-hidden="true" /></template>
+              <template v-if="last"><Check :size="14" aria-hidden="true" />{{ t('tour.done') }}</template>
+              <template v-else-if="index === 0">{{ t('tour.start') }}<ArrowRight :size="14" aria-hidden="true" /></template>
+              <template v-else>{{ t('tour.next') }}<ArrowRight :size="14" aria-hidden="true" /></template>
             </button>
           </div>
         </div>

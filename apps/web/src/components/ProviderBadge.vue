@@ -19,7 +19,7 @@ const title = computed(() => (known.value ? t(`provider.modeTitle.${known.value}
   </span>
   <span
     v-else
-    class="inline-flex shrink-0 items-center gap-1 rounded-md border border-codex/40 px-1.5 py-px text-2xs font-medium text-codex"
+    class="inline-flex shrink-0 items-center gap-1 rounded-inner bg-codex/12 px-1.5 py-px text-2xs font-medium text-codex"
     :title="title"
   >
     <Hexagon :size="11" :stroke-width="2.25" aria-hidden="true" />{{ t('provider.codex') }}<span v-if="variant === 'full' && modeLabel" class="font-normal text-ink-faint">· {{ modeLabel }}</span>

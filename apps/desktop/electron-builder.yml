@@ -13,13 +13,19 @@ compression: maximum
 # utilityProcess.fork runs collector.cjs from disk, outside the archive.
 asarUnpack:
   - collector.cjs
+  - pty-host.cjs
 npmRebuild: false
 nodeGypRebuild: false
 files:
   - main.cjs
   - collector.cjs
+  - pty-host.cjs
+  - preload.cjs
   - package.json
 extraResources:
+  # node-pty + the prebuilt package for this platform/arch (npm installs only the host one).
+  - from: ../../node_modules/@lydell
+    to: pty/node_modules/@lydell
   - from: ../web/dist
     to: web
   - from: ../../scripts/statusline-bridge.mjs

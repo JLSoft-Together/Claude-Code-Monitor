@@ -130,8 +130,8 @@ onBeforeUnmount(() => {
     <button
       ref="trigger"
       type="button"
-      class="flex cursor-pointer items-stretch gap-1.5 rounded-[9px] px-1.5 py-1 text-left transition-colors hover:bg-raised"
-      :class="[stale ? 'opacity-60' : '', open ? 'bg-raised' : '']"
+      class="flex cursor-pointer items-stretch gap-1.5 rounded-control px-1.5 py-1 text-left transition-colors hover:bg-fill"
+      :class="[stale ? 'opacity-60' : '', open ? 'bg-fill' : '']"
       :aria-label="heading"
       :aria-expanded="open"
       aria-haspopup="dialog"
@@ -152,7 +152,7 @@ onBeforeUnmount(() => {
           <span
             v-if="changes[w.key].n"
             :key="`delta-${changes[w.key].n}`"
-            class="ccm-quota-delta pointer-events-none absolute -top-2.5 right-0 inline-flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 text-2xs font-semibold tabular shadow-sm"
+            class="ccm-quota-delta pointer-events-none absolute -top-2.5 right-0 inline-flex items-center gap-0.5 rounded-inner bg-surface px-1.5 text-2xs font-semibold tabular shadow-control"
             :class="changes[w.key].delta > 0 ? 'text-st-done' : LEVEL[w.level].text"
             aria-hidden="true"
           >
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
       v-if="open"
       role="dialog"
       :aria-label="heading"
-      class="ccm-pop fixed inset-x-4 top-20 z-40 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] rounded-xl border border-line bg-surface p-4 shadow-lg"
+      class="ccm-pop fixed inset-x-4 top-20 z-40 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] ccm-menu p-4!"
     >
       <p class="flex items-center gap-1.5 text-sm font-semibold text-ink">
         <Hexagon v-if="codex" :size="14" :stroke-width="2.25" class="text-codex" aria-hidden="true" />{{ heading }}
@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
           <span class="text-sm text-ink-muted">{{ w.label }}</span>
           <span class="text-2xl font-semibold tabular transition-colors duration-500" :class="LEVEL[w.level].text">{{ Math.round(shown[w.key].value) }}%<span class="ml-1.5 text-sm font-normal text-ink-faint">{{ t('limits.leftWord') }}</span></span>
         </div>
-        <div class="relative mt-2 h-2 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+        <div class="relative mt-2 h-2 overflow-hidden rounded-full bg-fill" aria-hidden="true">
           <span class="block h-full rounded-full transition-[width,background-color] duration-700 ease-out-quint" :class="LEVEL[w.level].bar" :style="{ width: `${w.left}%` }" />
           <span v-if="changes[w.key].n" :key="`shine-${changes[w.key].n}`" class="ccm-quota-shine absolute inset-y-0 left-0 w-1/3" />
           <span class="absolute inset-y-0 left-[20%] w-px bg-surface" />

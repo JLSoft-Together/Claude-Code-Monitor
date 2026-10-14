@@ -104,7 +104,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
     <p v-if="!lanes.length" class="py-6 text-center text-sm text-ink-muted">{{ t('history.timelineEmpty') }}</p>
     <template v-else-if="span">
       <div class="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" :aria-label="t('history.legend')" role="list">
-        <div v-for="k in STATUSES" :key="k" role="listitem" class="flex items-center gap-3 rounded-lg border border-line px-3 py-2.5">
+        <div v-for="k in STATUSES" :key="k" role="listitem" class="flex items-center gap-3 rounded-control bg-fill px-3 py-2.5">
           <span class="h-8 w-1.5 shrink-0 rounded-full" :class="FILL[k]" aria-hidden="true" />
           <div class="min-w-0">
             <p class="inline-flex items-center gap-1.5 text-xs text-ink-muted">
@@ -144,7 +144,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
           </div>
           <div class="mt-2 flex items-center gap-3">
             <div
-              class="flex h-2.5 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-full bg-raised"
+              class="flex h-2.5 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-full bg-fill"
               role="img"
               :aria-label="t('history.laneLabel', { title: r.title, working: short(r.totals.working), waiting: short(r.totals.waiting) })"
             >
@@ -157,7 +157,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
 
       <button
         type="button"
-        class="mt-4 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink-muted transition-colors hover:border-ink-faint hover:text-ink"
+        class="ccm-btn mt-4"
         :aria-expanded="showHours"
         @click="showHours = !showHours"
       >
@@ -222,7 +222,7 @@ const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('histo
             <span class="absolute -inset-y-1 w-0.5 rounded-full bg-accent" :style="{ left: `${nowPct}%` }" aria-hidden="true" />
             <div
               v-if="hover?.lane === lane.id"
-              class="pointer-events-none absolute bottom-full z-10 mb-2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-lg"
+              class="pointer-events-none absolute bottom-full z-10 mb-2 whitespace-nowrap rounded-control bg-surface px-2.5 py-1.5 text-xs shadow-pop"
               :style="tipStyle(hover.seg)"
               role="tooltip"
             >

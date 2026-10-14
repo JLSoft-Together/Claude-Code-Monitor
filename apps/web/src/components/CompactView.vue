@@ -127,15 +127,15 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
       <h2 id="compact-waiting" class="inline-flex items-center gap-2 text-base font-semibold" :class="activeWaiting ? 'text-st-waiting' : 'text-ink-muted'">
         <Hand :size="18" aria-hidden="true" />{{ t('waiting.title', { n: activeWaiting }) }}
       </h2>
-      <p v-if="!waiting.length" class="rounded-xl border border-line bg-surface px-4 py-5 text-base text-ink-muted">
+      <p v-if="!waiting.length" class="rounded-card bg-surface px-4 py-5 text-base text-ink-muted shadow-card">
         {{ t('compact.allClear') }}
       </p>
       <TransitionGroup v-else tag="ul" name="ccm-list" class="relative flex flex-col gap-2">
         <li
           v-for="r in waiting"
           :key="r.id"
-          class="flex min-w-0 items-stretch overflow-hidden rounded-xl border bg-surface"
-          :class="[r.snoozedUntil ? 'border-line opacity-60' : r.long ? 'border-st-error/60' : 'border-st-waiting/50']"
+          class="flex min-w-0 items-stretch overflow-hidden rounded-card bg-surface shadow-card"
+          :class="[r.snoozedUntil ? 'opacity-60' : r.long ? 'ring-1 ring-st-error/60' : 'ring-1 ring-st-waiting/50']"
         >
           <component
             :is="r.job ? 'div' : 'button'"
@@ -146,7 +146,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
             :title="jumpError(r.id) ?? (r.job ? undefined : openLabel(r))"
             @click="open(r)"
           >
-            <span v-if="r.job" class="shrink-0 rounded-md bg-raised px-1.5 text-xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
+            <span v-if="r.job" class="shrink-0 rounded-inner bg-fill px-1.5 text-xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
             <StatusIcon v-else status="waiting" :size="20" />
             <span class="flex min-w-0 flex-1 flex-col">
               <span class="truncate text-lg font-semibold leading-snug">{{ r.title }}</span>
@@ -187,7 +187,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
 
     <section v-for="group in [{ key: 'working', rows: working }, { key: 'other', rows: others }]" v-show="group.rows.length" :key="group.key" :aria-labelledby="`compact-${group.key}`" class="flex flex-col gap-2">
       <h2 :id="`compact-${group.key}`" class="text-sm font-semibold text-ink-muted">{{ t(`compact.${group.key}`, { n: group.rows.length }) }}</h2>
-      <TransitionGroup tag="ul" name="ccm-list" class="relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface">
+      <TransitionGroup tag="ul" name="ccm-list" class="relative flex flex-col overflow-hidden rounded-card bg-surface shadow-card">
         <li v-for="r in group.rows" :key="r.id" class="border-b border-line last:border-b-0">
           <button
             type="button"

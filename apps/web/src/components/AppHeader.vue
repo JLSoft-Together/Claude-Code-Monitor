@@ -2,7 +2,8 @@
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, Sun } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Search, SquareTerminal, Sun } from 'lucide-vue-next'
+import { hasTerminals } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -20,6 +21,7 @@ const ui = useUiStore()
 
 const tabs = computed(() => [
   { id: 'monitor' as View, label: t('nav.monitor'), icon: Activity },
+  ...(hasTerminals ? [{ id: 'workspace' as View, label: t('nav.workspace'), icon: SquareTerminal }] : []),
   { id: 'usage' as View, label: t('nav.usage'), icon: ChartColumnBig },
   { id: 'history' as View, label: t('nav.history'), icon: History },
 ])
@@ -73,12 +75,12 @@ function onTabKey(e: KeyboardEvent): void {
 </script>
 
 <template>
-  <header class="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur-sm">
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
-      <div class="flex min-w-0 shrink-0 items-center gap-3">
-        <ArtImage name="logo" class="size-9 shrink-0" />
+  <header class="ccm-material sticky top-0 z-30 border-b border-line">
+    <div class="flex min-h-13 flex-wrap items-center gap-x-5 gap-y-2 px-4 py-1.5 sm:px-5">
+      <div class="flex min-w-0 shrink-0 items-center gap-2.5">
+        <ArtImage name="logo" class="size-8 shrink-0" />
         <div class="flex min-w-0 flex-col">
-          <h1 class="ccm-title min-w-0 truncate text-base leading-tight font-semibold tracking-tight sm:text-lg" :aria-label="t('app.title')">
+          <h1 class="ccm-title min-w-0 truncate text-sm leading-tight font-semibold tracking-tight sm:text-base" :aria-label="t('app.title')">
             <span aria-hidden="true"
               ><span
                 v-for="(c, i) in titleChars"
@@ -99,11 +101,11 @@ function onTabKey(e: KeyboardEvent): void {
         data-tour="tabs"
         role="tablist"
         :aria-label="t('nav.label')"
-        class="relative order-3 grid w-full shrink-0 grid-cols-3 rounded-xl border border-line bg-surface p-1 sm:order-none sm:w-auto"
+        class="relative order-3 grid w-full shrink-0 auto-cols-fr grid-flow-col rounded-control bg-fill p-0.5 sm:order-none sm:w-auto"
       >
         <span
-          class="absolute inset-y-1 left-1 w-[calc((100%-8px)/3)] rounded-lg bg-accent-soft transition-transform duration-300 ease-out-quint"
-          :style="{ transform: `translateX(${activeIndex * 100}%)` }"
+          class="absolute inset-y-0.5 left-0.5 rounded-inner bg-control shadow-control transition-transform duration-300 ease-out-quint"
+          :style="{ width: `calc((100% - 4px) / ${tabs.length})`, transform: `translateX(${activeIndex * 100}%)` }"
           aria-hidden="true"
         />
         <button
@@ -113,12 +115,12 @@ function onTabKey(e: KeyboardEvent): void {
           role="tab"
           :aria-selected="ui.view === tab.id"
           :tabindex="ui.view === tab.id ? 0 : -1"
-          class="relative inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors sm:min-w-[120px]"
-          :class="ui.view === tab.id ? 'text-accent' : 'text-ink-muted hover:text-ink'"
+          class="relative inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-inner px-3 text-xs font-medium transition-colors sm:min-w-[104px]"
+          :class="ui.view === tab.id ? 'text-ink' : 'text-ink-muted hover:text-ink'"
           @click="ui.setView(tab.id)"
           @keydown="onTabKey"
         >
-          <component :is="tab.icon" :size="17" aria-hidden="true" />
+          <component :is="tab.icon" :size="15" aria-hidden="true" />
           {{ tab.label }}
         </button>
       </div>
@@ -128,14 +130,14 @@ function onTabKey(e: KeyboardEvent): void {
         <div
           v-if="showClaudeLimits || showCodexLimits"
           data-tour="limits"
-          class="flex flex-wrap items-stretch gap-0.5 rounded-xl border border-line bg-surface p-0.5 sm:flex-nowrap"
+          class="flex flex-wrap items-stretch gap-0.5 rounded-control bg-surface p-0.5 shadow-card sm:flex-nowrap"
         >
           <PlanLimits v-if="showClaudeLimits" />
           <span v-if="showClaudeLimits && showCodexLimits" class="my-1.5 hidden w-px shrink-0 bg-line sm:block" aria-hidden="true" />
           <PlanLimits v-if="showCodexLimits" provider="codex" />
         </div>
 
-        <div class="flex flex-wrap items-center justify-end gap-1.5 sm:flex-nowrap">
+        <div class="flex flex-wrap items-center justify-end gap-1 sm:flex-nowrap">
           <div class="mr-1 flex shrink-0 items-center px-1 text-xs whitespace-nowrap" role="status" aria-live="polite" :title="connectionTitle">
             <span class="inline-flex items-center gap-1.5 font-medium" :class="connectionView.cls">
               <span v-if="connectionView.glyph === 'live'" class="relative flex size-2.5">
@@ -154,42 +156,41 @@ function onTabKey(e: KeyboardEvent): void {
 
           <button
             type="button"
-            class="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-raised hover:text-ink"
-            :class="ui.compact ? 'text-accent' : 'text-ink-muted'"
+            class="ccm-btn-plain text-xs font-medium"
             :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
             :title="ui.compact ? t('compact.exitTitle') : t('compact.enterTitle')"
             :aria-pressed="ui.compact"
             data-tour="compact"
             @click="ui.toggleCompact()"
           >
-            <Maximize2 v-if="ui.compact" :size="17" aria-hidden="true" />
-            <Minimize2 v-else :size="17" aria-hidden="true" />
+            <Maximize2 v-if="ui.compact" :size="16" aria-hidden="true" />
+            <Minimize2 v-else :size="16" aria-hidden="true" />
             <span v-if="ui.compact" class="hidden sm:inline">{{ t('compact.exit') }}</span>
           </button>
           <button
             type="button"
-            class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+            class="ccm-btn-plain text-xs font-medium"
             data-tour="palette"
             :aria-label="t('palette.open')"
             :title="t('palette.open')"
             aria-keyshortcuts="Control+K"
             @click="ui.paletteOpen = true"
           >
-            <Search :size="17" aria-hidden="true" />
-            <kbd class="hidden rounded border border-line px-1 font-mono text-2xs text-ink-faint 2xl:inline">Ctrl K</kbd>
+            <Search :size="16" aria-hidden="true" />
+            <kbd class="hidden rounded-[4px] bg-fill px-1 font-mono text-2xs text-ink-faint 2xl:inline">Ctrl K</kbd>
           </button>
           <button
             type="button"
-            class="hidden h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink 2xl:inline-flex"
+            class="ccm-btn-plain hidden text-xs font-medium 2xl:inline-flex"
             :aria-label="t('settings.language') + ': ' + t('settings.switchLanguage')"
             @click="settings.toggleLocale()"
           >
-            <Languages :size="17" aria-hidden="true" />
+            <Languages :size="16" aria-hidden="true" />
             <span>{{ settings.locale === 'en' ? 'VI' : 'EN' }}</span>
           </button>
           <button
             type="button"
-            class="hidden size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink 2xl:inline-flex"
+            class="ccm-btn-plain hidden 2xl:inline-flex"
             :aria-label="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
             :title="settings.theme === 'dark' ? t('settings.toLight') : t('settings.toDark')"
             @click="toggleTheme"
@@ -201,8 +202,8 @@ function onTabKey(e: KeyboardEvent): void {
               leave-active-class="transition duration-100 ease-in"
               leave-to-class="opacity-0 rotate-[60deg] scale-75"
             >
-              <Sun v-if="settings.theme === 'dark'" key="sun" :size="18" aria-hidden="true" />
-              <Moon v-else key="moon" :size="18" aria-hidden="true" />
+              <Sun v-if="settings.theme === 'dark'" key="sun" :size="16" aria-hidden="true" />
+              <Moon v-else key="moon" :size="16" aria-hidden="true" />
             </Transition>
           </button>
           <SettingsMenu />

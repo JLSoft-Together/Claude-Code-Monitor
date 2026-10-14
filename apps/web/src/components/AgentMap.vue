@@ -15,6 +15,7 @@ import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import AgentNode from './AgentNode.vue'
 import KeyHint from './KeyHint.vue'
+import SegmentedControl from './ui/SegmentedControl.vue'
 import ToolTimeline from './ToolTimeline.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
@@ -291,8 +292,9 @@ onNodeDragStop(({ nodes }) => {
   for (const n of nodes) ui.setNodePos(n.id, n.position)
 })
 
-const TOOL =
-  'ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+const TOOL = 'ccm-btn-plain ccm-press text-xs'
+const CHROME_BTN =
+  'ccm-material ccm-press pointer-events-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-control px-2 text-xs text-ink-muted shadow-pop transition-colors hover:text-ink'
 
 const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
   { key: 'zoomIn', label: t('map.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 150 }) },
@@ -302,17 +304,9 @@ const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?
 ])
 
 const views = computed(() => [
-  { key: 'map' as MapView, label: t('tools.view.map'), icon: Network },
-  { key: 'timeline' as MapView, label: t('tools.view.timeline'), icon: ChartGantt },
+  { value: 'map' as MapView, label: t('tools.view.map'), icon: Network },
+  { value: 'timeline' as MapView, label: t('tools.view.timeline'), icon: ChartGantt },
 ])
-
-function onViewKey(event: KeyboardEvent): void {
-  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-  event.preventDefault()
-  const group = event.currentTarget as HTMLElement
-  ui.mapView = ui.mapView === 'map' ? 'timeline' : 'map'
-  void nextTick(() => group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus())
-}
 </script>
 
 <template>
@@ -353,8 +347,7 @@ function onViewKey(event: KeyboardEvent): void {
       <div class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
         <button
           type="button"
-          :class="[TOOL, ui.isCollapsed('sessions') ? '' : 'invisible']"
-          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :class="[CHROME_BTN, ui.isCollapsed('sessions') ? '' : 'invisible']"
           :aria-label="t('map.showSessions')"
           :title="t('map.showSessions')"
           aria-keyshortcuts="S"
@@ -363,29 +356,14 @@ function onViewKey(event: KeyboardEvent): void {
           <PanelLeft :size="16" aria-hidden="true" /><span class="hidden sm:inline">{{ ui.sessionTab ? t('panel.session') : t('sessions.title') }}</span><KeyHint keys="S" />
         </button>
 
-        <div class="pointer-events-auto flex flex-wrap items-center justify-center gap-0.5 rounded-lg border border-line bg-surface/95 p-0.5 shadow-sm" role="toolbar" :aria-label="t('map.title')">
-          <div class="inline-flex rounded-md bg-raised p-0.5" role="radiogroup" :aria-label="t('tools.view.label')" @keydown="onViewKey">
-            <button
-              v-for="v in views"
-              :key="v.key"
-              type="button"
-              role="radio"
-              class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded px-2 text-xs transition-colors hover:text-ink"
-              :class="ui.mapView === v.key ? 'bg-surface text-ink' : 'text-ink-muted'"
-              :aria-checked="ui.mapView === v.key"
-              :tabindex="ui.mapView === v.key ? 0 : -1"
-              @click="ui.mapView = v.key"
-            >
-              <component :is="v.icon" :size="15" aria-hidden="true" />
-              <span>{{ v.label }}</span>
-            </button>
-          </div>
+        <div class="ccm-material pointer-events-auto flex flex-wrap items-center justify-center gap-0.5 rounded-control p-0.5 shadow-pop" role="toolbar" :aria-label="t('map.title')">
+          <SegmentedControl v-model="ui.mapView" :options="views" :label="t('tools.view.label')" />
           <template v-if="ui.mapView === 'timeline'">
             <button
               v-for="w in WINDOWS"
               :key="w"
               type="button"
-              :class="[TOOL, 'tabular-nums', ui.timelineWindow === w ? 'bg-raised text-ink' : '']"
+              :class="[TOOL, 'tabular-nums']"
               :aria-pressed="ui.timelineWindow === w"
               @click="ui.timelineWindow = w"
             >
@@ -397,7 +375,7 @@ function onViewKey(event: KeyboardEvent): void {
               v-if="picked.size"
               type="button"
               :class="TOOL"
-              class="bg-raised text-ink"
+              class="bg-fill! text-ink!"
               :aria-label="t('map.clearPicked')"
               :title="t('map.clearPicked')"
               @click="clearPicked()"
@@ -407,7 +385,7 @@ function onViewKey(event: KeyboardEvent): void {
             </button>
             <button
               type="button"
-              :class="[TOOL, settings.hideFinished ? 'bg-raised text-ink' : '']"
+              :class="TOOL"
               :aria-pressed="settings.hideFinished"
               :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
               :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
@@ -436,8 +414,7 @@ function onViewKey(event: KeyboardEvent): void {
 
         <button
           type="button"
-          :class="[TOOL, ui.isCollapsed('activity') ? '' : 'invisible']"
-          class="pointer-events-auto border border-line bg-surface/95 shadow-sm"
+          :class="[CHROME_BTN, ui.isCollapsed('activity') ? '' : 'invisible']"
           :aria-label="t('map.showActivity')"
           :title="t('map.showActivity')"
           aria-keyshortcuts="A"

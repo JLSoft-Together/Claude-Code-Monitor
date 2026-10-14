@@ -97,7 +97,7 @@ onBeforeUnmount(() => {
       <button
         v-if="doneCount > 0"
         type="button"
-        class="ms-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-st-error"
+        class="ccm-btn-plain ms-auto shrink-0 px-2! text-xs font-medium hover:text-st-error!"
         @click="connection.dismissJobs()"
       >
         <Trash2 :size="13" aria-hidden="true" />{{ t('jobs.clearDone', { n: doneCount }) }}
@@ -107,14 +107,14 @@ onBeforeUnmount(() => {
       <li
         v-for="j in rows"
         :key="j.id"
-        class="flex items-center gap-1 rounded-xl border bg-surface pe-1.5 transition-[border-color,opacity] duration-300"
-        :class="[j.state === 'blocked' ? 'border-st-waiting/50' : 'border-line', j.state === 'done' ? 'opacity-70 hover:opacity-100' : '']"
+        class="flex items-center gap-1 rounded-card bg-surface pe-1.5 shadow-card transition-[box-shadow,opacity] duration-300"
+        :class="[j.state === 'blocked' ? 'ring-1 ring-st-waiting/50' : '', j.state === 'done' ? 'opacity-70 hover:opacity-100' : '']"
       >
         <component
           :is="j.terminalId ? 'button' : 'div'"
           :type="j.terminalId ? 'button' : undefined"
-          class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-start"
-          :class="j.terminalId ? 'cursor-pointer transition-colors hover:bg-raised' : ''"
+          class="flex min-w-0 flex-1 items-center gap-2.5 rounded-card px-3 py-2 text-start"
+          :class="j.terminalId ? 'cursor-pointer transition-colors hover:bg-fill' : ''"
           :aria-label="j.terminalId ? t('jobs.focus', { title: j.title }) : undefined"
           :title="j.terminalId ? t('jobs.focus', { title: j.title }) : undefined"
           @click="j.terminalId && ui.focusTerminal(j.terminalId)"
@@ -137,14 +137,14 @@ onBeforeUnmount(() => {
           <span class="px-1 font-medium text-st-error">{{ t('jobs.stopConfirm') }}</span>
           <button
             type="button"
-            class="inline-flex h-7 cursor-pointer items-center rounded-md bg-st-error/15 px-2 font-medium text-st-error transition-colors hover:bg-st-error/25"
+            class="inline-flex h-6 cursor-pointer items-center rounded-inner bg-st-error-soft px-2 font-medium text-st-error transition-colors hover:bg-st-error/25"
             @click="confirmStop(j.id)"
           >
             {{ t('jobs.stopYes') }}
           </button>
           <button
             type="button"
-            class="inline-flex h-7 cursor-pointer items-center rounded-md px-2 font-medium text-ink-muted transition-colors hover:bg-raised"
+            class="ccm-btn-plain min-h-6! px-2! font-medium"
             @click="confirming = null"
           >
             {{ t('jobs.stopNo') }}
@@ -153,7 +153,7 @@ onBeforeUnmount(() => {
         <button
           v-else-if="j.state !== 'done'"
           type="button"
-          class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-st-error"
+          class="ccm-btn-plain shrink-0 hover:text-st-error!"
           :aria-label="t('jobs.stop', { title: j.title })"
           :title="t('jobs.stop', { title: j.title })"
           @click="confirming = j.id"
@@ -163,7 +163,7 @@ onBeforeUnmount(() => {
         <button
           v-if="stopping[j.id] === undefined && confirming !== j.id"
           type="button"
-          class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+          class="ccm-btn-plain shrink-0"
           :aria-label="t('jobs.dismiss', { title: j.title })"
           :title="t('jobs.dismiss', { title: j.title })"
           @click="connection.dismissJobs(j.id)"

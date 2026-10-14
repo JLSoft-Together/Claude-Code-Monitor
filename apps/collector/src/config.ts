@@ -22,6 +22,12 @@ export interface CollectorConfig {
   statusLineCommand: string
   toast: boolean
   toastBackend: 'powershell' | 'electron' | null
+  /** Set by the desktop app: every request but /health must carry it. */
+  appKey: string | null
+  /** `npm run dev` (Vite UI work): no key, the page opens in a browser. */
+  dev: boolean
+  /** Base for toast click links; the desktop app registers agent-monitor://. */
+  toastLink: string | null
 }
 
 function intFromEnv(value: string | undefined, fallback: number): number {
@@ -32,7 +38,7 @@ function intFromEnv(value: string | undefined, fallback: number): number {
 // The desktop bundle is CJS without import.meta, so repo-relative fallbacks resolve only when the env var is missing.
 const fromHere = (rel: string): string => path.resolve(path.dirname(fileURLToPath(import.meta.url)), rel)
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): CollectorConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, argv: readonly string[] = process.argv): CollectorConfig {
   const toastBackend = env.CCM_TOAST === '0' ? null : platform === 'win32' ? 'powershell' : env.CCM_TOAST_BACKEND === 'electron' ? 'electron' : null
   const statusLineBridge = env.CCM_STATUSLINE_BRIDGE || fromHere('../../../scripts/statusline-bridge.mjs')
   return {
@@ -54,5 +60,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJ
     toast: toastBackend !== null,
     toastBackend,
     dataDir: env.CCM_DATA_DIR || defaultDataDir(env, process.platform, os.homedir()),
+    appKey: env.CCM_APP_KEY || null,
+    dev: argv.includes('--dev'),
+    toastLink: env.CCM_TOAST_LINK || null,
   }
 }

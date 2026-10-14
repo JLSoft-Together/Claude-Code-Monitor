@@ -1,48 +1,38 @@
 # Agent Monitor
 
-Dashboard local, realtime cho mọi session Claude Code CLI đang chạy trên Windows (macOS: bản desktop `.dmg`), kèm các lần Codex CLI do chúng gọi: session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí.
+App desktop (Windows exe, macOS `.dmg`) theo dõi realtime mọi session Claude Code CLI đang chạy, kèm các lần Codex CLI do chúng gọi: session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí. Có thêm **Workspace**: terminal ngay trong app để chạy Claude Code / Codex / shell, chia ô, tab, worktree.
 
 Tên cũ: **Claude Code Monitor**. Mã nội bộ giữ nguyên (`appId` `dev.ccm.monitor`, thư mục data `ccm`, biến `CCM_*`), nên bản cài cũ cập nhật thẳng, không mất cài đặt.
 
-- Chỉ đọc file local của Claude Code: không gọi API, không gửi prompt, **không tốn thêm token**.
-- Chỉ bind `127.0.0.1`. Không đưa nội dung prompt, tham số tool, env hay secret ra dashboard.
+- Theo dõi chỉ đọc file local của Claude Code: không gọi API, không gửi prompt, **không tốn thêm token**. Terminal trong Workspace chỉ chuyển phím bạn gõ.
+- Chỉ bind `127.0.0.1` và chỉ mở trong cửa sổ app: collector từ chối mọi request không mang khoá của app (trình duyệt mở `http://127.0.0.1:4317` nhận `403`). Không đưa nội dung prompt, tham số tool, env hay secret ra dashboard.
 
 ## Yêu cầu
 
-- Windows 10 / 11, Node.js `20.19+` hoặc `22.12+`
-- macOS: bản desktop `.dmg` (không cần Node). Theo dõi đầy đủ; nhảy tới terminal (đúng tab với Terminal.app / iTerm2, chỉ mở app với IDE khác), chọn thư mục, mở Claude mới từ Yêu thích đều dùng được. Cảnh báo là badge + nảy Dock của app desktop (chưa có thông báo hệ thống; toast chỉ có trên Windows)
+- Windows 10 / 11 (bản exe không cần Node.js)
+- macOS: bản `.dmg` (không cần Node). Theo dõi đầy đủ; nhảy tới terminal (đúng tab với Terminal.app / iTerm2, chỉ mở app với IDE khác), chọn thư mục, mở Claude mới từ Yêu thích đều dùng được. Cảnh báo là badge + nảy Dock (toast chỉ có trên Windows)
 - Claude Code CLI `2.1.289` (version khác vẫn chạy, có cảnh báo)
-- Không bắt buộc: Git (đếm thay đổi chưa commit), VS Code (nút mở thư mục)
+- Không bắt buộc: Git (đếm thay đổi chưa commit, worktree), VS Code (nút mở thư mục)
+- Build từ mã nguồn: Node.js `20.19+` hoặc `22.12+`
 
-## Chạy
+## Cài và chạy (Windows)
 
-**Cách dễ nhất:** bấm đúp `Agent-Monitor.bat`. Trang cài đặt tự kiểm Node.js, `npm install`, build rồi mở dashboard. Giữ cửa sổ bat mở trong lúc dùng, đóng là tắt. `Claude-Code-Monitor.bat` (tên cũ) vẫn chạy được; lần chạy đầu tự đổi lối tắt cũ sang `Agent-Monitor.lnk`.
+Chạy `Agent-Monitor-Setup-<ver>.exe` (hoặc bản `Agent-Monitor-Portable-<ver>.exe` không cần cài), rồi chạy `claude` ở terminal bất kỳ: session hiện lên trong khoảng 1 giây.
 
-Thủ công:
+- Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
+- Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray (còn terminal đang chạy thì app hỏi trước).
+- Bấm nút trên toast Windows mở thẳng app (link `agent-monitor://`): session chạy trong Workspace thì nhảy tới đúng ô terminal, session ở terminal ngoài thì đưa cửa sổ đó lên.
+- Đã cài bản tên cũ (Claude Code Monitor): chạy Setup mới để cập nhật đè, cùng thư mục cài; "Chạy cùng Windows" tự trỏ sang exe mới.
+- Exe chưa ký số nên Windows SmartScreen cảnh báo lần đầu: bấm **More info → Run anyway**.
 
-```powershell
-npm install
-npm start
-```
-
-Mở **http://127.0.0.1:4317**, rồi chạy `claude` ở terminal khác: session hiện lên trong khoảng 1 giây.
-
-Lần đầu mở, dashboard tự hiện **hướng dẫn từng bước**. Xem lại: `Ctrl K` → "Xem hướng dẫn".
+Lần đầu mở, app tự hiện **hướng dẫn từng bước**. Xem lại: `Ctrl K` → "Xem hướng dẫn".
 
 Nên làm thêm:
 
 1. Bấm **chuông** trên header để bật thông báo khi session chờ bạn.
 2. Cài **status line bridge** (dưới) để có giới hạn 5 giờ / 7 ngày và chi phí.
-3. Chrome / Edge → "Cài đặt ứng dụng" để chạy trong cửa sổ riêng, có badge số session đang chờ.
 
-## Bản desktop (exe, Windows)
-
-App Electron đóng gói sẵn collector + web: người dùng cuối **không cần cài Node.js**.
-
-- Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, Mở trong trình duyệt, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
-- Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray.
-- Đã cài bản tên cũ (Claude Code Monitor): chạy Setup mới để cập nhật đè, cùng thư mục cài; "Chạy cùng Windows" tự trỏ sang exe mới.
-- Nếu đã có collector chạy ở port `4317` (ví dụ đang mở bằng bat), app dùng luôn collector đó, không khởi động cái thứ hai; đóng bat thì app tự bật collector riêng sau vài giây.
+Status line bridge ở bản desktop được chép ra `%LOCALAPPDATA%\ccm\bin\statusline-bridge.mjs` (đường dẫn không đổi qua update). Cài đặt → Status line hiện đúng lệnh cần dán: máy có `node` → `node "<...>/statusline-bridge.mjs"`; không có `node` → file `statusline-bridge.cmd` chạy chính exe của app (`ELECTRON_RUN_AS_NODE=1`). Bản portable giải nén vào thư mục tạm khác nhau mỗi lần nên **luôn cần `node`** cho status line.
 
 Build:
 
@@ -51,12 +41,6 @@ npm install
 npm run dist:win    # → apps/desktop/release/: Agent-Monitor-Setup-<ver>.exe (NSIS) + Agent-Monitor-Portable-<ver>.exe
 npm run desktop     # chạy thử bản dev, không đóng gói
 ```
-
-Exe chưa ký số nên Windows SmartScreen cảnh báo lần đầu: bấm **More info → Run anyway**.
-
-Status line bridge ở bản desktop được chép ra `%LOCALAPPDATA%\ccm\bin\statusline-bridge.mjs` (đường dẫn không đổi qua update). Cài đặt → Status line hiện đúng lệnh cần dán: máy có `node` → `node "<...>/statusline-bridge.mjs"`; không có `node` → file `statusline-bridge.cmd` chạy chính exe của app (`ELECTRON_RUN_AS_NODE=1`). Bản portable giải nén vào thư mục tạm khác nhau mỗi lần nên **luôn cần `node`** cho status line.
-
-Cách chạy bằng `.bat` / `npm start` bên dưới vẫn được hỗ trợ.
 
 ## Bản desktop macOS (dmg)
 
@@ -78,77 +62,75 @@ Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc pu
 ## Tính năng chính
 
 - **Giám sát**: hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới terminal, hoãn nhắc), Agent Map main → subagent, luồng hoạt động.
+- **Workspace**: terminal trong app (Claude Code / Codex / shell), tab + chia ô, worktree `<repo>-wt/<branch>`, khôi phục workspace lần trước (`--resume`), chấm báo ô nào cần bạn. Phím tắt kiểu Windows Terminal.
 - **Codex CLI**: lần `codex exec` / plugin Codex do Claude Code gọi hiện thành node con (badge Codex) dưới đúng agent đã gọi; Codex chạy riêng ở terminal khác là session riêng; chip giới hạn Codex 5h / tuần trên header. Chi tiết: `docs/codex-integration.md`.
 - **Thống kê**: token theo ngày / model / project, chi phí ước tính, tỉ lệ cache.
 - **Lịch sử**: thời gian làm việc / chờ của từng session trong ngày, xuất recap Markdown.
 - **Ctrl K**: tìm session, thư mục yêu thích, chạy lệnh nhanh.
-- **Chế độ gọn**: cửa sổ nhỏ đặt cạnh editor, mở thẳng `http://127.0.0.1:4317/?mode=compact`.
+- **Cửa sổ gọn**: cửa sổ nhỏ đặt cạnh editor (menu tray → Cửa sổ gọn).
 - **Nhắc nghỉ**: mỗi 45 phút tính từ lần bật collector đầu tiên trong ngày. Tắt trong Cài đặt.
-- **Cài đặt** (bánh răng): giao diện, thông báo, ngân sách ngày, status line, chẩn đoán.
+- **Cài đặt** (bánh răng): giao diện, thông báo, ngân sách ngày, status line, chẩn đoán (chép / lưu file log).
 
 ## Status line bridge
 
-Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. Thêm vào `~/.claude/settings.json`:
+Claude Code chỉ đưa giới hạn gói và chi phí cho lệnh status line. Thêm vào `~/.claude/settings.json` lệnh mà **Cài đặt → Status line** đưa ra (bấm để chép), dạng:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "node \"<repo>/scripts/statusline-bridge.mjs\""
+    "command": "node \"<...>/statusline-bridge.mjs\""
   }
 }
 ```
 
-Đã có status line riêng thì nối thêm: `... statusline-bridge.mjs\" --chain <lệnh cũ>`. Cài đặt trong dashboard có sẵn đoạn này với đường dẫn đúng, bấm để chép.
+Đã có status line riêng thì nối thêm: `... statusline-bridge.mjs\" --chain <lệnh cũ>`.
 
 ## Cấu hình
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `CCM_PORT` | `4317` | Port collector. 4317 cũng là cổng mặc định OTLP/gRPC của OpenTelemetry: nếu đang chạy OTel collector, đặt port khác (collector báo lỗi và thoát mã 3) |
+| `CCM_PORT` | `4317` | Port collector. 4317 cũng là cổng mặc định OTLP/gRPC của OpenTelemetry: nếu đang chạy OTel collector, đặt port khác |
 | `CCM_STALE_TTL_MIN` | `120` | Phút giữ session đã tắt |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Thư mục data Claude Code |
 | `CODEX_HOME` | `~/.codex` | Thư mục data Codex CLI |
 | `CCM_CODEX` | `1` | `0` = không theo dõi Codex |
-| `CCM_DATA_DIR` | Windows `%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm`, Linux `$XDG_DATA_HOME/ccm` hoặc `~/.local/share/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
-| `CCM_WEB_DIST` | `apps/web/dist` | Web đã build |
+| `CCM_DATA_DIR` | Windows `%LOCALAPPDATA%/ccm`, macOS `~/Library/Application Support/ccm` | Nơi lưu cache thống kê, tên session, yêu thích, lịch sử |
 | `CCM_VERIFY_PROCESSES` | `1` | `0` = bỏ kiểm PID (dùng với data giả) |
 | `CCM_TOAST` | `1` | `0` = tắt toast / cảnh báo hệ thống |
-| `CCM_TOAST_BACKEND` | tự chọn | `electron` = gửi cảnh báo cho app desktop (badge + nảy Dock, app tự đặt trên macOS) |
-| `CCM_STATUSLINE_BRIDGE` | `scripts/statusline-bridge.mjs` | Đường dẫn bridge (bản desktop tự đặt) |
-| `CCM_STATUSLINE_COMMAND` | `node "<bridge>"` | Lệnh status line hiện trong Cài đặt (bản desktop tự đặt) |
 
 ## Dev và test
 
 ```powershell
-npm run dev         # web http://127.0.0.1:5173 + collector :4317
+npm run desktop     # app dev (build web rồi chạy Electron)
+npm run dev         # chỉ để làm UI: Vite http://127.0.0.1:5173 + collector :4317 chế độ --dev (không khoá, không có terminal)
 npm test            # Vitest
 npm run typecheck
+npm run e2e -w @ccm/desktop   # E2E qua CDP (build web + desktop trước)
 node scripts/demo-fixture.mjs --sessions=5 --subagents=3   # session giả
 ```
 
-Với data giả: đặt `CLAUDE_CONFIG_DIR` = thư mục script in ra và `CCM_VERIFY_PROCESSES=0` rồi `npm start`.
+Với data giả: đặt `CLAUDE_CONFIG_DIR` = thư mục script in ra và `CCM_VERIFY_PROCESSES=0` rồi `npm run desktop` (hoặc `npm run dev`).
 
 ## Lỗi thường gặp
 
-Mở **Cài đặt → Chẩn đoán** trước.
+Mở **Cài đặt → Chẩn đoán** trước; nút **Lưu file log…** gom phiên bản app, báo cáo và log để gửi kèm.
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| `EADDRINUSE` | Port bận: tắt collector cũ hoặc đổi `CCM_PORT` |
+| App báo cổng bận | Bản cũ chạy bằng `.bat` / `npm start` hoặc app khác giữ cổng: tắt nó (xoá lối tắt `Agent-Monitor.lnk` cũ trong thư mục Startup) hoặc đổi `CCM_PORT` |
 | Dashboard trống | Kiểm `~/.claude/sessions/` có file `<pid>.json`; thư mục khác thì đặt `CLAUDE_CONFIG_DIR` |
-| `Reconnecting` | Collector đã tắt, chạy lại `npm start` |
 | Không có giới hạn gói | Chưa cài status line bridge, hoặc Claude chưa trả lời lần nào sau khi cài |
-| Không có thông báo | Chưa bấm chuông, trình duyệt chặn, hoặc session đang hoãn nhắc |
-| `403` khi mở bằng IP LAN | Chủ ý: chỉ nhận `127.0.0.1` / `localhost` |
+| Không có thông báo | Chưa bấm chuông, Windows chặn thông báo của app, hoặc session đang hoãn nhắc |
+| `403` khi mở `127.0.0.1:4317` bằng trình duyệt | Chủ ý: dashboard chỉ mở trong app |
 
 ## Cấu trúc
 
 ```
-apps/collector     Node.js + TS: đọc session + transcript, chuẩn hoá, WebSocket
-apps/web           Vue 3 + Vite + Tailwind + Pinia + vue-i18n + Vue Flow
-apps/desktop       Electron (Windows): chạy collector trong utilityProcess, tray, đóng gói exe
+apps/collector     Node.js + TS: đọc session + transcript, chuẩn hoá, WebSocket (chạy trong app)
+apps/web           Vue 3 + Vite + Tailwind + Pinia + vue-i18n + Vue Flow + xterm.js
+apps/desktop       Electron (Windows + macOS): collector + PTY host trong utilityProcess, tray, đóng gói
 packages/shared    Kiểu dữ liệu + protocol dùng chung
-scripts/           launch.mjs, statusline-bridge.mjs, demo-fixture.mjs
+scripts/           statusline-bridge.mjs, demo-fixture.mjs, make-icon.mjs
 docs/              claude-code-integration.md: nguồn data Claude Code đã kiểm
 ```

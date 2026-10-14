@@ -18,7 +18,7 @@ const props = defineProps<{ name: ArtName }>()
 
 const files = import.meta.glob<string>('../assets/art/*.svg', { query: '?raw', import: 'default', eager: true })
 
-// The art was drawn in the ember palette; swap its fixed colours for theme tokens so it follows palette + dark mode.
+// The art was drawn with fixed warm colours; swap them for theme tokens so it follows the theme + dark mode.
 const TOKENS: Record<string, string> = {
   '#8a8880': 'var(--ccm-ink-faint)',
   '#b4532f': 'var(--ccm-accent)',

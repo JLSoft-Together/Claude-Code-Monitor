@@ -4,15 +4,10 @@ import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
 
 export type Theme = 'light' | 'dark'
-export type Palette = 'ember' | 'cobalt'
 export type NotifyPermission = NotificationPermission | 'unsupported'
 
 function initialTheme(): Theme {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-}
-
-function initialPalette(): Palette {
-  return document.documentElement.dataset.palette === 'cobalt' ? 'cobalt' : 'ember'
 }
 
 function read(key: string): string | null {
@@ -49,7 +44,6 @@ function permissionNow(): NotifyPermission {
 
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<Theme>(initialTheme())
-  const palette = ref<Palette>(initialPalette())
   const locale = ref<Locale>(initialLocale())
   const hideFinished = ref(read('ccm.hideFinished') === '1')
   const notifyEnabled = ref(read('ccm.notify') === '1' && permissionNow() === 'granted')
@@ -98,15 +92,6 @@ export const useSettingsStore = defineStore('settings', () => {
   )
 
   watch(
-    palette,
-    (value) => {
-      document.documentElement.dataset.palette = value
-      persist('ccm.palette', value)
-    },
-    { flush: 'sync' },
-  )
-
-  watch(
     locale,
     (value) => {
       i18n.global.locale.value = value
@@ -118,10 +103,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function toggleTheme(): void {
     theme.value = theme.value === 'dark' ? 'light' : 'dark'
-  }
-
-  function setPalette(value: Palette): void {
-    palette.value = value
   }
 
   function toggleLocale(): void {
@@ -165,7 +146,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     theme,
-    palette,
     locale,
     hideFinished,
     notifyEnabled,
@@ -187,7 +167,6 @@ export const useSettingsStore = defineStore('settings', () => {
     togglePin,
     prunePins,
     toggleTheme,
-    setPalette,
     toggleLocale,
     toggleHideFinished,
     toggleNotifications,

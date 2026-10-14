@@ -24,7 +24,7 @@ const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) =>
 </script>
 
 <template>
-  <section class="min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5" aria-labelledby="usage-models-title">
+  <section class="min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5" aria-labelledby="usage-models-title">
     <h3 id="usage-models-title" class="text-base font-semibold">{{ t('usage.byModel') }}</h3>
     <p class="mt-0.5 text-xs text-ink-muted">{{ t('usage.byModelHint') }}</p>
 
@@ -57,7 +57,7 @@ const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) =>
                   <span class="truncate font-medium group-hover:underline" :class="usage.model === row.id ? 'text-accent' : 'text-ink'">{{ row.id }}</span>
                   <span class="ml-auto text-xs text-ink-muted tabular-nums">{{ fmt(row.value) }}</span>
                 </span>
-                <span class="block h-1.5 w-full rounded-full bg-raised" aria-hidden="true">
+                <span class="block h-1.5 w-full rounded-full bg-fill" aria-hidden="true">
                   <span
                     class="ccm-grow-x block h-full rounded-full transition-[width] duration-500"
                     :style="{ width: `${max > 0 ? Math.max(1, (row.value / max) * 100) : 0}%`, background: slotColor(row.id) }"

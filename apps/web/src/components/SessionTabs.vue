@@ -109,10 +109,10 @@ function close(id: string): void {
     <span
       v-if="pill"
       aria-hidden="true"
-      class="pointer-events-none absolute top-1 left-0 h-8 rounded-md border"
+      class="pointer-events-none absolute top-1 left-0 h-7 rounded-inner shadow-control"
       :class="[
-        pill.waiting ? 'border-st-waiting bg-st-waiting-soft' : 'border-accent bg-accent-soft',
-        pillReady ? 'transition-[transform,width,background-color,border-color] duration-300 ease-out-quint' : '',
+        pill.waiting ? 'bg-st-waiting-soft' : 'bg-control',
+        pillReady ? 'transition-[transform,width,background-color] duration-300 ease-out-quint' : '',
       ]"
       :style="{ width: `${pill.w}px`, transform: `translateX(${pill.x}px)` }"
     />
@@ -123,13 +123,13 @@ function close(id: string): void {
       :tabindex="ui.sessionTab === null ? 0 : -1"
       aria-keyshortcuts="0"
       :data-selected="ui.sessionTab === null || undefined"
-      class="ccm-press relative inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2.5 text-sm"
-      :class="ui.sessionTab === null ? 'font-semibold text-ink' : 'text-ink-muted hover:bg-raised hover:text-ink'"
+      class="ccm-press relative inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-inner px-2.5 text-xs font-medium transition-colors"
+      :class="ui.sessionTab === null ? 'text-ink' : 'text-ink-muted hover:bg-fill hover:text-ink'"
       @click="select(null)"
     >
       <LayoutDashboard :size="15" aria-hidden="true" />
       {{ t('tabs.all') }}
-      <span class="rounded-full bg-raised px-1.5 text-2xs text-ink-muted tabular">{{ liveCount }}</span>
+      <span class="rounded-full bg-fill px-1.5 text-2xs text-ink-muted tabular">{{ liveCount }}</span>
       <span v-if="waitingCount" class="rounded-full bg-st-waiting-soft px-1.5 text-2xs font-semibold text-st-waiting tabular" :title="t('tabs.waiting', { n: waitingCount })">
         {{ waitingCount }}
       </span>
@@ -140,9 +140,9 @@ function close(id: string): void {
       :key="tab.id"
       :data-selected="ui.sessionTab === tab.id || undefined"
       :data-waiting="tab.waiting ? '1' : undefined"
-      class="group/tab relative flex h-8 max-w-[220px] min-w-[110px] shrink-0 items-center rounded-md border border-transparent transition-colors"
+      class="group/tab relative flex h-7 max-w-[220px] min-w-[110px] shrink-0 items-center rounded-inner transition-colors"
       :class="[
-        ui.sessionTab === tab.id ? '' : 'hover:bg-raised',
+        ui.sessionTab === tab.id ? '' : 'hover:bg-fill',
         tab.waiting && ui.sessionTab !== tab.id ? 'bg-st-waiting-soft/60' : '',
         tab.ended ? 'opacity-60' : '',
       ]"
@@ -154,8 +154,8 @@ function close(id: string): void {
         :tabindex="ui.sessionTab === tab.id ? 0 : -1"
         :aria-keyshortcuts="i < 9 ? String(i + 1) : undefined"
         :title="tab.title"
-        class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-1.5 pl-2.5 text-left text-sm"
-        :class="ui.sessionTab === tab.id ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink'"
+        class="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-1.5 pl-2.5 text-left text-xs font-medium"
+        :class="ui.sessionTab === tab.id ? 'text-ink' : 'text-ink-muted hover:text-ink'"
         @click="select(tab.id)"
       >
         <StatusIcon :status="tab.status" :size="14" class="shrink-0" />
@@ -169,7 +169,7 @@ function close(id: string): void {
         v-if="tab.ended"
         type="button"
         tabindex="-1"
-        class="mr-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-raised hover:text-st-error"
+        class="mr-0.5 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-inner text-ink-faint transition-colors hover:bg-fill hover:text-st-error"
         :aria-label="t('terminal.dismiss', { title: tab.title })"
         :title="t('terminal.dismiss', { title: tab.title })"
         @click="close(tab.id)"

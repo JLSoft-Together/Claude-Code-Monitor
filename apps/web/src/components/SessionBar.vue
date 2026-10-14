@@ -23,20 +23,20 @@ const terminal = computed(() => (ui.sessionTab ? terminals.byId[ui.sessionTab] :
 // The chevron points where the summary row goes when it collapses.
 const chevronDown = computed(() => ui.barMin === top.value)
 const waiting = computed(() => terminals.live.some((x) => x.status === 'waiting' && !snooze.isSnoozed(x, now.value)))
-const TOOL = 'ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink'
+const TOOL = 'ccm-btn-plain ccm-press'
 </script>
 
 <template>
   <section
     :aria-label="t('bar.label')"
-    class="relative flex shrink-0 bg-surface [view-transition-name:ccm-bar]"
+    class="ccm-material relative flex shrink-0 [view-transition-name:ccm-bar]"
     :class="[
       top ? 'flex-col border-b border-line' : 'flex-col-reverse border-t border-line',
       entering ? (top ? 'ccm-bar-in-top' : 'ccm-bar-in-bottom') : '',
       ui.barMin && waiting ? 'ccm-bar-alert' : '',
     ]"
   >
-    <div class="flex min-w-0 items-center gap-2 px-3">
+    <div class="flex min-w-0 items-center gap-2 px-3 sm:px-4">
       <SessionTabs class="min-w-0 flex-1" />
       <div class="flex shrink-0 items-center gap-0.5 border-l border-line pl-2" role="toolbar" :aria-label="t('bar.label')">
         <button
@@ -74,7 +74,7 @@ const TOOL = 'ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 roun
     </div>
     <div class="grid transition-[grid-template-rows] duration-200 ease-out-quint" :class="ui.barMin ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'" :inert="ui.barMin || undefined">
       <div class="min-h-0 overflow-hidden">
-        <div class="flex min-h-11 min-w-0 items-center border-line px-3 py-1" :class="top ? 'border-t' : 'border-b'">
+        <div class="flex min-h-11 min-w-0 items-center border-line px-3 py-1 sm:px-4" :class="top ? 'border-t' : 'border-b'">
           <Transition name="ccm-fade" mode="out-in">
             <SessionSummary v-if="terminal" :key="terminal.id" :terminal="terminal" />
             <MetricsStrip v-else compact class="flex-1" />

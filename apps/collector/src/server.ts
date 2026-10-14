@@ -1,5 +1,6 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -60,6 +61,14 @@ export function isAllowedOrigin(origin: string, ports: readonly number[]): boole
   return ports.includes(port) && origin === `http://${url.hostname}:${port}`
 }
 
+/** The desktop app adds the key to every request from its windows; a browser tab on the same port has none. */
+export function hasAppKey(req: IncomingMessage, key: string | null): boolean {
+  if (key === null) return true
+  const got = req.headers['x-ccm-app']
+  if (typeof got !== 'string' || got.length !== key.length) return false
+  return timingSafeEqual(Buffer.from(got), Buffer.from(key))
+}
+
 export function isLocalRequest(req: IncomingMessage, ports: readonly number[]): boolean {
   const host = hostOf(req.headers.host)
   if (!host || !LOCAL_HOSTS.has(host)) return false
@@ -100,6 +109,19 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
     res.writeHead(404, { 'content-type': 'text/plain' }).end('Web UI not built. Run: npm run build')
     return
   }
+  if (path.extname(file) === '.html') {
+    let html: string
+    try {
+      html = await readFile(file, 'utf8')
+    } catch {
+      res.writeHead(404).end()
+      return
+    }
+    res
+      .writeHead(200, { 'content-type': MIME['.html']!, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'content-security-policy': contentSecurityPolicy(html) })
+      .end(html)
+    return
+  }
   res.writeHead(200, {
     'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
     // Only Vite's hashed bundles are immutable; sw.js / manifest / icons must revalidate or updates never land.
@@ -111,33 +133,35 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
   stream.pipe(res)
 }
 
+/**
+ * The desktop app gives this page a shell (embedded terminals), so script injection must not run: only our bundle
+ * and the inline pre-paint script (hashed as served) execute. ws://127.0.0.1:* reaches the desktop PTY host.
+ */
+export function contentSecurityPolicy(html: string): string {
+  const hashes = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((m) => m[1] ?? '')
+    .filter((body) => body.trim())
+    .map((body) => `'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`)
+  return [
+    "default-src 'self'",
+    `script-src 'self' ${hashes.join(' ')}`.trim(),
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self' ws://127.0.0.1:*",
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ')
+}
+
 /** Per-request answer channel: `reply` goes to the asking socket only. */
 export interface ClientContext {
   reply: (event: MonitorEvent) => void
   clients: number
   clientId: number
-}
-
-export interface FocusPageText {
-  opening: string
-  opened: string
-}
-
-export function focusPage(terminalId: string | null, key: string, text: FocusPageText): string {
-  const data = JSON.stringify({ t: terminalId, k: key, opened: text.opened }).replaceAll('<', '\\u003c')
-  const opening = text.opening.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-  return `<!doctype html><meta charset="utf-8"><title>Agent Monitor</title><body style="font-family:system-ui,sans-serif;padding:2rem"><p id="m">${opening}</p><script>
-const d = ${data}
-if (!d.t) location.replace('/')
-else fetch('/focus', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: d.t, k: d.k }) })
-  .then((r) => (r.ok ? r.json() : { result: 'failed' }))
-  .catch(() => ({ result: 'failed' }))
-  .then((r) => {
-    if (r.result !== 'ok') return location.replace('/?focus=' + encodeURIComponent(d.t))
-    document.getElementById('m').textContent = d.opened
-    window.close()
-  })
-</script>`
 }
 
 export function snoozePage(text: string): string {
@@ -168,17 +192,19 @@ export function startServer(options: {
   port: number
   webDist: string
   store: MonitorStore
+  /** null only for `npm run dev`; otherwise requests without it are refused. */
+  appKey?: string | null
   /** Extra origin ports allowed to connect (Vite dev server). */
   devOriginPorts?: readonly number[]
   heartbeatMs?: number
   onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
   onClientClose?: (clientId: number) => void
-  onFocusLink?: (terminalId: string | null, key: string | null) => FocusPageText | null
   onFocusRun?: (terminalId: string, key: string | null) => Promise<FocusWindowResult | null>
   onSnoozeLink?: (terminalId: string, key: string | null, minutes: number) => string | null
 }): Promise<Server> {
   const { store } = options
   const ports = [options.port, ...(options.devOriginPorts ?? [])]
+  const appKey = options.appKey ?? null
   const server = createServer((req, res) => {
     if (!isLocalRequest(req, ports)) {
       res.writeHead(403).end()
@@ -188,14 +214,8 @@ export function startServer(options: {
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, seq: store.seq }))
       return
     }
-    if (req.url?.startsWith('/focus?') && req.method === 'GET') {
-      const q = new URL(req.url, 'http://127.0.0.1').searchParams
-      const terminalId = q.get('t')
-      const key = q.get('k')
-      const text = key && (terminalId === null || terminalId.length <= 256) ? options.onFocusLink?.(terminalId, key) : null
-      res
-        .writeHead(text && key ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
-        .end(text && key ? focusPage(terminalId, key, text) : '')
+    if (!hasAppKey(req, appKey)) {
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end('Agent Monitor only opens in its desktop app.')
       return
     }
     if (req.url?.startsWith('/snooze?') && req.method === 'GET') {
@@ -257,7 +277,7 @@ export function startServer(options: {
   server.on('close', () => clearInterval(heartbeat))
 
   server.on('upgrade', (req, socket, head) => {
-    if (new URL(req.url ?? '/', 'http://127.0.0.1').pathname !== '/ws' || !isLocalRequest(req, ports)) {
+    if (new URL(req.url ?? '/', 'http://127.0.0.1').pathname !== '/ws' || !isLocalRequest(req, ports) || !hasAppKey(req, appKey)) {
       socket.destroy()
       return
     }

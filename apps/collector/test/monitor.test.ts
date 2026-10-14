@@ -50,6 +50,9 @@ describe('Monitor with fixture claude root', () => {
     port: 0,
     toast: false,
     toastBackend: null,
+    appKey: null,
+    dev: true,
+    toastLink: null,
     staleTtlMs: 120 * 60_000,
     reconcileMs: 5_000,
     processVerifyMs: 60_000,
@@ -356,7 +359,8 @@ describe('Monitor with fixture claude root', () => {
     expect(await monitor.addFavorite('\\\\server\\share', null)).toBe(false)
     expect(await monitor.addFavorite(path.join(dir, 'ccm-missing-dir-xyz'), null)).toBe(false)
     const evil = path.join(await mkdtemp(path.join(dir, 'ccm-ctl-')), 'x\x15touch PWNED\x1by')
-    await mkdir(evil)
+    // Windows refuses control characters in names; the check must reject the path before touching the disk anyway.
+    if (process.platform !== 'win32') await mkdir(evil)
     expect(await monitor.addFavorite(evil, null)).toBe(false)
     await new Promise((r) => setTimeout(r, 20))
     expect(rejected).toEqual(['exists', 'invalid', 'invalid', 'notFound', 'invalid'])

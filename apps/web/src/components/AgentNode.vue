@@ -182,19 +182,19 @@ onBeforeUnmount(() => stop?.())
   <div v-if="agent" class="ccm-pop" :style="popDelay ? { animationDelay: `${popDelay}ms` } : undefined">
     <div
       ref="box"
-      class="group/node relative rounded-xl border bg-surface transition-[opacity,border-color,box-shadow] duration-200"
+      class="group/node relative rounded-card border bg-surface shadow-card transition-[opacity,border-color,box-shadow] duration-200"
       :style="{ width: `${size?.w ?? (isMain ? MAIN_WIDTH : SUB_WIDTH)}px`, minHeight: size?.h ? `${size.h}px` : undefined }"
       :class="[
         isMain ? 'px-3.5 py-3' : 'px-3 py-2.5',
         resizing ? 'border-accent' : '',
-        selected ? 'border-accent shadow-[0_0_0_3px_var(--ccm-accent-soft)]' : working || agent.status === 'waiting' || agent.status === 'error' ? meta.border : 'border-line',
+        selected ? 'border-accent shadow-[0_0_0_3px_var(--ccm-accent-soft)]' : working || agent.status === 'waiting' || agent.status === 'error' ? meta.border : 'border-transparent',
         working && !selected ? 'ccm-breathe' : '',
         quiet && !selected ? 'opacity-60' : '',
         dimmed ? 'opacity-30' : '',
         picked ? 'outline-2 outline-offset-4 outline-accent outline-dashed' : '',
       ]"
     >
-      <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-xl" :class="meta.text" aria-hidden="true" />
+      <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
       <Handle type="target" :position="Position.Left" />
       <div class="flex items-center gap-2">
         <StatusIcon :status="agent.status" :size="isMain ? 16 : 14" />
@@ -202,7 +202,7 @@ onBeforeUnmount(() => stop?.())
           {{ title }}
         </span>
         <ProviderBadge v-if="codex" :mode="isMain ? (terminal?.entrypoint ?? agent.type) : agent.type" :variant="isMain ? 'full' : 'short'" />
-        <span v-else-if="isMain" class="shrink-0 rounded-md bg-raised px-1.5 py-px text-2xs font-medium text-ink-muted">
+        <span v-else-if="isMain" class="shrink-0 rounded-inner bg-fill px-1.5 py-px text-2xs font-medium text-ink-muted">
           {{ t('agent.main') }}
         </span>
       </div>
@@ -212,7 +212,7 @@ onBeforeUnmount(() => stop?.())
         </p>
         <span
           v-if="model"
-          class="shrink-0 rounded-md border border-line px-1.5 py-px text-2xs font-medium text-ink-muted"
+          class="shrink-0 rounded-inner bg-fill px-1.5 py-px text-2xs font-medium text-ink-muted"
           :title="modelTitle"
         >
           {{ model }}<span v-if="effort" class="text-ink-faint"> · {{ effort }}</span>

@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 })
 
 const triggerCls = computed(() =>
-  props.size === 'sm' ? 'h-8 gap-1.5 rounded-lg pl-2.5 pr-2 text-xs' : 'h-11 gap-2 rounded-xl pl-3 pr-2.5 text-sm',
+  props.size === 'sm' ? 'h-7 gap-1.5 pl-2.5 pr-1.5 text-xs' : 'h-8 gap-2 pl-3 pr-2 text-sm',
 )
 </script>
 
@@ -187,8 +187,8 @@ const triggerCls = computed(() =>
     :aria-expanded="open"
     :aria-controls="`${id}-list`"
     :aria-activedescendant="open ? `${id}-opt-${active}` : undefined"
-    class="inline-flex max-w-full min-w-0 cursor-pointer items-center border bg-surface text-ink transition-[border-color,box-shadow] duration-150 outline-none hover:border-line-strong focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_var(--ccm-accent-soft)]"
-    :class="[triggerCls, open ? 'border-accent shadow-[0_0_0_3px_var(--ccm-accent-soft)]' : 'border-line']"
+    class="ccm-btn max-w-full min-w-0 justify-start"
+    :class="triggerCls"
     @click="open ? hide() : show()"
     @keydown="onKey"
   >
@@ -196,8 +196,7 @@ const triggerCls = computed(() =>
     <span class="min-w-0 flex-1 truncate text-left">{{ selectedLabel }}</span>
     <ChevronDown
       :size="size === 'sm' ? 14 : 16"
-      class="shrink-0 text-ink-faint transition-transform duration-200 motion-reduce:transition-none"
-      :class="open ? 'rotate-180 text-accent' : ''"
+      class="shrink-0 text-ink-faint"
       aria-hidden="true"
     />
   </button>
@@ -216,7 +215,7 @@ const triggerCls = computed(() =>
         role="listbox"
         :aria-label="label"
         tabindex="-1"
-        class="fixed z-[70] overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface p-1 text-sm shadow-[0_12px_32px_-8px_rgb(0_0_0/0.35)]"
+        class="ccm-menu fixed z-[70] overflow-y-auto overscroll-contain text-sm"
         :class="pos.up ? 'origin-bottom' : 'origin-top'"
         :style="{ left: `${pos.left}px`, [pos.up ? 'bottom' : 'top']: `${pos.y}px`, minWidth: `${pos.minWidth}px`, maxWidth: `calc(100vw - ${2 * MARGIN}px)`, maxHeight: `${pos.maxHeight}px` }"
         @mousedown.prevent
@@ -228,14 +227,14 @@ const triggerCls = computed(() =>
           :data-index="i"
           role="option"
           :aria-selected="i === selectedIndex"
-          class="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2"
-          :class="[i === active ? 'bg-raised' : '', i === selectedIndex ? 'font-medium text-accent' : 'text-ink']"
+          class="flex cursor-pointer items-center gap-2 rounded-[5px] py-1 pr-2.5 pl-1.5"
+          :class="i === active ? 'bg-accent text-on-accent' : 'text-ink'"
           @pointermove="active = i"
           @click="choose(i)"
         >
+          <Check :size="14" :stroke-width="2.5" class="shrink-0" :class="i === selectedIndex ? '' : 'invisible'" aria-hidden="true" />
           <span class="min-w-0 flex-1 truncate">{{ o.label }}</span>
-          <span v-if="o.hint" class="shrink-0 text-xs text-ink-faint tabular">{{ o.hint }}</span>
-          <Check :size="15" class="shrink-0" :class="i === selectedIndex ? '' : 'invisible'" aria-hidden="true" />
+          <span v-if="o.hint" class="shrink-0 text-xs tabular" :class="i === active ? 'text-on-accent/80' : 'text-ink-faint'">{{ o.hint }}</span>
         </li>
       </ul>
     </Transition>

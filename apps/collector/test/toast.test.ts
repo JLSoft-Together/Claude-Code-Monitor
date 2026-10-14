@@ -285,17 +285,25 @@ describe('SnoozeStore', () => {
   })
 })
 
-describe('focusPage', () => {
-  it('escapes text so it cannot break out of the page script', async () => {
-    const { focusPage } = await import('../src/server')
-    const html = focusPage('a</script><b>', 'k', { opening: '<i>x</i>', opened: '</script>' })
-    expect(html.match(/<\/script>/g)).toHaveLength(1)
-    expect(html).toContain('&lt;i>x&lt;/i>')
+describe('app key', () => {
+  it('refuses pages and the socket without the desktop key, keeps /health open', async () => {
+    const { startServer } = await import('../src/server')
+    const { MonitorStore } = await import('../src/store')
+    const server = await startServer({ host: '127.0.0.1', port: 0, webDist: '.', appKey: 'k'.repeat(64), store: new MonitorStore({ activityLimit: 10, batchMs: 10 }) })
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    try {
+      expect((await fetch(`${base}/health`)).status).toBe(200)
+      expect((await fetch(`${base}/`)).status).toBe(403)
+      expect((await fetch(`${base}/`, { headers: { 'x-ccm-app': 'x'.repeat(64) } })).status).toBe(403)
+      expect((await fetch(`${base}/`, { headers: { 'x-ccm-app': 'k'.repeat(64) } })).status).not.toBe(403)
+    } finally {
+      server.close()
+    }
   })
 })
 
 describe('focus routes', () => {
-  it('serves the page only for the right key and runs focus over POST', async () => {
+  it('runs focus over POST only for the right key', async () => {
     const { startServer } = await import('../src/server')
     const { MonitorStore } = await import('../src/store')
     const runs: string[] = []
@@ -304,7 +312,6 @@ describe('focus routes', () => {
       port: 0,
       webDist: '.',
       store: new MonitorStore({ activityLimit: 10, batchMs: 10 }),
-      onFocusLink: (_t, key) => (key === 'good' ? { opening: 'Opening', opened: 'Opened' } : null),
       onFocusRun: async (t, key) => {
         if (key !== 'good') return null
         runs.push(t)
@@ -314,10 +321,6 @@ describe('focus routes', () => {
     const port = (server.address() as { port: number }).port
     const base = `http://127.0.0.1:${port}`
     try {
-      expect((await fetch(`${base}/focus?k=bad&t=a`)).status).toBe(404)
-      const page = await fetch(`${base}/focus?k=good&t=a`)
-      expect(page.status).toBe(200)
-      expect(await page.text()).toContain('Opening')
       const run = (t: string, k: string) => fetch(`${base}/focus`, { method: 'POST', body: JSON.stringify({ t, k }) }).then(async (r) => [r.status, ((await r.json()) as { result: string }).result])
       expect(await run('a', 'good')).toEqual([200, 'ok'])
       expect(await run('b', 'good')).toEqual([200, 'notFound'])

@@ -45,7 +45,7 @@ function turnOff(): void {
       role="status"
       aria-live="polite"
       aria-labelledby="break-title"
-      class="fixed right-4 bottom-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-4 shadow-lg"
+      class="ccm-sheet fixed right-4 bottom-4 z-40 w-[min(360px,calc(100vw-2rem))] p-4"
     >
       <div class="flex items-start gap-3">
         <ArtImage name="break" class="w-16 shrink-0 pt-0.5" />
@@ -56,7 +56,7 @@ function turnOff(): void {
         </div>
         <button
           type="button"
-          class="-mt-1 -mr-1 inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+          class="ccm-btn-plain -mt-1 -mr-1 shrink-0"
           :aria-label="t('breaks.dismiss')"
           @click="dismiss"
         >
@@ -67,14 +67,14 @@ function turnOff(): void {
         <span v-if="next" class="mr-auto text-xs text-ink-faint tabular">{{ t('breaks.next', { at: next }) }}</span>
         <button
           type="button"
-          class="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+          class="ccm-btn"
           @click="turnOff"
         >
           {{ t('breaks.off') }}
         </button>
         <button
           type="button"
-          class="inline-flex h-8 cursor-pointer items-center rounded-lg bg-accent px-3 text-xs font-medium text-on-accent transition-opacity hover:opacity-90"
+          class="ccm-btn ccm-btn-primary"
           @click="dismiss"
         >
           {{ t('breaks.done') }}

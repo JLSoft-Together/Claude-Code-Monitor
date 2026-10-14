@@ -411,6 +411,25 @@ AppleScript `tell application "Terminal"` → `tabs of windows` → `tty of t is
 
 Native notifications: an Electron `Notification` from the dev binary (`com.github.Electron`) fails with `UNErrorDomain error 1` (notifications not allowed) without any permission dialog, and the installed ad-hoc signed app (`dev.ccm.monitor`, `Signature=adhoc`) shows no prompt either; neither appears in `com.apple.ncprefs`. Native macOS notifications therefore need a Developer ID signature. The desktop app uses a dock badge and `dock.bounce('critical')` instead, which need no permission.
 
+## 11o. Embedded terminals — deviation from "monitoring never sends prompts" (v18, desktop only, verified 2026-10-14, Claude Code 2.1.294, Windows 11)
+
+**Deviation.** PLAN.md says monitoring never sends prompts. The desktop app now hosts terminals (Workspace view) where the user types into Claude Code / Codex / a shell that Agent Monitor spawned. The rule is kept in spirit and stated precisely:
+
+- Agent Monitor itself still never writes a prompt, never calls an API, never spawns an LLM on its own. Only the user's own keystrokes and pastes travel to a PTY the user opened. Zero extra tokens.
+- Terminals that Agent Monitor did not spawn (Windows Terminal, Terminal.app, IDEs) stay strictly read-only; writing into another process's console is not attempted.
+- Launch commands are fixed presets (`claude`, `codex`, the shell; `claude --resume <uuid>` / `codex resume <uuid>` with a validated UUID). The page never sends a command string.
+- There is no browser mode (v2.0.0): the collector answers only requests carrying the per-run app key, which Electron adds to its own windows; `npm run dev` (UI work) has no terminals. Windows toast buttons use `agent-monitor://` links handled by the app instead of opening a browser tab.
+
+**Why this is safe enough.** The PTY host is a separate Electron `utilityProcess` on `ws://127.0.0.1:<random>/pty`. Each connection needs a fresh 32-byte token (in `Sec-WebSocket-Protocol`, compared in constant time), Host 127.0.0.1 and the app origin. The token reaches only top-level app frames through the preload, and only while the collector on the port is the app's own child (a borrowed or foreign collector page gets nothing). The collector page is served with a Content-Security-Policy (`script-src 'self'` + the hash of the inline pre-paint script, no `unsafe-eval`), so injected markup cannot run script and reach the shell.
+
+**Findings while building it.**
+
+1. `claude.cmd` (npm) is a shim; the agent process descends from the pane's shell (`powershell.exe → claude.exe`). The pane ↔ session link walks the ppid chain (PowerShell CIM `Win32_Process` / `ps -A -o pid=,ppid=`) from the registry pid up to the pane's shell pid, so typing `claude` by hand in a shell pane links too.
+2. When Agent Monitor itself is started from inside a Claude Code session, the session's own variables (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`, `CLAUDE_CODE_ENTRYPOINT`, …) are inherited. A `claude` started under `CLAUDE_CODE_CHILD_SESSION` prints "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker" and writes neither a transcript nor a registry record, so the monitor never sees it. The PTY host strips these (plus `CODEX_THREAD_ID`, `CODEX_SANDBOX*`) from every pane's environment; user configuration such as `CLAUDE_CODE_USE_BEDROCK` is kept.
+3. ConPTY reports the shell pid asynchronously (0 right after spawn, set ~30 ms later); node-pty's `kill` only ends the shell on Windows, so panes are killed with `taskkill /T /F` (absolute path) to take the agent and its tools down too.
+4. Session restore uses the session id the monitor already knows for the pane (registry `sessionId`, follows `/clear`); nothing is guessed from folders. Restoring is always a user action ("Restore previous workspace"), never automatic. Reopening an external session that is still live asks first: two instances on one session would both append to the same transcript.
+5. Git worktrees are created and removed by the PTY host (token channel), never by the collector's dashboard socket: `git -C <dir> worktree add -- <repo>-wt/<branch> [<branch>|-b <branch>]`, `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0`; removal refuses the main checkout, a dirty tree or a folder a live terminal runs in, and never uses `--force`. `git` is resolved by walking PATH ourselves because Windows process creation would try the project folder first.
+
 ## 12. Open items
 
 | Item | State |

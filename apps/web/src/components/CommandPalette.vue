@@ -219,6 +219,8 @@ function onKey(e: KeyboardEvent): void {
 }
 
 function onGlobalKey(e: KeyboardEvent): void {
+  // Inside a terminal Ctrl+K belongs to the shell / agent (kill line).
+  if ((e.target as Element | null)?.closest?.('.xterm')) return
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     ui.paletteOpen = !ui.paletteOpen
@@ -262,12 +264,12 @@ const HINTS = [
       leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.paletteOpen" class="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 px-3 pt-[8vh] sm:px-4 sm:pt-[12vh]" @mousedown.self="close">
+      <div v-if="ui.paletteOpen" class="fixed inset-0 z-50 flex items-start justify-center ccm-scrim px-3 pt-[8vh] sm:px-4 sm:pt-[12vh]" @mousedown.self="close">
         <div
           role="dialog"
           aria-modal="true"
           :aria-label="t('palette.title')"
-          class="ccm-pop flex max-h-[min(78vh,620px)] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg"
+          class="ccm-pop flex max-h-[min(78vh,620px)] w-full max-w-[640px] flex-col overflow-hidden ccm-sheet"
         >
           <div class="flex items-center gap-3 px-5 pt-2">
             <Search :size="19" class="shrink-0 text-ink-muted" aria-hidden="true" />
@@ -290,7 +292,7 @@ const HINTS = [
             <button
               v-if="query"
               type="button"
-              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain shrink-0"
               :aria-label="t('palette.clear')"
               :title="t('palette.clear')"
               @mousedown.prevent
@@ -298,7 +300,7 @@ const HINTS = [
             >
               <X :size="16" aria-hidden="true" />
             </button>
-            <kbd v-else class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 font-sans text-2xs text-ink-faint sm:inline">Esc</kbd>
+            <kbd v-else class="hidden shrink-0 rounded-inner bg-fill px-1.5 py-0.5 font-sans text-2xs text-ink-faint sm:inline">Esc</kbd>
           </div>
 
           <div class="flex gap-5 border-b border-line px-5" role="radiogroup" :aria-label="t('palette.scopeLabel')">
@@ -309,7 +311,7 @@ const HINTS = [
               role="radio"
               :aria-checked="scope === s"
               tabindex="-1"
-              class="-mb-px inline-flex h-10 cursor-pointer items-center gap-1.5 border-b-2 text-[13px] font-medium transition-colors"
+              class="-mb-px inline-flex h-9 cursor-pointer items-center gap-1.5 border-b-2 text-xs font-medium transition-colors"
               :class="scope === s ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'"
               @mousedown.prevent
               @click="scope = s"
@@ -327,7 +329,7 @@ const HINTS = [
               <button
                 v-if="scope !== 'all' && scopeCounts.all"
                 type="button"
-                class="mt-2 inline-flex h-8 cursor-pointer items-center rounded-lg border border-line px-3 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-ink"
+                class="ccm-btn mt-2"
                 @mousedown.prevent
                 @click="scope = 'all'"
               >
@@ -344,35 +346,42 @@ const HINTS = [
                   role="option"
                   :data-index="item.index"
                   :aria-selected="item.index === active"
-                  class="relative flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors duration-100"
-                  :class="item.index === active ? 'bg-raised' : ''"
+                  class="relative flex min-h-11 cursor-pointer items-center gap-3 rounded-inner px-3 py-1.5 text-sm"
+                  :class="item.index === active ? 'bg-accent text-on-accent' : 'text-ink'"
                   @mousemove="active = item.index"
                   @click="choose(item, $event.shiftKey)"
                 >
-                  <span v-if="item.index === active" class="absolute inset-y-3 left-0 w-0.5 rounded-full bg-accent" aria-hidden="true" />
-                  <span class="inline-flex size-8 shrink-0 items-center justify-center" aria-hidden="true">
+                  <span
+                    class="inline-flex size-7 shrink-0 items-center justify-center"
+                    :class="item.status && item.index === active ? 'rounded-inner bg-surface' : ''"
+                    aria-hidden="true"
+                  >
                     <StatusIcon v-if="item.status" :status="item.status" :size="16" :animate="false" />
-                    <component :is="item.icon" v-else-if="item.icon" :size="17" :class="item.index === active ? 'text-accent' : 'text-ink-faint'" />
+                    <component :is="item.icon" v-else-if="item.icon" :size="16" :class="item.index === active ? 'text-on-accent' : 'text-ink-faint'" />
                   </span>
                   <span class="min-w-0 flex-1">
-                    <span class="block truncate text-ink"
+                    <span class="block truncate"
                       ><template v-for="(p, pi) in parts(item.label)" :key="pi"
-                        ><mark v-if="p.hit" class="bg-transparent font-semibold text-accent">{{ p.text }}</mark
+                        ><mark v-if="p.hit" class="bg-transparent font-semibold" :class="item.index === active ? 'text-on-accent' : 'text-accent'">{{ p.text }}</mark
                         ><template v-else>{{ p.text }}</template></template
                       ></span
                     >
-                    <span v-if="item.sub" class="mt-0.5 block truncate text-xs text-ink-faint">{{ item.sub }}</span>
+                    <span v-if="item.sub" class="mt-0.5 block truncate text-2xs" :class="item.index === active ? 'text-on-accent/80' : 'text-ink-faint'">{{ item.sub }}</span>
                   </span>
-                  <span v-if="item.on !== undefined" class="inline-flex shrink-0 items-center gap-1.5 text-xs" :class="item.on ? 'text-st-done' : 'text-ink-faint'">
-                    <span class="size-1.5 rounded-full" :class="item.on ? 'bg-st-done' : 'border border-current'" aria-hidden="true" />
+                  <span
+                    v-if="item.on !== undefined"
+                    class="inline-flex shrink-0 items-center gap-1.5 text-xs"
+                    :class="item.index === active ? 'text-on-accent/80' : item.on ? 'text-st-done' : 'text-ink-faint'"
+                  >
+                    <span class="size-1.5 rounded-full" :class="item.on ? (item.index === active ? 'bg-on-accent' : 'bg-st-done') : 'border border-current'" aria-hidden="true" />
                     {{ item.on ? t('palette.on') : t('palette.off') }}
                   </span>
-                  <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-ink-faint sm:inline-flex">
+                  <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-on-accent/80 sm:inline-flex">
                     <span v-if="item.alt" class="inline-flex items-center gap-1"
                       ><AppWindow v-if="item.group === 'sessions'" :size="12" aria-hidden="true" />{{ item.altHint }}
-                      <kbd class="rounded border border-line bg-surface px-1 font-sans">⇧↵</kbd></span
+                      <kbd class="rounded-inner bg-on-accent/20 px-1 font-sans">⇧↵</kbd></span
                     >
-                    <kbd class="inline-flex items-center rounded border border-line bg-surface px-1 py-px"><CornerDownLeft :size="12" aria-hidden="true" /></kbd>
+                    <kbd class="inline-flex items-center rounded-inner bg-on-accent/20 px-1 py-px"><CornerDownLeft :size="12" aria-hidden="true" /></kbd>
                   </span>
                 </div>
               </div>
@@ -381,7 +390,7 @@ const HINTS = [
 
           <div class="hidden items-center gap-x-5 border-t border-line px-5 py-3 text-2xs text-ink-faint sm:flex">
             <span v-for="h in HINTS" :key="h.key" class="inline-flex items-center gap-1.5">
-              <kbd class="rounded border border-line px-1.5 py-px font-sans text-ink-muted">{{ h.keys }}</kbd>{{ t(`palette.hints.${h.key}`) }}
+              <kbd class="rounded-inner bg-fill px-1.5 py-px font-sans text-ink-muted">{{ h.keys }}</kbd>{{ t(`palette.hints.${h.key}`) }}
             </span>
           </div>
         </div>

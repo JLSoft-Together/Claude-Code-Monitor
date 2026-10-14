@@ -7,7 +7,7 @@ const page = defineModel<number>({ required: true })
 const { t } = useI18n()
 
 const btn =
-  'inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-line transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+  'ccm-btn-plain'
 </script>
 
 <template>

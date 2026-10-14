@@ -84,13 +84,13 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       <button
         v-if="endedCount > 0"
         type="button"
-        class="ms-auto inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 font-medium text-ink-muted transition-colors hover:bg-raised hover:text-st-error"
+        class="ccm-btn-plain ms-auto px-2! text-xs font-medium hover:text-st-error!"
         @click="connection.dismissEnded()"
       >
         <Trash2 :size="14" aria-hidden="true" />{{ t('sessions.clearEnded', { n: endedCount }) }}
       </button>
     </div>
-    <div v-if="!connection.hasData" class="rounded-xl border border-dashed border-line-strong px-4 py-6 text-sm">
+    <div v-if="!connection.hasData" class="rounded-card border border-dashed border-line-strong px-4 py-6 text-sm">
       <template v-if="connection.state === 'disconnected'">
         <p class="font-medium text-st-error">{{ t('sessions.offline') }}</p>
         <p class="mt-1 text-xs text-ink-muted">{{ t('sessions.offlineHint') }}</p>
@@ -103,7 +103,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
 
     <div
       v-else-if="terminals.list.length === 0"
-      class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line-strong px-4 py-6 text-center"
+      class="flex flex-col items-center gap-2 rounded-card border border-dashed border-line-strong px-4 py-6 text-center"
     >
       <ArtImage name="empty-sessions" class="w-40 max-w-full" />
       <p class="text-sm font-medium">{{ t('sessions.empty') }}</p>

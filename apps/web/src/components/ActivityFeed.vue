@@ -187,7 +187,7 @@ const rows = computed(() =>
     <div
       id="activity-body"
       ref="body"
-      class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-xl border border-line bg-surface"
+      class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-card bg-surface shadow-card"
     >
       <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line bg-surface px-3.5 py-1.5 text-xs text-ink-muted">
         <AppSelect v-model="settings.activityPageSize" :options="pageSizeOptions" :label="t('projects.perPage')" size="sm" />
@@ -198,7 +198,7 @@ const rows = computed(() =>
         <button
           v-if="!props.terminalId && scopeId && scopeTitle"
           type="button"
-          class="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-accent bg-accent-soft py-1 pr-2 pl-2.5 text-xs font-medium text-ink transition-colors hover:border-line-strong"
+          class="inline-flex h-6 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner bg-accent-soft pr-1.5 pl-2 text-xs font-medium text-ink transition-colors hover:bg-accent/20"
           :aria-label="t('activity.filterClear')"
           :title="t('activity.filterClear')"
           @click="ui.filterActivity(null)"
@@ -210,7 +210,7 @@ const rows = computed(() =>
         <button
           v-else-if="!props.terminalId && ui.focusedTerminalId && scopeTitle"
           type="button"
-          class="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-line py-1 pr-2.5 pl-2 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+          class="ccm-btn-plain min-w-0 px-2! text-xs"
           :title="t('activity.filterSessionTitle', { title: scopeTitle })"
           @click="ui.filterActivity(ui.focusedTerminalId)"
         >

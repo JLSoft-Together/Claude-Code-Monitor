@@ -120,7 +120,7 @@ function onKey(e: KeyboardEvent): void {
 </script>
 
 <template>
-  <section class="min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5" aria-labelledby="usage-daily-title">
+  <section class="min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5" aria-labelledby="usage-daily-title">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h3 id="usage-daily-title" class="text-base font-semibold">{{ t('usage.daily') }}</h3>
@@ -131,8 +131,8 @@ function onKey(e: KeyboardEvent): void {
           v-for="key in SERIES"
           :key="key"
           type="button"
-          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors"
-          :class="usage.hidden.includes(key) ? 'border-line text-ink-faint' : 'border-line-strong text-ink'"
+          class="ccm-btn-plain px-2! text-xs"
+          :class="usage.hidden.includes(key) ? 'text-ink-faint!' : ''"
           :aria-pressed="!usage.hidden.includes(key)"
           :title="t('usage.toggleSeries')"
           @click="usage.toggleSeries(key)"
@@ -146,7 +146,7 @@ function onKey(e: KeyboardEvent): void {
         </button>
         <button
           type="button"
-          class="ml-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+          class="ccm-btn-plain ml-1"
           :aria-pressed="showTable"
           :aria-label="showTable ? t('usage.showChart') : t('usage.showTable')"
           :title="showTable ? t('usage.showChart') : t('usage.showTable')"
@@ -227,7 +227,7 @@ function onKey(e: KeyboardEvent): void {
       >
         <div
           v-if="hovered"
-          class="pointer-events-none absolute top-0 z-10 w-[220px] -translate-x-1/2 rounded-xl border border-line-strong bg-surface p-3 text-xs shadow-lg shadow-black/10"
+          class="pointer-events-none absolute top-0 z-10 w-[220px] -translate-x-1/2 rounded-card bg-surface p-3 text-xs shadow-pop"
           :style="{ left: `${tooltipLeft}px` }"
           role="status"
         >

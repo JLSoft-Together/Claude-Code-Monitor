@@ -249,7 +249,7 @@ watch(
 )
 
 const actionCls =
-  'relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-accent'
+  'ccm-btn-plain relative shrink-0 hover:text-accent!'
 </script>
 
 <template>
@@ -262,11 +262,11 @@ const actionCls =
       <button
         v-if="!adding"
         type="button"
-        class="-my-1 inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg px-2 text-xs font-medium text-ink-muted transition-colors hover:bg-raised hover:text-accent"
+        class="ccm-btn-plain -my-1 gap-1! px-2! text-xs font-medium hover:text-accent!"
         :title="t('favorites.addTitle')"
         @click="openAdd"
       >
-        <FolderPlus :size="15" aria-hidden="true" />{{ t('favorites.add') }}
+        <FolderPlus :size="14" aria-hidden="true" />{{ t('favorites.add') }}
       </button>
     </div>
 
@@ -276,7 +276,7 @@ const actionCls =
       leave-active-class="transition duration-120 ease-in"
       leave-to-class="opacity-0"
     >
-      <form v-if="adding" class="mb-2 rounded-xl border border-accent bg-surface p-2.5" @submit.prevent="submitAdd" @keydown.esc.prevent.stop="closeAdd">
+      <form v-if="adding" class="mb-2 rounded-card bg-surface p-2.5 shadow-card" @submit.prevent="submitAdd" @keydown.esc.prevent.stop="closeAdd">
         <label for="fav-add-dir" class="mb-1 block text-2xs font-medium text-ink-muted">{{ t('favorites.addPath') }}</label>
         <div class="flex items-center gap-1.5">
         <input
@@ -288,13 +288,13 @@ const actionCls =
           spellcheck="false"
           autocomplete="off"
           :placeholder="t('favorites.addPathPlaceholder')"
-          class="h-9 w-full min-w-0 flex-1 rounded-lg border border-line bg-canvas px-2.5 font-mono text-xs text-ink outline-none focus:border-accent"
+          class="ccm-field w-full min-w-0 flex-1 font-mono"
           :aria-invalid="!!addError"
           :aria-describedby="addError ? 'fav-add-err' : undefined"
         />
         <button
           type="button"
-          class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-ink disabled:cursor-wait disabled:opacity-60"
+          class="ccm-btn shrink-0 px-2.5! disabled:cursor-wait!"
           :disabled="picking"
           :title="t('favorites.browseTitle')"
           @click="browse"
@@ -312,16 +312,16 @@ const actionCls =
           v-model="addName"
           maxlength="80"
           :placeholder="t('favorites.renamePlaceholder')"
-          class="h-9 w-full min-w-0 rounded-lg border border-line bg-canvas px-2.5 text-sm text-ink outline-none focus:border-accent"
+          class="ccm-field w-full min-w-0"
         />
         <p v-if="addError" id="fav-add-err" role="alert" class="ccm-enter mt-1.5 text-2xs text-st-error">{{ addError }}</p>
         <div class="mt-2.5 flex items-center justify-end gap-1.5">
-          <button type="button" class="inline-flex h-8 cursor-pointer items-center rounded-lg px-3 text-xs font-medium text-ink-muted hover:bg-raised hover:text-ink" @click="closeAdd">
+          <button type="button" class="ccm-btn" @click="closeAdd">
             {{ t('terminal.renameCancel') }}
           </button>
           <button
             type="submit"
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-50"
+            class="ccm-btn ccm-btn-primary"
             :disabled="!addDir.trim() || addPending"
           >
             <LoaderCircle v-if="addPending" :size="14" class="ccm-spin" aria-hidden="true" /><FolderPlus v-else :size="14" aria-hidden="true" />
@@ -331,7 +331,7 @@ const actionCls =
       </form>
     </Transition>
 
-    <p v-if="!favorites.list.length && !adding" class="rounded-xl border border-dashed border-line-strong px-3 py-2.5 text-xs text-ink-muted">
+    <p v-if="!favorites.list.length && !adding" class="rounded-card border border-dashed border-line-strong px-3 py-2.5 text-xs text-ink-muted">
       {{ t('favorites.empty') }}
     </p>
 
@@ -341,15 +341,15 @@ const actionCls =
         v-for="(f, i) in shown"
         :key="f.dir"
         :data-fav-index="i"
-        class="flex items-center gap-1 rounded-xl border bg-surface py-1.5 pr-1.5 pl-0.5 transition-[border-color,box-shadow]"
-        :class="[justAdded === f.dir ? 'ccm-highlight' : '', dragging === f.dir ? 'relative z-10 border-accent shadow-lg' : 'border-line']"
+        class="flex items-center gap-1 rounded-card bg-surface py-1.5 pr-1.5 pl-0.5 shadow-card transition-shadow"
+        :class="[justAdded === f.dir ? 'ccm-highlight' : '', dragging === f.dir ? 'relative z-10 shadow-pop ring-2 ring-accent' : '']"
         @animationend="justAdded === f.dir && (justAdded = null)"
       >
         <button
           v-if="editing !== f.dir && favorites.list.length > 1"
           :ref="(el) => setHandle(f.dir, el)"
           type="button"
-          class="inline-flex h-8 w-6 shrink-0 touch-none items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-raised hover:text-ink focus-visible:text-ink"
+          class="inline-flex h-7 w-6 shrink-0 touch-none items-center justify-center rounded-inner text-ink-faint transition-colors hover:bg-fill hover:text-ink focus-visible:text-ink"
           :class="dragging === f.dir ? 'cursor-grabbing text-accent' : 'cursor-grab'"
           :aria-label="t('favorites.moveName', { name: f.label })"
           :aria-describedby="'fav-move-hint'"
@@ -368,11 +368,11 @@ const actionCls =
             v-model="draft"
             maxlength="80"
             :placeholder="t('favorites.renamePlaceholder')"
-            class="h-8 min-w-0 flex-1 rounded-lg border border-accent bg-canvas px-2 text-sm font-medium text-ink outline-none"
+            class="ccm-field min-w-0 flex-1 text-sm! font-medium"
             :aria-invalid="editFailed"
             @keydown.esc.prevent.stop="cancelEdit"
           />
-          <button type="submit" class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-accent text-on-accent" :aria-label="t('terminal.renameSave')">
+          <button type="submit" class="ccm-btn ccm-btn-primary w-7 shrink-0 px-0!" :aria-label="t('terminal.renameSave')">
             <Check :size="15" aria-hidden="true" />
           </button>
           <button type="button" :class="actionCls" :aria-label="t('terminal.renameCancel')" @click="cancelEdit">
@@ -384,7 +384,7 @@ const actionCls =
             <span class="truncate">{{ f.label }}</span>
             <span
               v-if="liveCount[dirKey(f.dir)]"
-              class="shrink-0 rounded-md bg-st-working-soft px-1.5 text-2xs font-medium text-st-working"
+              class="shrink-0 rounded-inner bg-st-working-soft px-1.5 text-2xs font-medium text-st-working"
               :title="t('favorites.liveTitle')"
             >
               {{ t('favorites.live', { n: liveCount[dirKey(f.dir)] }) }}
@@ -408,7 +408,7 @@ const actionCls =
         </button>
         <button
           type="button"
-          class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-st-waiting transition-colors hover:bg-raised"
+          class="ccm-btn-plain shrink-0 text-st-waiting!"
           :aria-label="t('favorites.removeName', { name: f.label })"
           :title="t('favorites.unstar')"
           @click="connection.removeFavorite(f.dir)"

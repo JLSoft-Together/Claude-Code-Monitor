@@ -30,6 +30,21 @@ await build({
   logOverride: { 'empty-import-meta': 'silent' },
 })
 
+await build({
+  ...common,
+  entryPoints: [path.join(HERE, 'src', 'preload.ts')],
+  outfile: path.join(STAGE, 'preload.cjs'),
+  external: ['electron'],
+})
+
+await build({
+  ...common,
+  entryPoints: [path.join(HERE, 'src', 'pty', 'host.ts')],
+  outfile: path.join(STAGE, 'pty-host.cjs'),
+  // node-pty is native: shipped as extraResources (pty/node_modules) and required by path at runtime.
+  external: ['@lydell/node-pty', 'bufferutil', 'utf-8-validate'],
+})
+
 // No dependencies on purpose: everything is bundled, so electron-builder ships no node_modules.
 writeFileSync(
   path.join(STAGE, 'package.json'),

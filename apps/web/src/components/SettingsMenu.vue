@@ -10,9 +10,10 @@ import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useUiStore } from '../stores/ui'
-import { STUCK_CHOICES, useSettingsStore, type Palette } from '../stores/settings'
+import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
+import SegmentedControl from './ui/SegmentedControl.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -23,20 +24,16 @@ const panel = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
-const palettes = computed<{ id: Palette; label: string; swatch: string[] }[]>(() => [
-  { id: 'ember', label: t('settings.paletteEmber'), swatch: ['ember-1', 'ember-2', 'ember-3'] },
-  { id: 'cobalt', label: t('settings.paletteCobalt'), swatch: ['cobalt-1', 'cobalt-2', 'cobalt-3'] },
-])
 const themes = computed(() => [
-  { id: 'light' as const, label: t('settings.themeLight'), icon: Sun },
-  { id: 'dark' as const, label: t('settings.themeDark'), icon: Moon },
+  { value: 'light' as const, label: t('settings.themeLight'), icon: Sun },
+  { value: 'dark' as const, label: t('settings.themeDark'), icon: Moon },
 ])
 const locales = [
-  { id: 'vi' as const, label: 'Tiếng Việt' },
-  { id: 'en' as const, label: 'English' },
+  { value: 'vi' as const, label: 'Tiếng Việt', lang: 'vi' },
+  { value: 'en' as const, label: 'English', lang: 'en' },
 ]
-const terminalApps: TerminalApp[] = ['terminal', 'iterm']
-const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
+const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
+const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
 
 const events = computed(() => [
   { key: 'notifyWaiting', label: t('settings.notifyWaiting') },
@@ -187,23 +184,22 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
 <template>
   <button
     type="button"
-    class="relative inline-flex size-10 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-raised"
-    :class="settings.notifyEnabled ? 'text-accent' : 'text-ink-muted hover:text-ink'"
+    class="ccm-btn-plain relative size-8"
     :aria-label="bellLabel"
     :aria-pressed="settings.notifyEnabled"
     :title="blocked ? t('settings.notifyBlocked') : bellLabel"
     :disabled="unsupported"
     @click="settings.toggleNotifications()"
   >
-    <LottieArt v-if="ringing" name="notification-bell" :play-key="ringing" class="size-6" />
-    <Bell v-else-if="settings.notifyEnabled" :size="18" aria-hidden="true" />
+    <LottieArt v-if="ringing" name="notification-bell" :play-key="ringing" class="size-6 text-accent" />
+    <Bell v-else-if="settings.notifyEnabled" :size="18" class="text-accent" aria-hidden="true" />
     <BellOff v-else :size="18" aria-hidden="true" />
   </button>
 
   <button
     type="button"
     data-tour="settings"
-    class="inline-flex size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+    class="ccm-btn-plain size-8"
     :aria-label="t('settings.title')"
     :title="t('settings.title')"
     :aria-expanded="ui.settingsOpen"
@@ -220,7 +216,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
       leave-active-class="transition-opacity duration-150 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.settingsOpen" class="fixed inset-0 z-50 bg-ink/30" @mousedown.self="close" />
+      <div v-if="ui.settingsOpen" class="fixed inset-0 z-50 ccm-scrim" @mousedown.self="close" />
     </Transition>
     <Transition
       enter-active-class="transition-transform duration-250 ease-out-quint motion-reduce:transition-none"
@@ -235,182 +231,132 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col border-l border-line bg-surface shadow-lg"
+        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col bg-canvas shadow-pop"
         @keydown="onKey"
       >
-        <header class="flex items-center gap-3 border-b border-line px-5 py-4">
+        <header class="flex items-center gap-3 border-b border-line px-4 py-3">
           <div class="min-w-0 flex-1">
             <h2 id="settings-title" class="text-base font-semibold">{{ t('settings.title') }}</h2>
-            <p class="text-xs text-ink-faint">{{ t('settings.subtitle') }}</p>
+            <p class="truncate text-2xs text-ink-faint" :title="t('settings.subtitle')">{{ t('settings.subtitle') }}</p>
           </div>
           <button
             ref="closeButton"
             type="button"
-            class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+            class="ccm-btn-plain"
             :aria-label="t('settings.close')"
             :title="t('settings.close')"
             @click="close"
           >
-            <X :size="18" aria-hidden="true" />
+            <X :size="16" aria-hidden="true" />
           </button>
         </header>
 
-        <div class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-8">
-          <section aria-labelledby="set-appearance" class="pt-5">
-            <h3 id="set-appearance" class="mb-3 text-xs font-semibold text-ink-muted">{{ t('settings.section.appearance') }}</h3>
-            <div class="flex flex-col gap-3">
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-sm">{{ t('settings.theme') }}</span>
-                <div class="grid grid-cols-2 rounded-lg border border-line bg-canvas p-0.5" role="radiogroup" :aria-label="t('settings.theme')">
-                  <button
-                    v-for="th in themes"
-                    :key="th.id"
-                    type="button"
-                    role="radio"
-                    :aria-checked="settings.theme === th.id"
-                    class="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors"
-                    :class="settings.theme === th.id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-                    @click="settings.theme = th.id"
-                  >
-                    <component :is="th.icon" :size="14" aria-hidden="true" />{{ th.label }}
-                  </button>
-                </div>
+        <div class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-8">
+          <section aria-labelledby="set-appearance">
+            <h3 id="set-appearance" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.appearance') }}</h3>
+            <div class="ccm-group">
+              <div class="flex items-center justify-between gap-3 px-3 py-2">
+                <span class="min-w-0 text-sm">{{ t('settings.theme') }}</span>
+                <SegmentedControl v-model="settings.theme" :options="themes" :label="t('settings.theme')" />
               </div>
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-sm">{{ t('settings.language') }}</span>
-                <div class="grid grid-cols-2 rounded-lg border border-line bg-canvas p-0.5" role="radiogroup" :aria-label="t('settings.language')">
-                  <button
-                    v-for="l in locales"
-                    :key="l.id"
-                    type="button"
-                    role="radio"
-                    :aria-checked="settings.locale === l.id"
-                    :lang="l.id"
-                    class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-xs font-medium transition-colors"
-                    :class="settings.locale === l.id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-                    @click="settings.locale = l.id"
-                  >
-                    {{ l.label }}
-                  </button>
-                </div>
+              <div class="flex items-center justify-between gap-3 px-3 py-2">
+                <span class="min-w-0 text-sm">{{ t('settings.language') }}</span>
+                <SegmentedControl v-model="settings.locale" :options="locales" :label="t('settings.language')" />
               </div>
-              <div>
-                <span class="mb-2 block text-sm">{{ t('settings.palette') }}</span>
-                <div class="grid grid-cols-2 gap-2" role="radiogroup" :aria-label="t('settings.palette')">
-                  <button
-                    v-for="p in palettes"
-                    :key="p.id"
-                    type="button"
-                    role="radio"
-                    :aria-checked="settings.palette === p.id"
-                    class="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors"
-                    :class="settings.palette === p.id ? 'border-accent bg-accent-soft' : 'border-line hover:border-line-strong'"
-                    @click="settings.palette = p.id"
-                  >
-                    <span class="flex -space-x-1" aria-hidden="true">
-                      <span v-for="c in p.swatch" :key="c" class="size-4 rounded-full border border-surface" :style="{ background: `var(--ccm-swatch-${c})` }" />
-                    </span>
-                    <span class="min-w-0 flex-1 truncate">{{ p.label }}</span>
-                    <Check v-if="settings.palette === p.id" :size="15" class="text-accent" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-              <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" />
+              <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
             </div>
           </section>
 
-          <section v-if="isMac" aria-labelledby="set-launch" class="mt-6 border-t border-line pt-5">
-            <h3 id="set-launch" class="mb-3 text-xs font-semibold text-ink-muted">{{ t('settings.section.launch') }}</h3>
-            <div class="flex items-center justify-between gap-3">
-              <span class="text-sm">{{ t('settings.launchTerminal') }}</span>
-              <div class="grid grid-cols-2 rounded-lg border border-line bg-canvas p-0.5" role="radiogroup" :aria-label="t('settings.launchTerminal')">
-                <button
-                  v-for="app in terminalApps"
-                  :key="app"
-                  type="button"
-                  role="radio"
-                  :aria-checked="ui.launchTerminal === app"
-                  class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-xs font-medium transition-colors"
-                  :class="ui.launchTerminal === app ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-                  @click="ui.launchTerminal = app"
-                >
-                  {{ t(`settings.launchTerminalApp.${app}`) }}
-                </button>
+          <section v-if="isMac" aria-labelledby="set-launch" class="mt-6">
+            <h3 id="set-launch" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.launch') }}</h3>
+            <div class="ccm-group">
+              <div class="flex items-center justify-between gap-3 px-3 py-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm">{{ t('settings.launchTerminal') }}</p>
+                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.launchTerminalHint') }}</p>
+                </div>
+                <SegmentedControl v-model="ui.launchTerminal" :options="terminalApps" :label="t('settings.launchTerminal')" />
               </div>
             </div>
-            <p class="mt-1.5 text-xs leading-relaxed text-ink-faint">{{ t('settings.launchTerminalHint') }}</p>
           </section>
 
-          <section aria-labelledby="set-notify" class="mt-6 border-t border-line pt-5">
-            <h3 id="set-notify" class="mb-1 text-xs font-semibold text-ink-muted">{{ t('settings.section.notifications') }}</h3>
+          <section aria-labelledby="set-notify" class="mt-6">
+            <h3 id="set-notify" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.notifications') }}</h3>
             <template v-if="toastAvailable">
-              <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="isMac ? t('settings.toastHintMac') : t('settings.toastHint')" :disabled="offline" />
-              <p v-if="healthNote" role="alert" class="mb-2 flex items-start gap-2 rounded-lg border border-st-error/40 bg-st-error/10 px-3 py-2 text-xs leading-relaxed text-ink">
-                <CircleAlert :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />{{ healthNote }}
-              </p>
-              <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <button
-                  type="button"
-                  class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-50"
-                  :disabled="!toast || offline || extras.toastTest?.state === 'sending'"
-                  @click="connection.testToast()"
-                >
-                  <Send :size="13" aria-hidden="true" />{{ t('settings.toastTest.action') }}
-                </button>
-                <span
-                  v-if="testNote"
-                  aria-live="polite"
-                  class="text-xs"
-                  :class="testNote.tone === 'error' ? 'text-st-error' : testNote.tone === 'ok' ? 'text-ink-muted' : 'text-ink-faint'"
-                >{{ testNote.text }}</span>
+              <div class="ccm-group">
+                <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="isMac ? t('settings.toastHintMac') : t('settings.toastHint')" :disabled="offline" class="px-3" />
+                <p v-if="healthNote" role="alert" class="flex items-start gap-2 bg-st-error/10 px-3 py-2 text-xs leading-relaxed text-ink">
+                  <CircleAlert :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />{{ healthNote }}
+                </p>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                  <button
+                    type="button"
+                    class="ccm-btn"
+                    :disabled="!toast || offline || extras.toastTest?.state === 'sending'"
+                    @click="connection.testToast()"
+                  >
+                    <Send :size="13" aria-hidden="true" />{{ t('settings.toastTest.action') }}
+                  </button>
+                  <span
+                    v-if="testNote"
+                    aria-live="polite"
+                    class="text-2xs"
+                    :class="testNote.tone === 'error' ? 'text-st-error' : testNote.tone === 'ok' ? 'text-ink-muted' : 'text-ink-faint'"
+                  >{{ testNote.text }}</span>
+                </div>
               </div>
-              <div class="mt-1 mb-2 rounded-lg border border-line bg-canvas px-3 py-1" role="group" :aria-label="t('settings.toastKinds')">
-                <p class="pt-2 text-xs text-ink-faint">{{ t('settings.toastKinds') }}</p>
+              <p class="mt-4 mb-1.5 px-3 text-2xs text-ink-faint" aria-hidden="true">{{ t('settings.toastKinds') }}</p>
+              <div class="ccm-group" role="group" :aria-label="t('settings.toastKinds')">
                 <ToggleSwitch
                   v-for="k in TOAST_KINDS"
                   :key="k"
                   :model-value="extras.notify?.kinds[k] ?? false"
                   :label="t(`settings.toastKind.${k}`)"
                   :disabled="!toast || offline"
-                  class="border-b border-line last:border-b-0"
+                  class="px-3"
                   @update:model-value="(on: boolean) => setKind(k, on)"
                 />
               </div>
             </template>
-            <ToggleSwitch
-              v-model="notify"
-              :label="t('settings.notifyEnable')"
-              :hint="toast && !unsupported && !blocked ? `${notifyNote} ${t('settings.toastOnHint')}` : notifyNote"
-              :disabled="unsupported"
-            />
-            <div class="mt-1 rounded-lg border border-line bg-canvas px-3 py-1" :aria-label="t('settings.notifyEvents')" role="group">
-              <p class="pt-2 text-xs text-ink-faint">{{ t('settings.notifyEvents') }}</p>
+            <div class="ccm-group" :class="toastAvailable ? 'mt-4' : ''">
+              <ToggleSwitch
+                v-model="notify"
+                :label="t('settings.notifyEnable')"
+                :hint="toast && !unsupported && !blocked ? `${notifyNote} ${t('settings.toastOnHint')}` : notifyNote"
+                :disabled="unsupported"
+                class="px-3"
+              />
+            </div>
+            <p class="mt-4 mb-1.5 px-3 text-2xs text-ink-faint" aria-hidden="true">{{ t('settings.notifyEvents') }}</p>
+            <div class="ccm-group" :aria-label="t('settings.notifyEvents')" role="group">
               <ToggleSwitch
                 v-for="ev in events"
                 :key="ev.key"
                 v-model="settings[ev.key]"
                 :label="ev.label"
                 :disabled="!settings.notifyEnabled"
-                class="border-b border-line last:border-b-0"
+                class="px-3"
               />
             </div>
-            <ToggleSwitch v-model="sound" :label="t('settings.sound')" :hint="t('settings.soundHint')" class="mt-2" />
-            <div v-if="extras.notify" class="mt-2">
+            <div class="ccm-group mt-4">
+              <ToggleSwitch v-model="sound" :label="t('settings.sound')" :hint="t('settings.soundHint')" class="px-3" />
               <ToggleSwitch
+                v-if="extras.notify"
                 :model-value="quiet.enabled"
                 :label="t('settings.quiet')"
                 :hint="t('settings.quietHint')"
                 :disabled="offline"
+                class="px-3"
                 @update:model-value="(on: boolean) => setQuiet({ enabled: on })"
               />
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pb-1">
-                <label v-for="f in (['from', 'to'] as const)" :key="f" class="flex items-center gap-2 text-sm text-ink-muted">
+              <div v-if="extras.notify" class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
+                <label v-for="f in (['from', 'to'] as const)" :key="f" class="flex items-center gap-2 text-xs text-ink-muted">
                   {{ f === 'from' ? t('settings.quietFrom') : t('settings.quietTo') }}
                   <input
                     type="time"
                     :value="quiet[f]"
                     :disabled="!quiet.enabled || offline"
-                    class="h-9 rounded-lg border border-line bg-canvas px-2 text-sm text-ink tabular outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    class="ccm-field tabular disabled:cursor-not-allowed disabled:opacity-50"
                     @change="onTime(f, $event)"
                   />
                 </label>
@@ -418,74 +364,81 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             </div>
           </section>
 
-          <section aria-labelledby="set-reminders" class="mt-6 border-t border-line pt-5">
-            <h3 id="set-reminders" class="mb-1 text-xs font-semibold text-ink-muted">{{ t('settings.section.reminders') }}</h3>
-            <ToggleSwitch v-model="settings.breakReminder" :label="t('settings.breakReminder')" :hint="breakHint" class="mb-3" />
-            <p class="text-sm">{{ t('settings.stuck') }}</p>
-            <p class="mt-0.5 mb-2 text-xs leading-relaxed text-ink-faint">{{ t('settings.stuckHint') }}</p>
-            <div class="grid grid-cols-5 rounded-lg border border-line bg-canvas p-0.5" role="radiogroup" :aria-label="t('settings.stuck')">
-              <button
-                v-for="o in stuckOptions"
-                :key="o.value"
-                type="button"
-                role="radio"
-                :aria-checked="settings.stuckMinutes === o.value"
-                class="inline-flex h-8 cursor-pointer items-center justify-center rounded-md text-xs transition-colors"
-                :class="settings.stuckMinutes === o.value ? 'bg-surface font-semibold text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-                @click="setStuck(o.value)"
-              >
-                {{ o.label }}
-              </button>
-            </div>
-
-            <label for="set-budget" class="mt-5 block text-sm">{{ t('settings.budget') }}</label>
-            <p class="mt-0.5 mb-2 text-xs leading-relaxed text-ink-faint">{{ t('settings.budgetHint') }}</p>
-            <div class="flex items-center gap-2">
-              <div class="flex h-9 items-center rounded-lg border border-line bg-canvas focus-within:border-accent">
-                <span class="pl-3 text-sm text-ink-muted" aria-hidden="true">$</span>
-                <input
-                  id="set-budget"
-                  :value="settings.dailyBudget || ''"
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputmode="decimal"
-                  :placeholder="t('settings.off')"
-                  class="h-full w-24 bg-transparent px-1.5 text-sm tabular outline-none"
-                  @change="settings.dailyBudget = Math.max(0, Number(($event.target as HTMLInputElement).value) || 0)"
+          <section aria-labelledby="set-reminders" class="mt-6">
+            <h3 id="set-reminders" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.reminders') }}</h3>
+            <div class="ccm-group">
+              <ToggleSwitch v-model="settings.breakReminder" :label="t('settings.breakReminder')" :hint="breakHint" class="px-3" />
+              <div class="px-3 py-2">
+                <p class="text-sm">{{ t('settings.stuck') }}</p>
+                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.stuckHint') }}</p>
+                <SegmentedControl
+                  :model-value="settings.stuckMinutes"
+                  :options="stuckOptions"
+                  :label="t('settings.stuck')"
+                  fill
+                  class="mt-2 w-full"
+                  @update:model-value="setStuck"
                 />
               </div>
-              <span class="text-xs text-ink-faint">{{ t('settings.perDay') }}</span>
+              <div class="flex items-center gap-3 px-3 py-2">
+                <div class="min-w-0 flex-1">
+                  <label for="set-budget" class="block text-sm">{{ t('settings.budget') }}</label>
+                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.budgetHint') }}</p>
+                </div>
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <div
+                    class="ccm-field flex w-24 items-center gap-1"
+                  >
+                    <span class="text-ink-muted" aria-hidden="true">$</span>
+                    <input
+                      id="set-budget"
+                      :value="settings.dailyBudget || ''"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputmode="decimal"
+                      :placeholder="t('settings.off')"
+                      class="ccm-bare-input h-full min-w-0 flex-1 bg-transparent tabular outline-none placeholder:text-ink-faint"
+                      @change="settings.dailyBudget = Math.max(0, Number(($event.target as HTMLInputElement).value) || 0)"
+                    />
+                  </div>
+                  <span class="text-2xs text-ink-faint">{{ t('settings.perDay') }}</span>
+                </div>
+              </div>
             </div>
           </section>
 
-          <section v-if="snippet" aria-labelledby="set-statusline" class="mt-6 border-t border-line pt-5">
-            <div class="mb-1 flex items-center justify-between gap-3">
-              <h3 id="set-statusline" class="text-xs font-semibold text-ink-muted">{{ t('limits.setupTitle') }}</h3>
-              <span class="inline-flex items-center gap-1 text-xs font-medium" :class="extras.limits ? 'text-st-done' : 'text-st-waiting'">
-                <CircleCheck v-if="extras.limits" :size="14" aria-hidden="true" /><CircleAlert v-else :size="14" aria-hidden="true" />
+          <section v-if="snippet" aria-labelledby="set-statusline" class="mt-6">
+            <div class="mb-1.5 flex items-center justify-between gap-3 px-3">
+              <h3 id="set-statusline" class="text-2xs font-semibold text-ink-muted">{{ t('limits.setupTitle') }}</h3>
+              <span class="inline-flex items-center gap-1 text-2xs font-medium" :class="extras.limits ? 'text-st-done' : 'text-st-waiting'">
+                <CircleCheck v-if="extras.limits" :size="13" aria-hidden="true" /><CircleAlert v-else :size="13" aria-hidden="true" />
                 {{ extras.limits ? t('settings.bridgeOn') : t('settings.bridgeOff') }}
               </span>
             </div>
-            <p class="mb-2 text-xs leading-relaxed text-ink-faint">{{ extras.limits ? t('limits.setupActive') : t('limits.setupHint') }}</p>
-            <div class="relative">
-              <pre class="max-h-36 overflow-auto rounded-lg border border-line bg-canvas p-3 pr-12 font-mono text-2xs whitespace-pre-wrap break-all text-ink-muted">{{ snippet }}</pre>
-              <button
-                type="button"
-                class="absolute top-2 right-2 inline-flex size-8 cursor-pointer items-center justify-center rounded-md border border-line bg-surface text-ink-muted transition-colors hover:border-accent hover:text-accent"
-                :aria-label="copied ? t('limits.copied') : t('limits.copy')"
-                :title="copied ? t('limits.copied') : t('limits.copy')"
-                @click="copySnippet"
-              >
-                <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />
-              </button>
+            <div class="ccm-group">
+              <div class="px-3 py-2">
+                <p class="mb-2 text-2xs leading-relaxed text-ink-faint">{{ extras.limits ? t('limits.setupActive') : t('limits.setupHint') }}</p>
+                <div class="relative">
+                  <pre class="max-h-36 overflow-auto rounded-inner bg-fill p-3 pr-11 font-mono text-2xs whitespace-pre-wrap break-all text-ink-muted">{{ snippet }}</pre>
+                  <button
+                    type="button"
+                    class="ccm-btn-plain absolute top-1.5 right-1.5"
+                    :aria-label="copied ? t('limits.copied') : t('limits.copy')"
+                    :title="copied ? t('limits.copied') : t('limits.copy')"
+                    @click="copySnippet"
+                  >
+                    <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />
+                  </button>
+                </div>
+                <p class="mt-2 text-2xs leading-relaxed text-ink-faint">{{ t('limits.chainHint') }}</p>
+              </div>
             </div>
-            <p class="mt-2 text-2xs leading-relaxed text-ink-faint">{{ t('limits.chainHint') }}</p>
           </section>
 
-          <section aria-labelledby="set-help" class="mt-6 border-t border-line pt-5">
-            <h3 id="set-help" class="mb-2 text-xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
-            <div class="overflow-hidden rounded-lg border border-line">
+          <section aria-labelledby="set-help" class="mt-6">
+            <h3 id="set-help" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
+            <div class="ccm-group overflow-hidden">
               <button
                 v-for="h in [
                   { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = true) },
@@ -493,15 +446,15 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 ]"
                 :key="h.key"
                 type="button"
-                class="flex w-full cursor-pointer items-center gap-3 border-b border-line px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-raised"
+                class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill"
                 @click="openFrom(h.run)"
               >
-                <component :is="h.icon" :size="17" class="shrink-0 text-ink-muted" aria-hidden="true" />
+                <component :is="h.icon" :size="16" class="shrink-0 text-ink-muted" aria-hidden="true" />
                 <span class="min-w-0 flex-1">
                   <span class="block text-sm">{{ h.label }}</span>
-                  <span class="block text-xs text-ink-faint">{{ h.hint }}</span>
+                  <span class="mt-0.5 block text-2xs text-ink-faint">{{ h.hint }}</span>
                 </span>
-                <ChevronRight :size="16" class="shrink-0 text-ink-faint" aria-hidden="true" />
+                <ChevronRight :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
               </button>
             </div>
           </section>

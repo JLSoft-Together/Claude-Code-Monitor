@@ -277,7 +277,7 @@ export class Toaster {
   private readonly file: JsonFile | null
 
   constructor(
-    private readonly options: { supported: boolean; port: number; file?: string },
+    private readonly options: { supported: boolean; port: number; file?: string; link?: string | null },
     private readonly deps: ToastDeps = defaultToastDeps,
   ) {
     this.file = options.file ? new JsonFile(options.file, 500) : null
@@ -310,7 +310,7 @@ export class Toaster {
   }
 
   snoozeLink(terminalId: string, minutes = TOAST_SNOOZE_MIN): string {
-    return `http://127.0.0.1:${this.options.port}/snooze?k=${this.key}&t=${encodeURIComponent(terminalId)}&m=${minutes}`
+    return `${this.linkBase}snooze?k=${this.key}&t=${encodeURIComponent(terminalId)}&m=${minutes}`
   }
 
   get state(): ToastState {
@@ -368,8 +368,13 @@ export class Toaster {
   }
 
   linkFor(terminalId?: string): string {
-    const base = `http://127.0.0.1:${this.options.port}/focus?k=${this.key}`
+    const base = `${this.linkBase}focus?k=${this.key}`
     return terminalId ? `${base}&t=${encodeURIComponent(terminalId)}` : base
+  }
+
+  /** agent-monitor:// in the desktop app (opens the app, not a browser); http for `npm run dev`. */
+  private get linkBase(): string {
+    return this.options.link ?? `http://127.0.0.1:${this.options.port}/`
   }
 
   accepts(key: string | null): boolean {

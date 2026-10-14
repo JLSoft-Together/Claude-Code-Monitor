@@ -48,7 +48,7 @@ function maxFor(p: Panel): number {
 }
 
 const PANEL_BASE = 'flex min-h-0 flex-col bg-canvas p-3'
-const PANEL_FLOAT = 'absolute inset-y-2 z-20 rounded-xl border border-line-strong shadow-xl'
+const PANEL_FLOAT = 'absolute inset-y-2 z-20 rounded-card shadow-pop'
 function panelClass(p: Panel): string {
   const { pinned } = ui.panels[p]
   if (p === 'sessions') return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-r border-line' : `${PANEL_FLOAT} left-2`}`

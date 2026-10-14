@@ -32,7 +32,7 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <section class="min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5" aria-labelledby="usage-live-title">
+  <section class="min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5" aria-labelledby="usage-live-title">
     <h3 id="usage-live-title" class="text-base font-semibold">{{ t('usage.live') }}</h3>
     <p class="mt-0.5 text-xs text-ink-muted">{{ t('usage.liveHint') }}</p>
 

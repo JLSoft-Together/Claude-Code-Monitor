@@ -61,7 +61,7 @@ function open(id: string): void {
     <section
       v-if="s"
       aria-labelledby="away-title"
-      class="relative rounded-xl border border-line bg-surface px-3 py-2.5 pr-11 sm:px-4"
+      class="relative rounded-card bg-surface px-3 py-2.5 pr-11 shadow-card sm:px-4"
     >
       <span class="absolute inset-y-2.5 left-0 w-[3px] rounded-full bg-accent" aria-hidden="true" />
       <h2 id="away-title" class="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
@@ -77,7 +77,7 @@ function open(id: string): void {
             <li v-for="x in g.items" :key="x.id" class="min-w-0">
               <button
                 type="button"
-                class="inline-flex h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 text-xs transition-colors hover:border-line-strong"
+                class="ccm-btn max-w-full px-2.5"
                 :aria-label="t('terminal.focus', { title: x.title })"
                 @click="open(x.id)"
               >
@@ -91,7 +91,7 @@ function open(id: string): void {
       <p v-if="facts.length" class="mt-2 text-xs text-ink-muted">{{ facts.join(' · ') }}</p>
       <button
         type="button"
-        class="absolute top-1.5 right-1.5 inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink"
+        class="ccm-btn-plain absolute top-1.5 right-1.5"
         :aria-label="t('away.dismiss')"
         :title="t('away.dismiss')"
         @click="away.dismiss()"

@@ -85,13 +85,13 @@ const metrics = computed(() => {
         <CountNum v-else-if="'num' in m && m.num !== undefined" :value="m.num" />
         <span v-else :key="m.value" class="ccm-tick">{{ m.value }}</span>
       </dd>
-      <dd v-if="'bar' in m && m.bar" class="h-1 w-10 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+      <dd v-if="'bar' in m && m.bar" class="h-1 w-10 overflow-hidden rounded-full bg-fill" aria-hidden="true">
         <span class="block h-full origin-left rounded-full" :class="m.bar.cls" :style="{ transform: `scaleX(${m.bar.pct / 100})` }" />
       </dd>
     </div>
   </dl>
   <dl v-else class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-    <div v-for="m in metrics" :key="m.key" class="min-w-0 rounded-xl border border-line bg-surface px-4 py-3" :title="'title' in m ? m.title : undefined">
+    <div v-for="m in metrics" :key="m.key" class="min-w-0 rounded-card bg-surface px-4 py-3 shadow-card" :title="'title' in m ? m.title : undefined">
       <dt class="flex items-center gap-1.5 truncate text-xs text-ink-muted">
         <StatusIcon v-if="m.status" :status="m.status" :size="13" :animate="false" />
         {{ m.label }}
@@ -102,7 +102,7 @@ const metrics = computed(() => {
         <span v-else :key="m.value" class="ccm-tick">{{ m.value }}</span>
       </dd>
       <dd v-if="'sub' in m" class="truncate text-2xs text-ink-faint">{{ m.sub }}</dd>
-      <dd v-if="'bar' in m && m.bar" class="mt-1.5 h-1 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+      <dd v-if="'bar' in m && m.bar" class="mt-1.5 h-1 overflow-hidden rounded-full bg-fill" aria-hidden="true">
         <span
           class="block h-full origin-left rounded-full transition-[transform,background-color] duration-500 ease-out-quint"
           :class="m.bar.cls"

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, CircleAlert, CircleCheck, CircleMinus, ClipboardCopy, RefreshCw, X } from 'lucide-vue-next'
+import { Check, CircleAlert, CircleCheck, CircleMinus, ClipboardCopy, Download, RefreshCw, X } from 'lucide-vue-next'
+import { desktop } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -93,6 +94,16 @@ async function copy(): Promise<void> {
   }
 }
 
+const logs = desktop?.logs
+const logDone = ref<'copy' | 'save' | null>(null)
+
+async function exportLog(action: 'copy' | 'save'): Promise<void> {
+  const res = await logs?.(action, report()).catch(() => null)
+  if (!res?.ok) return
+  logDone.value = action
+  window.setTimeout(() => (logDone.value = null), 1500)
+}
+
 function close(): void {
   ui.diagnosticsOpen = false
 }
@@ -143,36 +154,36 @@ onBeforeUnmount(() => window.clearInterval(poll))
       leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.diagnosticsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 px-4 py-[6vh]" @mousedown.self="close">
+      <div v-if="ui.diagnosticsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="diag-title"
-          class="ccm-pop w-full max-w-[600px] rounded-xl border border-line bg-surface shadow-lg"
+          class="ccm-pop w-full max-w-[600px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex items-center gap-2 border-b border-line px-5 py-4">
             <div class="mr-auto min-w-0">
-              <h2 id="diag-title" class="text-lg font-semibold">{{ t('diag.title') }}</h2>
-              <p class="text-xs text-ink-muted">{{ t('diag.subtitle') }}</p>
+              <h2 id="diag-title" class="text-base font-semibold">{{ t('diag.title') }}</h2>
+              <p class="text-2xs text-ink-muted">{{ t('diag.subtitle') }}</p>
             </div>
             <button
               type="button"
-              class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain"
               :aria-label="t('diag.refresh')"
               :title="t('diag.refresh')"
               @click="connection.loadDiagnostics()"
             >
-              <RefreshCw :size="17" aria-hidden="true" />
+              <RefreshCw :size="15" aria-hidden="true" />
             </button>
             <button
               type="button"
-              class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain"
               :aria-label="t('projects.close')"
               @click="close"
             >
-              <X :size="18" aria-hidden="true" />
+              <X :size="16" aria-hidden="true" />
             </button>
           </div>
 
@@ -187,15 +198,27 @@ onBeforeUnmount(() => window.clearInterval(poll))
                   <span class="sr-only">{{ t(`diag.level.${r.level}`) }}</span>
                   <span class="min-w-0 break-all text-ink-muted tabular">{{ r.value }}</span>
                 </p>
-                <p v-if="r.detail" class="mt-0.5 break-all text-xs text-ink-faint">{{ r.detail }}</p>
+                <p v-if="r.detail" class="mt-0.5 break-all text-2xs text-ink-faint">{{ r.detail }}</p>
               </div>
             </li>
           </ul>
 
-          <div class="flex justify-end border-t border-line px-5 py-3">
+          <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
+            <template v-if="logs">
+              <p class="mr-auto min-w-0 basis-full text-2xs text-ink-faint sm:basis-auto sm:flex-1">{{ t('diag.logHint') }}</p>
+              <button type="button" class="ccm-btn" @click="exportLog('save')">
+                <Check v-if="logDone === 'save'" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><Download v-else :size="14" aria-hidden="true" />
+                {{ logDone === 'save' ? t('diag.savedLog') : t('diag.saveLog') }}
+              </button>
+              <button type="button" class="ccm-btn" @click="exportLog('copy')">
+                <Check v-if="logDone === 'copy'" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
+                {{ logDone === 'copy' ? t('limits.copied') : t('diag.copyLog') }}
+              </button>
+            </template>
             <button
+              v-else
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              class="ccm-btn"
               :disabled="!rows.length"
               @click="copy"
             >

@@ -55,7 +55,7 @@ const tiles = computed(() => [
 <template>
   <div>
   <div class="grid grid-cols-2 gap-3 xl:grid-cols-6">
-    <div class="col-span-2 min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5">
+    <div class="col-span-2 min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5">
       <p class="text-sm text-ink-muted">{{ t('usage.totalTokens') }}</p>
       <p class="mt-1 truncate text-4xl font-semibold tracking-tight text-ink" :title="fullNumber(all, locale)">
         {{ compactNumber(shownAll) }}
@@ -68,7 +68,7 @@ const tiles = computed(() => [
       </p>
     </div>
 
-    <div v-for="tile in tiles" :key="tile.key" class="min-w-0 rounded-2xl border border-line bg-surface p-4">
+    <div v-for="tile in tiles" :key="tile.key" class="min-w-0 rounded-card bg-surface shadow-card p-4">
       <p class="flex items-center gap-1.5 truncate text-sm text-ink-muted">
         <span class="size-2.5 shrink-0 rounded-sm" :class="tile.dot" aria-hidden="true" />{{ tile.label }}
       </p>
@@ -79,7 +79,7 @@ const tiles = computed(() => [
     </div>
   </div>
 
-  <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-2xl border border-line bg-surface px-4 py-3 sm:px-5">
+  <div class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-card bg-surface shadow-card px-4 py-3 sm:px-5">
     <p class="text-sm text-ink-muted">{{ t('usage.estimatedCost') }}</p>
     <p class="text-2xl font-semibold tracking-tight text-ink tabular" :title="formatCost(totals.cost, locale)">{{ formatCost(shownCost, locale) }}</p>
     <p v-if="costTrend" class="inline-flex items-center gap-1 text-xs text-ink-muted tabular" :title="t('usage.vsTitle', { from: usage.previous?.from, to: usage.previous?.to })">

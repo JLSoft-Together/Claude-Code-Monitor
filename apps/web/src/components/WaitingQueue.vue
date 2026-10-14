@@ -89,24 +89,29 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
     <section
       v-if="queue.length"
       aria-labelledby="waiting-title"
-      class="rounded-xl border border-st-waiting/40 bg-st-waiting-soft px-3 py-2.5 sm:px-4"
+      class="rounded-card bg-st-waiting-soft px-3 py-2.5 sm:px-4"
     >
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 id="waiting-title" class="inline-flex items-center gap-1.5 text-sm font-semibold text-st-waiting">
           <Hand :size="16" aria-hidden="true" />{{ t('waiting.title', { n: active }) }}
         </h2>
         <TransitionGroup tag="ul" name="ccm-list" class="relative flex min-w-0 flex-1 flex-wrap gap-2">
-          <li v-for="item in queue" :key="item.id" class="flex min-w-0 items-center" :class="item.snoozedUntil ? 'opacity-60' : ''">
+          <li
+            v-for="item in queue"
+            :key="item.id"
+            class="flex h-7 min-w-0 items-stretch rounded-inner bg-control shadow-control *:first:rounded-l-inner *:last:rounded-r-inner"
+            :class="[item.snoozedUntil ? 'opacity-60' : '', item.long && !item.snoozedUntil ? 'ring-1 ring-st-error/50' : '']"
+          >
             <component
               :is="item.job ? 'span' : 'button'"
               :type="item.job ? undefined : 'button'"
-              class="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border bg-surface px-3 text-sm transition-colors hover:border-st-waiting"
-              :class="[item.long && !item.snoozedUntil ? 'border-st-error/50' : 'border-line', item.job ? 'cursor-default' : 'cursor-pointer', item.job ? '' : 'rounded-r-none']"
+              class="inline-flex h-full max-w-full min-w-0 items-center gap-2 px-2.5 text-xs transition-colors"
+              :class="item.job ? 'cursor-default' : 'cursor-pointer hover:bg-fill'"
               :title="item.reason ? (item.raw ? t('terminal.waitingFor', { reason: item.reason }) : item.reason) : undefined"
               :aria-label="t('waiting.focus', { title: item.title, waited: item.waited ?? '—' })"
               @click="item.job ? undefined : ui.focusTerminal(item.id)"
             >
-              <span v-if="item.job" class="shrink-0 rounded-md bg-raised px-1.5 text-2xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
+              <span v-if="item.job" class="shrink-0 rounded-[4px] bg-fill px-1.5 text-2xs font-medium text-ink-muted">{{ t('jobs.badge') }}</span>
               <span class="min-w-0 truncate font-medium">{{ item.title }}</span>
               <span v-if="item.reason" class="hidden max-w-[22ch] items-center gap-1 text-xs text-ink-muted sm:inline-flex">
                 <component :is="item.icon" v-if="item.icon" :size="13" class="shrink-0" aria-hidden="true" />
@@ -126,27 +131,26 @@ const active = computed(() => queue.value.filter((q) => !q.snoozedUntil).length)
             <button
               v-if="!item.job"
               type="button"
-              class="-ml-px inline-flex size-9 shrink-0 cursor-pointer items-center justify-center border border-line bg-surface text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
-              :class="item.canJump ? '' : 'rounded-r-lg'"
+              class="inline-flex w-7 shrink-0 cursor-pointer items-center justify-center border-l border-line text-ink-muted transition-colors hover:bg-fill hover:text-ink"
               :aria-label="item.snoozedUntil ? t('snooze.clear', { title: item.title }) : t('snooze.action', { title: item.title, n: SNOOZE_CHOICES[0] })"
               :title="item.snoozedUntil ? t('snooze.clearTitle', { at: item.snoozedUntil }) : t('snooze.title', { n: SNOOZE_CHOICES[0] })"
               :aria-pressed="!!item.snoozedUntil"
               @click="toggleSnooze(item.id)"
             >
-              <BellRing v-if="item.snoozedUntil" :size="15" aria-hidden="true" />
-              <BellOff v-else :size="15" aria-hidden="true" />
+              <BellRing v-if="item.snoozedUntil" :size="14" aria-hidden="true" />
+              <BellOff v-else :size="14" aria-hidden="true" />
             </button>
             <button
               v-if="item.canJump"
               type="button"
-              class="-ml-px inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-l-none rounded-r-lg border border-line bg-surface text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
-              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' && ui.windowResult.result !== 'appOnly' ? 'border-st-error text-st-error' : ''"
+              class="inline-flex w-7 shrink-0 cursor-pointer items-center justify-center border-l border-line text-ink-muted transition-colors hover:bg-fill hover:text-ink"
+              :class="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' && ui.windowResult.result !== 'appOnly' ? 'bg-st-error-soft text-st-error' : ''"
               :aria-label="t('terminal.jump', { title: item.title })"
               :title="ui.windowResult?.terminalId === item.id && ui.windowResult.result !== 'ok' ? t(`terminal.jumpError.${ui.windowResult.result}`) : t('terminal.jumpTitle')"
               @click="jump(item.id)"
             >
-              <LoaderCircle v-if="ui.focusingWindow === item.id" :size="15" class="animate-spin" aria-hidden="true" />
-              <AppWindow v-else :size="15" aria-hidden="true" />
+              <LoaderCircle v-if="ui.focusingWindow === item.id" :size="14" class="animate-spin" aria-hidden="true" />
+              <AppWindow v-else :size="14" aria-hidden="true" />
             </button>
           </li>
         </TransitionGroup>

@@ -1,13 +1,15 @@
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
 import { defaultDataDir } from '../../collector/src/datadir'
 import { createAttention, type Attention } from './attention'
 import { installBridge } from './bridge'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
 import { errorPage, loadingPage, RETRY_URL } from './pages'
+import { PtySupervisor } from './pty/supervisor'
 import { stringsFor, type Strings } from './strings'
 
 const APP_ID = 'dev.ccm.monitor'
@@ -17,7 +19,12 @@ const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
 const ORIGIN = `http://127.0.0.1:${PORT}`
 const START_HIDDEN = process.argv.includes('--hidden')
 const PORTABLE_EXE = process.env.PORTABLE_EXECUTABLE_FILE
-const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-sanitized-write', 'fullscreen'])
+// The collector refuses requests without it, so the dashboard opens only in this app's windows.
+const APP_KEY = randomBytes(32).toString('hex')
+// Windows toast buttons open this instead of a browser tab.
+const LINK_SCHEME = 'agent-monitor'
+// clipboard-read: embedded terminals check for an image before forwarding Ctrl+V (Claude Code pastes it itself).
+const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-sanitized-write', 'clipboard-read', 'fullscreen'])
 
 const REPO = path.resolve(__dirname, '..', '..', '..')
 const resource = (packaged: string, dev: string): string =>
@@ -26,11 +33,14 @@ const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process
 
 let t: Strings
 let host: CollectorHost
+let ptys: PtySupervisor | null = null
 let attention: Attention | null = null
 let mainWindow: BrowserWindow | null = null
 let compactWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+let sessionEnding = false
+const QUIT_DEADLINE_MS = 8_000
 let showingError = false
 let hiddenNoticeShown = false
 
@@ -109,10 +119,10 @@ function baseWindow(options: Electron.BrowserWindowConstructorOptions): BrowserW
     show: false,
     // macOS takes the window icon from the app bundle.
     icon: IS_MAC ? undefined : resource('ccm.ico', 'scripts/assets/ccm.ico'),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#121211' : '#f4f4f2',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ececee',
     autoHideMenuBar: true,
     title: t.appName,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs') },
     ...options,
   })
   win.removeMenu()
@@ -131,7 +141,9 @@ function createMainWindow(): BrowserWindow {
   // Logoff/shutdown closes windows without before-quit; hide-on-close must not block it.
   win.on('session-end', () => {
     quitting = true
+    sessionEnding = true
     void host.stop()
+    void ptys?.stop()
   })
   win.on('close', (event) => {
     saveBounds(win)
@@ -184,7 +196,6 @@ function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate([
     { label: t.trayOpen, click: showMain },
     { label: t.trayCompact, click: () => openAppWindow(`${ORIGIN}/?mode=compact`) },
-    { label: t.trayBrowser, click: () => void shell.openExternal(`${ORIGIN}/`) },
     { type: 'separator' },
     {
       label: IS_MAC ? t.trayLoginMac : t.trayLogin,
@@ -220,6 +231,32 @@ function showError(reason: FatalReason): void {
   showMain()
 }
 
+/** Quitting kills every embedded terminal (and the agents in them), so name them before asking. */
+async function confirmQuit(): Promise<boolean> {
+  const census = ptys ? await ptys.census() : []
+  if (census?.length === 0) return true
+  // null = host did not answer in time: still ask, without the list, rather than kill silently.
+  const live = census ?? []
+  const home = os.homedir()
+  const underHome = (p: string): boolean => {
+    const rel = path.relative(home, p)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  }
+  const lines = live.map((s) => `• ${s.preset} — ${underHome(s.cwd) ? path.join('~', path.relative(home, s.cwd)) : s.cwd}`)
+  if (mainWindow && !mainWindow.isVisible()) showMain()
+  const opts: Electron.MessageBoxOptions = {
+    type: 'warning',
+    message: t.quitTitle(live.length),
+    detail: lines.length ? `${t.quitDetail}\n${lines.join('\n')}` : t.quitDetail,
+    buttons: [t.quitConfirm, t.quitCancel],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  }
+  const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+  return response === 0
+}
+
 let booting: Promise<void> | null = null
 
 function boot(): Promise<void> {
@@ -247,8 +284,96 @@ function collectorEnv(): NodeJS.ProcessEnv {
     CCM_WEB_DIST: resource('web', 'apps/web/dist'),
     CCM_STATUSLINE_BRIDGE: bridge.script,
     CCM_STATUSLINE_COMMAND: bridge.command,
-    ...(IS_MAC ? { CCM_TOAST_BACKEND: 'electron' } : {}),
+    CCM_APP_KEY: APP_KEY,
+    ...(IS_MAC ? { CCM_TOAST_BACKEND: 'electron' } : { CCM_TOAST_LINK: `${LINK_SCHEME}://` }),
   }
+}
+
+const LOG_FILES = ['collector.log', 'pty.log']
+const LOG_TAIL_BYTES = 256 * 1024
+
+function tailOf(file: string): string {
+  try {
+    const buf = readFileSync(file)
+    return buf.subarray(Math.max(0, buf.length - LOG_TAIL_BYTES)).toString('utf8')
+  } catch {
+    return '(missing)'
+  }
+}
+
+/** Everything a bug report needs in one paste; long opaque strings (tokens, keys) are masked. */
+function logReport(pageReport: string): string {
+  const head = [
+    `${t.appName} ${app.getVersion()}${app.isPackaged ? (PORTABLE_EXE ? ' portable' : '') : ' dev'}`,
+    `Electron ${process.versions.electron}, ${process.platform} ${os.release()} ${process.arch}, locale ${app.getLocale()}`,
+    `collector port ${PORT}: ${host?.ownsPort ? 'running' : 'not running'}`,
+    `generated ${new Date().toISOString()}`,
+  ]
+  const sections = [head.join('\n'), pageReport && `## Diagnostics\n${pageReport}`]
+  for (const name of LOG_FILES) sections.push(`## ${name}\n${tailOf(path.join(app.getPath('logs'), name)).trimEnd()}`)
+  return sections.filter(Boolean).join('\n\n').replace(/[A-Za-z0-9+_=]{32,}/g, '[masked]') + '\n'
+}
+
+function sendAppKey(): void {
+  const urls = [`${ORIGIN}/*`, `ws://127.0.0.1:${PORT}/*`]
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls }, (details, callback) =>
+    callback({ requestHeaders: { ...details.requestHeaders, 'X-CCM-App': APP_KEY } }),
+  )
+}
+
+const collectorFetch = (route: string, init: RequestInit = {}): Promise<Response> =>
+  fetch(`${ORIGIN}${route}`, { ...init, headers: { ...init.headers, 'x-ccm-app': APP_KEY }, signal: AbortSignal.timeout(5_000) })
+
+/** Asks the page whether one of its panes runs this session; it then shows that pane itself. */
+function paneHandles(terminalId: string): Promise<boolean> {
+  const contents = mainWindow?.webContents
+  if (!contents || showingError) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => done(false), 1_500)
+    const onReply = (event: Electron.IpcMainEvent, handled: unknown): void => {
+      if (event.sender === contents) done(handled === true)
+    }
+    const done = (handled: boolean): void => {
+      clearTimeout(timer)
+      ipcMain.removeListener('ccm:focus-reply', onReply)
+      resolve(handled)
+    }
+    ipcMain.on('ccm:focus-reply', onReply)
+    contents.send('ccm:focus', terminalId)
+  })
+}
+
+/** agent-monitor://focus?k=&t= and agent-monitor://snooze?k=&t=&m= from toast buttons (key checked by the collector). */
+async function openLink(raw: string): Promise<void> {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return
+  }
+  if (url.protocol !== `${LINK_SCHEME}:` || !host?.ownsPort) return
+  const k = url.searchParams.get('k') ?? ''
+  const terminalId = url.searchParams.get('t')
+  if (url.hostname === 'snooze') {
+    await collectorFetch(`/snooze?${url.searchParams}`).catch(() => undefined)
+    return
+  }
+  if (url.hostname !== 'focus') return
+  if (!terminalId) return showMain()
+  if (await paneHandles(terminalId)) return showMain()
+  const result = await collectorFetch('/focus', { method: 'POST', body: JSON.stringify({ t: terminalId, k }) })
+    .then((r) => r.json() as Promise<{ result?: string }>)
+    .catch(() => ({ result: 'failed' }))
+  if (result.result === 'ok') return
+  showMain()
+  mainWindow?.webContents.send('ccm:select', terminalId)
+}
+
+const linkIn = (argv: readonly string[]): string | undefined => argv.find((a) => a.startsWith(`${LINK_SCHEME}://`))
+
+function registerLinks(): void {
+  if (IS_MAC || !app.isPackaged) return
+  app.setAsDefaultProtocolClient(LINK_SCHEME, PORTABLE_EXE ?? process.execPath, [])
 }
 
 function lockPermissions(): void {
@@ -271,6 +396,8 @@ async function ready(): Promise<void> {
     app.on('browser-window-focus', () => attention?.settle())
   }
   lockPermissions()
+  sendAppKey()
+  registerLinks()
   for (const dir of [DATA_DIR, app.getPath('logs')]) if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   host = new CollectorHost({
     script: path.join(__dirname, 'collector.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
@@ -281,32 +408,98 @@ async function ready(): Promise<void> {
     onMessage: (data) => attention?.handle(data),
     onExit: () => attention?.clear(),
   })
+  const unpacked = (file: string): string => path.join(__dirname, file).replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
+  ptys = new PtySupervisor({
+    script: unpacked('pty-host.cjs'),
+    nodePty: resource('pty/node_modules/@lydell/node-pty', 'node_modules/@lydell/node-pty'),
+    origins: [ORIGIN],
+    logFile: path.join(app.getPath('logs'), 'pty.log'),
+  })
+  // The token is the only gate on a shell; hand it out to top-level app frames only.
+  ipcMain.handle('ccm:pty-endpoint', (event) => {
+    const frame = event.senderFrame
+    if (!frame || frame.parent || !isAppUrl(frame.url)) return null
+    // A borrowed collector (or any process that grabbed the port) serves its own page: no shell for it.
+    if (!host.ownsPort) return null
+    return ptys?.endpoint() ?? null
+  })
+  // Native picker so a folder for a terminal comes from the user, not from page script.
+  ipcMain.handle('ccm:pick-folder', async (event) => {
+    const frame = event.senderFrame
+    if (!frame || frame.parent || !isAppUrl(frame.url) || !host.ownsPort) return null
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const opts: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] }
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
+  ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {
+    const frame = event.senderFrame
+    if (!frame || frame.parent || !isAppUrl(frame.url) || (action !== 'copy' && action !== 'save')) return null
+    const text = logReport(typeof pageReport === 'string' ? pageReport.slice(0, 20_000) : '')
+    if (action === 'copy') {
+      clipboard.writeText(text)
+      return { ok: true }
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')
+    const opts: Electron.SaveDialogOptions = {
+      defaultPath: path.join(app.getPath('downloads'), `agent-monitor-log-${stamp}.txt`),
+      filters: [{ name: 'Text', extensions: ['txt'] }],
+    }
+    const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+    if (res.canceled || !res.filePath) return { ok: false }
+    writeFileSync(res.filePath, text)
+    shell.showItemInFolder(res.filePath)
+    return { ok: true, path: res.filePath }
+  })
   repairLoginItem()
   createTray()
   mainWindow = createMainWindow()
   await boot()
+  const first = linkIn(process.argv)
+  if (first) void openLink(first)
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
-  app.on('second-instance', showMain)
+  app.on('second-instance', (_event, argv) => {
+    const link = linkIn(argv)
+    if (link) void openLink(link)
+    else showMain()
+  })
   app.on('activate', showMain)
   app.on('window-all-closed', () => {
     // Closing windows only hides the dashboard; quitting goes through the tray.
   })
   let stopped = false
   let stopping: Promise<void> | null = null
+  let confirming = false
   app.on('before-quit', (event) => {
-    quitting = true
-    attention?.clear()
-    if (stopped || !host) return
+    // sessionEnding: logoff/shutdown already stopped everything; a modal here would block Windows.
+    if (stopped || sessionEnding || !host) {
+      quitting = true
+      return
+    }
     event.preventDefault()
-    stopping ??= host.stop().finally(() => {
-      stopped = true
-      app.quit()
-    })
+    if (stopping || confirming) return
+    confirming = true
+    void confirmQuit()
+      .catch(() => true)
+      .then((ok) => {
+        if (!ok) return
+        quitting = true
+        attention?.clear()
+        // A hung child must never leave the app unquittable.
+        const hardExit = setTimeout(() => app.exit(0), QUIT_DEADLINE_MS)
+        stopping = Promise.allSettled([host.stop(), ptys?.stop()]).then(() => {
+          clearTimeout(hardExit)
+          stopped = true
+          app.quit()
+        })
+      })
+      .finally(() => (confirming = false))
   })
   app
     .whenReady()

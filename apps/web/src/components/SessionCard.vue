@@ -176,11 +176,11 @@ function commitNote(): void {
 
 <template>
   <article
-    class="group relative rounded-xl border bg-surface px-4 py-3.5 transition-[border-color,box-shadow] duration-200 hover:border-line-strong"
-    :class="[focused ? 'border-accent shadow-[0_0_0_3px_var(--ccm-accent-soft)]' : 'border-line', ended ? 'opacity-70' : '']"
+    class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200"
+    :class="[focused ? 'ring-2 ring-accent' : '', ended ? 'opacity-70' : '']"
   >
     <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
-    <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-xl" :class="meta.text" aria-hidden="true" />
+    <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
 
     <SessionCardHeader :terminal="terminal" @note="startNote" />
 
@@ -192,15 +192,15 @@ function commitNote(): void {
         v-model="noteDraft"
         maxlength="140"
         :placeholder="t('terminal.notePlaceholder')"
-        class="h-8 min-w-0 flex-1 rounded-lg border border-accent bg-canvas px-2.5 text-xs text-ink outline-none"
+        class="ccm-field min-w-0 flex-1"
         :aria-invalid="noteFailed"
         :aria-describedby="noteFailed ? `note-err-${terminal.id}` : undefined"
         @keydown.esc.prevent="cancelNote"
       />
-      <button type="submit" class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg bg-accent text-on-accent" :aria-label="t('terminal.noteSave')">
+      <button type="submit" class="ccm-btn ccm-btn-primary w-7 px-0!" :aria-label="t('terminal.noteSave')">
         <Check :size="15" aria-hidden="true" />
       </button>
-      <button type="button" class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-muted hover:bg-raised hover:text-ink" :aria-label="t('terminal.renameCancel')" @click="cancelNote">
+      <button type="button" class="ccm-btn-plain" :aria-label="t('terminal.renameCancel')" @click="cancelNote">
         <X :size="15" aria-hidden="true" />
       </button>
     </form>
@@ -210,7 +210,7 @@ function commitNote(): void {
     <button
       v-else-if="!noting && terminal.note"
       type="button"
-      class="relative z-10 mt-2 flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-md border-l-2 border-accent bg-accent-soft/60 px-2 py-1 text-left text-xs text-ink transition-colors hover:bg-accent-soft"
+      class="relative z-10 mt-2 flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-inner bg-accent-soft/60 px-2 py-1 text-left text-xs text-ink transition-colors hover:bg-accent-soft"
       :title="t('terminal.noteEdit')"
       @click="startNote"
     >
@@ -236,7 +236,7 @@ function commitNote(): void {
           v-for="n in SNOOZE_CHOICES"
           :key="n"
           type="button"
-          class="inline-flex h-7 cursor-pointer items-center rounded-md border border-line px-2 text-ink-muted transition-colors hover:border-st-waiting hover:text-ink"
+          class="ccm-btn h-6! px-2! text-xs"
           :aria-label="t('snooze.action', { title, n })"
           @click="snooze.snooze(terminal, n)"
         >
@@ -249,7 +249,7 @@ function commitNote(): void {
     <div v-if="mode || branch || model" class="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-2xs">
       <span
         v-if="mode"
-        class="inline-flex items-center gap-1 rounded-md border px-1.5 py-px font-medium"
+        class="inline-flex items-center gap-1 rounded-inner px-1.5 py-px font-medium"
         :class="mode.cls"
         :title="t('mode.title', { mode: modeLabel })"
       >
@@ -257,7 +257,7 @@ function commitNote(): void {
       </span>
       <span
         v-if="model"
-        class="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-px font-medium text-ink-muted"
+        class="inline-flex items-center gap-1 rounded-inner bg-fill px-1.5 py-px font-medium text-ink-muted"
         :title="model.title"
       >
         <Cpu :size="12" aria-hidden="true" />{{ model.label }}<span v-if="model.effort" :key="effortBump" class="text-ink-faint" :class="effortBump ? 'ccm-tick' : ''">· {{ model.effort }}</span>
@@ -287,7 +287,7 @@ function commitNote(): void {
             v-for="o in openApps"
             :key="o.app"
             type="button"
-            class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-raised hover:text-ink disabled:cursor-wait"
+            class="ccm-btn-plain disabled:cursor-wait!"
             :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
             :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
             :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"

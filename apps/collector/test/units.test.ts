@@ -270,7 +270,8 @@ describe('macOS launcher', () => {
     }
   })
 
-  it('refuses dirs with control characters before running osascript', async () => {
+  // Windows cannot create these folder names; the guard itself is macOS-only (osascript).
+  it.skipIf(process.platform === 'win32')('refuses dirs with control characters before running osascript', async () => {
     const { hasControlChars, launchClaude, LaunchError } = await import('../src/launcher')
     const root = await mkdtemp(path.join(os.tmpdir(), 'ccm-ctl-'))
     for (const name of ['x\x15touch PWNED', 'x\ntouch PWNED', 'x\x1b[200~y']) {

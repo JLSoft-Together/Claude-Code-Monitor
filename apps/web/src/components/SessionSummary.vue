@@ -101,7 +101,7 @@ function open(app: OpenApp): void {
         v-for="o in openApps"
         :key="o.app"
         type="button"
-        class="ccm-press inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+        class="ccm-btn-plain ccm-press"
         :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
         :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
         :disabled="!terminal.cwd || !!ui.opening"
@@ -112,7 +112,7 @@ function open(app: OpenApp): void {
       </button>
       <button
         type="button"
-        class="ccm-press inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-line px-2 text-xs font-medium text-ink transition-colors hover:border-line-strong"
+        class="ccm-btn-plain ccm-press px-2! text-xs font-medium"
         :aria-pressed="!ui.isCollapsed('sessions')"
         aria-keyshortcuts="S"
         @click="ui.togglePanel('sessions')"

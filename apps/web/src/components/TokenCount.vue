@@ -39,8 +39,8 @@ watch(
       v-if="bump"
       :key="`d-${bump}`"
       aria-hidden="true"
-      class="ccm-token-delta pointer-events-none absolute right-0 -top-4 inline-flex h-4 items-center rounded-full border px-1.5 text-[10px] leading-none font-semibold whitespace-nowrap shadow-sm"
-      :class="delta >= BIG ? 'border-st-working bg-st-working-soft text-st-working' : 'border-accent bg-accent-soft text-accent'"
+      class="ccm-token-delta pointer-events-none absolute right-0 -top-4 inline-flex h-4 items-center rounded-inner px-1.5 text-[10px] leading-none font-semibold whitespace-nowrap shadow-control"
+      :class="delta >= BIG ? 'bg-st-working-soft text-st-working' : 'bg-accent-soft text-accent'"
     >+{{ compactNumber(delta) }}</span>
   </span>
 </template>

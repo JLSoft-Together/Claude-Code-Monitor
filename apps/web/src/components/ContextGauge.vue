@@ -40,7 +40,7 @@ const tooltip = computed(() =>
       <span class="sr-only">{{ t(`context.level.${level}`) }}</span>
     </div>
     <div
-      class="mt-1 h-1 overflow-hidden rounded-full bg-raised"
+      class="mt-1 h-1 overflow-hidden rounded-full bg-fill"
       role="meter"
       :aria-valuenow="Math.round(pct)"
       aria-valuemin="0"

@@ -2,15 +2,17 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
+import { hasTerminals } from '../lib/desktop'
 import { WINDOWS, type WindowMin } from '../lib/toolTimeline'
 
-export type View = 'monitor' | 'usage' | 'history'
+export type View = 'monitor' | 'workspace' | 'usage' | 'history'
 export type Panel = 'sessions' | 'activity'
 export type WindowResult = FocusWindowResult | 'offline'
 
 function initialView(): View {
   try {
     const v = localStorage.getItem('ccm.view')
+    if (v === 'workspace') return hasTerminals ? v : 'monitor'
     return v === 'usage' || v === 'history' ? v : 'monitor'
   } catch {
     return 'monitor'

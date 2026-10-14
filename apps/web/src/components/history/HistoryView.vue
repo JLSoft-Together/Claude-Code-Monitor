@@ -83,20 +83,20 @@ const rangeLabel = computed(() => {
       </div>
       <button
         type="button"
-        class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-opacity hover:opacity-90"
+        class="ccm-btn ccm-btn-primary"
         @click="ui.openRecap()"
       >
-        <FileDown :size="17" aria-hidden="true" />{{ t('recap.open') }}
+        <FileDown :size="14" aria-hidden="true" />{{ t('recap.open') }}
       </button>
     </div>
 
-    <section aria-labelledby="timeline-title" class="mt-5 rounded-xl border border-line bg-surface p-4 sm:p-5">
+    <section aria-labelledby="timeline-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
       <h3 id="timeline-title" class="font-semibold">{{ t('history.timeline') }}</h3>
       <p class="mb-4 text-xs text-ink-muted">{{ t('history.timelineHint') }}</p>
       <TimelineChart />
     </section>
 
-    <section aria-labelledby="ended-title" class="mt-5 rounded-xl border border-line bg-surface">
+    <section aria-labelledby="ended-title" class="mt-5 rounded-card bg-surface shadow-card">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
         <div class="min-w-0">
           <h3 id="ended-title" class="font-semibold">{{ t('history.ended') }}</h3>
@@ -104,12 +104,12 @@ const rangeLabel = computed(() => {
         </div>
         <label class="relative flex w-full items-center sm:w-72">
           <span class="sr-only">{{ t('history.search') }}</span>
-          <Search :size="15" class="pointer-events-none absolute left-2.5 text-ink-faint" aria-hidden="true" />
+          <Search :size="14" class="pointer-events-none absolute left-2.5 text-ink-faint" aria-hidden="true" />
           <input
             v-model="query"
             type="search"
             :placeholder="t('history.searchPlaceholder')"
-            class="h-9 w-full rounded-lg border border-line bg-canvas pr-2.5 pl-8 text-sm outline-none focus:border-accent"
+            class="ccm-field w-full pl-8!"
           />
         </label>
       </div>

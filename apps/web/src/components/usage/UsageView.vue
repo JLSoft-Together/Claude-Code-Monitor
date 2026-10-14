@@ -7,6 +7,7 @@ import { baseName } from '../../lib/format'
 import { useConnectionStore } from '../../stores/connection'
 import { useUsageStore, type UsageMetric, type UsageRange } from '../../stores/usage'
 import AppSelect from '../AppSelect.vue'
+import SegmentedControl from '../ui/SegmentedControl.vue'
 import ArtImage from '../ArtImage.vue'
 import LottieArt from '../LottieArt.vue'
 import UsageDailyChart from './UsageDailyChart.vue'
@@ -20,15 +21,15 @@ const { t } = useI18n()
 const usage = useUsageStore()
 const connection = useConnectionStore()
 
-const ranges = computed<{ id: UsageRange; label: string }[]>(() => [
-  { id: 'today', label: t('usage.range.today') },
-  { id: '7d', label: t('usage.range.7d') },
-  { id: '30d', label: t('usage.range.30d') },
-  { id: 'all', label: t('usage.range.all') },
+const ranges = computed<{ value: UsageRange; label: string }[]>(() => [
+  { value: 'today', label: t('usage.range.today') },
+  { value: '7d', label: t('usage.range.7d') },
+  { value: '30d', label: t('usage.range.30d') },
+  { value: 'all', label: t('usage.range.all') },
 ])
-const metrics = computed<{ id: UsageMetric; label: string }[]>(() => [
-  { id: 'tokens', label: t('usage.metric.tokens') },
-  { id: 'cost', label: t('usage.metric.cost') },
+const metrics = computed<{ value: UsageMetric; label: string }[]>(() => [
+  { value: 'tokens', label: t('usage.metric.tokens') },
+  { value: 'cost', label: t('usage.metric.cost') },
 ])
 
 const pickerOpen = ref(false)
@@ -41,9 +42,6 @@ const scanning = computed(() => usage.scan.state === 'scanning')
 const progress = computed(() => (usage.scan.filesTotal > 0 ? usage.scan.filesDone / usage.scan.filesTotal : 0))
 const waiting = computed(() => !usage.received || (!usage.hasData && usage.scan.state !== 'ready'))
 const empty = computed(() => usage.received && !usage.hasData && usage.scan.state === 'ready')
-
-const segBtn = (active: boolean) =>
-  active ? 'bg-accent-soft text-accent font-semibold' : 'text-ink-muted hover:text-ink hover:bg-raised'
 </script>
 
 <template>
@@ -55,48 +53,24 @@ const segBtn = (active: boolean) =>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <div class="flex rounded-xl border border-line bg-surface p-1" role="group" :aria-label="t('usage.rangeLabel')">
-          <button
-            v-for="r in ranges"
-            :key="r.id"
-            type="button"
-            class="h-9 cursor-pointer rounded-lg px-3 text-sm transition-colors"
-            :class="segBtn(usage.range === r.id)"
-            :aria-pressed="usage.range === r.id"
-            @click="usage.range = r.id"
-          >
-            {{ r.label }}
-          </button>
-        </div>
-        <div class="flex rounded-xl border border-line bg-surface p-1" role="group" :aria-label="t('usage.metricLabel')">
-          <button
-            v-for="m in metrics"
-            :key="m.id"
-            type="button"
-            class="h-9 cursor-pointer rounded-lg px-3 text-sm transition-colors"
-            :class="segBtn(usage.metric === m.id)"
-            :aria-pressed="usage.metric === m.id"
-            @click="usage.metric = m.id"
-          >
-            {{ m.label }}
-          </button>
-        </div>
+        <SegmentedControl v-model="usage.range" :options="ranges" :label="t('usage.rangeLabel')" />
+        <SegmentedControl v-model="usage.metric" :options="metrics" :label="t('usage.metricLabel')" />
         <div class="max-w-[240px] min-w-0">
           <AppSelect v-model="usage.model" :options="modelOptions" :label="t('usage.model')" :icon="Boxes" />
         </div>
         <button
           type="button"
-          class="inline-flex h-11 max-w-[260px] cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-line-strong"
-          :class="usage.project ? 'border-accent text-accent' : ''"
+          class="ccm-btn max-w-[260px] px-2.5!"
+          :class="usage.project ? 'text-accent!' : ''"
           aria-haspopup="dialog"
           :aria-expanded="pickerOpen"
           :title="usage.project ?? undefined"
           @click="pickerOpen = true"
         >
-          <FolderSearch :size="16" class="shrink-0" aria-hidden="true" />
+          <FolderSearch :size="14" class="shrink-0" aria-hidden="true" />
           <span class="truncate">{{ usage.project ? baseName(usage.project) : t('usage.allProjects') }}</span>
-          <span class="shrink-0 text-xs text-ink-faint tabular">{{ usage.projects.length }}</span>
-          <ChevronDown :size="15" class="shrink-0 text-ink-faint" aria-hidden="true" />
+          <span class="shrink-0 text-2xs text-ink-faint tabular">{{ usage.projects.length }}</span>
+          <ChevronDown :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
         </button>
         <ProjectPickerDialog v-model="pickerOpen" />
       </div>
@@ -106,7 +80,7 @@ const segBtn = (active: boolean) =>
       <button
         v-if="usage.model"
         type="button"
-        class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3 text-xs font-medium text-accent"
+        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent"
         :aria-label="t('usage.removeFilter', { name: usage.model })"
         @click="usage.model = null"
       >
@@ -115,7 +89,7 @@ const segBtn = (active: boolean) =>
       <button
         v-if="usage.project"
         type="button"
-        class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3 text-xs font-medium text-accent"
+        class="inline-flex h-6 cursor-pointer items-center gap-1 rounded-inner bg-accent-soft px-2 text-xs font-medium text-accent"
         :title="usage.project"
         :aria-label="t('usage.removeFilter', { name: baseName(usage.project) })"
         @click="usage.project = null"
@@ -130,11 +104,11 @@ const segBtn = (active: boolean) =>
       leave-active-class="transition duration-200 ease-in"
       leave-to-class="opacity-0"
     >
-      <div v-if="scanning" class="mt-4 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3" role="status">
+      <div v-if="scanning" class="mt-4 flex items-center gap-3 rounded-card bg-surface px-4 py-3 shadow-card" role="status">
         <LottieArt name="radar-scan" loop class="size-10 shrink-0" />
         <div class="min-w-0 flex-1">
         <p class="text-sm text-ink">{{ t('usage.scanning', { done: usage.scan.filesDone, total: usage.scan.filesTotal }) }}</p>
-        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden="true">
+        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-fill" aria-hidden="true">
           <div class="h-full origin-left rounded-full bg-accent transition-transform duration-300" :style="{ transform: `scaleX(${progress})` }" />
         </div>
         </div>
@@ -143,11 +117,11 @@ const segBtn = (active: boolean) =>
 
     <div v-if="waiting" class="mt-6 grid gap-3" aria-busy="true">
       <p class="sr-only">{{ connection.state === 'connected' ? t('usage.loading') : t('sessions.loading') }}</p>
-      <div class="ccm-shimmer h-[132px] rounded-2xl bg-surface" />
-      <div class="ccm-shimmer h-[320px] rounded-2xl bg-surface" />
+      <div class="ccm-shimmer h-[132px] rounded-card bg-surface" />
+      <div class="ccm-shimmer h-[320px] rounded-card bg-surface" />
     </div>
 
-    <div v-else-if="empty" class="mt-6 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line-strong px-6 py-10 text-center">
+    <div v-else-if="empty" class="mt-6 flex flex-col items-center gap-2 rounded-card border border-dashed border-line-strong px-6 py-10 text-center">
       <ArtImage name="empty-stats" class="w-52 max-w-full" />
       <p class="text-base font-medium">{{ t('usage.empty') }}</p>
       <p class="text-sm text-ink-muted">{{ t('usage.emptyHint') }}</p>

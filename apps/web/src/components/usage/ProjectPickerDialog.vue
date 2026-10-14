@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
       leave-active-class="transition-opacity duration-150 ease-in"
       leave-to-class="opacity-0"
     >
-      <div v-if="open" class="fixed inset-0 z-50 bg-black/45" aria-hidden="true" @click="close" />
+      <div v-if="open" class="fixed inset-0 z-50 ccm-scrim" aria-hidden="true" @click="close" />
     </Transition>
     <Transition
       enter-active-class="transition duration-250 ease-out-quint motion-reduce:transition-none"
@@ -157,26 +157,26 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-picker-title"
-        class="fixed inset-x-3 top-[6dvh] z-50 mx-auto flex flex-col rounded-2xl border border-line bg-surface shadow-2xl"
+        class="fixed inset-x-3 top-[6dvh] z-50 mx-auto flex flex-col ccm-sheet"
         :class="size || maximized ? '' : 'max-h-[88dvh] max-w-[1280px] sm:inset-x-6'"
         :style="panelStyle"
       >
         <div class="flex items-start gap-3 border-b border-line px-5 py-4">
           <div class="min-w-0 flex-1">
-            <h2 id="project-picker-title" class="text-lg font-semibold">{{ t('projects.pickTitle') }}</h2>
-            <p class="mt-0.5 text-xs text-ink-muted">{{ t('projects.pickHint') }}</p>
+            <h2 id="project-picker-title" class="text-base font-semibold">{{ t('projects.pickTitle') }}</h2>
+            <p class="mt-0.5 text-2xs text-ink-muted">{{ t('projects.pickHint') }}</p>
           </div>
           <button
             v-if="usage.project"
             type="button"
-            class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink-muted hover:bg-raised hover:text-ink"
+            class="ccm-btn"
             @click="pick(null)"
           >
-            <FolderX :size="15" aria-hidden="true" />{{ t('usage.allProjects') }}
+            <FolderX :size="14" aria-hidden="true" />{{ t('usage.allProjects') }}
           </button>
           <button
             type="button"
-            class="hidden size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted hover:bg-raised hover:text-ink sm:inline-flex"
+            class="ccm-btn-plain max-sm:hidden"
             :aria-label="maximized ? t('projects.restore') : t('projects.maximize')"
             :title="maximized ? t('projects.restore') : t('projects.maximize')"
             :aria-pressed="maximized"
@@ -186,11 +186,11 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted hover:bg-raised hover:text-ink"
+            class="ccm-btn-plain"
             :aria-label="t('projects.close')"
             @click="close"
           >
-            <X :size="18" aria-hidden="true" />
+            <X :size="16" aria-hidden="true" />
           </button>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">

@@ -112,7 +112,7 @@ const origin = computed(() => {
   >
     <aside
       v-if="agent"
-      class="absolute z-10 rounded-xl border border-accent bg-surface shadow-lg shadow-black/10"
+      class="absolute z-10 rounded-card border border-accent bg-surface shadow-pop"
       :class="place ? '' : 'top-3 right-3 w-[300px] max-w-[calc(100%-24px)]'"
       :style="[place?.style, { transformOrigin: origin }]"
       :aria-label="eyebrow"
@@ -136,7 +136,7 @@ const origin = computed(() => {
         </div>
         <button
           type="button"
-          class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-ink-muted hover:bg-raised hover:text-ink"
+          class="ccm-btn-plain shrink-0"
           :aria-label="t('agent.close')"
           aria-keyshortcuts="Escape"
           @click="ui.selectAgent(null)"

@@ -147,31 +147,31 @@ watch(
       leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.recapOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 px-4 py-[6vh]" @mousedown.self="close">
+      <div v-if="ui.recapOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="recap-title"
-          class="ccm-pop w-full max-w-[680px] rounded-xl border border-line bg-surface shadow-lg"
+          class="ccm-pop w-full max-w-[680px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
-            <h2 id="recap-title" class="mr-auto text-lg font-semibold">{{ t('recap.title') }}</h2>
+            <h2 id="recap-title" class="mr-auto text-base font-semibold">{{ t('recap.title') }}</h2>
             <AppSelect v-model="day" :options="dayOptions" :label="t('recap.day')" size="sm" />
             <button
               type="button"
-              class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain"
               :aria-label="t('projects.close')"
               @click="close"
             >
-              <X :size="18" aria-hidden="true" />
+              <X :size="16" aria-hidden="true" />
             </button>
           </div>
 
           <div class="space-y-5 px-5 py-4">
             <dl class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <div v-for="s in stats" :key="s.label" class="min-w-0 rounded-lg border border-line px-3 py-2.5">
+              <div v-for="s in stats" :key="s.label" class="min-w-0 rounded-control bg-raised px-3 py-2.5">
                 <dt class="truncate text-xs text-ink-muted">{{ s.label }}</dt>
                 <dd class="mt-0.5 truncate text-lg font-semibold tabular">{{ s.value }}</dd>
                 <dd class="truncate text-2xs text-ink-faint" :title="s.hint">{{ s.hint }}</dd>
@@ -207,27 +207,27 @@ watch(
           <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
             <button
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-sm transition-colors hover:border-accent hover:text-accent"
+              class="ccm-btn"
               @click="copy"
             >
-              <Check v-if="copied" :size="15" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="15" aria-hidden="true" />
+              <Check v-if="copied" :size="14" class="ccm-pop text-st-done" aria-hidden="true" /><ClipboardCopy v-else :size="14" aria-hidden="true" />
               {{ copied ? t('limits.copied') : t('recap.copy') }}
             </button>
             <button
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 text-sm transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              class="ccm-btn"
               :disabled="!recap.ended.length"
               :title="recap.ended.length ? undefined : t('recap.csvEmpty')"
               @click="saveCsv"
             >
-              <FileSpreadsheet :size="15" aria-hidden="true" />{{ t('recap.csv') }}
+              <FileSpreadsheet :size="14" aria-hidden="true" />{{ t('recap.csv') }}
             </button>
             <button
               type="button"
-              class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-on-accent transition-opacity hover:opacity-90"
+              class="ccm-btn ccm-btn-primary"
               @click="saveMd"
             >
-              <FileDown :size="15" aria-hidden="true" />{{ t('recap.markdown') }}
+              <FileDown :size="14" aria-hidden="true" />{{ t('recap.markdown') }}
             </button>
           </div>
         </div>

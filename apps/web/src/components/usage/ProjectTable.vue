@@ -6,6 +6,7 @@ import { baseName, compactNumber, formatCost, formatDay, fullNumber } from '../.
 import { useUsageStore, type ProjectRow } from '../../stores/usage'
 import AppSelect from '../AppSelect.vue'
 import ArtImage from '../ArtImage.vue'
+import SegmentedControl from '../ui/SegmentedControl.vue'
 
 const props = withDefaults(defineProps<{ picker?: boolean; autofocus?: boolean }>(), { picker: false, autofocus: false })
 const emit = defineEmits<{ pick: [id: string | null] }>()
@@ -206,6 +207,18 @@ watch(density, (value) => {
   }
 })
 const densityIcon = { compact: Rows4, normal: Rows3, expanded: Rows2 } as const
+const densityOptions = computed(() => DENSITIES.map((d) => ({ value: d, label: t(`projects.densityLevel.${d}`), icon: densityIcon[d] })))
+
+// SegmentedControl values must be string|number, so "all drives" (null) maps to a sentinel.
+const ALL_DRIVES = '\u0000all'
+const driveModel = computed({
+  get: () => (drive.value && drives.value.some((d) => d.id === drive.value) ? drive.value : ALL_DRIVES),
+  set: (v: string) => (drive.value = v === ALL_DRIVES ? null : v),
+})
+const driveOptions = computed(() => [
+  { value: ALL_DRIVES, label: t('projects.allDrives') },
+  ...drives.value.map((d) => ({ value: d.id, label: `${d.id} ${d.count}`, icon: HardDrive })),
+])
 const cellPad = computed(() => (density.value === 'compact' ? 'py-1.5' : density.value === 'expanded' ? 'py-3.5' : 'py-2.5'))
 const wrapText = computed(() => (density.value === 'expanded' ? 'whitespace-normal break-all' : 'truncate'))
 
@@ -259,7 +272,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
       <div class="relative min-w-[200px] flex-1">
-        <Search :size="16" class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
+        <Search :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
         <label class="sr-only" :for="picker ? 'project-search-dialog' : 'project-search'">{{ t('projects.search') }}</label>
         <input
           :id="picker ? 'project-search-dialog' : 'project-search'"
@@ -270,14 +283,14 @@ defineExpose({ focus: () => searchInput.value?.focus() })
           autocomplete="off"
           spellcheck="false"
           :placeholder="t('projects.searchPlaceholder')"
-          class="h-10 w-full rounded-xl border border-line bg-canvas pr-10 pl-9 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent [&::-webkit-search-cancel-button]:hidden"
+          class="ccm-field w-full pr-9! pl-8! [&::-webkit-search-cancel-button]:hidden"
         />
-        <span class="absolute top-1/2 right-2 -translate-y-1/2">
-          <LoaderCircle v-if="searching" :size="16" class="animate-spin text-ink-faint motion-reduce:animate-none" :aria-label="t('projects.searching')" />
+        <span class="absolute top-1/2 right-0.5 -translate-y-1/2">
+          <LoaderCircle v-if="searching" :size="14" class="mr-1.5 animate-spin text-ink-faint motion-reduce:animate-none" :aria-label="t('projects.searching')" />
           <button
             v-else-if="query"
             type="button"
-            class="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-ink-faint hover:bg-raised hover:text-ink"
+            class="ccm-btn-plain min-h-6! min-w-6! px-0!"
             :aria-label="t('projects.clearSearch')"
             @click="clearSearch"
           >
@@ -288,8 +301,8 @@ defineExpose({ focus: () => searchInput.value?.focus() })
 
       <button
         type="button"
-        class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
-        :class="usage.groupRepos ? 'border-accent bg-accent-soft text-accent' : 'border-line text-ink-muted hover:bg-raised hover:text-ink'"
+        class="ccm-btn-plain px-2! text-xs font-medium"
+        :class="usage.groupRepos ? 'text-accent!' : ''"
         :aria-pressed="usage.groupRepos"
         :title="t('projects.groupReposHint')"
         @click="usage.groupRepos = !usage.groupRepos"
@@ -297,48 +310,14 @@ defineExpose({ focus: () => searchInput.value?.focus() })
         <FolderGit2 :size="14" aria-hidden="true" />{{ t('projects.groupRepos') }}
       </button>
 
-      <div class="flex flex-wrap items-center gap-1" role="group" :aria-label="t('projects.drive')">
-        <button
-          type="button"
-          class="inline-flex h-9 cursor-pointer items-center rounded-lg px-3 text-xs font-medium transition-colors"
-          :class="drive === null ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-raised hover:text-ink'"
-          :aria-pressed="drive === null"
-          @click="drive = null"
-        >
-          {{ t('projects.allDrives') }}
-        </button>
-        <button
-          v-for="d in drives"
-          :key="d.id"
-          type="button"
-          class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors"
-          :class="drive === d.id ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-raised hover:text-ink'"
-          :aria-pressed="drive === d.id"
-          @click="drive = drive === d.id ? null : d.id"
-        >
-          <HardDrive :size="14" aria-hidden="true" />{{ d.id }}
-          <span class="text-ink-faint tabular">{{ d.count }}</span>
-        </button>
-      </div>
+      <SegmentedControl v-model="driveModel" class="max-w-full flex-wrap" :options="driveOptions" :label="t('projects.drive')" />
 
-      <div class="flex items-center gap-1" role="group" :aria-label="t('projects.density')">
-        <button
-          v-for="d in DENSITIES"
-          :key="d"
-          type="button"
-          class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg transition-colors"
-          :class="density === d ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-raised hover:text-ink'"
-          :aria-pressed="density === d"
-          :aria-label="t(`projects.densityLevel.${d}`)"
-          :title="t(`projects.densityLevel.${d}`)"
-          @click="density = d"
-        >
-          <component :is="densityIcon[d]" :size="16" aria-hidden="true" />
-        </button>
+      <div class="flex items-center gap-1">
+        <SegmentedControl v-model="density" :options="densityOptions" :label="t('projects.density')" icon-only />
         <button
           v-if="customized"
           type="button"
-          class="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-ink-muted hover:bg-raised hover:text-ink"
+          class="ccm-btn-plain px-2! text-xs font-medium"
           @click="resetWidths"
         >
           <Columns3 :size="14" aria-hidden="true" />{{ t('projects.resetColumns') }}
@@ -413,7 +392,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
           >
             <td class="px-3" :class="cellPad">
               <div class="flex min-w-0 items-center gap-2">
-                <span class="w-7 shrink-0 self-start rounded bg-raised py-px text-center font-mono text-2xs text-ink-muted">{{ r.drive }}</span>
+                <span class="w-7 shrink-0 self-start rounded-sm bg-fill py-px text-center font-mono text-2xs text-ink-muted">{{ r.drive }}</span>
                 <div class="min-w-0 flex-1">
                   <p class="font-medium" :class="[wrapText, usage.project === r.id ? 'text-accent' : '']" :title="r.id">{{ baseName(r.id) }}</p>
                   <p v-if="density !== 'compact'" class="font-mono text-2xs text-ink-faint" :class="wrapText" :title="r.id">
@@ -421,7 +400,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
                   </p>
                 </div>
               </div>
-              <div class="ml-9 h-1 rounded-full bg-raised" :class="density === 'compact' ? 'mt-1' : 'mt-1.5'" aria-hidden="true">
+              <div class="ml-9 h-1 rounded-full bg-fill" :class="density === 'compact' ? 'mt-1' : 'mt-1.5'" aria-hidden="true">
                 <div class="h-full origin-left rounded-full bg-accent" :style="{ transform: `scaleX(${Math.max(0.005, share(r) / 100)})` }" />
               </div>
             </td>
@@ -448,7 +427,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
         </span>
         <button
           type="button"
-          class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-line hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
+          class="ccm-btn-plain"
           :disabled="page === 0"
           :aria-label="t('projects.prev')"
           @click="page--"
@@ -458,7 +437,7 @@ defineExpose({ focus: () => searchInput.value?.focus() })
         <span class="tabular">{{ t('projects.page', { page: page + 1, pages: pageCount }) }}</span>
         <button
           type="button"
-          class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-line hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
+          class="ccm-btn-plain"
           :disabled="page >= pageCount - 1"
           :aria-label="t('projects.next')"
           @click="page++"

@@ -1,6 +1,6 @@
 {
   "name": "@ccm/desktop",
-  "version": "1.2.3",
+  "version": "2.0.0",
   "private": true,
   "description": "Agent Monitor desktop app (Windows, macOS)",
   "scripts": {
@@ -8,9 +8,12 @@
     "start": "node build.mjs && electron stage",
     "dist": "node build.mjs && electron-builder --win --config electron-builder.yml --publish never",
     "typecheck": "tsc -p tsconfig.json",
-    "dist:mac": "node build.mjs && electron-builder --mac --config electron-builder.yml --publish never"
+    "dist:mac": "node build.mjs && electron-builder --mac --config electron-builder.yml --publish never",
+    "test": "vitest run",
+    "e2e": "node e2e/run.cjs"
   },
   "devDependencies": {
+    "@lydell/node-pty": "1.2.0-beta.15",
     "@types/node": "^24.9.1",
     "electron": "44.4.5",
     "electron-builder": "26.15.3",

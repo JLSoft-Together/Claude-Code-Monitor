@@ -63,45 +63,44 @@ watch(
       leave-active-class="transition duration-100 ease-in motion-reduce:transition-none"
       leave-to-class="opacity-0"
     >
-      <div v-if="ui.shortcutsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 px-4 py-[6vh]" @mousedown.self="close">
+      <div v-if="ui.shortcutsOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto ccm-scrim px-4 py-[6vh]" @mousedown.self="close">
         <div
           ref="dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="keys-title"
-          class="ccm-pop w-full max-w-[520px] rounded-xl border border-line bg-surface shadow-lg"
+          class="ccm-pop w-full max-w-[520px] ccm-sheet"
           @keydown="trap"
         >
           <div class="flex items-center gap-2 border-b border-line px-5 py-4">
             <div class="mr-auto min-w-0">
-              <h2 id="keys-title" class="text-lg font-semibold">{{ t('keys.title') }}</h2>
-              <p class="text-xs text-ink-muted">{{ t('keys.subtitle') }}</p>
+              <h2 id="keys-title" class="text-base font-semibold">{{ t('keys.title') }}</h2>
+              <p class="text-2xs text-ink-muted">{{ t('keys.subtitle') }}</p>
             </div>
             <button
               type="button"
-              class="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+              class="ccm-btn-plain"
               :aria-label="t('projects.close')"
               @click="close"
             >
-              <X :size="18" aria-hidden="true" />
+              <X :size="16" aria-hidden="true" />
             </button>
           </div>
 
-          <div class="border-b border-line px-5 py-2">
-            <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" />
-          </div>
-
-          <div class="grid gap-5 px-5 py-4">
+          <div class="grid gap-5 bg-canvas px-5 py-4 rounded-b-card">
+            <div class="ccm-group">
+              <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
+            </div>
             <section v-for="g in groups" :key="g.id" :aria-labelledby="`keys-${g.id}`">
-              <h3 :id="`keys-${g.id}`" class="mb-2 text-xs font-semibold text-ink-muted">{{ t(`keys.group.${g.id}`) }}</h3>
-              <dl class="divide-y divide-line">
-                <div v-for="s in g.items" :key="s.id" class="flex items-center justify-between gap-4 py-2 text-sm">
+              <h3 :id="`keys-${g.id}`" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t(`keys.group.${g.id}`) }}</h3>
+              <dl class="ccm-group">
+                <div v-for="s in g.items" :key="s.id" class="flex items-center justify-between gap-4 px-3 py-2 text-sm">
                   <dt class="min-w-0 text-ink">{{ t(`keys.item.${s.id}`) }}</dt>
                   <dd class="flex shrink-0 items-center gap-1">
                     <kbd
                       v-for="(k, i) in s.keys"
                       :key="i"
-                      class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-b-2 border-line-strong bg-raised px-1.5 font-sans text-xs font-medium text-ink-muted"
+                      class="inline-flex h-5 min-w-5 items-center justify-center rounded-inner bg-fill px-1.5 font-sans text-2xs font-medium text-ink-muted"
                     >{{ k }}</kbd>
                   </dd>
                 </div>

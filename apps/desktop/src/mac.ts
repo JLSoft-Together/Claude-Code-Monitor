@@ -21,7 +21,12 @@ export function adoptLoginShellPath(): void {
 
 /** Without an app menu macOS has no Cmd+C/V/Q/W. */
 export function setMacMenu(): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }]))
+  // Cmd+W stays a label only: the page decides (close a terminal pane in the workspace, the window elsewhere).
+  const windowMenu: Electron.MenuItemConstructorOptions = {
+    role: 'windowMenu',
+    submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close', registerAccelerator: false }, { type: 'separator' }, { role: 'front' }],
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, windowMenu]))
 }
 
 // Run from the mounted DMG or a translocated Downloads copy, the exe path baked into the status line bridge vanishes later.
