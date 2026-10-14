@@ -91,6 +91,18 @@ describe('layout store', () => {
     for (let i = 0; i < MAX_PER_PROJECT; i++) expect(store.save(draft(`L${i}`)).ok).toBe(true)
     expect(store.save(draft('one more'))).toEqual({ ok: false, error: 'limit' })
   })
+
+  it('keeps run panes with an absolute cwd only', () => {
+    const store = new LayoutStore()
+    const res = store.save(
+      draft('Run', {
+        panes: { a: { kind: 'run', cwd: project }, b: { kind: 'run', cwd: 'relative/app' } },
+        tabs: [{ root: { dir: 'col', ratio: 0.5, a: { pane: 'a' }, b: { pane: 'b' } } }],
+      }),
+    )
+    expect(res.ok && res.layout.panes).toEqual({ a: { kind: 'run', cwd: project } })
+    expect(res.ok && res.layout.tabs[0]!.root).toEqual({ pane: 'a' })
+  })
 })
 
 describe('scripts ipc', () => {

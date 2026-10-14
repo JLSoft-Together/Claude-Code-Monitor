@@ -1,0 +1,191 @@
+// Agent Monitor — XML Layout Preview project model (read-only).
+// gradlew -q --init-script ccm-project-model.gradle :app:ccmProjectModel -Pccm.out=<file.json> [-Pccm.variant=debug]
+// Writes paths of what the last build produced; it never compiles or modifies the project.
+// AGP 8.x public variant API first; internal task properties / build/intermediates paths only as fallbacks.
+
+import groovy.json.JsonOutput
+import org.gradle.api.attributes.Attribute
+
+def ccmArtifactType = Attribute.of('artifactType', String)
+
+allprojects { p ->
+    p.plugins.withId('com.android.application') {
+        def wantedVariant = (p.findProperty('ccm.variant') ?: 'debug').toString()
+        def captured = [:]
+        def components = p.extensions.findByName('androidComponents')
+        if (components != null) {
+            components.onVariants(components.selector().withName(wantedVariant)) { v -> captured.variant = v }
+        }
+
+        p.tasks.register('ccmProjectModel') { t ->
+            t.group = 'help'
+            t.description = 'Writes the Agent Monitor layout preview project model (JSON) to -Pccm.out'
+            if (t.metaClass.respondsTo(t, 'notCompatibleWithConfigurationCache', String)) {
+                t.notCompatibleWithConfigurationCache('reads the resolved Android variant model')
+            }
+            t.doLast {
+                def outPath = p.findProperty('ccm.out')
+                if (!outPath) throw new GradleException('ccmProjectModel: pass -Pccm.out=<file.json>')
+                def v = captured.variant
+                if (v == null) throw new GradleException("ccmProjectModel: variant '${wantedVariant}' not found in ${p.path}")
+                def warnings = []
+                def cap = v.name.capitalize()
+                def safe = { String what, Closure c ->
+                    try { return c() } catch (Throwable e) { warnings << "${what}: ${e.class.simpleName}: ${e.message}".toString(); return null }
+                }
+                def apiLevel = { ver -> ver == null ? null : (ver.hasProperty('apiLevel') ? ver.apiLevel : null) }
+                def path = { f -> f == null ? null : (f instanceof File ? f : (f.hasProperty('asFile') ? f.asFile : new File(f.toString()))).absolutePath }
+
+                def namespace = safe('namespace') { v.namespace.get() }
+                def applicationId = safe('applicationId') { v.applicationId.get() }
+                def minSdk = safe('minSdk') { apiLevel(v.minSdk) }
+                def targetSdk = safe('targetSdk') {
+                    def ts = v.hasProperty('targetSdk') ? v.targetSdk : v.targetSdkVersion
+                    apiLevel(ts)
+                }
+                def compileSdk = safe('compileSdk') { p.android.compileSdk }
+
+                // Order: lowest priority first (main, then build type / flavor overlays), like Gradle srcDirs.
+                def resDirs = new LinkedHashSet<String>()
+                def generatedResDirs = new LinkedHashSet<String>()
+                try {
+                    // Fails when a layer is produced by a task of this build (resValues, google-services): Gradle refuses
+                    // to read task outputs that did not run in this invocation, so fall back to the source sets.
+                    v.sources.res.all.get().reverse().each { layer -> layer.each { d -> resDirs << path(d) } }
+                } catch (Throwable ignored) {
+                    resDirs.clear()
+                    safe('sourceSets.res') {
+                        ['main', v.flavorName, v.buildType, v.name].findAll { it }.unique().each { ss ->
+                            p.android.sourceSets.findByName(ss)?.res?.srcDirs?.each { resDirs << it.absolutePath }
+                        }
+                    }
+                    safe('resValues') {
+                        def rv = p.tasks.findByName("generate${cap}ResValues")
+                        if (rv != null && rv.hasProperty('resOutputDir')) {
+                            def o = rv.resOutputDir
+                            generatedResDirs << path(o instanceof org.gradle.api.provider.Provider ? o.get() : o)
+                        }
+                    }
+                }
+
+                def runtime = v.runtimeConfiguration
+                def view = { String type ->
+                    runtime.incoming.artifactView { av ->
+                        av.lenient(true)
+                        av.attributes { a -> a.attribute(ccmArtifactType, type) }
+                    }.artifacts
+                }
+                def componentName = { id ->
+                    id.hasProperty('module') && id.module ? "${id.group}:${id.module}:${id.version}".toString() : id.displayName
+                }
+
+                def packages = [:]
+                safe('symbol packages') {
+                    view('android-symbol-with-package-name').artifacts.each { a ->
+                        def first = a.file.withReader { it.readLine() }
+                        if (first) packages[a.id.componentIdentifier.displayName] = first.trim()
+                    }
+                }
+                def aarRes = []
+                safe('android-res') {
+                    view('android-res').artifacts.each { a ->
+                        def key = a.id.componentIdentifier.displayName
+                        aarRes << [dir: a.file.absolutePath, package: packages[key], name: componentName(a.id.componentIdentifier)]
+                    }
+                }
+
+                def classpath = new LinkedHashSet<String>()
+                safe('android-classes-jar') { view('android-classes-jar').artifacts.each { a -> classpath << a.file.absolutePath } }
+                if (classpath.isEmpty()) {
+                    safe('jar') { view('jar').artifacts.each { a -> classpath << a.file.absolutePath } }
+                }
+
+                def classDirs = new LinkedHashSet<String>()
+                safe('javac') {
+                    def jc = p.tasks.findByName("compile${cap}JavaWithJavac")
+                    if (jc != null) classDirs << path(jc.destinationDirectory.get())
+                }
+                safe('kotlinc') {
+                    def kc = p.tasks.findByName("compile${cap}Kotlin")
+                    if (kc != null) classDirs << path(kc.destinationDirectory.get())
+                }
+                if (classDirs.isEmpty()) {
+                    classDirs << new File(p.layout.buildDirectory.get().asFile, "intermediates/javac/${v.name}/compile${cap}JavaWithJavac/classes").absolutePath
+                    classDirs << new File(p.layout.buildDirectory.get().asFile, "tmp/kotlin-classes/${v.name}").absolutePath
+                }
+
+                def rJar = safe('R.jar') {
+                    def pr = p.tasks.findByName("process${cap}Resources")
+                    (pr != null && pr.hasProperty('rClassOutputJar')) ? path(pr.rClassOutputJar.get()) : null
+                }
+                if (rJar == null || !new File(rJar).isFile()) {
+                    def base = new File(p.layout.buildDirectory.get().asFile, "intermediates/compile_and_runtime_not_namespaced_r_class_jar/${v.name}")
+                    def candidates = [new File(base, "process${cap}Resources/R.jar"), new File(base, 'R.jar')]
+                    rJar = candidates.find { it.isFile() }?.absolutePath ?: rJar
+                }
+
+                def manifest = safe('merged manifest') {
+                    def a = Class.forName('com.android.build.api.artifact.SingleArtifact$MERGED_MANIFEST', true, v.class.classLoader)
+                    path(v.artifacts.get(a.INSTANCE).get())
+                }
+                if (manifest == null || !new File(manifest).isFile()) {
+                    def candidates = [
+                        new File(p.layout.buildDirectory.get().asFile, "intermediates/merged_manifest/${v.name}/process${cap}MainManifest/AndroidManifest.xml"),
+                        new File(p.layout.buildDirectory.get().asFile, "intermediates/merged_manifests/${v.name}/process${cap}Manifest/AndroidManifest.xml"),
+                        p.file('src/main/AndroidManifest.xml'),
+                    ]
+                    manifest = candidates.find { it.isFile() }?.absolutePath
+                }
+
+                def appTheme = null
+                def activityThemes = [:]
+                if (manifest != null) {
+                    safe('manifest themes') {
+                        def xml = new XmlSlurper(false, true).parse(new File(manifest))
+                        xml.declareNamespace(android: 'http://schemas.android.com/apk/res/android')
+                        def qualify = { String n ->
+                            if (!n) return n
+                            if (n.startsWith('.')) return (namespace ?: '') + n
+                            n.contains('.') ? n : "${namespace}.${n}".toString()
+                        }
+                        def app = xml.application
+                        appTheme = app.'@android:theme'.text() ?: null
+                        app.activity.each { act ->
+                            def th = act.'@android:theme'.text()
+                            if (th) activityThemes[qualify(act.'@android:name'.text())] = th
+                        }
+                        app.'activity-alias'.each { al ->
+                            def th = al.'@android:theme'.text()
+                            if (th) activityThemes[qualify(al.'@android:name'.text())] = th
+                        }
+                    }
+                }
+
+                def model = [
+                    version       : 1,
+                    module        : p.path,
+                    projectDir    : p.projectDir.absolutePath,
+                    variant       : v.name,
+                    namespace     : namespace,
+                    applicationId : applicationId,
+                    minSdk        : minSdk,
+                    targetSdk     : targetSdk,
+                    compileSdk    : compileSdk,
+                    resDirs       : resDirs as List,
+                    generatedResDirs: generatedResDirs as List,
+                    aarRes        : aarRes,
+                    classpath     : classpath as List,
+                    classDirs     : classDirs as List,
+                    rJar          : rJar,
+                    manifest      : manifest,
+                    appTheme      : appTheme,
+                    activityThemes: activityThemes,
+                    warnings      : warnings,
+                ]
+                def out = p.file(outPath.toString())
+                out.parentFile?.mkdirs()
+                out.setText(JsonOutput.prettyPrint(JsonOutput.toJson(model)), 'UTF-8')
+            }
+        }
+    }
+}

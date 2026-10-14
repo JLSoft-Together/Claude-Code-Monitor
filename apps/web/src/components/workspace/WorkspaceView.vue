@@ -36,6 +36,7 @@ import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
+import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
 import ViewPaneControls from './ViewPaneControls.vue'
@@ -830,6 +831,7 @@ onBeforeUnmount(() => {
         v-else
         class="min-h-0 flex-1"
         @scripts="(root) => openScripts([root])"
+        @run="(root) => withViewTransition(() => workspace.openRun(root))"
         @save-layout="(root, name) => showLayouts(root, name, 'save')"
         @manage-layouts="(root, name) => showLayouts(root, name, 'manage')"
         @open-layout="openLayout"
@@ -1084,6 +1086,18 @@ onBeforeUnmount(() => {
               <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </LogPane>
+          <RunPane
+            v-else-if="pane.kind === 'run'"
+            class="min-h-0 flex-1"
+            :root="pane.cwd!"
+            :active="visible && tabBoxes.has(pane.key)"
+            @open="(path, line) => workspace.openFile(path, line, { cwd: pane.cwd, split: { key: pane.key, dir: 'row' } })"
+            @open-agent="withViewTransition(() => workspace.split(pane.key, 'row', { kind: 'term', preset: 'claude' }))"
+          >
+            <template #end>
+              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+            </template>
+          </RunPane>
           <ChangesPane
             v-else
             class="min-h-0 flex-1"

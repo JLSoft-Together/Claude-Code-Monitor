@@ -7,11 +7,15 @@ import explorer from './workspace-explorer'
 import diff from './workspace-diff'
 import log from './workspace-log'
 import v28 from './extensions-v28'
+import run from './run-v31'
+import layout from './layout-v32'
 
 const vi: typeof en = {
   ...v25.vi,
   ...v27.vi,
   ...v28.vi,
+  ...run.vi,
+  ...layout.vi,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',

@@ -24,6 +24,7 @@ import AgentContextMenu from './AgentContextMenu.vue'
 import ContextGauge from './ContextGauge.vue'
 import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
+import RunBadge from './workspace/RunBadge.vue'
 import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
 import SubagentCounts from './SubagentCounts.vue'
@@ -245,6 +246,7 @@ function commitNote(): void {
         <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0" aria-hidden="true" />
         <span class="truncate">{{ detail }}</span>
       </span>
+      <RunBadge v-if="terminal.cwd && !ended" :dir="terminal.cwd" live-only class="relative z-10 ml-auto" />
     </div>
     <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
       <template v-if="snoozedUntil">

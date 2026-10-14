@@ -15,9 +15,10 @@ import { isTerm, useWorkspaceStore, workCwd, type Pane, type SplitChoice } from 
 import StatusIcon from '../StatusIcon.vue'
 import PaneIcon from './PaneIcon.vue'
 import ProjectMenu from './ProjectMenu.vue'
+import RunBadge from './RunBadge.vue'
 import SplitMenu from './SplitMenu.vue'
 
-const emit = defineEmits<{ scripts: [root: string]; saveLayout: [root: string, name: string]; manageLayouts: [root: string, name: string]; openLayout: [layout: SavedLayout] }>()
+const emit = defineEmits<{ scripts: [root: string]; run: [root: string]; saveLayout: [root: string, name: string]; manageLayouts: [root: string, name: string]; openLayout: [layout: SavedLayout] }>()
 
 const { t, locale } = useI18n()
 const workspace = useWorkspaceStore()
@@ -196,6 +197,7 @@ const HEAD_BTN =
           >
             <StatusIcon status="waiting" :size="10" :animate="false" />{{ waitingIn(g) }}<span class="sr-only"> {{ t('workspace.side.waiting', { n: waitingIn(g) }, waitingIn(g)) }}</span>
           </span>
+          <RunBadge v-if="g.root" :dir="g.root" />
           <button
             v-if="g.root"
             type="button"
@@ -273,6 +275,7 @@ const HEAD_BTN =
           :name="projectMenu.group.name"
           :trigger="projectMenu.trigger"
           @scripts="emit('scripts', projectMenu!.group.root!)"
+          @run="emit('run', projectMenu!.group.root!)"
           @save="emit('saveLayout', projectMenu!.group.root!, projectMenu!.group.name)"
           @manage="emit('manageLayouts', projectMenu!.group.root!, projectMenu!.group.name)"
           @open="(l) => emit('openLayout', l)"

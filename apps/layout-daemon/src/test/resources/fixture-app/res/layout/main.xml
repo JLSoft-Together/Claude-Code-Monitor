@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/fixtureSurface"
+    android:orientation="vertical"
+    tools:context=".DetailActivity">
+
+    <TextView
+        android:id="@+id/greeting"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/greeting"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/designTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="runtime"
+        android:visibility="gone"
+        tools:text="Design-time text that is clearly longer"
+        tools:visibility="visible" />
+
+    <dev.ccm.fixture.BadgeView
+        android:id="@+id/badge"
+        android:layout_width="@dimen/lib_badge_size"
+        android:layout_height="@dimen/lib_badge_size"
+        app:badgeColor="@color/fixture_badge"
+        app:badgeLabel="@string/lib_label" />
+
+    <dev.ccm.fixture.CrashingView
+        android:id="@+id/crash"
+        android:layout_width="match_parent"
+        android:layout_height="40dp" />
+
+    <dev.ccm.fixture.NotBuiltView
+        android:layout_width="match_parent"
+        android:layout_height="40dp" />
+</LinearLayout>

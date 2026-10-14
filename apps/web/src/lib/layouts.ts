@@ -18,6 +18,7 @@ function specOf(pane: Pane, resume: boolean): LayoutPane {
   }
   if (pane.kind === 'browser') return { kind: 'browser', url: pane.url ?? '', cwd: pane.cwd }
   if (pane.kind === 'file') return { kind: 'file', path: pane.path, line: pane.line, cwd: pane.cwd }
+  if (pane.kind === 'run') return { kind: 'run', cwd: pane.cwd }
   return { kind: pane.kind === 'log' ? 'log' : 'changes', cwd: pane.root ?? pane.cwd }
 }
 
@@ -29,16 +30,17 @@ export function captureLayout(tabs: readonly Tab[], panes: readonly Pane[], inPr
     const primary = paneOf(primaryPaneKey(t.root, paneOf))
     return !!primary && inProject(primary)
   })
-  if (!picked.length) return null
+  const kept = picked.map((t) => ({ root: t.root, focus: t.focus }))
+  if (!kept.length) return null
   const specs: Record<string, LayoutPane> = {}
-  for (const tab of picked) for (const key of leaves(tab.root)) specs[key] = specOf(byKey.get(key)!, opts.resume)
+  for (const tab of kept) for (const key of leaves(tab.root)) specs[key] = specOf(byKey.get(key)!, opts.resume)
   return {
     id: opts.id,
     project: opts.project,
     name: opts.name.trim(),
     openOnStart: opts.openOnStart || undefined,
     panes: specs,
-    tabs: picked.map((t) => ({ root: t.root, focus: t.focus })),
+    tabs: kept,
   }
 }
 

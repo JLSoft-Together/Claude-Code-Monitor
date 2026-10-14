@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="fixtureSurface" format="color" />
+    <declare-styleable name="BadgeView">
+        <attr name="badgeColor" format="color" />
+        <attr name="badgeLabel" format="string" />
+    </declare-styleable>
+
+    <color name="fixture_app">#FF336699</color>
+    <color name="fixture_activity">#FF993366</color>
+    <color name="fixture_badge">#FF22AA44</color>
+    <string name="greeting">Hello fixture</string>
+
+    <style name="Theme.Fixture" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="fixtureSurface">@color/fixture_app</item>
+    </style>
+
+    <style name="Theme.Fixture.Detail">
+        <item name="fixtureSurface">@color/fixture_activity</item>
+    </style>
+</resources>

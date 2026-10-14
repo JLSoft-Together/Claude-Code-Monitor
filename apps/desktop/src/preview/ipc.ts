@@ -70,6 +70,8 @@ export interface PreviewIpcDeps {
 export interface PreviewIpc {
   /** Lets a folder the user chose elsewhere (e.g. a native picker) be read too. */
   grant: (dir: string) => void
+  /** A known repo toplevel or allowed folder (real path), else null — the gate other features reuse. */
+  resolveDir: (dir: unknown) => Promise<string | null>
   dispose: () => void
 }
 
@@ -463,6 +465,7 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
 
   return {
     grant: (dir) => grants.add(dir),
+    resolveDir: explorerRoot,
     dispose: () => {
       for (const ch of CHANNELS) ipcMain.removeHandler(ch)
       for (const id of new Set([...subs.keys(), ...changeSubs.keys()])) release(id)

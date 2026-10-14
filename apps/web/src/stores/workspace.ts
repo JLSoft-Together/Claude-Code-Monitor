@@ -8,7 +8,7 @@ import { dirKey } from './favorites'
 export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
 /** Missing = 'term' (state saved before v21). */
-export type PaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log'
+export type PaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log' | 'run'
 
 export type PaneSpec =
   | { kind: 'term'; preset: PtyPreset }
@@ -16,6 +16,7 @@ export type PaneSpec =
   | { kind: 'file'; path: string; line?: number }
   | { kind: 'changes' }
   | { kind: 'log' }
+  | { kind: 'run' }
 
 /** Split menu entries. */
 export type SplitChoice = PtyPreset | 'browser'
@@ -127,6 +128,8 @@ function viewFields(p: ViewFields): ViewFields | null {
       return { kind: 'changes' }
     case 'log':
       return { kind: 'log' }
+    case 'run':
+      return { kind: 'run' }
     default:
       return null
   }
@@ -136,7 +139,7 @@ function cleanPane<T extends ViewFields & { key: string; preset: unknown; cwd?: 
   if (!p || typeof p.key !== 'string' || !isPtyPreset(p.preset)) return null
   const view = viewFields(p)
   if (!view) return null
-  if ((view.kind === 'changes' || view.kind === 'log') && !isAbs(p.cwd)) return null
+  if ((view.kind === 'changes' || view.kind === 'log' || view.kind === 'run') && !isAbs(p.cwd)) return null
   return { ...p, kind: undefined, url: undefined, path: undefined, line: undefined, ...view }
 }
 
@@ -319,6 +322,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return addView({ kind: 'changes' }, cwd)
       case 'log':
         return addView({ kind: 'log' }, cwd)
+      case 'run':
+        return addView({ kind: 'run' }, cwd)
     }
   }
 
@@ -397,6 +402,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     const pane = addView({ kind: 'log' }, cwd)
     if (opts.select) pane.select = opts.select
+    placeNew(pane, opts.split)
+    return pane
+  }
+
+  /** One Run pane per project root (`cwd`). */
+  function openRun(cwd: string, opts: { split?: Placement } = {}): Pane {
+    const same = panes.value.find((p) => p.kind === 'run' && sameDir(p.cwd, cwd))
+    if (same) {
+      activate(same.key)
+      return same
+    }
+    const pane = addView({ kind: 'run' }, cwd)
     placeNew(pane, opts.split)
     return pane
   }
@@ -486,7 +503,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
             ? panes.value.find((p) => p.kind === 'browser' && p.url === spec.url)
             : spec?.kind === 'file'
               ? panes.value.find((p) => p.kind === 'file' && sameDir(p.path, spec.path))
-              : undefined
+              : spec?.kind === 'run'
+                ? panes.value.find((p) => p.kind === 'run' && sameDir(p.cwd, spec.cwd))
+                : undefined
         if (!spec || same) {
           reused ??= same?.key ?? null
           root = root && removeLeaf(root, id)
@@ -499,7 +518,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
               ? addView({ kind: 'browser', url: spec.url ?? '' }, spec.cwd)
               : spec.kind === 'file'
                 ? addView({ kind: 'file', path: spec.path, line: spec.line }, spec.cwd)
-                : addView({ kind: spec.kind === 'log' ? 'log' : 'changes' }, spec.cwd)
+                : addView({ kind: spec.kind === 'log' || spec.kind === 'run' ? spec.kind : 'changes' }, spec.cwd)
         keys.set(id, pane.key)
       }
       if (!root) continue
@@ -657,6 +676,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFile,
     openChanges,
     openLog,
+    openRun,
     insertRequest,
     insertInto,
     insertImage,

@@ -109,6 +109,18 @@ describe('layouts', () => {
     expect(ws.tabs).toHaveLength(before)
     expect(ws.activeKey).toBe(open.key)
   })
+
+  it('keeps run panes in captured layouts and reuses the open run pane of that root', () => {
+    const ws = useWorkspaceStore()
+    const agent = ws.open('claude', '/repo')
+    const run = ws.split(agent.key, 'col', { kind: 'run' })!
+    const draft = captureLayout(ws.tabs, ws.panes, (p) => p.cwd === '/repo', { project: '/repo', name: 'Run', resume: false })!
+    expect(draft.panes[run.key]).toEqual({ kind: 'run', cwd: '/repo' })
+    const before = ws.panes.length
+    ws.openLayout(draft)
+    expect(ws.panes.filter((p) => p.kind === 'run')).toHaveLength(1)
+    expect(ws.panes.length).toBe(before + 1)
+  })
 })
 
 describe('scripts', () => {

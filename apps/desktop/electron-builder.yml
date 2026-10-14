@@ -28,6 +28,10 @@ extraResources:
     to: pty/node_modules/@lydell
   - from: ../web/dist
     to: web
+  - from: ../layout-daemon/build/libs/layout-daemon.jar
+    to: layout-daemon/layout-daemon.jar
+  - from: ../layout-daemon/init/ccm-project-model.gradle
+    to: layout-daemon/ccm-project-model.gradle
   - from: ../../scripts/statusline-bridge.mjs
     to: bridge/statusline-bridge.mjs
   - from: ../../scripts/assets/ccm.ico

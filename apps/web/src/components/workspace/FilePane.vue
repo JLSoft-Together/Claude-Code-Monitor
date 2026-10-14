@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, Code, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Search, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, LayoutTemplate, Search, SquarePen, TextWrap, X } from 'lucide-vue-next'
 import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
 import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
@@ -15,6 +15,9 @@ import ChangeRuler from './ChangeRuler.vue'
 import CodeMinimap from './CodeMinimap.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import HunkPopup from './HunkPopup.vue'
+import LayoutPreview from './LayoutPreview.vue'
+import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
+import { hasLayoutPreview, isLayoutXml, type LayoutMode } from '../../lib/layoutPreview'
 import { baseName, changesDiscard, dirOf, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean }>(), { active: true })
@@ -83,7 +86,39 @@ const name = computed(() => baseName(props.path))
 const markdown = computed(() => view.value?.kind === 'text' && isMarkdown(props.path))
 const showSource = computed(() => view.value?.kind === 'text' && !(markdown.value && mdPreview.value))
 const matches = computed<Match[]>(() => (findOpen.value && showSource.value ? findMatches(lines.value, query.value) : []))
-const minimap = computed(() => settings.minimap && showSource.value && !loading.value && paneWidth.value >= MINIMAP_MIN_WIDTH)
+// XML layout preview (v32): Code | Split | Design for res/layout*/ files, per-user mode.
+const LAYOUT_MODE_KEY = 'ccm.layout.mode'
+const LAYOUT_STACK_WIDTH = 720
+function readLayoutMode(): LayoutMode {
+  try {
+    const v = localStorage.getItem(LAYOUT_MODE_KEY)
+    return v === 'code' || v === 'design' || v === 'split' ? v : 'split'
+  } catch {
+    return 'split'
+  }
+}
+const layoutMode = ref<LayoutMode>(readLayoutMode())
+watch(layoutMode, (m) => {
+  try {
+    localStorage.setItem(LAYOUT_MODE_KEY, m)
+  } catch {
+    // storage off
+  }
+})
+const isLayout = computed(() => hasLayoutPreview && view.value?.kind === 'text' && isLayoutXml(view.value.path || props.path))
+const showDesign = computed(() => isLayout.value && layoutMode.value !== 'code')
+const showCode = computed(() => !isLayout.value || layoutMode.value !== 'design')
+const layoutStacked = computed(() => paneWidth.value > 0 && paneWidth.value < LAYOUT_STACK_WIDTH)
+const layoutRevision = ref(0)
+const layoutLine = ref<number | null>(null)
+const layoutModes = computed<Segment<LayoutMode>[]>(() => [
+  { value: 'code', label: t('layout.mode.code'), icon: Code },
+  { value: 'split', label: t('layout.mode.split'), icon: Columns2 },
+  { value: 'design', label: t('layout.mode.design'), icon: LayoutTemplate },
+])
+
+const codeWidth = computed(() => (showDesign.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
+const minimap = computed(() => settings.minimap && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
 
 const html = computed(() => {
   if (!showSource.value) return ''
@@ -137,7 +172,10 @@ async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
   const text = next.text ?? ''
   const nextLines = splitLines(text)
   lines.value = nextLines
-  if (opts.keepScroll) changes.reload()
+  if (opts.keepScroll) {
+    changes.reload()
+    layoutRevision.value++
+  }
   if (opts.keepScroll && prevView?.kind === 'text') {
     flashLines(changedLines(prevLines, nextLines))
     await nextTick()
@@ -167,6 +205,20 @@ async function jumpTo(line: number | undefined): Promise<void> {
   targetLine.value = line
   await nextTick()
   scroller.value?.querySelector<HTMLElement>(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' })
+}
+
+/** A view (or a diagnostic) picked in the design half: scroll the code to its start tag, optionally selecting the line. */
+async function revealLayoutLine(line: number, select: boolean): Promise<void> {
+  layoutLine.value = line
+  await jumpTo(line)
+  if (!select || !showCode.value) return
+  const cell = scroller.value?.querySelector<HTMLElement>(`[data-line="${line}"] .c`)
+  const sel = window.getSelection()
+  if (!cell || !sel) return
+  const range = document.createRange()
+  range.selectNodeContents(cell)
+  sel.removeAllRanges()
+  sel.addRange(range)
 }
 
 async function setWatch(dir: string | null): Promise<void> {
@@ -287,7 +339,12 @@ function closePopup(refocus = false): void {
 function onCodeClick(e: MouseEvent): void {
   const marker = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-gutter]')
   const row = marker?.closest<HTMLElement>('[data-block]')
-  if (!row) return
+  if (!row) {
+    // Click on an XML line (not a drag selection) highlights the matching view in the design half.
+    const lineRow = showDesign.value ? (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-line]') : null
+    if (lineRow && (window.getSelection()?.isCollapsed ?? true)) layoutLine.value = Number(lineRow.dataset.line)
+    return
+  }
   const i = Number(row.dataset.block)
   if (popupIndex.value === i) closePopup()
   else void openChange(i)
@@ -369,6 +426,7 @@ watch(
   async () => {
     findOpen.value = false
     targetLine.value = null
+    layoutLine.value = null
     closePopup()
     await load()
     void setWatch(view.value && view.value.kind !== 'denied' ? dirOf(view.value.path) : null)
@@ -428,6 +486,7 @@ const lineCount = computed(() => lines.value.length)
         <span v-if="changeTotals.added" class="text-diff-add">+{{ changeTotals.added }}</span>
         <span v-if="changeTotals.removed" class="text-diff-del">−{{ changeTotals.removed }}</span>
       </button>
+      <SegmentedControl v-if="isLayout" v-model="layoutMode" class="mx-1 shrink-0" :options="layoutModes" :label="t('layout.mode.label')" icon-only data-layout-mode />
       <template v-if="markdown">
         <button
           type="button"
@@ -513,7 +572,8 @@ const lineCount = computed(() => lines.value.length)
     <p v-if="notice" class="shrink-0 border-b border-line bg-st-waiting-soft px-3 py-1.5 text-xs text-ink" role="status">{{ notice }}</p>
     <p v-if="plainBecauseLarge" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.viewer.plain') }}</p>
 
-    <div class="flex min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1" :class="showDesign && layoutStacked ? 'flex-col' : ''">
+      <div v-show="showCode" class="flex min-h-0 min-w-0 flex-1">
       <div ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
         <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
         <div v-else-if="!hasPreview || !view || (view.kind !== 'text' && view.kind !== 'image')" class="grid size-full place-items-center p-6">
@@ -544,6 +604,16 @@ const lineCount = computed(() => lines.value.length)
         :changes="changes.blocks.value"
       />
       <ChangeRuler v-else-if="showSource && !loading && changes.blocks.value.length" :blocks="changes.blocks.value" :line-count="lineCount" @jump="(i) => openChange(i, true)" />
+      </div>
+      <LayoutPreview
+        v-if="showDesign"
+        :class="showCode ? (layoutStacked ? 'border-t border-line' : 'border-l border-line') : ''"
+        :path="view?.path ?? path"
+        :revision="layoutRevision"
+        :line="layoutLine"
+        :active="active"
+        @reveal="revealLayoutLine"
+      />
     </div>
 
     <HunkPopup

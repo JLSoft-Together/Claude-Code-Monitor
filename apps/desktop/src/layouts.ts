@@ -12,7 +12,7 @@ const MAX_TABS = 16
 const MAX_NAME = 80
 const MAX_TEXT = 4096
 
-export type LayoutPaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log'
+export type LayoutPaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log' | 'run'
 
 export interface LayoutPane {
   kind: LayoutPaneKind
@@ -72,6 +72,8 @@ function cleanPane(v: unknown): LayoutPane | null {
       return cwd ? { kind: 'changes', cwd } : null
     case 'log':
       return cwd ? { kind: 'log', cwd } : null
+    case 'run':
+      return cwd ? { kind: 'run', cwd } : null
     default:
       return null
   }

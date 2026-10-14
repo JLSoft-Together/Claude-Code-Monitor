@@ -27,6 +27,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # build.mjs --dist runs apps/layout-daemon `gradlew shadowJar` (Kotlin toolchain 21) for the XML layout preview.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
       - run: npm ci
       # One dmg per arch, but npm only installs the host's node-pty prebuilt: fetch the other one too.
       - if: runner.os == 'macOS'

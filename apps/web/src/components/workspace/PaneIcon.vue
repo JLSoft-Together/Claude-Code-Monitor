@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { FileText, GitCompare, GitGraph, Globe } from 'lucide-vue-next'
+import { FileText, GitCompare, GitGraph, Globe, Play } from 'lucide-vue-next'
 import type { Pane } from '../../stores/workspace'
 import PresetIcon from './PresetIcon.vue'
 
@@ -31,5 +31,6 @@ watch(
   </template>
   <FileText v-else-if="pane.kind === 'file'" :size="size" class="text-agent-file" aria-hidden="true" />
   <GitGraph v-else-if="pane.kind === 'log'" :size="size" class="text-ink-muted" aria-hidden="true" />
+  <Play v-else-if="pane.kind === 'run'" :size="size" class="text-ink-muted" aria-hidden="true" />
   <GitCompare v-else :size="size" class="text-ink-muted" aria-hidden="true" />
 </template>

@@ -21,6 +21,7 @@ export function usePaneInfo() {
     if (pane.kind === 'file') return pane.path ? baseName(pane.path) : t('workspace.viewer.title')
     if (pane.kind === 'log') return pane.root ? `${t('workspace.log.title')}: ${baseName(pane.root)}` : t('workspace.log.title')
     if (pane.kind === 'changes') return pane.count ? t('workspace.changes.titleCount', { n: pane.count }) : t('workspace.changes.title')
+    if (pane.kind === 'run') return pane.cwd ? t('run.titleIn', { name: baseName(pane.cwd) }) : t('run.title')
     const url = pane.url ?? ''
     if (/^https?:\/\//i.test(url)) {
       try {
@@ -36,6 +37,7 @@ export function usePaneInfo() {
   function viewDetail(pane: Pane): string | undefined {
     if (pane.kind === 'file') return pane.path
     if (pane.kind === 'changes' || pane.kind === 'log') return pane.root ?? pane.cwd
+    if (pane.kind === 'run') return pane.cwd
     return pane.url || undefined
   }
 

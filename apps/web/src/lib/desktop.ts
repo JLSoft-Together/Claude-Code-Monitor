@@ -1,5 +1,26 @@
-import type { AvailablePlugin, ExtInstallRequest, ExtRemoveRequest, ExtResult, ExtSourceRequest, ExtStatus, McpServerRow, PtyEndpoint } from '@ccm/shared'
+import type {
+  AvailablePlugin,
+  ExtInstallRequest,
+  ExtRemoveRequest,
+  ExtResult,
+  ExtSourceRequest,
+  ExtStatus,
+  McpServerRow,
+  PtyEndpoint,
+  RunCommandPreview,
+  RunConfig,
+  RunDetectResult,
+  RunDevice,
+  RunEmulator,
+  RunEnv,
+  RunEvent,
+  RunKind,
+  RunResult,
+  RunSession,
+  RunStartRequest,
+} from '@ccm/shared'
 import type { FileView, PreviewChange, PreviewTarget } from './preview'
+import type { BundleStatus, LayoutEvent, LayoutModelInfo, LayoutRenderRequest, LayoutRenderResult, LayoutStatus } from './layoutPreview'
 
 /** Chord pressed inside a browser pane's <webview>, forwarded by the main process (fields of KeyboardEventInit). */
 export interface ForwardedKey {
@@ -19,6 +40,13 @@ export interface DesktopLook {
   faint: string
   accent: string
   dark: boolean
+}
+
+/** Run pane SDK / JDK folders; null = auto-detect. */
+export interface RunSettings {
+  flutterSdk: string | null
+  androidSdk: string | null
+  jdk: string | null
 }
 
 export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
@@ -62,6 +90,35 @@ interface DesktopBridge {
   extRemove?: (req: ExtRemoveRequest) => Promise<ExtResult>
   extSource?: (req: ExtSourceRequest) => Promise<(ExtResult & { marketplace?: string; plugins?: AvailablePlugin[] }) | null>
   extLogin?: (name: string, dir?: string) => Promise<ExtResult>
+  /** Run pane (v31): desktop main detects, spawns and streams; the page only sends ids and config fields. */
+  runDetect?: (root: string) => Promise<RunDetectResult | null>
+  runEnv?: (dir: string, kind: Exclude<RunKind, 'custom'>) => Promise<RunEnv | null>
+  runDevices?: () => Promise<RunDevice[]>
+  runEmulators?: () => Promise<RunEmulator[]>
+  runLaunchEmulator?: (id: string, source: RunEmulator['source']) => Promise<RunResult>
+  runConfigs?: (root: string) => Promise<RunConfig[]>
+  runConfigSave?: (root: string, cfg: RunConfig) => Promise<RunConfig | null>
+  runConfigDelete?: (root: string, id: string) => Promise<boolean>
+  runConfigImport?: (root: string) => Promise<RunConfig[]>
+  runPreview?: (root: string, cfg: RunConfig, deviceId: string | null) => Promise<RunCommandPreview>
+  runStart?: (req: RunStartRequest) => Promise<RunResult>
+  runStop?: (sessionId: string) => Promise<RunResult>
+  runReload?: (sessionId: string, full: boolean) => Promise<RunResult>
+  runPubGet?: (dir: string) => Promise<RunResult>
+  runSessions?: () => Promise<RunSession[]>
+  onRunEvent?: (handler: (event: RunEvent) => void) => () => void
+  runSettings?: () => Promise<RunSettings | null>
+  runSettingsSet?: (patch: Partial<RunSettings>) => Promise<RunSettings | null>
+  /** XML layout preview (v32): layoutlib bundle / JDK / render daemon state. */
+  layoutStatus?: () => Promise<LayoutStatus | null>
+  /** Native consent first; resolves when the bundle is ready / failed, progress via onLayoutEvent. */
+  layoutDownload?: () => Promise<BundleStatus | { state: 'cancelled' } | null>
+  /** Main reads the file (res/layout* only) and renders it; the PNG comes back as a preview-server URL. */
+  layoutRender?: (req: LayoutRenderRequest) => Promise<LayoutRenderResult>
+  /** Project model (Gradle init script) state for the layout's app module; refresh runs the read-only task now. */
+  layoutModelStatus?: (req: { file: string }) => Promise<LayoutModelInfo | null>
+  layoutModelRefresh?: (req: { file: string }) => Promise<LayoutModelInfo | null>
+  onLayoutEvent?: (handler: (event: LayoutEvent) => void) => () => void
 }
 
 /** Set by the Electron preload; absent in a plain browser, where terminals stay unavailable. */
@@ -70,3 +127,5 @@ export const desktop: DesktopBridge | undefined = (window as unknown as { ccmDes
 export const hasTerminals = typeof desktop?.ptyEndpoint === 'function'
 
 export const hasExtensions = typeof desktop?.extStatus === 'function'
+
+export const hasRun = typeof desktop?.runDetect === 'function'

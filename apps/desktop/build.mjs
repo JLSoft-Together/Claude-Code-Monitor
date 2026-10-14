@@ -1,5 +1,6 @@
 // Bundles the Electron main process and the collector into stage/, the app dir electron-builder packs.
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -44,6 +45,24 @@ await build({
   // node-pty is native: shipped as extraResources (pty/node_modules) and required by path at runtime.
   external: ['@lydell/node-pty', 'bufferutil', 'utf-8-validate'],
 })
+
+// Packaged builds ship the XML layout render daemon (extraResources layout-daemon/); layoutlib itself is downloaded at runtime.
+if (process.argv.includes('--dist')) {
+  const daemonDir = path.join(HERE, '..', 'layout-daemon')
+  const jar = path.join(daemonDir, 'build', 'libs', 'layout-daemon.jar')
+  if (process.env.CCM_SKIP_DAEMON_BUILD !== '1') {
+    const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
+    const run = spawnSync(gradlew, ['shadowJar', '--console=plain'], { cwd: daemonDir, stdio: 'inherit', shell: process.platform === 'win32' })
+    if (run.status !== 0) {
+      console.error('build: layout-daemon jar build failed (needs JDK 17+ in JAVA_HOME, e.g. the Android Studio JBR)')
+      process.exit(1)
+    }
+  }
+  if (!existsSync(jar)) {
+    console.error(`build: ${jar} is missing; run "./gradlew shadowJar" in apps/layout-daemon with JAVA_HOME = JDK 17+`)
+    process.exit(1)
+  }
+}
 
 // No dependencies on purpose: everything is bundled, so electron-builder ships no node_modules.
 writeFileSync(

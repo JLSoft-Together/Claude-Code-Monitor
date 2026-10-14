@@ -6,11 +6,15 @@ import explorer from './workspace-explorer'
 import diff from './workspace-diff'
 import log from './workspace-log'
 import v28 from './extensions-v28'
+import run from './run-v31'
+import layout from './layout-v32'
 
 export default {
   ...v25.en,
   ...v27.en,
   ...v28.en,
+  ...run.en,
+  ...layout.en,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Skip to content',

@@ -7,9 +7,9 @@
     "build": "node build.mjs",
     "start": "node build.mjs && electron stage",
     "start:dev": "node build.mjs && electron stage --dev-url=http://127.0.0.1:5173",
-    "dist": "node build.mjs && electron-builder --win --config electron-builder.yml --publish never",
+    "dist": "node build.mjs --dist && electron-builder --win --config electron-builder.yml --publish never",
     "typecheck": "tsc -p tsconfig.json",
-    "dist:mac": "node build.mjs && electron-builder --mac --config electron-builder.yml --publish never",
+    "dist:mac": "node build.mjs --dist && electron-builder --mac --config electron-builder.yml --publish never",
     "test": "vitest run",
     "e2e": "node e2e/run.cjs"
   },

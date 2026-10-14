@@ -13,11 +13,12 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useTipsStore } from '../stores/tips'
 import { useUiStore } from '../stores/ui'
-import { desktop, hasTerminals } from '../lib/desktop'
+import { desktop, hasRun, hasTerminals } from '../lib/desktop'
 import { CODE_SIZE_MAX, CODE_SIZE_MIN } from '../lib/fonts'
 import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
+import RunSdkSettings from './RunSdkSettings.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ThemePicker from './ui/ThemePicker.vue'
@@ -509,6 +510,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
               </div>
             </div>
           </section>
+
+          <RunSdkSettings v-if="hasRun && ui.settingsOpen" :open="ui.settingsOpen" />
 
           <section v-if="hasGrants" aria-labelledby="set-access" class="mt-6">
             <h3 id="set-access" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.access') }}</h3>

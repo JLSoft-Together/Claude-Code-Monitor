@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -53,7 +53,8 @@ describe('listDir', () => {
       expect(row).toMatchObject({ directory: true, outOfRoot: true })
       expect(await listDir(project, at)).toBeNull()
     } finally {
-      rmSync(at, { force: true, recursive: false })
+      // Node 24 rmSync refuses a junction ("Path is a directory"); unlink removes only the link.
+      unlinkSync(at)
     }
   })
 })

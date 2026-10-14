@@ -18,6 +18,17 @@ import { RootWatcher } from './preview/watch'
 import { GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { registerExtensionsIpc } from './extensions/ipc'
+import { createAndroidRunner } from './run/android/runner'
+import { createAdbDevices } from './run/android/devices'
+import { createCustomRunner } from './run/custom'
+import { createFlutterDevices } from './run/flutter/devices'
+import { createFlutterRunner } from './run/flutter/runner'
+import { registerRunIpc } from './run/ipc'
+import type { LayoutIpc } from './layout/ipc'
+import { wireLayout } from './layout/wire'
+import { afterRunTarget } from './layout/model'
+import { defaultSpawner } from './run/proc'
+import { RunManager } from './run/sessions'
 import { PtySupervisor } from './pty/supervisor'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
@@ -53,6 +64,7 @@ let tray: Tray | null = null
 let quitting = false
 let sessionEnding = false
 const QUIT_DEADLINE_MS = 8_000
+const RUN_STOP_GRACE_MS = 4_000
 let showingError = false
 let hiddenNoticeShown = false
 const preview = new PreviewServer()
@@ -60,6 +72,9 @@ const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
 let disposeExtensions: (() => void) | null = null
+let runManager: RunManager | null = null
+let disposeRun: (() => void) | null = null
+let layoutIpc: LayoutIpc | null = null
 let bridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
@@ -99,6 +114,33 @@ async function paneRoots(fresh = false): Promise<string[]> {
   return rootsCache?.dirs ?? []
 }
 
+/** Graceful app.stop / force-stop first; whatever is still alive after the grace period is tree-killed. */
+async function stopRuns(): Promise<void> {
+  const manager = runManager
+  if (!manager) return
+  await Promise.race([manager.stopAll(), new Promise((r) => setTimeout(r, RUN_STOP_GRACE_MS))])
+  manager.killAll()
+}
+
+interface RunTrustPlan {
+  name: string
+  cwd: string
+  command: string
+  beforeLaunch: string[]
+  envKeys: string[]
+}
+
+function runTrustPlan(detail: string | undefined): RunTrustPlan | null {
+  try {
+    const raw = JSON.parse(detail ?? '') as Partial<RunTrustPlan>
+    const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    if (typeof raw.name !== 'string' || typeof raw.cwd !== 'string' || typeof raw.command !== 'string') return null
+    return { name: raw.name, cwd: raw.cwd, command: raw.command, beforeLaunch: strs(raw.beforeLaunch), envKeys: strs(raw.envKeys) }
+  } catch {
+    return null
+  }
+}
+
 function stopPreview(): Promise<void> {
   previewIpc?.dispose()
   previewIpc = null
@@ -106,8 +148,13 @@ function stopPreview(): Promise<void> {
   disposeLayouts = null
   disposeExtensions?.()
   disposeExtensions = null
+  disposeRun?.()
+  disposeRun = null
   previewWatch.closeAll()
-  return preview.close()
+  const layout = layoutIpc
+  layoutIpc = null
+  layout?.dispose()
+  return Promise.all([preview.close(), layout?.stop()]).then(() => undefined)
 }
 
 function openExternal(url: string): void {
@@ -328,7 +375,8 @@ function showError(reason: FatalReason): void {
 /** Quitting kills every embedded terminal (and the agents in them), so name them before asking. */
 async function confirmQuit(): Promise<boolean> {
   const census = ptys ? await ptys.census() : []
-  if (census?.length === 0) return true
+  const runs = runManager?.live() ?? []
+  if (census?.length === 0 && runs.length === 0) return true
   // null = host did not answer in time: still ask, without the list, rather than kill silently.
   const live = census ?? []
   const home = os.homedir()
@@ -336,12 +384,16 @@ async function confirmQuit(): Promise<boolean> {
     const rel = path.relative(home, p)
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
   }
-  const lines = live.map((s) => `• ${s.preset} — ${underHome(s.cwd) ? path.join('~', path.relative(home, s.cwd)) : s.cwd}`)
+  const short = (p: string): string => (underHome(p) ? path.join('~', path.relative(home, p)) : p)
+  const lines = live.map((s) => `• ${s.preset} — ${short(s.cwd)}`)
+  const runLines = runs.map((s) => `• ${s.configName}${s.deviceName ? ` → ${s.deviceName}` : ''} — ${short(s.cwd)}`)
   if (mainWindow && !mainWindow.isVisible()) showMain()
+  const terms = census?.length !== 0
+  const detail = [terms ? (lines.length ? `${t.quitDetail}\n${lines.join('\n')}` : t.quitDetail) : '', runLines.length ? `${t.quitRuns}\n${runLines.join('\n')}` : '']
   const opts: Electron.MessageBoxOptions = {
     type: 'warning',
-    message: t.quitTitle(live.length),
-    detail: lines.length ? `${t.quitDetail}\n${lines.join('\n')}` : t.quitDetail,
+    message: terms ? t.quitTitle(live.length) : t.quitRunsTitle(runs.length),
+    detail: detail.filter(Boolean).join('\n\n'),
     buttons: [t.quitConfirm, t.quitCancel],
     defaultId: 1,
     cancelId: 1,
@@ -395,7 +447,7 @@ function collectorEnv(): NodeJS.ProcessEnv {
   }
 }
 
-const LOG_FILES = ['collector.log', 'pty.log']
+const LOG_FILES = ['collector.log', 'pty.log', 'layout.log']
 const LOG_TAIL_BYTES = 256 * 1024
 
 function tailOf(file: string): string {
@@ -619,6 +671,83 @@ async function ready(): Promise<void> {
     },
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
+  runManager = new RunManager({
+    dataDir: DATA_DIR,
+    env: process.env,
+    platform: process.platform,
+    home: os.homedir(),
+    spawn: defaultSpawner,
+    runners: { flutter: createFlutterRunner, android: createAndroidRunner, custom: createCustomRunner },
+    devices: {
+      flutter: (settings) => createFlutterDevices({ settings, env: process.env, platform: process.platform, home: os.homedir(), spawn: defaultSpawner }),
+      adb: (settings) => createAdbDevices({ settings, env: process.env, platform: process.platform, home: os.homedir(), spawn: defaultSpawner }),
+    },
+    broadcast: (event) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:run-event', event)
+    },
+    confirm: async (code, detail) => {
+      let opts: Electron.MessageBoxOptions
+      if (code === 'reinstall') {
+        opts = {
+          type: 'warning',
+          message: t.runReinstallTitle,
+          detail: t.runReinstallDetail(detail ?? ''),
+          buttons: [t.runReinstallConfirm, t.quitCancel],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        }
+      } else if (code === 'trust-config') {
+        const plan = runTrustPlan(detail)
+        if (!plan) return false
+        opts = {
+          type: 'warning',
+          message: t.runTrustTitle(plan.name),
+          detail: t.runTrustDetail(plan.cwd, plan.command, plan.beforeLaunch, plan.envKeys),
+          buttons: [t.runTrustConfirm, t.quitCancel],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        }
+      } else return false
+      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+      return response === 0
+    },
+  })
+  await runManager.loadSettings()
+  const previewGate = previewIpc
+  disposeRun = registerRunIpc({ ipcMain, isAppFrame, manager: runManager, resolveDir: (dir) => previewGate.resolveDir(dir) })
+  layoutIpc = wireLayout({
+    ipcMain,
+    isAppFrame,
+    resolveDir: (p) => previewGate.resolveDir(p),
+    dataDir: DATA_DIR,
+    getJdk: () => runManager?.getSettings().jdk ?? null,
+    getRunSettings: () => runManager?.getSettings() ?? { androidSdk: null, jdk: null },
+    initScript: resource('layout-daemon/ccm-project-model.gradle', 'apps/layout-daemon/init/ccm-project-model.gradle'),
+    server: preview,
+    daemonJar: resource('layout-daemon/layout-daemon.jar', 'apps/layout-daemon/build/libs/layout-daemon.jar'),
+    logFile: path.join(app.getPath('logs'), 'layout.log'),
+    locale: app.getLocale(),
+    // Dev reuses the Gradle-staged bundle instead of the 170 MB download; CCM_LAYOUTLIB_DIR= (empty) tests the download flow.
+    layoutlibOverride: app.isPackaged ? null : (process.env.CCM_LAYOUTLIB_DIR ?? path.join(REPO, 'apps/layout-daemon/build/layoutlib-dist')),
+  })
+  // Owner decision: the Gradle project-model task runs after a successful Android build, never on project open.
+  // Flutter goes reloading → running on every hot reload; the native build only happened before the first one.
+  const modelRefreshed = new Set<string>()
+  const offModel = runManager.onSessionState((session, cfg, device) => {
+    if (session.state !== 'running' || modelRefreshed.has(session.id)) return
+    const target = afterRunTarget(cfg, device)
+    if (!target) return
+    if (modelRefreshed.size >= 100) modelRefreshed.delete(modelRefreshed.values().next().value!)
+    modelRefreshed.add(session.id)
+    layoutIpc?.model?.afterBuild(target.root, target.module, target.variant)
+  })
+  const disposeRunIpc = disposeRun
+  disposeRun = () => {
+    offModel()
+    disposeRunIpc?.()
+  }
   // Extensions tab: the page picks a catalog entry; the native confirm shows the exact claude command and is the consent.
   disposeExtensions = registerExtensionsIpc({
     ipcMain,
@@ -697,6 +826,11 @@ if (!app.requestSingleInstanceLock()) {
     // sessionEnding: logoff/shutdown already stopped everything; a modal here would block Windows.
     if (stopped || sessionEnding || !host) {
       quitting = true
+      // No graceful path here: gradle / flutter / adb children must not outlive the app.
+      if (!stopped) {
+        runManager?.killAll()
+        layoutIpc?.killNow()
+      }
       return
     }
     event.preventDefault()
@@ -710,7 +844,7 @@ if (!app.requestSingleInstanceLock()) {
         attention?.clear()
         // A hung child must never leave the app unquittable.
         const hardExit = setTimeout(() => app.exit(0), QUIT_DEADLINE_MS)
-        stopping = Promise.allSettled([host.stop(), ptys?.stop(), stopPreview()]).then(() => {
+        stopping = Promise.allSettled([host.stop(), ptys?.stop(), stopPreview(), stopRuns()]).then(() => {
           clearTimeout(hardExit)
           stopped = true
           app.quit()

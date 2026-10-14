@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { LayoutTemplate, Play, Save, Settings2, Star } from 'lucide-vue-next'
+import { CirclePlay, LayoutTemplate, Play, Save, Settings2, Star } from 'lucide-vue-next'
+import { hasRun } from '../../lib/desktop'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
+import { useRunStore } from '../../stores/run'
 
 const props = defineProps<{ anchor: DOMRect; root: string; name: string; trigger?: HTMLElement | null }>()
-const emit = defineEmits<{ scripts: []; save: []; manage: []; open: [layout: SavedLayout]; close: [] }>()
+const emit = defineEmits<{ scripts: []; run: []; save: []; manage: []; open: [layout: SavedLayout]; close: [] }>()
 
 const { t } = useI18n()
 const WIDTH = 248
 const menu = ref<HTMLElement | null>(null)
 const layouts = ref<SavedLayout[]>([])
+const run = useRunStore()
+const canRun = computed(() => hasRun && run.runnable(props.root))
 
 const style = computed(() => {
   const left = Math.max(12, Math.min(props.anchor.left, window.innerWidth - WIDTH - 12))
@@ -55,6 +59,7 @@ onMounted(async () => {
   document.addEventListener('pointerdown', onOutside, true)
   await nextTick()
   items()[0]?.focus()
+  if (hasRun && !run.detected(props.root)) void run.detect(props.root)
   if (hasLayouts) layouts.value = await listLayouts(props.root)
 })
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, true))
@@ -78,6 +83,9 @@ const ICON = 'shrink-0 text-ink-muted group-focus-visible:text-on-accent'
     <p class="truncate px-2 pt-1.5 pb-1 text-2xs font-semibold text-ink-faint" aria-hidden="true" :title="root">{{ name }}</p>
     <button v-if="hasScripts" type="button" role="menuitem" :class="ITEM" data-menu="scripts" @click="act(() => emit('scripts'))">
       <Play :size="14" :class="ICON" aria-hidden="true" /><span class="truncate">{{ t('workspace.scripts.open') }}</span>
+    </button>
+    <button v-if="canRun" type="button" role="menuitem" :class="ITEM" data-menu="run" @click="act(() => emit('run'))">
+      <CirclePlay :size="14" :class="ICON" aria-hidden="true" /><span class="truncate">{{ t('run.open') }}</span>
     </button>
     <template v-if="hasLayouts">
       <div class="mx-2 my-1 border-t border-line" role="separator" />
