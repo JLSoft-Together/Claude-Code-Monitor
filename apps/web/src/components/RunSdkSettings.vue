@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { desktop, type RunSdkKey } from '../lib/desktop'
 import { useRunStore } from '../stores/run'
+import ToggleSwitch from './ToggleSwitch.vue'
 
 /** Settings › Run: SDK / JDK folders for the Run pane (desktop with `hasRun`). Read when the panel opens. */
 const props = defineProps<{ open: boolean }>()
@@ -28,6 +29,10 @@ async function choose(kind: SdkKind): Promise<void> {
 
 async function set(kind: SdkKind, value: string | null): Promise<void> {
   failed.value = !(await run.updateSettings({ [kind]: value }))
+}
+
+async function setAutoCompile(on: boolean): Promise<void> {
+  failed.value = !(await run.updateSettings({ layoutAutoCompile: on }))
 }
 </script>
 
@@ -56,6 +61,9 @@ async function set(kind: SdkKind, value: string | null): Promise<void> {
       </div>
     </div>
     <p class="mt-1.5 px-3 text-2xs leading-relaxed text-ink-faint">{{ t('run.sdk.hint') }}</p>
+    <div class="ccm-group mt-3 overflow-hidden" data-run-auto-compile>
+      <ToggleSwitch :model-value="run.settings?.layoutAutoCompile !== false" :label="t('run.sdk.autoCompile')" :hint="t('run.sdk.autoCompileHint')" class="px-3" @update:model-value="setAutoCompile" />
+    </div>
     <p v-if="failed" class="mt-1 px-3 text-2xs text-st-error" role="alert">{{ t('run.sdk.failed') }}</p>
   </section>
 </template>

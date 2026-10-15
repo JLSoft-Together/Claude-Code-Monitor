@@ -7,6 +7,8 @@ export interface RunSettings {
   jdk: string | null
   /** Per-project Flutter SDK, keyed by `projectSdkKey(project dir)`; tried before `flutterSdk` and FVM. */
   flutterSdkProjects: Record<string, string>
+  /** XML preview: compile the project in the background when a layout uses views without classes (default on). */
+  layoutAutoCompile: boolean
 }
 
 /** Session manager side: the runner reports, the manager owns the RunSession and broadcasts. */

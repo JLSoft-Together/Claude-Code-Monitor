@@ -84,6 +84,8 @@ export type DrawableRenderResult =
       renderMs: number
       frameworkOnly: boolean
       builtinLibs: boolean
+      sourceOnly: boolean
+      prebuiltAt?: number
     }
   | { ok: false; code: string; detail?: string }
 
@@ -100,6 +102,10 @@ export type LayoutRenderResult =
       frameworkOnly: boolean
       /** No project model, the bundled ConstraintLayout / AppCompat / Material kit is loaded. */
       builtinLibs: boolean
+      /** No Gradle model: project res read from res/ folders and cached library AARs, no project classes. */
+      sourceOnly: boolean
+      /** No Gradle model: classes from the project's last build (mtime of its R.jar). */
+      prebuiltAt?: number
       /** Served from the render cache (same XML, config and model version). */
       cached: boolean
     }
@@ -107,7 +113,7 @@ export type LayoutRenderResult =
 
 export type ModelState =
   | { state: 'none' }
-  | { state: 'running'; since: number }
+  | { state: 'running'; since: number; compile?: boolean }
   | { state: 'ready'; at: number; resCount: number; classpathCount: number; warnings: number }
   | { state: 'error'; code: string; detail?: string; at: number }
 

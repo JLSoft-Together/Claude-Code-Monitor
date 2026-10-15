@@ -62,7 +62,11 @@ export function readCentralDirectory(buf: Buffer, fileSize: number): { entries: 
 }
 
 /** Minimal jar/zip extractor (stored + deflate, no zip64): the layoutlib bundle needs nothing more and the app ships no zip dependency. */
-export async function extractZip(file: string, dest: string, opts: { maxTotal: number; concurrency?: number }): Promise<{ files: number; bytes: number }> {
+export async function extractZip(
+  file: string,
+  dest: string,
+  opts: { maxTotal: number; concurrency?: number; filter?: (name: string) => boolean },
+): Promise<{ files: number; bytes: number }> {
   const fh = await fs.open(file, 'r')
   try {
     const { size: fileSize } = await fh.stat()
@@ -79,6 +83,7 @@ export async function extractZip(file: string, dest: string, opts: { maxTotal: n
       await fh.read(all, 0, fileSize, 0)
       entries = readCentralDirectory(all, fileSize).entries
     }
+    if (opts.filter) entries = entries.filter((e) => opts.filter!(e.name))
     const total = entries.reduce((n, e) => n + e.size, 0)
     if (total > opts.maxTotal) throw new ZipError('zip-too-large')
     const root = path.resolve(dest)

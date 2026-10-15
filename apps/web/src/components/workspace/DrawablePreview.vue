@@ -297,6 +297,7 @@ onBeforeUnmount(() => {
       <template v-else-if="ok">
         <CircleCheck :size="13" class="shrink-0 text-success" aria-hidden="true" />
         <span class="tabular">{{ t('layout.drawable.kind.' + ok.kind) }} · {{ t('layout.status.done', { ms: ok.renderMs }) }}</span>
+        <span v-if="ok.sourceOnly" class="truncate" :title="t('layout.model.sourceHint')" data-drawable-source>· {{ t('layout.model.source') }}</span>
       </template>
     </p>
   </section>

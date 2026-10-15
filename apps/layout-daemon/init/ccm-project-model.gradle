@@ -1,6 +1,8 @@
 // Agent Monitor — XML Layout Preview project model (read-only).
-// gradlew -q --init-script ccm-project-model.gradle :app:ccmProjectModel -Pccm.out=<file.json> [-Pccm.variant=debug]
-// Writes paths of what the last build produced; it never compiles or modifies the project.
+// gradlew -q --init-script ccm-project-model.gradle :app:ccmProjectModel -Pccm.out=<file.json> [-Pccm.variant=debug] [-Pccm.compile=true]
+// Writes paths of what the last build produced. Compiles (classes, R.jar, library jars; no dex / packaging) only with
+// -Pccm.compile=true; never modifies sources.
+// -Pccm.variant: a variant name, or a build type (flavored apps: first variant of that build type by name).
 // AGP 8.x public variant API first; internal task properties / build/intermediates paths only as fallbacks.
 
 import groovy.json.JsonOutput
@@ -11,10 +13,16 @@ def ccmArtifactType = Attribute.of('artifactType', String)
 allprojects { p ->
     p.plugins.withId('com.android.application') {
         def wantedVariant = (p.findProperty('ccm.variant') ?: 'debug').toString()
-        def captured = [:]
+        def variants = []
         def components = p.extensions.findByName('androidComponents')
         if (components != null) {
-            components.onVariants(components.selector().withName(wantedVariant)) { v -> captured.variant = v }
+            components.onVariants(components.selector().all()) { v -> variants << v }
+        }
+        def buildTypeOf = { v -> try { v.buildType } catch (Throwable ignored) { null } }
+        def pickVariant = {
+            def byName = variants.sort(false) { it.name }
+            byName.find { it.name == wantedVariant } ?: byName.find { buildTypeOf(it) == wantedVariant } ?:
+                byName.find { buildTypeOf(it) == 'debug' } ?: byName.find()
         }
 
         p.tasks.register('ccmProjectModel') { t ->
@@ -23,10 +31,30 @@ allprojects { p ->
             if (t.metaClass.respondsTo(t, 'notCompatibleWithConfigurationCache', String)) {
                 t.notCompatibleWithConfigurationCache('reads the resolved Android variant model')
             }
+            if (p.findProperty('ccm.compile')?.toString() == 'true') {
+                // Resolved once the variants are known: the variant's classes + R.jar and the runtime classpath jars
+                // (project library jars, transformed AARs).
+                t.dependsOn({
+                    def v = pickVariant()
+                    if (v == null) return []
+                    def cap = v.name.capitalize()
+                    def deps = ["compile${cap}JavaWithJavac", "compile${cap}Kotlin", "process${cap}Resources"].collect { p.tasks.findByName(it.toString()) }.findAll { it != null }
+                    def runtime = null
+                    try { runtime = v.runtimeConfiguration } catch (Throwable ignored) { }
+                    if (runtime == null) runtime = p.configurations.findByName("${v.name}RuntimeClasspath")
+                    if (runtime != null) {
+                        deps << runtime.incoming.artifactView { av ->
+                            av.lenient(true)
+                            av.attributes { a -> a.attribute(ccmArtifactType, 'android-classes-jar') }
+                        }.files
+                    }
+                    deps
+                })
+            }
             t.doLast {
                 def outPath = p.findProperty('ccm.out')
                 if (!outPath) throw new GradleException('ccmProjectModel: pass -Pccm.out=<file.json>')
-                def v = captured.variant
+                def v = pickVariant()
                 if (v == null) throw new GradleException("ccmProjectModel: variant '${wantedVariant}' not found in ${p.path}")
                 def warnings = []
                 def cap = v.name.capitalize()
@@ -154,7 +182,11 @@ allprojects { p ->
                 def activityThemes = [:]
                 if (manifest != null) {
                     safe('manifest themes') {
-                        def xml = new XmlSlurper(false, true).parse(new File(manifest))
+                        // groovy.xml.XmlSlurper: Groovy 3+ (Gradle 7+); groovy.util's is gone in Groovy 4 (Gradle 9).
+                        def slurper = ['groovy.xml.XmlSlurper', 'groovy.util.XmlSlurper'].findResult { n ->
+                            [getClass().classLoader, GroovyObject.classLoader].findResult { cl -> try { Class.forName(n, true, cl) } catch (Throwable ignored) { null } }
+                        }
+                        def xml = slurper.newInstance(false, true).parse(new File(manifest))
                         xml.declareNamespace(android: 'http://schemas.android.com/apk/res/android')
                         def qualify = { String n ->
                             if (!n) return n

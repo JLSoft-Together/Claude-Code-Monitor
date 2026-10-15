@@ -54,6 +54,8 @@ export interface RunSettings {
   jdk: string | null
   /** Per-project Flutter SDK keyed by the resolved project dir (lower-cased on Windows). */
   flutterSdkProjects?: Record<string, string>
+  /** XML preview: compile the project in the background when a layout uses views without classes. */
+  layoutAutoCompile?: boolean
 }
 
 /** The folder settings of `RunSettings` (SDK / JDK paths). */

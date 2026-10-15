@@ -19,6 +19,7 @@ export type DrawableRenderResult =
       diagnostics: LayoutDiagnostic[]
       renderMs: number
       frameworkOnly: boolean
+      sourceOnly?: boolean
     }
   | { ok: false; code: string; detail?: string }
 

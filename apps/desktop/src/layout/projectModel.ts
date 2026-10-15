@@ -13,6 +13,8 @@ export interface ProjectLoadPayload {
   activityThemes: Record<string, string>
   minSdk?: number
   targetSdk?: number
+  /** Modules' `sampledata/` folders (`@sample/<name>` design-time data). */
+  sampleDataDirs?: string[]
 }
 
 export interface ParsedProjectModel {
@@ -29,16 +31,16 @@ export const MODEL_CAPS = { resDirs: 64, aarResDirs: 1000, classpath: 4000, acti
 
 const MODULE_RE = /^(:[A-Za-z0-9_.-]+)+$/
 const VARIANT_RE = /^[A-Za-z][A-Za-z0-9]*$/
-const PACKAGE_RE = /^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)*$/
-const THEME_RE = /^@?(android:)?(style\/)?[A-Za-z_][\w.]*$/
+export const PACKAGE_RE = /^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)*$/
+export const THEME_RE = /^@?(android:)?(style\/)?[A-Za-z_][\w.]*$/
 
 /** Gradle args for `apps/layout-daemon/init/ccm-project-model.gradle`; run with the project's own wrapper. */
-export function projectModelArgs(module: string, outFile: string, initScript: string, variant = 'debug'): string[] {
+export function projectModelArgs(module: string, outFile: string, initScript: string, variant = 'debug', compile = false): string[] {
   const mod = module.startsWith(':') ? module : `:${module}`
   if (!MODULE_RE.test(mod)) throw new Error(`invalid Gradle module path: ${module}`)
   if (!VARIANT_RE.test(variant)) throw new Error(`invalid variant: ${variant}`)
   if (!path.isAbsolute(outFile) || !path.isAbsolute(initScript)) throw new Error('outFile and initScript must be absolute')
-  return ['-q', '--init-script', initScript, `${mod}:ccmProjectModel`, `-Pccm.out=${outFile}`, `-Pccm.variant=${variant}`]
+  return ['-q', '--init-script', initScript, `${mod}:ccmProjectModel`, `-Pccm.out=${outFile}`, `-Pccm.variant=${variant}`, ...(compile ? ['-Pccm.compile=true'] : [])]
 }
 
 export function parseProjectModel(
@@ -118,6 +120,8 @@ export function parseProjectModel(
   const targetSdk = sdk(m.targetSdk)
   if (minSdk !== undefined) payload.minSdk = minSdk
   if (targetSdk !== undefined) payload.targetSdk = targetSdk
+  const projectDir = str(m.projectDir)
+  if (projectDir && path.isAbsolute(projectDir) && exists(path.join(projectDir, 'sampledata'))) payload.sampleDataDirs = [path.join(projectDir, 'sampledata')]
 
   const projectDeps = [...new Set(strings(m.projectDeps).filter((d) => MODULE_RE.test(d)))].slice(0, MODEL_CAPS.projectDeps)
 

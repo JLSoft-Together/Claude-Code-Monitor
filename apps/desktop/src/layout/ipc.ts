@@ -37,7 +37,7 @@ export interface LayoutIpcDeps {
   bundle?: LayoutlibBundle
   daemon?: LayoutDaemon
   /** Project model (Phase 3); absent = framework views only. */
-  model?: Omit<ModelServiceDeps, 'modelsDir' | 'daemon' | 'broadcast' | 'log' | 'canRun'>
+  model?: Omit<ModelServiceDeps, 'modelsDir' | 'daemon' | 'broadcast' | 'log' | 'canRun' | 'sourceModels'>
   renderCacheSize?: number
 }
 
@@ -50,6 +50,7 @@ export interface LayoutIpc {
 
 const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render', 'ccm:layout-model-status', 'ccm:layout-model-refresh', 'ccm:layout-model-pick', 'ccm:layout-warmup', 'ccm:drawable-render']
 const RENDER_CACHE = 32
+const CLASS_MISSING_RE = /class not found|NoClassDefFoundError/i
 const MAX_SLOT = 3
 
 interface CachedRender {
@@ -262,6 +263,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     model = new LayoutModelService({
       ...deps.model,
       modelsDir: path.join(base, 'models'),
+      sourceModels: { gradleHome: deps.model.env.GRADLE_USER_HOME?.trim() || path.join(deps.model.home, '.gradle'), aarCacheDir: path.join(base, 'aars') },
       daemon,
       broadcast,
       log: deps.log ?? (() => undefined),
@@ -366,7 +368,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     if (xmlContent === null) return { ok: false, code: 'missing' }
     const slot = typeof r.slot === 'number' && Number.isInteger(r.slot) && r.slot >= 0 && r.slot <= MAX_SLOT ? r.slot : 0
     const params: RenderParams = { layoutPath: file, xmlContent, device, theme: cleanTheme(r.theme), night: r.night === true, locale: cleanLocale(r.locale), scale: cleanScale(r.scale) }
-    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false }
+    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false }
     const key = renderKey(params, prepared.key)
     const hit = cache.get(key)
     if (hit) {
@@ -410,7 +412,12 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
       renderMs: Number(res.renderMs) || 0,
       frameworkOnly: prepared.frameworkOnly,
       builtinLibs: prepared.builtinLibs,
+      sourceOnly: prepared.sourceOnly,
+      ...(prepared.prebuiltAt ? { prebuiltAt: prepared.prebuiltAt } : {}),
     }
+    // No Gradle model yet and views without classes, or classes of an older build: compile in the background (once
+    // per root, user setting).
+    if (model && (prepared.prebuiltAt || result.diagnostics.some((d) => CLASS_MISSING_RE.test(d.message)))) void model.autoCompile(file).catch(() => false)
     if (snap || res.png === null) cache.set(key, { result, png: snap })
     return { ...result, pngUrl, cached: false }
   })
@@ -435,7 +442,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     const kind = drawableKind(file, xmlContent)
     if (!kind) return { ok: false, code: 'not-drawable' }
     const states = Array.isArray(r.states) ? [...new Set(r.states.filter((s): s is string => typeof s === 'string' && DRAWABLE_STATES.has(s)))] : []
-    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false }
+    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false }
     let res
     try {
       await fs.mkdir(renderDir, { recursive: true })
@@ -464,6 +471,8 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
       renderMs: Number(res.renderMs) || 0,
       frameworkOnly: prepared.frameworkOnly,
       builtinLibs: prepared.builtinLibs,
+      sourceOnly: prepared.sourceOnly,
+      ...(prepared.prebuiltAt ? { prebuiltAt: prepared.prebuiltAt } : {}),
     }
   })
 

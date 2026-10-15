@@ -244,6 +244,8 @@ const en = {
       resetFor: 'Reset {name} to auto-detect',
       hint: 'Folders the Run pane uses. Auto-detect checks FVM, FLUTTER_ROOT, ANDROID_HOME, JAVA_HOME and PATH.',
       failed: 'Could not save that folder.',
+      autoCompile: 'Compile for the XML preview',
+      autoCompileHint: 'When a layout uses project or library views and there is no project model yet, compile the project in the background (Gradle, no APK) once per session.',
     },
     agent: {
       noTarget: 'No Claude or Codex tab is open in this project.',
@@ -563,6 +565,8 @@ const vi: typeof en = {
       resetFor: 'Đặt {name} về tự tìm',
       hint: 'Các thư mục mà khung Chạy dùng. Tự tìm sẽ xem FVM, FLUTTER_ROOT, ANDROID_HOME, JAVA_HOME và PATH.',
       failed: 'Không lưu được thư mục đó.',
+      autoCompile: 'Compile cho xem trước XML',
+      autoCompileHint: 'Khi layout dùng view của dự án hoặc thư viện mà chưa có mô hình dự án, compile dự án ở nền (Gradle, không tạo APK) một lần mỗi phiên.',
     },
     agent: {
       noTarget: 'Chưa có tab Claude hay Codex nào mở trong project này.',

@@ -106,6 +106,55 @@ export function parseCatalogPlugins(toml: string): Map<string, string> {
   return out
 }
 
+export interface CatalogLibrary {
+  group: string
+  name: string
+  /** null: no version in the catalog (BOM-managed or rich version without `require` / `strictly` / `prefer`). */
+  version: string | null
+}
+
+/** `[libraries]` + `[bundles]` of a version catalog, keys normalized like accessors (`sdp.android`); single-line entries only. */
+export function parseCatalogLibraries(toml: string): { libraries: Map<string, CatalogLibrary>; bundles: Map<string, string[]> } {
+  const versions = new Map<string, string>()
+  const raw: [string, string][] = []
+  const bundles = new Map<string, string[]>()
+  let section = ''
+  for (const line0 of toml.split(/\r?\n/)) {
+    const line = line0.replace(/\s+#.*$/, '').trim()
+    const head = /^\[([^\[\]]+)\]$/.exec(line)
+    if (head) {
+      section = head[1]!.trim()
+      continue
+    }
+    const m = /^["']?([\w.\-]+)["']?\s*=\s*(.+)$/.exec(line)
+    if (!m) continue
+    const key = m[1]!
+    const value = m[2]!.trim()
+    if (section === 'versions') {
+      const v = /^["']([^"']+)["']$/.exec(value)?.[1] ?? /\b(?:strictly|require|prefer)\s*=\s*["']([^"']+)["']/.exec(value)?.[1]
+      if (v) versions.set(key, v)
+    } else if (section === 'libraries') raw.push([key, value])
+    else if (section === 'bundles') bundles.set(normKey(key), [...value.matchAll(/["']([\w.\-]+)["']/g)].map((b) => normKey(b[1]!)))
+  }
+  const libraries = new Map<string, CatalogLibrary>()
+  const attr = (value: string, name: string): string | undefined => new RegExp(`(?:^|[\\s{,])${name.replace('.', '\\.')}\\s*=\\s*["']([^"']+)["']`).exec(value)?.[1]
+  for (const [key, value] of raw) {
+    let lib: CatalogLibrary | null = null
+    const short = /^["']([^"':]+):([^"':]+)(?::([^"']+))?["']$/.exec(value)
+    if (short) lib = { group: short[1]!, name: short[2]!, version: short[3] ?? null }
+    else {
+      const module = attr(value, 'module')?.split(':')
+      const group = module?.[0] ?? attr(value, 'group')
+      const name = module?.[1] ?? attr(value, 'name')
+      const ref = attr(value, 'version.ref')
+      const version = ref ? (versions.get(ref) ?? null) : (attr(value, 'version') ?? /\bversion\s*=\s*\{[^}]*\b(?:strictly|require|prefer)\s*=\s*["']([^"']+)["']/.exec(value)?.[1] ?? null)
+      if (group && name) lib = { group, name, version }
+    }
+    if (lib) libraries.set(normKey(key), lib)
+  }
+  return { libraries, bundles }
+}
+
 /** Plugin ids a build script applies (declarations with `apply false` excluded). */
 export function pluginIds(build: string, catalogs: Map<string, Map<string, string>>): string[] {
   const ids: string[] = []

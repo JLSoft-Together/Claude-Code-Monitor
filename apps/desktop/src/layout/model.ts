@@ -8,6 +8,8 @@ import { analyzeGradleRoot, stripComments } from '../run/android/detect'
 import { androidEnv, gradlewSpawn, type AndroidEnvOpts } from '../run/android/env'
 import { lineSplitter } from '../run/parse'
 import type { Spawner } from '../run/proc'
+import { depMatcher, reaches, scriptGraph } from './gradleGraph'
+import { buildSourceModel, type SourceModel } from './sourceModel'
 import { parseProjectModel, projectModelArgs, type ParsedProjectModel, type ProjectLoadPayload } from './projectModel'
 import type { LayoutEvent, LayoutModelInfo, ModelState, ModelTarget } from './types'
 
@@ -24,7 +26,7 @@ export interface ModelServiceDeps {
   platform: NodeJS.Platform
   env: NodeJS.ProcessEnv
   home: string
-  getSettings: () => { androidSdk: string | null; jdk: string | null }
+  getSettings: () => { androidSdk: string | null; jdk: string | null; layoutAutoCompile?: boolean }
   spawn: Spawner
   kill: (child: ChildProcess, sync?: boolean) => void
   daemon: ModelDaemon
@@ -36,6 +38,8 @@ export interface ModelServiceDeps {
   canRun: () => boolean
   /** Bundled loose kit (ConstraintLayout / AppCompat / Material) for layouts without a usable model; null = none. */
   looseKit?: () => Promise<ProjectLoadPayload | null>
+  /** Without a Gradle model, project res read from sources + cached AARs (`sourceModel.ts`); absent = kit / framework only. */
+  sourceModels?: { gradleHome: string; aarCacheDir: string }
   timeoutMs?: number
   debounceMs?: number
   genDebounceMs?: number
@@ -61,6 +65,13 @@ interface Entry {
   diskChecked: boolean
   /** When a watched .kt / .java changed after the model was built; 0 = none. */
   codeChangedAt: number
+  /** Manifest themes of the last source model, for the theme picker while there is no Gradle model. */
+  sourceThemes: string[]
+}
+
+interface SourceHit {
+  key: string
+  model: SourceModel
 }
 
 type Resolved = { target: ModelTarget; name: string; library?: LibraryLink } | { reason: 'no-gradle' | 'no-app' }
@@ -68,6 +79,7 @@ type Resolved = { target: ModelTarget; name: string; library?: LibraryLink } | {
 const PREFS_FILE = 'preferred-apps.json'
 
 const REFRESH_TIMEOUT_MS = 5 * 60_000
+const COMPILE_TIMEOUT_MS = 15 * 60_000
 const RES_DEBOUNCE_MS = 300
 const GEN_DEBOUNCE_MS = 1500
 const LOAD_TIMEOUT_MS = 120_000
@@ -77,59 +89,14 @@ const MAX_THEMES = 20
 const MAX_CODE_DIRS = 50
 const CODE_RE = /\.(kt|java)$/i
 const KIT_KEY = 'loose-kit'
+const SOURCE_PREFIX = 'source:'
 const BLOCKING = new Set(['sdk-missing', 'jdk-missing', 'jdk-old', 'gradlew-missing', 'gradlew-not-executable'])
 
 const isApp = (m: AndroidModule): boolean => m.type === 'application' || m.guessed
 
-/** `:core:ui-kit` → `projects.core.uiKit` (Gradle type-safe project accessor). */
-function accessorOf(modulePath: string): string {
-  const camel = (s: string): string => s.replace(/[-_]+([A-Za-z0-9])/g, (_x, c: string) => c.toUpperCase())
-  return `projects.${modulePath.replace(/^:/, '').split(':').map(camel).join('.')}`
-}
-
-function depMatcher(libPath: string): (strippedScript: string) => boolean {
-  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const byPath = new RegExp(`project\\s*\\(\\s*(?:path\\s*[:=]\\s*)?["']${esc(libPath)}["']`)
-  const byAccessor = new RegExp(`\\b${esc(accessorOf(libPath))}\\b(?!\\.)`)
-  return (text) => byPath.test(text) || byAccessor.test(text)
-}
-
 /** True when the app's build script names the library: `project(":lib")` or the type-safe accessor. */
 export function dependsOn(buildScript: string, libPath: string): boolean {
   return depMatcher(libPath)(stripComments(buildScript))
-}
-
-/** Module → project modules its build script names (direct edges only). */
-async function scriptGraph(project: AndroidProject): Promise<Map<string, string[]>> {
-  const matchers = project.modules.map((m) => ({ path: m.path, test: depMatcher(m.path) }))
-  const graph = new Map<string, string[]>()
-  await Promise.all(
-    project.modules.map(async (m) => {
-      let text: string | null = null
-      for (const name of ['build.gradle.kts', 'build.gradle']) {
-        text = await fs.readFile(path.join(m.dir, name), 'utf8').catch(() => null)
-        if (text !== null) break
-      }
-      const stripped = text === null ? '' : stripComments(text)
-      graph.set(m.path, stripped ? matchers.filter((o) => o.path !== m.path && o.test(stripped)).map((o) => o.path) : [])
-    }),
-  )
-  return graph
-}
-
-function reaches(graph: Map<string, string[]>, from: string, to: string): boolean {
-  const seen = new Set([from])
-  const queue = [from]
-  while (queue.length) {
-    for (const next of graph.get(queue.shift()!) ?? []) {
-      if (next === to) return true
-      if (!seen.has(next)) {
-        seen.add(next)
-        queue.push(next)
-      }
-    }
-  }
-  return false
 }
 
 /** A library layout renders with an app's model: `candidates` are the apps that depend on it (sorted). */
@@ -259,6 +226,15 @@ export class LayoutModelService {
   private loadedKey: string | null = null
   private version = 0
   private wanted: Entry | null = null
+  /** Source models per (entry, folder of the previewed file), rebuilt after RESOLVE_TTL_MS. */
+  private readonly sources = new Map<string, { at: number; value: SourceHit | null }>()
+  /** Source keys whose `project/load` failed in this daemon process: kit instead until it restarts. */
+  private readonly sourceFailed = new Set<string>()
+  private readonly sourceEntries = new Map<string, Entry>()
+  /** Gradle roots auto-compiled this session (once each; the Refresh button can always run again). */
+  private readonly autoTried = new Set<string>()
+  /** What the loaded source model carries: kit classes, classes of an earlier build (R.jar mtime). */
+  private loadedSource: { kit: boolean; prebuiltAt?: number } | null = null
   /** Kit load failed in this daemon process: framework-only until the daemon restarts. */
   private kitFailed = false
   private chain: Promise<unknown> = Promise.resolve()
@@ -348,7 +324,7 @@ export class LayoutModelService {
     if (e && name) e.name = name
     if (!e) {
       const hash = createHash('sha1').update(key).digest('hex').slice(0, 16)
-      e = { key, target, name: name ?? path.basename(target.root), hash, state: { state: 'none' }, model: null, at: 0, variant: 'debug', broken: false, classesChanged: false, diskChecked: false, codeChangedAt: 0 }
+      e = { key, target, name: name ?? path.basename(target.root), hash, state: { state: 'none' }, model: null, at: 0, variant: 'debug', broken: false, classesChanged: false, diskChecked: false, codeChangedAt: 0, sourceThemes: [] }
       this.entries.set(key, e)
     }
     return e
@@ -399,26 +375,47 @@ export class LayoutModelService {
     if (!('target' in r)) return { target: null, reason: r.reason, state: { state: 'none' }, hasModel: false, themes: [] }
     const e = this.entry(r.target, r.name)
     await this.loadDisk(e)
-    return { target: { ...e.target, name: e.name }, ...(r.library ? { library: r.library } : {}), state: e.state, hasModel: !!e.model && !e.broken, themes: themesOf(e.model), codeChanged: !!e.model && e.codeChangedAt > 0 }
+    return { target: { ...e.target, name: e.name }, ...(r.library ? { library: r.library } : {}), state: e.state, hasModel: !!e.model && !e.broken, themes: e.model ? themesOf(e.model) : e.sourceThemes.slice(0, MAX_THEMES), codeChanged: !!e.model && e.codeChangedAt > 0 }
   }
 
   /** Before each render: pending res changes flushed, the right project (or none) loaded. `key` changes with the model. */
-  async prepare(file: string): Promise<{ key: string; frameworkOnly: boolean; builtinLibs: boolean }> {
+  async prepare(file: string): Promise<{ key: string; frameworkOnly: boolean; builtinLibs: boolean; sourceOnly: boolean; prebuiltAt?: number }> {
     const e = await this.entryFor(file).catch(() => null)
     this.wanted = e
     await this.flushRes(false)
-    await this.serial(() => this.ensureLoaded(e)).catch((err: unknown) => this.deps.log('error', `project load: ${msg(err)}`))
-    if (!this.loadedKey) return { key: 'framework', frameworkOnly: true, builtinLibs: false }
+    await this.serial(() => this.ensureLoaded(e, file)).catch((err: unknown) => this.deps.log('error', `project load: ${msg(err)}`))
+    if (!this.loadedKey) return { key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false }
     const kit = this.loadedKey === KIT_KEY
-    return { key: `${this.loadedKey}#${this.version}`, frameworkOnly: kit, builtinLibs: kit }
+    const source = this.loadedKey.startsWith(SOURCE_PREFIX)
+    const s = source ? this.loadedSource : null
+    return {
+      key: `${this.loadedKey}#${this.version}`,
+      frameworkOnly: kit,
+      builtinLibs: kit || !!s?.kit,
+      sourceOnly: source && !s?.prebuiltAt,
+      ...(s?.prebuiltAt ? { prebuiltAt: s.prebuiltAt } : {}),
+    }
   }
 
-  private async ensureLoaded(e: Entry | null): Promise<void> {
+  private async ensureLoaded(e: Entry | null, file?: string): Promise<void> {
     if (e?.model && !e.broken) {
       if (this.loadedKey !== e.key) await this.load(e)
       return
     }
     const kit = this.kitFailed ? null : await this.deps.looseKit?.().catch(() => null)
+    // Classes of an earlier build first; when the daemon refuses them, project res only.
+    for (const prebuilt of [true, false]) {
+      const src = e && file ? await this.sourceFor(e, file, kit ?? null, prebuilt) : null
+      if (!src || this.sourceFailed.has(src.key)) continue
+      if (this.loadedKey === src.key) return
+      try {
+        await this.loadSource(e!, src)
+        return
+      } catch (err) {
+        this.sourceFailed.add(src.key)
+        this.deps.log('error', `project/load source: ${msg(err)}`)
+      }
+    }
     if (kit) {
       if (this.loadedKey !== KIT_KEY) await this.loadKit(kit)
       return
@@ -428,6 +425,60 @@ export class LayoutModelService {
     this.version++
     this.stopWatch()
     await this.deps.daemon.request('project/load', {}, this.deps.loadTimeoutMs ?? LOAD_TIMEOUT_MS)
+  }
+
+  /** Source model of the file's folder (cached RESOLVE_TTL_MS); the key changes with the payload. */
+  private async sourceFor(e: Entry, file: string, kit: ProjectLoadPayload | null, prebuilt: boolean): Promise<SourceHit | null> {
+    const opts = this.deps.sourceModels
+    if (!opts) return null
+    const scope = `${e.key}\u0000${rootKey(path.dirname(file), this.deps.platform)}\u0000${kit ? 'kit' : ''}\u0000${prebuilt ? 'prebuilt' : ''}`
+    const hit = this.sources.get(scope)
+    if (hit && this.now() - hit.at < RESOLVE_TTL_MS) return hit.value
+    let value: SourceHit | null = null
+    try {
+      const project = await analyzeGradleRoot(e.target.root)
+      const model = project ? await buildSourceModel(project, e.target.module, file, { platform: this.deps.platform, ...opts, kit, prebuilt }) : null
+      // No earlier build: the prebuilt pass equals the res-only one.
+      if (prebuilt && model && !model.prebuiltAt) return this.remember(scope, null)
+      if (model) {
+        value = { key: `${SOURCE_PREFIX}${e.hash}:${createHash('sha1').update(JSON.stringify(model.payload)).digest('hex').slice(0, 12)}`, model }
+        e.sourceThemes = model.themes
+      }
+    } catch (err) {
+      this.deps.log('warn', `source model: ${msg(err)}`)
+    }
+    return this.remember(scope, value)
+  }
+
+  private remember(scope: string, value: SourceHit | null): SourceHit | null {
+    this.sources.set(scope, { at: this.now(), value })
+    return value
+  }
+
+  /** No Gradle model: project res from sources over the kit's classes; custom views stay placeholders. */
+  private async loadSource(e: Entry, src: SourceHit): Promise<void> {
+    this.stopWatch()
+    this.loadedKey = null
+    let res: Record<string, unknown>
+    this.deps.broadcast({ type: 'loading', kind: 'project', active: true })
+    try {
+      res = ((await this.deps.daemon.request('project/load', { ...src.model.payload, projectId: src.key }, this.deps.loadTimeoutMs ?? LOAD_TIMEOUT_MS)) ?? {}) as Record<string, unknown>
+    } catch (err) {
+      this.version++
+      throw err
+    } finally {
+      this.deps.broadcast({ type: 'loading', kind: 'project', active: false })
+    }
+    this.loadedKey = src.key
+    this.loadedSource = { kit: !!this.deps.looseKit && src.model.payload.classpath.length > 0, ...(src.model.prebuiltAt ? { prebuiltAt: src.model.prebuiltAt } : {}) }
+    this.sourceEntries.set(src.key, e)
+    this.version++
+    const p = src.model.payload
+    const how = src.model.prebuiltAt ? `prebuilt ${new Date(src.model.prebuiltAt).toISOString()}, ${p.classpath.length} classpath` : 'res only'
+    this.deps.log('info', `project/load source ${e.target.module} (${how})${res.reused === true ? ' (warm)' : ''}: ${p.resDirs.length} res dirs, ${p.aarResDirs.length} aars, ${String(res.loadMs ?? '?')} ms`)
+    for (const w of [...src.model.warnings, ...(Array.isArray(res.warnings) ? res.warnings : [])].slice(0, 20)) this.deps.log('warn', String(w).slice(0, 500))
+    this.watchRes(src.key, e.target.root, p, false)
+    if (res.restartSuggested === true) this.deps.daemon.requestRestart()
   }
 
   /** Not a project model: the result stays `frameworkOnly` (no project res / classes), only library views resolve. */
@@ -492,29 +543,32 @@ export class LayoutModelService {
   }
 
   private watch(e: Entry): void {
-    if (this.watchedKey === e.key) return
+    this.watchRes(e.key, e.target.root, e.model!.payload, true)
+  }
+
+  private watchRes(key: string, root: string, payload: ProjectLoadPayload, withCode: boolean): void {
+    if (this.watchedKey === key) return
     this.stopWatch()
     const { platform } = this.deps
-    const dirs = e.model!.payload.resDirs
-    const { root } = e.target
+    const dirs = payload.resDirs
     const generated = dirs.filter((d) => isGenerated(root, d))
     const sources = dirs.filter((d) => !isGenerated(root, d))
     const offs: (() => void)[] = []
-    if (sources.length) offs.push(this.deps.watchDirs(sources, (files) => this.onRes(e.key, files, false)))
+    if (sources.length) offs.push(this.deps.watchDirs(sources, (files) => this.onRes(key, files, false)))
     if (generated.length) {
       // `clean` deletes build/ (a watch on it dies with it), so watch the module dir and keep generated res files only.
       const modules = [...new Set(generated.map((d) => moduleDirOf(root, d)))]
       offs.push(
         this.deps.watchDirs(modules, (files) => {
           const hits = files.filter((f) => generated.some((g) => isWithin(g, f, platform)))
-          if (hits.length) this.onRes(e.key, hits, true)
+          if (hits.length) this.onRes(key, hits, true)
         }),
       )
     }
-    const code = codeDirs(root, e.model!.payload, this.deps.platform, this.deps.exists ?? existsSync)
-    if (code.length) offs.push(this.deps.watchDirs(code, (files) => this.onCode(e.key, files)))
+    const code = withCode ? codeDirs(root, payload, this.deps.platform, this.deps.exists ?? existsSync) : []
+    if (code.length) offs.push(this.deps.watchDirs(code, (files) => this.onCode(key, files)))
     if (!offs.length) return
-    this.watchedKey = e.key
+    this.watchedKey = key
     this.unwatch = () => offs.forEach((off) => off())
   }
 
@@ -554,7 +608,7 @@ export class LayoutModelService {
     } catch (err) {
       this.deps.log('error', `project/changed res: ${msg(err)}`)
     }
-    const e = this.entries.get(key)
+    const e = this.entries.get(key) ?? this.sourceEntries.get(key)
     if (fromTimer && e) this.deps.broadcast({ type: 'project-changed', root: e.target.root, module: e.target.module })
   }
 
@@ -571,6 +625,7 @@ export class LayoutModelService {
     if (state !== 'ready') {
       this.loadedKey = null
       this.kitFailed = false
+      this.sourceFailed.clear()
       // Idle shutdown = no preview rendered for a while: stop watching until the next load.
       this.stopWatch()
       return
@@ -581,10 +636,27 @@ export class LayoutModelService {
     }
   }
 
+  /** Refresh button: compiles the classes the model points at, then reads the model. */
   async refreshFile(file: string): Promise<LayoutModelInfo> {
     const r = await this.resolve(file)
-    if ('target' in r) await this.refresh(r.target)
+    if ('target' in r) await this.refresh(r.target, undefined, { compile: true })
     return this.info(file)
+  }
+
+  /**
+   * A render hit views without classes and there is no usable Gradle model: compile + model in the background, once
+   * per Gradle root per session, when the user setting allows it. Returns whether a run was started.
+   */
+  async autoCompile(file: string): Promise<boolean> {
+    if (!this.deps.canRun() || this.deps.getSettings().layoutAutoCompile === false) return false
+    const e = await this.entryFor(file).catch(() => null)
+    if (!e || (e.model && !e.broken)) return false
+    const rk = rootKey(e.target.root, this.deps.platform)
+    if (this.autoTried.has(rk) || this.refreshing.has(rk)) return false
+    this.autoTried.add(rk)
+    this.deps.log('info', `project model: auto compile ${e.target.module} (views without classes)`)
+    void this.refresh(e.target, undefined, { compile: true })
+    return true
   }
 
   /** Run pane: an Android (or Flutter-on-Android) session reached `running`, so the build outputs the init script reads are fresh. */
@@ -595,21 +667,21 @@ export class LayoutModelService {
   }
 
   /** One Gradle run per root at a time; a second call joins it. */
-  refresh(target: ModelTarget, variant?: string): Promise<ModelState> {
+  refresh(target: ModelTarget, variant?: string, opts: { compile?: boolean } = {}): Promise<ModelState> {
     const e = this.entry(target)
     const rk = rootKey(target.root, this.deps.platform)
     let job = this.refreshing.get(rk)
     if (!job) {
-      job = this.runRefresh(e, variant).finally(() => this.refreshing.delete(rk))
+      job = this.runRefresh(e, variant, opts.compile === true).finally(() => this.refreshing.delete(rk))
       this.refreshing.set(rk, job)
     }
     return job.then(() => e.state)
   }
 
-  private async runRefresh(e: Entry, variant?: string): Promise<void> {
+  private async runRefresh(e: Entry, variant: string | undefined, compile: boolean): Promise<void> {
     await this.loadDisk(e)
     const fail = (code: string, detail?: string): void => this.setState(e, { state: 'error', code, ...(detail ? { detail: detail.slice(-600) } : {}), at: this.now() })
-    this.setState(e, { state: 'running', since: this.now() })
+    this.setState(e, { state: 'running', since: this.now(), ...(compile ? { compile: true } : {}) })
     const { root, module } = e.target
     const { platform, env, home } = this.deps
     try {
@@ -620,13 +692,13 @@ export class LayoutModelService {
       await fs.mkdir(this.deps.modelsDir, { recursive: true })
       const out = path.join(this.deps.modelsDir, `${e.hash}.next.json`)
       await fs.rm(out, { force: true })
-      const args = projectModelArgs(module, out, this.deps.initScript, variant ?? e.variant)
+      const args = projectModelArgs(module, out, this.deps.initScript, variant ?? e.variant, compile)
       const spec = gradlewSpawn(root, args, platform, env)
       const gradleEnv: Record<string, string> = { ...(aenv.jdk ? { JAVA_HOME: aenv.jdk } : {}), ...(aenv.sdk ? { ANDROID_HOME: aenv.sdk } : {}) }
       if (aenv.jdkNote) this.deps.log('info', `project model: ${aenv.jdkNote}`)
       this.deps.log('info', `project model: gradlew ${args.join(' ')} (in ${root})`)
       const started = this.now()
-      const run = await this.runGradle(spec.file, spec.args, spec.verbatim, root, gradleEnv)
+      const run = await this.runGradle(spec.file, spec.args, spec.verbatim, root, gradleEnv, this.deps.timeoutMs ?? (compile ? COMPILE_TIMEOUT_MS : REFRESH_TIMEOUT_MS))
       if (run.timedOut) return fail('timeout')
       const incompatible = aenv.issues.find((i) => i.code === 'jdk-incompatible')
       if (run.code !== 0) return incompatible ? fail(incompatible.code, incompatible.detail) : fail('gradle-failed', run.tail)
@@ -667,7 +739,7 @@ export class LayoutModelService {
     }
   }
 
-  private runGradle(file: string, args: string[], verbatim: boolean, cwd: string, env: Record<string, string>): Promise<{ code: number | null; tail: string; timedOut: boolean }> {
+  private runGradle(file: string, args: string[], verbatim: boolean, cwd: string, env: Record<string, string>, timeoutMs: number): Promise<{ code: number | null; tail: string; timedOut: boolean }> {
     return new Promise((resolve) => {
       let child: ChildProcess
       try {
@@ -700,10 +772,10 @@ export class LayoutModelService {
       }
       const timer = setTimeout(() => {
         timedOut = true
-        this.deps.log('error', `project model: Gradle exceeded ${(this.deps.timeoutMs ?? REFRESH_TIMEOUT_MS) / 1000} s, killed`)
+        this.deps.log('error', `project model: Gradle exceeded ${timeoutMs / 1000} s, killed`)
         this.deps.kill(child)
         finish(null)
-      }, this.deps.timeoutMs ?? REFRESH_TIMEOUT_MS)
+      }, timeoutMs)
       child.once('error', (e) => {
         tail += e.message
         finish(null)

@@ -255,7 +255,7 @@ describe('daemon loading', () => {
   it('never runs Gradle on open: framework-only until a model exists', async () => {
     const p = project()
     const { service, spawns, calls } = setup()
-    expect(await service.prepare(p.appLayout)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
+    expect(await service.prepare(p.appLayout)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false })
     expect((await service.info(p.appLayout)).state).toEqual({ state: 'none' })
     expect(spawns).toHaveLength(0)
     expect(calls).toHaveLength(0)
@@ -562,7 +562,7 @@ describe('loose kit (PLAN-v44)', () => {
     write(loose, '<androidx.constraintlayout.widget.ConstraintLayout/>')
 
     const first = await s.service.prepare(loose)
-    expect(first).toEqual({ key: expect.stringMatching(/^loose-kit#/), frameworkOnly: true, builtinLibs: true })
+    expect(first).toEqual({ key: expect.stringMatching(/^loose-kit#/), frameworkOnly: true, builtinLibs: true, sourceOnly: false })
     expect(s.calls).toEqual([{ method: 'project/load', params: { ...kit, projectId: 'loose-kit' } }])
     expect(await s.service.prepare(loose)).toEqual(first)
     expect(s.calls).toHaveLength(1)
@@ -582,22 +582,103 @@ describe('loose kit (PLAN-v44)', () => {
     expect(s.calls.at(-1)!.params).toMatchObject({ projectId: 'loose-kit' })
   })
 
+  it('without a model, project res from sources over the kit; a real model wins; a failed source load falls back to the kit', async () => {
+    const p = project()
+    const sourceModels = { gradleHome: path.join(tmp, 'no-gradle-home'), aarCacheDir: path.join(tmp, 'aars') }
+    const s = setup()
+    s.deps.looseKit = async () => kit
+    s.deps.sourceModels = sourceModels
+    const first = await s.service.prepare(p.appLayout)
+    expect(first).toEqual({ key: expect.stringMatching(/^source:/), frameworkOnly: false, builtinLibs: true, sourceOnly: true })
+    const params = s.calls[0]!.params as { resDirs: string[]; classpath: string[]; projectId: string }
+    expect(params.resDirs).toEqual([path.join(p.root, 'lib', 'src', 'main', 'res'), path.join(p.root, 'app', 'src', 'main', 'res')])
+    expect(params.classpath).toEqual(kit.classpath)
+    expect(params.projectId).toMatch(/^source:/)
+    expect(await s.service.prepare(p.appLayout)).toEqual(first)
+    expect(s.calls).toHaveLength(1)
+    expect(s.watchers.at(-1)!.dirs).toEqual(params.resDirs)
+
+    s.watchers.at(-1)!.onChange([path.join(p.root, 'app', 'src', 'main', 'res', 'values', 'colors.xml')])
+    await wait(60)
+    expect(s.calls.at(-1)!.method).toBe('project/changed')
+    expect(s.events).toContainEqual({ type: 'project-changed', root: p.root, module: ':app' })
+
+    await s.service.refresh({ root: p.root, module: ':app' })
+    const real = await s.service.prepare(p.appLayout)
+    expect(real).toMatchObject({ frameworkOnly: false, sourceOnly: false })
+    expect((s.calls.at(-1)!.params as { packageName: string }).packageName).toBe('com.example.app')
+
+    const failing = setup({ daemon: (m, params) => (m === 'project/load' && String((params as { projectId?: string }).projectId).startsWith('source:') ? Promise.reject(new Error('boom')) : { ok: true }) })
+    failing.deps.looseKit = async () => kit
+    failing.deps.sourceModels = sourceModels
+    expect(await failing.service.prepare(p.appLayout)).toMatchObject({ key: expect.stringMatching(/^loose-kit#/), sourceOnly: false })
+    await failing.service.prepare(p.appLayout)
+    expect(failing.calls.filter((c) => (c.params as { projectId?: string }).projectId?.startsWith('source:'))).toHaveLength(1)
+  })
+
   it('no kit = framework only; a failed kit load is not retried until the daemon restarts', async () => {
     const none = setup()
     none.deps.looseKit = async () => null
     const loose = path.join(tmp, `loose${Date.now()}b`, 'ad.xml')
     write(loose, '<View/>')
-    expect(await none.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
+    expect(await none.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false })
     expect(none.calls).toHaveLength(0)
 
     const s = setup({ daemon: () => { throw new Error('boom') } })
     s.deps.looseKit = async () => kit
-    expect(await s.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
+    expect(await s.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false, sourceOnly: false })
     await s.service.prepare(loose)
     expect(s.calls).toHaveLength(1)
     s.service.onDaemonState('starting')
     s.service.onDaemonState('ready')
     await s.service.prepare(loose)
     expect(s.calls).toHaveLength(2)
+  })
+})
+
+describe('compile + auto compile', () => {
+  it('the Refresh button compiles; Run builds only read the model', async () => {
+    const p = project()
+    const s = setup()
+    await s.service.refreshFile(p.appLayout)
+    expect(s.spawns[0]!.args.join(' ')).toContain('-Pccm.compile=true')
+    s.service.afterBuild(p.root, ':app', 'debug')
+    await wait(30)
+    expect(s.spawns[1]!.args.join(' ')).not.toContain('-Pccm.compile=true')
+    expect(s.events.some((e) => e.type === 'model' && e.state.state === 'running' && e.state.compile === true)).toBe(true)
+  })
+
+  it('auto compiles once per Gradle root per session, never with a model or with the setting off', async () => {
+    const p = project()
+    const s = setup()
+    expect(await s.service.autoCompile(p.appLayout)).toBe(true)
+    expect(await s.service.autoCompile(p.libLayout)).toBe(false)
+    await wait(30)
+    expect(s.spawns).toHaveLength(1)
+    expect(s.spawns[0]!.args.join(' ')).toContain('-Pccm.compile=true')
+    // The model now exists: nothing to compile.
+    const next = setup({ modelsDir: s.deps.modelsDir })
+    expect(await next.service.autoCompile(p.appLayout)).toBe(false)
+
+    const off = setup()
+    off.deps.getSettings = () => ({ androidSdk: null, jdk: null, layoutAutoCompile: false })
+    expect(await off.service.autoCompile(project().appLayout)).toBe(false)
+    const idle = setup()
+    idle.deps.canRun = () => false
+    expect(await idle.service.autoCompile(project().appLayout)).toBe(false)
+    expect(off.spawns.length + idle.spawns.length).toBe(0)
+  })
+
+  it('a source model with classes of an earlier build reports prebuiltAt', async () => {
+    const p = project()
+    write(path.join(p.root, 'app', 'build', 'intermediates', 'compile_and_runtime_not_namespaced_r_class_jar', 'debug', 'processDebugResources', 'R.jar'), 'R')
+    write(path.join(p.root, 'app', 'build', 'tmp', 'kotlin-classes', 'debug', 'A.class'), '')
+    const s = setup()
+    s.deps.sourceModels = { gradleHome: path.join(tmp, 'no-gradle-home'), aarCacheDir: path.join(tmp, 'aars') }
+    const r = await s.service.prepare(p.appLayout)
+    expect(r).toMatchObject({ frameworkOnly: false, sourceOnly: false, prebuiltAt: expect.any(Number) })
+    const params = s.calls[0]!.params as { rJar: string; classpath: string[] }
+    expect(params.rJar).toContain('R.jar')
+    expect(params.classpath[0]).toBe(path.join(p.root, 'app', 'build', 'tmp', 'kotlin-classes', 'debug'))
   })
 })

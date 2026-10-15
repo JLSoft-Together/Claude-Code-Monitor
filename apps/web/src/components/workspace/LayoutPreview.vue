@@ -121,6 +121,8 @@ const renderMs = ref<number | null>(null)
 const cached = ref(false)
 const frameworkOnly = ref(false)
 const builtinLibs = ref(false)
+const sourceOnly = ref(false)
+const prebuiltAt = ref<number | null>(null)
 const shots = shallowRef<{ cfg: CompareConfig; res: LayoutRenderResult }[]>([])
 const model = ref<LayoutModelInfo | null>(null)
 const modelBusy = ref(false)
@@ -276,9 +278,10 @@ const appPick = computed({
 const chipBase = computed(() => {
   const c = chip.value
   if (c.kind === 'ready') return t('layout.model.ready', { time: new Date(c.at ?? 0).toLocaleTimeString(uiLocale.value, { hour: '2-digit', minute: '2-digit' }) })
-  if (c.kind === 'running') return t('layout.model.running')
+  if (c.kind === 'running') return t(model.value?.state.state === 'running' && model.value.state.compile ? 'layout.model.compiling' : 'layout.model.running')
   if (c.kind === 'error') return t('layout.model.error')
-  return t(builtinLibs.value ? 'layout.model.builtin' : 'layout.model.framework')
+  if (prebuiltAt.value) return t('layout.model.prebuilt', { date: prebuiltDate.value })
+  return t(sourceOnly.value ? 'layout.model.source' : builtinLibs.value ? 'layout.model.builtin' : 'layout.model.framework')
 })
 const chipText = computed(() => {
   const b = borrowed.value
@@ -291,6 +294,8 @@ const chipTitle = computed(() => {
 })
 const chipState = computed(() => {
   const m = model.value
+  if (prebuiltAt.value && chip.value.kind === 'framework') return t('layout.model.prebuiltHint', { date: prebuiltDate.value })
+  if (sourceOnly.value && chip.value.kind === 'framework') return t('layout.model.sourceHint')
   if (builtinLibs.value && chip.value.kind === 'framework') return t('layout.model.builtinHint')
   if (!m?.target) return m?.reason === 'no-app' ? t('layout.model.noApp') : m?.reason === 'no-gradle' ? t('layout.model.noGradle') : t('layout.model.frameworkHint')
   const s = m.state
@@ -308,7 +313,8 @@ const CHIP = {
   running: { icon: LoaderCircle, cls: 'ccm-spin text-well-ink' },
   error: { icon: CircleX, cls: 'text-st-error' },
 } as const
-const showNotice = computed(() => !opts.value.compare && needsModelNotice(frameworkOnly.value, diagnostics.value))
+const prebuiltDate = computed(() => (prebuiltAt.value ? new Date(prebuiltAt.value).toLocaleDateString(uiLocale.value, { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''))
+const showNotice = computed(() => !opts.value.compare && needsModelNotice(frameworkOnly.value || sourceOnly.value || !!prebuiltAt.value, diagnostics.value))
 const compareFlat = computed(() => new Map<string, LayoutViewNode[]>(shots.value.map((s) => [s.cfg.id, s.res.ok ? flattenTree(s.res.viewTree) : []])))
 const compareLayout = computed(() => {
   // Final cell count, not shots.length: cells arrive one by one and must not resize as they do.
@@ -454,6 +460,8 @@ async function render(): Promise<void> {
   cached.value = res.cached === true
   frameworkOnly.value = res.frameworkOnly === true
   builtinLibs.value = res.builtinLibs === true
+  sourceOnly.value = res.sourceOnly === true
+  prebuiltAt.value = typeof res.prebuiltAt === 'number' ? res.prebuiltAt : null
   hovered.value = null
   cellHover.value = null
   selected.value = props.line ? nodeForLine(res.viewTree, props.line) : null
@@ -702,7 +710,7 @@ onBeforeUnmount(() => {
 
     <p v-if="ready && showNotice" class="flex shrink-0 items-start gap-2 border-b border-well-line px-3 py-1.5 text-xs" role="note" data-layout-model-notice>
       <Info :size="14" class="mt-0.5 shrink-0" aria-hidden="true" />
-      <span class="min-w-0 flex-1">{{ t('layout.model.notice') }}</span>
+      <span class="min-w-0 flex-1">{{ t(chip.kind === 'running' ? 'layout.model.noticeCompiling' : 'layout.model.notice') }}</span>
       <button v-if="model?.target && chip.kind !== 'running'" type="button" class="ccm-btn shrink-0" :disabled="modelBusy" :title="t('layout.model.refreshHint')" @click="refreshModel">
         {{ t('layout.model.refresh') }}
       </button>

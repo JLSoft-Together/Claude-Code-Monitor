@@ -85,7 +85,7 @@ const pairKey = (configId: string, deviceId: string | null): string => `${config
 export class RunManager {
   private readonly store: RunConfigStore
   private readonly trust: TrustStore
-  private settings: RunSettings = { flutterSdk: null, androidSdk: null, jdk: null, flutterSdkProjects: {} }
+  private settings: RunSettings = { flutterSdk: null, androidSdk: null, jdk: null, flutterSdkProjects: {}, layoutAutoCompile: true }
   private templates: RunTemplates = DEFAULT_RUN_TEMPLATES
   /** Owners (window + pane) holding each project root: watchers and device trackers live while held. */
   private readonly holds = new Map<string, Set<string>>()
@@ -134,7 +134,7 @@ export class RunManager {
       const projects: Record<string, string> = {}
       const rawProjects = raw.flutterSdkProjects && typeof raw.flutterSdkProjects === 'object' ? raw.flutterSdkProjects : {}
       for (const [k, v] of Object.entries(rawProjects).slice(0, MAX_PROJECT_SDKS)) if (path.isAbsolute(k) && abs(v)) projects[k] = v
-      this.settings = { flutterSdk: abs(raw.flutterSdk), androidSdk: abs(raw.androidSdk), jdk: abs(raw.jdk), flutterSdkProjects: projects }
+      this.settings = { flutterSdk: abs(raw.flutterSdk), androidSdk: abs(raw.androidSdk), jdk: abs(raw.jdk), flutterSdkProjects: projects, layoutAutoCompile: raw.layoutAutoCompile !== false }
       this.templates = cleanTemplates(await this.readJson(TEMPLATES_FILE))
     } catch {
       // unreadable: defaults
@@ -152,6 +152,7 @@ export class RunManager {
       androidSdk: abs(next.androidSdk, this.settings.androidSdk),
       jdk: abs(next.jdk, this.settings.jdk),
       flutterSdkProjects: this.settings.flutterSdkProjects,
+      layoutAutoCompile: typeof next.layoutAutoCompile === 'boolean' ? next.layoutAutoCompile : this.settings.layoutAutoCompile,
     }
     await this.writeJson(SETTINGS_FILE, this.settings)
     clearJdkCache()
