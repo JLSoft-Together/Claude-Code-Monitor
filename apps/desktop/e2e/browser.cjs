@@ -42,7 +42,7 @@ function fixture() {
   const box = (kind) => `document.querySelector('[data-kind="${kind}"]')`
   const guest = (js) => `(async () => { const w = ${box('browser')}?.querySelector('webview'); return w ? await w.executeJavaScript(${JSON.stringify(js)}) : null })()`
   const openPlus = async () => {
-    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => /^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
+    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => /^(New tab|Tab mới|New terminal or tab|Terminal hoặc tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
     await waitFor(`!!document.querySelector('[role=dialog] [data-launch="browser"]')`, 5000, '+ menu')
   }
   const focusShell = async () => {

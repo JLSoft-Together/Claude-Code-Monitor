@@ -78,9 +78,9 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     check('pane header shows session status', !!header && /Working|Waiting|Idle|Đang|Chờ|Rảnh/i.test(header), JSON.stringify(header))
 
     // Browser-style "+": icon only (v25), the accessible name says what it makes.
-    const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b ? b.textContent.trim() : null })()`)
+    const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới|New terminal or tab|Terminal hoặc tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b ? b.textContent.trim() : null })()`)
     check('+ button is icon-only, named New tab', plus === '', plus)
-    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
+    await evaluate(`[...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới|New terminal or tab|Terminal hoặc tab mới)$/.test(b.getAttribute('aria-label') ?? '')).click()`)
     await sleep(400)
     const pop = await evaluate(`!!document.querySelector('[role=dialog] [data-launch-row]')`)
     check('new-terminal popover opens', pop)

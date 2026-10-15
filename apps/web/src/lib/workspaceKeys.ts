@@ -7,6 +7,8 @@ export type WorkspaceAction =
   | { t: 'cycleTab'; step: 1 | -1 }
   | { t: 'tab'; index: number }
   | { t: 'focus'; dir: FocusDir }
+  /** The focused pane trades places with the one beside it. */
+  | { t: 'swap'; dir: FocusDir }
   /** Jump to the next pane whose agent waits for the user (or finished unseen). */
   | { t: 'attention' }
   /** ⌘P on macOS, Ctrl+Shift+P elsewhere: Ctrl+P is shell history. */
@@ -37,7 +39,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyO' && shift && !alt) return { t: 'mission' }
     if ((code === 'BracketLeft' || code === 'BracketRight') && shift && !alt) return { t: 'cycleTab', step: code === 'BracketRight' ? 1 : -1 }
     if (digit && !shift && !alt) return { t: 'tab', index: Number(digit[1]) - 1 }
-    if (alt && !shift && ARROWS[code] && multiPane) return { t: 'focus', dir: ARROWS[code]! }
+    if (alt && ARROWS[code] && multiPane) return { t: shift ? 'swap' : 'focus', dir: ARROWS[code]! }
     return null
   }
   if (meta) return null
@@ -55,6 +57,6 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (ctrl && !alt && code === 'Tab') return { t: 'cycleTab', step: shift ? -1 : 1 }
   // AltGr arrives as Ctrl+Alt on Windows; AltGr+digit types characters like @ { [ on many layouts.
   if (ctrl && alt && !shift && digit && !e.getModifierState?.('AltGraph')) return { t: 'tab', index: Number(digit[1]) - 1 }
-  if (alt && !ctrl && !shift && ARROWS[code] && multiPane) return { t: 'focus', dir: ARROWS[code]! }
+  if (alt && !ctrl && ARROWS[code] && multiPane) return { t: shift ? 'swap' : 'focus', dir: ARROWS[code]! }
   return null
 }

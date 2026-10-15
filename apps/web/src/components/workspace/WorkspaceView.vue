@@ -17,7 +17,7 @@ import { shortPath } from '../../lib/format'
 import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
 import { pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
-import { boxes, clampRatio, dividers, leaves, type Box, type Divider, type SplitDir } from '../../lib/splitLayout'
+import { boxes, clampRatio, dividers, leaves, MIN_PANE, type Box, type Divider, type Edge, type SplitDir } from '../../lib/splitLayout'
 import { workspaceAction } from '../../lib/workspaceKeys'
 import { editorKeepsKey, inEditor, onSaveAllRequest, reportDirty } from '../../lib/fileEditor'
 import { shortcutText } from '../../lib/shortcuts'
@@ -54,6 +54,7 @@ import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
 import { buildAttentionList } from '../../lib/rail/attentionList'
 import { useRail } from '../../composables/useRail'
 import { useRunStore } from '../../stores/run'
+import { usePaneDrag, type PaneDragSource, type PaneDropAction } from '../../composables/usePaneDrag'
 
 /** The view is on screen: App hides it with v-show for other views and in compact mode. */
 const props = defineProps<{ visible: boolean }>()
@@ -725,9 +726,8 @@ const MENU_ROW =
   'group/row flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none'
 
 const GAP = 8
-// 24 columns of 13px mono plus the well padding: narrower panes stop being usable for an agent TUI.
-const MIN_PANE_PX = 220
-const MIN_PANE_H_PX = 140
+const MIN_PANE_PX = MIN_PANE.w
+const MIN_PANE_H_PX = MIN_PANE.h
 
 const canvas = ref<HTMLElement | null>(null)
 const canvasSize = ref({ w: 0, h: 0 })
@@ -947,6 +947,9 @@ function onGlobalKey(e: KeyboardEvent): void {
     case 'focus':
       workspace.moveFocus(action.dir)
       break
+    case 'swap':
+      withViewTransition(() => workspace.swapWith(action.dir))
+      break
     case 'quickOpen':
       if (quickOpen.value) quickOpen.value = false
       else if (hasPreview) void openQuick()
@@ -1017,6 +1020,88 @@ function tabLabel(tab: Tab): string {
   return isTerm(pane) ? t(`workspace.preset.${pane.preset}`) : labelOf(pane)
 }
 
+const tabRow = ref<HTMLElement | null>(null)
+const dragAnnounce = ref('')
+const swapKeyName = isMac ? '⌘' : 'Ctrl'
+const tabDraggable = (tab: Tab): boolean => workspace.tabs.length > 1 && tab !== workspace.activeTab
+
+const {
+  source: dragSource,
+  preview: dropPreview,
+  toStrip: dropToStrip,
+  pointer: dragPointer,
+  onDown: onDragDown,
+} = usePaneDrag({
+  canvas,
+  strip: tabRow,
+  sourceAt(target) {
+    const tabEl = target.closest<HTMLElement>('[data-tab]')
+    if (tabEl) {
+      const tab = workspace.tabs.find((x) => x.key === tabEl.dataset.tab)
+      return tab && tabDraggable(tab) ? { kind: 'tab', key: tab.key } : null
+    }
+    const key = target.closest('[data-pane-grip]')?.closest<HTMLElement>('[data-pane]')?.dataset.pane
+    return key && multiPane.value && tabBoxes.value.has(key) ? { kind: 'pane', key } : null
+  },
+  swapKey: (e) => (isMac ? e.metaKey : e.ctrlKey),
+  onDrop: onPaneDrop,
+})
+
+// Past the middle of the window the ghost hangs left of the pointer, so it never leaves the screen.
+const ghostStyle = computed(() => {
+  const { x, y } = dragPointer.value
+  const flip = x > window.innerWidth / 2
+  return { left: `${flip ? x - 14 : x + 14}px`, top: `${y + 14}px`, transform: flip ? 'translateX(-100%)' : undefined }
+})
+
+const edgeWord = (edge: Edge): string => t(`workspace.drag.edge.${edge}`)
+
+const dragLabel = computed(() => {
+  const src = dragSource.value
+  if (!src) return ''
+  if (src.kind === 'tab') {
+    const tab = workspace.tabs.find((x) => x.key === src.key)
+    return tab ? tabLabel(tab) : ''
+  }
+  const pane = paneOf(src.key)
+  return pane ? (isTerm(pane) ? t(`workspace.preset.${pane.preset}`) : labelOf(pane)) : ''
+})
+const dragPane = computed(() => {
+  const src = dragSource.value
+  if (src?.kind === 'pane') return paneOf(src.key)
+  const tab = src && workspace.tabs.find((x) => x.key === src.key)
+  return tab ? tabPrimary(tab) : undefined
+})
+
+/** What letting go now would do, shown in the ghost. */
+const dropWord = computed(() => {
+  if (dropToStrip.value) return t('workspace.drag.newTab')
+  const p = dropPreview.value
+  if (!p) return ''
+  return p.edge ? t('workspace.drag.dock', { edge: edgeWord(p.edge) }) : t('workspace.drag.swap')
+})
+
+function onPaneDrop(src: PaneDragSource, act: PaneDropAction): void {
+  withViewTransition(() => {
+    if (src.kind === 'tab') {
+      if (act.kind === 'dock') workspace.mergeTab(src.key, act.key, act.edge)
+    } else if (act.kind === 'dock') workspace.movePane(src.key, act.key, act.edge)
+    else if (act.kind === 'swap') workspace.swapPanes(src.key, act.key)
+    else workspace.detachPane(src.key)
+  })
+  dragAnnounce.value =
+    act.kind === 'swap'
+      ? t('workspace.drag.swapped')
+      : act.kind === 'newTab'
+        ? t('workspace.drag.detached')
+        : t(src.kind === 'tab' ? 'workspace.drag.merged' : 'workspace.drag.moved', { edge: edgeWord(act.edge) })
+  void nextTick(focusActivePane)
+}
+
+function tabTip(tab: Tab): string | undefined {
+  return [tabTitle(tab), tabDraggable(tab) ? t('workspace.drag.tabHint') : ''].filter(Boolean).join('\n') || undefined
+}
+
 function tabTitle(tab: Tab): string | undefined {
   const keys = leaves(tab.root)
   const project = tabProject(tab, paneOf)
@@ -1034,7 +1119,7 @@ onMounted(() => {
   window.addEventListener('focus', clearSeenAttention)
   window.addEventListener('resize', onViewportResize)
   canvasObserver = new ResizeObserver(([entry]) => {
-    if (entry) canvasSize.value = { w: entry.contentRect.width, h: entry.contentRect.height }
+    if (entry) workspace.canvasSize = canvasSize.value = { w: entry.contentRect.width, h: entry.contentRect.height }
   })
   if (canvas.value) canvasObserver.observe(canvas.value)
 })
@@ -1094,7 +1179,11 @@ onBeforeUnmount(() => {
         @reset="resetSide"
       />
     </aside>
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2" :class="sideDragging ? 'pointer-events-none' : ''">
+    <div
+      class="flex min-h-0 min-w-0 flex-1 flex-col gap-2"
+      :class="[sideDragging ? 'pointer-events-none' : '', dragSource ? 'cursor-grabbing select-none' : '']"
+      @pointerdown="onDragDown"
+    >
     <div v-if="workspace.tabs.length" class="flex min-w-0 items-center gap-2">
       <button
         type="button"
@@ -1124,7 +1213,13 @@ onBeforeUnmount(() => {
           <BellRing :size="12" aria-hidden="true" />{{ otherNeeds }}<span class="sr-only"> {{ t('workspace.rail.needs', { n: otherNeeds }, otherNeeds) }}</span>
         </span>
       </button>
-      <div class="flex min-w-0 flex-1 items-center gap-1" data-tab-row @dblclick="onStripDblClick">
+      <div
+        ref="tabRow"
+        class="flex min-w-0 flex-1 items-center gap-1 rounded-inner outline-2 -outline-offset-2 transition-[background-color,outline-color] duration-(--ccm-dur-fast)"
+        :class="dropToStrip ? 'bg-accent-soft outline-accent' : 'outline-transparent'"
+        data-tab-row
+        @dblclick="onStripDblClick"
+      >
       <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')" @wheel="onStripWheel">
         <span
           v-if="tabPill"
@@ -1149,7 +1244,7 @@ onBeforeUnmount(() => {
             :aria-selected="tab === workspace.activeTab"
             :tabindex="tab === workspace.activeTab ? 0 : -1"
             class="inline-flex h-full max-w-[260px] min-w-0 cursor-pointer items-center gap-1.5 pr-1 pl-2.5"
-            :title="tabTitle(tab)"
+            :title="tabTip(tab)"
             @click="onTabClick(tab)"
             @keydown="onTabKey($event, i)"
           >
@@ -1344,7 +1439,7 @@ onBeforeUnmount(() => {
             @insert-image="insertFromBrowser(pane.key, null)"
           >
             <template #toolbar-end>
-              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+              <ViewPaneControls :movable="multiPane" @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </BrowserPane>
           <FilePane
@@ -1358,7 +1453,7 @@ onBeforeUnmount(() => {
             @show-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path, split: { key: pane.key, dir: 'row' } }))"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+              <ViewPaneControls :movable="multiPane" @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </FilePane>
           <LogPane
@@ -1372,7 +1467,7 @@ onBeforeUnmount(() => {
             @open="(path, line) => workspace.openFile(path, line, { cwd: pane.root ?? pane.cwd })"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+              <ViewPaneControls :movable="multiPane" @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </LogPane>
           <RunPane
@@ -1384,7 +1479,7 @@ onBeforeUnmount(() => {
             @open-agent="withViewTransition(() => workspace.split(pane.key, 'row', { kind: 'term', preset: 'claude' }))"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+              <ViewPaneControls :movable="multiPane" @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </RunPane>
           <ChangesPane
@@ -1400,7 +1495,7 @@ onBeforeUnmount(() => {
             @log="(root) => withViewTransition(() => workspace.openLog(root, { split: { key: pane.key, dir: 'row' } }))"
           >
             <template #end>
-              <ViewPaneControls @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
+              <ViewPaneControls :movable="multiPane" @split="(choice) => mouseSplit(choice, pane.key)" @close="mouseClose(pane.key)" />
             </template>
           </ChangesPane>
         </div>
@@ -1426,9 +1521,35 @@ onBeforeUnmount(() => {
           :class="d.dir === 'row' ? 'h-full w-0.5' : 'h-0.5 w-full'"
         />
       </div>
+      <!-- While a pane or tab is dragged: dividers, webviews and terminals stay out of the way. -->
+      <div v-if="dragSource" class="absolute inset-0 z-20 cursor-grabbing" aria-hidden="true" />
+      <div
+        v-if="dropPreview"
+        class="pointer-events-none absolute z-30 rounded-card border-2 border-accent bg-accent-soft motion-safe:transition-[left,top,width,height] motion-safe:duration-(--ccm-dur-fast)"
+        :style="{ left: `${dropPreview.left}px`, top: `${dropPreview.top}px`, width: `${dropPreview.width}px`, height: `${dropPreview.height}px` }"
+        aria-hidden="true"
+        data-drop-preview
+        :data-edge="dropPreview.edge ?? 'swap'"
+      />
       <MissionControl :open="missionOpen && visible" :pane-rect="paneRect" @close="closeMission" />
     </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="dragSource"
+        class="pointer-events-none fixed z-50 inline-flex h-7 max-w-[40ch] items-center gap-1.5 rounded-inner bg-control px-2 text-xs text-ink shadow-control"
+        :style="ghostStyle"
+        aria-hidden="true"
+        data-drag-ghost
+      >
+        <PaneIcon v-if="dragPane" :pane="dragPane" :size="13" class="shrink-0" />
+        <span class="min-w-0 truncate font-medium">{{ dragLabel }}</span>
+        <span v-if="dropWord" class="shrink-0 text-accent-ink">· {{ dropWord }}</span>
+        <span v-else-if="dragSource.kind === 'pane'" class="shrink-0 text-ink-faint">· {{ swapKeyName }} = {{ t('workspace.drag.swap') }}</span>
+      </div>
+    </Teleport>
+    <p class="sr-only" aria-live="polite">{{ dragAnnounce }}</p>
 
     <Teleport to="body">
       <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">

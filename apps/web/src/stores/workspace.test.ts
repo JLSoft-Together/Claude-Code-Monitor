@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
-import { leaves } from '../lib/splitLayout'
+import { boxes, leaves } from '../lib/splitLayout'
 import { primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
@@ -218,9 +218,9 @@ describe('tab project', () => {
 
   it('cycles only inside the given scope', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:/a')
-    ws.open('claude', 'C:/b')
-    const c = ws.open('claude', 'C:/a')
+    const a = ws.open('claude', 'C:/a', undefined, { tab: true })
+    ws.open('claude', 'C:/b', undefined, { tab: true })
+    const c = ws.open('claude', 'C:/a', undefined, { tab: true })
     const scope = [ws.tabOf(a.key)!.key, ws.tabOf(c.key)!.key]
     ws.cycleTab(1, scope)
     expect(ws.activeKey).toBe(a.key)
@@ -228,9 +228,9 @@ describe('tab project', () => {
 
   it('enters the scope at its first tab going forward and its last going back', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:/a')
-    const c = ws.open('claude', 'C:/a')
-    const b = ws.open('claude', 'C:/b')
+    const a = ws.open('claude', 'C:/a', undefined, { tab: true })
+    const c = ws.open('claude', 'C:/a', undefined, { tab: true })
+    const b = ws.open('claude', 'C:/b', undefined, { tab: true })
     const scope = [ws.tabOf(a.key)!.key, ws.tabOf(c.key)!.key]
     ws.cycleTab(-1, scope)
     expect(ws.activeKey).toBe(c.key)
@@ -245,5 +245,137 @@ describe('tab project', () => {
     const b = ws.openFile('C:/b/y.ts', undefined, { cwd: 'C:/b', preview: true })
     expect(b.key).not.toBe(a.key)
     expect(ws.openFile('C:/a/z.ts', undefined, { cwd: 'C:/a', preview: true }).key).toBe(a.key)
+  })
+})
+
+describe('pane drag', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('moves a pane into another tab and drops the tab it left empty', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/app')
+    const b = ws.open('claude', 'C:/app')
+    ws.movePane(b.key, a.key, 'right')
+    expect(ws.tabs).toHaveLength(1)
+    expect(leaves(ws.tabs[0]!.root)).toEqual([a.key, b.key])
+    expect(ws.activeKey).toBe(b.key)
+  })
+
+  it('merges a whole tab and keeps the target project', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/app')
+    const b = ws.open('claude', 'C:/other')
+    const c = ws.split(b.key, 'col')!
+    ws.mergeTab(ws.tabOf(b.key)!.key, a.key, 'left')
+    expect(ws.tabs).toHaveLength(1)
+    expect(leaves(ws.tabs[0]!.root)).toEqual([b.key, c.key, a.key])
+    expect(ws.tabs[0]!.project).toBe('C:/app')
+    expect(ws.activeKey).toBe(c.key)
+  })
+
+  it('swaps panes of one tab only', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    const other = ws.open('shell', 'C:/app', undefined, { tab: true })
+    ws.swapPanes(a.key, b.key)
+    expect(leaves(ws.tabOf(a.key)!.root)).toEqual([b.key, a.key])
+    ws.swapPanes(a.key, other.key)
+    expect(ws.tabs).toHaveLength(2)
+  })
+
+  it('detaches a pane into a tab of its own after its old tab', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    ws.open('shell', 'C:/x')
+    ws.detachPane(b.key)
+    expect(ws.tabs).toHaveLength(3)
+    expect(ws.tabs[1]!.root).toEqual({ pane: b.key })
+    expect(ws.tabs[1]!.project).toBe('C:/app')
+    ws.detachPane(b.key)
+    expect(ws.tabs).toHaveLength(3)
+  })
+})
+
+describe('new terminals join their project tab', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('splits the project tab beside the focused pane, also from a sub-folder', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const a = ws.open('claude', 'C:/work/app')
+    const b = ws.open('claude', 'C:/work/app/')
+    const c = ws.open('shell', 'C:/work/app/src')
+    expect(ws.tabs).toHaveLength(1)
+    expect(leaves(ws.tabs[0]!.root)).toEqual([a.key, b.key, c.key])
+    // a | b on a wide canvas, then b (800 × 900) halves downward: the layout of two columns, right one stacked.
+    expect(ws.tabs[0]!.root).toMatchObject({ dir: 'row', b: { dir: 'col' } })
+    expect(ws.activeKey).toBe(c.key)
+  })
+
+  it('three terminals of one project: one column on the left, two stacked on the right', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const [a, b, c] = [1, 2, 3].map(() => ws.open('claude', 'C:/work/app'))
+    expect(ws.tabs).toHaveLength(1)
+    expect(ws.tabs[0]!.root).toEqual({ dir: 'row', ratio: 0.5, a: { pane: a!.key }, b: { dir: 'col', ratio: 0.5, a: { pane: b!.key }, b: { pane: c!.key } } })
+  })
+
+  it('four terminals of one project fill a 2 × 2 grid', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const keys = [1, 2, 3, 4].map(() => ws.open('shell', 'C:/work/app').key)
+    const [a, b, c, d] = keys
+    expect(ws.tabs).toHaveLength(1)
+    expect(ws.tabs[0]!.root).toEqual({
+      dir: 'row',
+      ratio: 0.5,
+      a: { dir: 'col', ratio: 0.5, a: { pane: a }, b: { pane: d } },
+      b: { dir: 'col', ratio: 0.5, a: { pane: b }, b: { pane: c } },
+    })
+    expect(ws.activeKey).toBe(d)
+    const all = boxes(ws.tabs[0]!.root)
+    for (const k of keys) expect(all.get(k)).toMatchObject({ w: 0.5, h: 0.5 })
+  })
+
+  it('keeps adding to the group until panes would get too small, then starts a tab', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 600, h: 400 }
+    // 600 × 400 halves once each way (300 × 200 ≥ 220 × 140): a 2 × 2 grid is full, the 5th starts a tab.
+    for (let i = 0; i < 5; i++) ws.open('shell', 'C:/work/app')
+    expect(ws.tabs.map((t) => leaves(t.root).length)).toEqual([4, 1])
+    ws.open('shell', 'C:/work/app')
+    expect(ws.tabs.map((t) => leaves(t.root).length)).toEqual([4, 2])
+  })
+
+  it('opens another project in its own tab and goes back to the right tab later', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/work/app')
+    const o = ws.open('claude', 'C:/work/app-wt/feat')
+    expect(ws.tabs).toHaveLength(2)
+    const b = ws.open('claude', 'C:/work/app')
+    expect(ws.tabOf(b.key)).toBe(ws.tabOf(a.key))
+    expect(ws.tabOf(o.key)!.root).toEqual({ pane: o.key })
+    expect(ws.activeKey).toBe(b.key)
+  })
+
+  it('takes a tab of its own when no pane has room or one is asked for', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 400, h: 250 }
+    ws.open('claude', 'C:/work/app')
+    ws.open('claude', 'C:/work/app')
+    expect(ws.tabs).toHaveLength(2)
+    ws.canvasSize = { w: 1600, h: 900 }
+    ws.open('shell', 'C:/work/app', undefined, { tab: true })
+    expect(ws.tabs).toHaveLength(3)
   })
 })

@@ -12,6 +12,7 @@ import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
 import mapV47 from './map-v47'
+import v48 from './workspace-v48'
 
 export default {
   ...v25.en,
@@ -40,11 +41,12 @@ export default {
     ...diff.en,
     ...log.en,
     ...rail.en,
+    ...v48.en.workspace,
     tabs: 'Terminals',
-    newLabel: 'New tab',
+    newLabel: 'New terminal or tab',
     close: 'Close terminal',
     closeTab: 'Close tab',
-    newHint: 'New tab: terminal, browser, file, changes or log ({keys})',
+    newHint: "New: a terminal joins this project's tab; a browser, file, changes or log opens a tab ({keys})",
     splitPane: 'Split terminal',
     splitMenu: { title: 'Open next to it' },
     resize: 'Resize terminals',
@@ -131,7 +133,7 @@ export default {
       cancel: 'Cancel',
     },
     launch: {
-      title: 'New tab',
+      title: 'New',
       agent: 'Start',
       recent: 'Recent',
       favorites: 'Favorites',
@@ -476,6 +478,7 @@ export default {
     workspaceNote: 'Work on the Workspace tab, also while a terminal has focus.',
     item: {
       ...mapV47.en.keys,
+      ...v48.en.keys,
       sessions: 'Show or hide Sessions',
       sessionsPin: 'Pin Sessions as a column, or float it',
       activity: 'Show or hide Activity',
@@ -488,7 +491,7 @@ export default {
       hints: 'Show or hide key hints',
       help: 'Open this list',
       palette: 'Command palette',
-      wsNew: 'New tab',
+      wsNew: "New terminal (in this project's tab) or tab",
       wsSplit: 'Split the pane along its longer side',
       wsSplitRight: 'Split the pane to the right',
       wsSplitDown: 'Split the pane downward',

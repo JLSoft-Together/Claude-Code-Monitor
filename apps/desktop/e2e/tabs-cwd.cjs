@@ -49,8 +49,8 @@ async function phaseOne(app) {
   await sleep(1500)
 
   // Browser-style: the "+" sits right after the tab list, not pinned to the far right.
-  const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => b.getAttribute('aria-label') === 'New tab'); if (!b) return null; const strip = document.querySelector('[role=tablist][aria-label=Terminals]').getBoundingClientRect(); return Math.round(b.getBoundingClientRect().left - strip.right) })()`)
-  check('+ button (aria-label "New tab") follows the last tab', plus !== null && plus >= 0 && plus <= 12, plus)
+  const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find((b) => b.getAttribute('aria-label') === 'New terminal or tab'); if (!b) return null; const strip = document.querySelector('[role=tablist][aria-label=Terminals]').getBoundingClientRect(); return Math.round(b.getBoundingClientRect().left - strip.right) })()`)
+  check('+ button (aria-label "New terminal or tab") follows the last tab', plus !== null && plus >= 0 && plus <= 12, plus)
 
   // The first prompt already reports the start folder; the branch chip shows the top repo.
   await waitFor(`${W}.panes[0].liveCwd && ${W}.panes[0].branch === 'trunk'`, 15000, 'first cwd report').catch(() => {})

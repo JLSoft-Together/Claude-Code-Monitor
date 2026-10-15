@@ -13,6 +13,7 @@ import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
 import mapV47 from './map-v47'
+import v48 from './workspace-v48'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -41,11 +42,12 @@ const vi: typeof en = {
     ...diff.vi,
     ...log.vi,
     ...rail.vi,
+    ...v48.vi.workspace,
     tabs: 'Terminal',
-    newLabel: 'Tab mới',
+    newLabel: 'Terminal hoặc tab mới',
     close: 'Đóng terminal',
     closeTab: 'Đóng tab',
-    newHint: 'Tab mới: terminal, trình duyệt, file, thay đổi hoặc log ({keys})',
+    newHint: 'Mới: terminal được thêm vào tab của project này; trình duyệt, file, thay đổi hoặc log mở tab riêng ({keys})',
     splitPane: 'Chia đôi terminal',
     splitMenu: { title: 'Mở bên cạnh' },
     resize: 'Đổi kích thước terminal',
@@ -132,7 +134,7 @@ const vi: typeof en = {
       cancel: 'Huỷ',
     },
     launch: {
-      title: 'Tab mới',
+      title: 'Mới',
       agent: 'Chạy',
       recent: 'Gần đây',
       favorites: 'Yêu thích',
@@ -477,6 +479,7 @@ const vi: typeof en = {
     workspaceNote: 'Dùng ở tab Workspace, kể cả khi đang gõ trong terminal.',
     item: {
       ...mapV47.vi.keys,
+      ...v48.vi.keys,
       sessions: 'Hiện/ẩn Sessions',
       sessionsPin: 'Ghim Sessions thành cột hoặc cho nổi',
       activity: 'Hiện/ẩn Hoạt động',
@@ -489,7 +492,7 @@ const vi: typeof en = {
       hints: 'Hiện/ẩn gợi ý phím',
       help: 'Mở danh sách này',
       palette: 'Bảng lệnh',
-      wsNew: 'Tab mới',
+      wsNew: 'Terminal mới (trong tab của project) hoặc tab mới',
       wsSplit: 'Chia đôi pane theo cạnh dài hơn',
       wsSplitRight: 'Chia pane sang phải',
       wsSplitDown: 'Chia pane xuống dưới',

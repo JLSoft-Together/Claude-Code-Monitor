@@ -24,9 +24,9 @@ const CTRL = 2, SHIFT = 8
     await evaluate(`${S}.get('ui').setView('workspace')`)
     await waitFor(`!!document.querySelector('[data-launch-row]')`, 15000, 'picker')
 
-    await evaluate(`${W}.open('shell', ${JSON.stringify(REPO)})`)
-    await evaluate(`${W}.open('shell')`)
-    await evaluate(`${W}.open('shell', ${JSON.stringify(REPO)})`)
+    await evaluate(`${W}.open('shell', ${JSON.stringify(REPO)}, undefined, { tab: true })`)
+    await evaluate(`${W}.open('shell', undefined, undefined, { tab: true })`)
+    await evaluate(`${W}.open('shell', ${JSON.stringify(REPO)}, undefined, { tab: true })`)
     await waitFor(`${W}.panes.length === 3 && ${W}.panes.every(p => p.state === 'running')`, 25000, 'three shells')
     await sleep(800)
     const groups = await evaluate(`[...document.querySelectorAll('nav[aria-label=Projects] section h3')].map(h => h.textContent.trim())`)

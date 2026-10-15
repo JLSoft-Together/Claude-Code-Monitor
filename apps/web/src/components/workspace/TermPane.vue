@@ -627,7 +627,13 @@ onBeforeUnmount(() => {
     :aria-label="t(`workspace.preset.${pane.preset}`)"
     @pointerdown="onPointerDown"
   >
-    <header class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs" :data-tour="focused ? 'ws-pane' : undefined">
+    <header
+      class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs"
+      :class="multi ? 'cursor-grab' : ''"
+      :title="multi ? t('workspace.drag.paneHint', { key: isMac ? '⌘' : 'Ctrl' }) : undefined"
+      :data-pane-grip="multi || undefined"
+      :data-tour="focused ? 'ws-pane' : undefined"
+    >
       <PresetIcon :preset="pane.preset" :size="15" class="shrink-0" />
       <span class="shrink-0 font-semibold text-ink">{{ t(`workspace.preset.${pane.preset}`) }}</span>
       <span v-if="cwd" class="min-w-0 shrink truncate text-ink-faint" :title="cwd" data-cwd>{{ shortPath(cwd) }}</span>

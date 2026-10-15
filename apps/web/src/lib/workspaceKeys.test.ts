@@ -32,4 +32,11 @@ describe('workspaceAction', () => {
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })
+
+  it('Alt+arrow moves focus and Alt+Shift+arrow swaps panes, only with several panes', () => {
+    expect(workspaceAction(key('ArrowLeft', { altKey: true }), false, true)).toEqual({ t: 'focus', dir: 'left' })
+    expect(workspaceAction(key('ArrowLeft', { altKey: true, shiftKey: true }), false, true)).toEqual({ t: 'swap', dir: 'left' })
+    expect(workspaceAction(key('ArrowUp', { altKey: true, metaKey: true, shiftKey: true }), true, true)).toEqual({ t: 'swap', dir: 'up' })
+    expect(workspaceAction(key('ArrowLeft', { altKey: true, shiftKey: true }), false, false)).toBeNull()
+  })
 })

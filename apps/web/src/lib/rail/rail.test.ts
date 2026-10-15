@@ -80,9 +80,9 @@ describe('rail state', () => {
 describe('buildRail', () => {
   it('folds worktrees into one repo cluster with a checkout line each', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('claude', 'C:\\work\\app-wt\\feat')
-    ws.open('shell', 'D:\\notes')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\app-wt\\feat', undefined, { tab: true })
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
     const rail = buildRail(input())
     expect(rail.map((c) => c.name)).toEqual(['app', 'notes'])
     expect(rail[0]!.checkouts.map((c) => [c.path, c.tag, c.primary])).toEqual([
@@ -94,9 +94,9 @@ describe('buildRail', () => {
 
   it('gives two silent Claude panes of one checkout distinct ordinals', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.split(a.key, 'row')
-    ws.open('claude', 'C:\\work\\app')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     const rows = buildRail(input())[0]!.checkouts[0]!.rows
     expect(rows.map((r) => [r.task, r.ordinal])).toEqual([
       [null, 'Claude'],
@@ -107,8 +107,8 @@ describe('buildRail', () => {
 
   it('puts the ordinal behind a shared session name, never on the name', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('claude', 'C:\\work\\app')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     const rows = buildRail(input({ sessionOf: () => ({ status: 'idle', title: 'Fix login' }) }))[0]!.checkouts[0]!.rows
     expect(rows.map((r) => [r.task, r.ordinal])).toEqual([
       ['Fix login', 'Claude'],
@@ -119,7 +119,7 @@ describe('buildRail', () => {
   it('shows a tab without agents as one row and a home tab under the home cluster', () => {
     const ws = useWorkspaceStore()
     ws.runScript('D:\\notes', 'npm test')
-    ws.open('shell')
+    ws.open('shell', undefined, undefined, { tab: true })
     const rail = buildRail(input())
     expect(rail.map((c) => [c.key, c.root])).toEqual([
       ['plain:d:\\notes', 'D:\\notes'],
@@ -130,7 +130,7 @@ describe('buildRail', () => {
 
   it('gives a run pane its own row whose failed run counts as needing you', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.update(a.key, { state: 'running' })
     const r = ws.split(a.key, 'row', { kind: 'run' })!
     const rail = buildRail(input({ runOf: (p) => (p.key === r.key ? 'failed' : null) }))
@@ -145,8 +145,8 @@ describe('buildRail', () => {
 
   it('counts who needs you and marks exactly one focused row', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
-    const b = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.update(a.key, { attention: 'waiting', state: 'running' })
     const rail = buildRail(input())
     expect(rail[0]!.needs).toBe(1)
@@ -155,7 +155,7 @@ describe('buildRail', () => {
 
   it('keeps remembered projects as rowless clusters after the live ones', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     const rail = buildRail(input({ history: ['C:\\work\\app-wt\\feat', 'D:\\notes'] }))
     expect(rail.map((c) => [c.name, c.live])).toEqual([
       ['app', true],
@@ -166,13 +166,13 @@ describe('buildRail', () => {
 
   it('groups a tab whose git lookup is pending under a provisional plain key', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'E:\\fresh')
+    ws.open('claude', 'E:\\fresh', undefined, { tab: true })
     expect(buildRail(input())[0]!.key).toBe('plain:e:\\fresh')
   })
 
   it('keeps the tab project when a pane cds elsewhere', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.update(a.key, { cwd: 'D:\\notes', liveCwd: 'D:\\notes' })
     expect(buildRail(input())[0]!.name).toBe('app')
   })
@@ -224,34 +224,34 @@ describe('avatars', () => {
 describe('spaces', () => {
   it('scopes the strip to the active tab project', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
-    ws.open('shell', 'D:\\notes')
-    const c = ws.open('claude', 'C:\\work\\app-wt\\feat')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
+    const c = ws.open('claude', 'C:\\work\\app-wt\\feat', undefined, { tab: true })
     const keyOf = (k: string) => ws.tabOf(k)!.key
     expect(projectTabKeys(buildRail(input()), ws.tabs, keyOf(c.key))).toEqual([keyOf(a.key), keyOf(c.key)])
   })
 
   it('keeps tab open order on the strip, not the rail checkout grouping', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
-    const b = ws.open('claude', 'C:\\work\\app-wt\\feat')
-    const c = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('claude', 'C:\\work\\app-wt\\feat', undefined, { tab: true })
+    const c = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     const keyOf = (k: string) => ws.tabOf(k)!.key
     expect(projectTabKeys(buildRail(input()), ws.tabs, keyOf(a.key))).toEqual([keyOf(a.key), keyOf(b.key), keyOf(c.key)])
   })
 
   it('falls back to every tab when the active tab is unknown', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('shell', 'D:\\notes')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
     expect(projectTabKeys(buildRail(input()), ws.tabs, null)).toHaveLength(2)
   })
 
   it('numbers tabs sharing one folder and leaves single tabs bare', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('claude', 'c:/work/app/')
-    ws.open('shell', 'D:\\notes')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('claude', 'c:/work/app/', undefined, { tab: true })
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
     const idx = spaceIndexes(ws.tabs, (t) => t.project)
     expect(ws.tabs.map((t) => idx.get(t.key))).toEqual([1, 2, null])
     expect(spaceLabel('app', 2)).toBe('app 2')
@@ -277,10 +277,10 @@ describe('mission control', () => {
   const paneOf = (k: string) => useWorkspaceStore().panes.find((p) => p.key === k)
   it('shelves every project with its spaces and windows, unscoped', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.split(a.key, 'row')
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('shell', 'D:\\notes')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
     const shelf = missionShelf(buildRail(input()), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
     expect(shelf.map((g) => [g.name, g.spaces.length])).toEqual([
       ['app', 2],
@@ -293,7 +293,7 @@ describe('mission control', () => {
 
   it('carries a run pane state into its window', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     const r = ws.split(a.key, 'row', { kind: 'run' })!
     const shelf = missionShelf(buildRail(input({ runOf: () => 'busy' })), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
     expect(shelf[0]!.spaces[0]!.windows.find((w) => w.paneKey === r.key)).toMatchObject({ state: 'working', run: 'busy' })
@@ -301,8 +301,8 @@ describe('mission control', () => {
 
   it('numbers spaces by the primary pane folder for tabs saved before v38', () => {
     const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('claude', 'C:\\work\\app')
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     for (const tab of ws.tabs) tab.project = undefined
     const shelf = missionShelf(buildRail(input()), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
     expect(shelf[0]!.spaces.map((s) => s.label)).toEqual(['app 1', 'app 2'])
@@ -316,9 +316,9 @@ describe('mission control', () => {
 describe('needs-you list', () => {
   it('lists failed before asked, oldest first, with a footer of the rest', () => {
     const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
-    const b = ws.open('claude', 'C:\\work\\app')
-    const c = ws.open('claude', 'D:\\notes')
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const c = ws.open('claude', 'D:\\notes', undefined, { tab: true })
     ws.update(a.key, { attention: 'waiting', state: 'running' })
     ws.update(b.key, { state: 'error' })
     ws.update(c.key, { state: 'running' })

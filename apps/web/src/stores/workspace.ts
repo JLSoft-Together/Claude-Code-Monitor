@@ -1,7 +1,22 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { isAgentSessionId, isPtyPreset, type PtyPreset } from '@ccm/shared'
-import { isLayout, leaves, neighbor, removeLeaf, setRatio as setTreeRatio, splitLeaf, type FocusDir, type LayoutNode, type SplitDir } from '../lib/splitLayout'
+import {
+  dockSpot,
+  dockTree,
+  isLayout,
+  leaves,
+  movePane as moveLeaf,
+  neighbor,
+  removeLeaf,
+  setRatio as setTreeRatio,
+  splitLeaf,
+  swapPanes as swapLeaves,
+  type Edge,
+  type FocusDir,
+  type LayoutNode,
+  type SplitDir,
+} from '../lib/splitLayout'
 import type { SavedLayout } from '../lib/projects'
 import { dirKey } from './favorites'
 
@@ -460,10 +475,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return recent ? { pane: recent } : { choices: all }
   }
 
-  /** New tab holding one new pane. */
-  function open(preset: PtyPreset, cwd?: string, resume?: string): Pane {
+  /** Pane canvas in px, written by WorkspaceView: decides which side a new pane splits off. Not saved. */
+  const canvasSize = ref({ w: 0, h: 0 })
+
+  const paneOf = (k: string): Pane | undefined => panes.value.find((p) => p.key === k)
+  const within = (dir: string, root: string): boolean => dirKey(dir) === dirKey(root) || dirKey(dir).startsWith(dirKey(root) + '\\')
+
+  /** The tab working on `cwd`'s project: the active tab when it is one, else the one focused last. Home tabs match no folder. */
+  function projectTab(cwd?: string): Tab | undefined {
+    const matches = (t: Tab): boolean => {
+      const project = tabProject(t, paneOf)
+      return cwd ? !!project && within(cwd, project) : !project
+    }
+    if (activeTab.value && matches(activeTab.value)) return activeTab.value
+    const lastFocus = (t: Tab): number => Math.max(0, ...leaves(t.root).map((k) => paneOf(k)?.focusedAt ?? 0))
+    return tabs.value.filter(matches).sort((a, b) => lastFocus(b) - lastFocus(a))[0]
+  }
+
+  /**
+   * A new terminal joins its project's tab beside the focused pane; a tab of its own only when the project has none,
+   * no pane has room left, or `opts.tab` asks for one.
+   */
+  function open(preset: PtyPreset, cwd?: string, resume?: string, opts: { tab?: boolean } = {}): Pane {
     const pane = addPane(preset, cwd, resume)
-    tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: cwd })
+    const tab = opts.tab ? undefined : projectTab(cwd)
+    const spot = tab ? dockSpot(tab.root, tab.focus, canvasSize.value) : null
+    if (tab && spot) {
+      tab.root = splitLeaf(tab.root, spot.key, pane.key, spot.dir)
+      tab.focus = pane.key
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: cwd })
     activate(pane.key)
     return pane
   }
@@ -692,6 +732,71 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (next) activate(next)
   }
 
+  /** Pulls a pane out of its tab (a tab left empty goes away); false when it was not in one. */
+  function unplace(key: string): boolean {
+    const i = tabs.value.findIndex((t) => leaves(t.root).includes(key))
+    const tab = tabs.value[i]
+    if (!tab) return false
+    const root = removeLeaf(tab.root, key)
+    if (!root) tabs.value.splice(i, 1)
+    else {
+      tab.root = root
+      if (tab.focus === key) tab.focus = leaves(root)[0]!
+    }
+    return true
+  }
+
+  /** Docks `src` onto `edge` of `target`, from the same tab or from another one. */
+  function movePane(src: string, target: string, edge: Edge): void {
+    const to = tabOf(target)
+    const from = tabOf(src)
+    if (!to || !from || src === target) return
+    if (from === to) to.root = moveLeaf(to.root, src, target, edge)
+    else {
+      unplace(src)
+      to.root = dockTree(to.root, target, { pane: src }, edge)
+    }
+    activate(src)
+  }
+
+  /** Two panes of one tab trade places. */
+  function swapPanes(a: string, b: string): void {
+    const tab = tabOf(a)
+    if (!tab || tab !== tabOf(b)) return
+    tab.root = swapLeaves(tab.root, a, b)
+    activate(a)
+  }
+
+  /** Every pane of tab `tabKey` docks as one block onto `edge` of `target`; the target tab keeps its project. */
+  function mergeTab(tabKey: string, target: string, edge: Edge): void {
+    const i = tabs.value.findIndex((t) => t.key === tabKey)
+    const src = tabs.value[i]
+    const to = tabOf(target)
+    if (!src || !to || src === to) return
+    to.root = dockTree(to.root, target, src.root, edge)
+    tabs.value.splice(i, 1)
+    activate(src.focus)
+  }
+
+  /** A pane of a split tab gets a tab of its own, right after the one it left. */
+  function detachPane(key: string): void {
+    const from = tabOf(key)
+    const pane = panes.value.find((p) => p.key === key)
+    if (!from || !pane || leaves(from.root).length < 2) return
+    unplace(key)
+    const at = tabs.value.indexOf(from)
+    tabs.value.splice(at + 1, 0, { key: newKey('t'), root: { pane: key }, focus: key, project: from.project ?? pane.cwd })
+    activate(key)
+  }
+
+  /** The focused pane trades places with its neighbour on that side and keeps focus. */
+  function swapWith(dir: FocusDir): void {
+    const tab = activeTab.value
+    const key = activeKey.value
+    const next = tab && key ? neighbor(tab.root, key, dir) : null
+    if (key && next) swapPanes(key, next)
+  }
+
   function setRatio(tabKey: string, path: string, ratio: number): void {
     const tab = tabs.value.find((t) => t.key === tabKey)
     if (tab) tab.root = setTreeRatio(tab.root, path, ratio)
@@ -712,6 +817,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     panes,
     tabs,
+    canvasSize,
     activeKey,
     active,
     activeTab,
@@ -755,6 +861,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activateTab,
     cycleTab,
     moveFocus,
+    movePane,
+    swapPanes,
+    swapWith,
+    mergeTab,
+    detachPane,
     setRatio,
     remember,
     forget,

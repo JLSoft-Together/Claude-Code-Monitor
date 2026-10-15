@@ -40,9 +40,9 @@ async function run(app) {
   await evaluate(`${S}.get('ui').view = 'workspace'`)
   await waitFor(`!!document.querySelector('[data-launch-row]')`, 15000, 'picker')
 
-  await evaluate(`${W}.open('shell', ${JSON.stringify(A)})`)
-  await evaluate(`${W}.open('shell', ${JSON.stringify(B)})`)
-  await evaluate(`${W}.open('shell', ${JSON.stringify(A)})`)
+  await evaluate(`${W}.open('shell', ${JSON.stringify(A)}, undefined, { tab: true })`)
+  await evaluate(`${W}.open('shell', ${JSON.stringify(B)}, undefined, { tab: true })`)
+  await evaluate(`${W}.open('shell', ${JSON.stringify(A)}, undefined, { tab: true })`)
   await waitFor(`${W}.panes.length === 3 && ${W}.panes.every((p) => p.state === 'running')`, 25000, 'three shells')
   await sleep(1500)
 
@@ -96,7 +96,7 @@ async function run(app) {
 
   // --- Exited pane that never printed: the host refuses a missing cwd, so its xterm stays empty ---
   const GONE = path.join(BASE, 'gone')
-  const dead = JSON.stringify(await evaluate(`${W}.open('shell', ${JSON.stringify(GONE)}).key`))
+  const dead = JSON.stringify(await evaluate(`${W}.open('shell', ${JSON.stringify(GONE)}, undefined, { tab: true }).key`))
   await waitFor(`${W}.panes.find((p) => p.key === ${dead})?.state === 'error'`, 10000, 'spawn refused')
   await evaluate(`${W}.update(${dead}, { state: 'exited', exitCode: 0, error: undefined })`)
   await evaluate(`document.querySelector('[data-strip-project]').click()`)
@@ -194,7 +194,7 @@ async function run(app) {
 
   const G = path.join(BASE, 'gamma')
   fs.mkdirSync(G)
-  await evaluate(`${W}.open('shell', ${JSON.stringify(G)})`)
+  await evaluate(`${W}.open('shell', ${JSON.stringify(G)}, undefined, { tab: true })`)
   await waitFor(`!!${headOf('gamma')}`, 10000, 'gamma cluster')
   await rightClick(headOf('gamma'))
   await waitFor(`!!${MENU}`, 5000, 'gamma menu')

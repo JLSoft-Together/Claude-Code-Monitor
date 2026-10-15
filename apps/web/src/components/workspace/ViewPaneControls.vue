@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, X } from 'lucide-vue-next'
+import { Columns2, GripVertical, X } from 'lucide-vue-next'
+import { isMac } from '../../lib/platform'
 import { retireOverlay } from '../../lib/motion'
 import type { SplitChoice } from '../../stores/workspace'
 import SplitMenu from './SplitMenu.vue'
 
-/** Split + close for browser / file / changes panes, slotted into their own toolbars. */
+/** Split + close for browser / file / changes panes, slotted into their own toolbars; `movable` adds the drag grip. */
+defineProps<{ movable?: boolean }>()
 const emit = defineEmits<{ split: [choice: SplitChoice]; close: [] }>()
 
 const { t } = useI18n()
@@ -25,6 +27,14 @@ onBeforeUnmount(() => window.removeEventListener('resize', drop))
 
 <template>
   <span class="flex shrink-0 items-center gap-0.5 border-l border-line pl-1">
+    <span
+      v-if="movable"
+      class="inline-flex size-7 shrink-0 cursor-grab items-center justify-center rounded-[5px] text-ink-faint hover:bg-fill hover:text-ink"
+      :title="t('workspace.drag.paneHint', { key: isMac ? '⌘' : 'Ctrl' })"
+      data-pane-grip
+    >
+      <GripVertical :size="14" aria-hidden="true" />
+    </span>
     <button
       ref="button"
       type="button"
