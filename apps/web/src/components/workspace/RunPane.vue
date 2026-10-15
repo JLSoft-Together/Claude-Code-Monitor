@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Bot, CircleAlert, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
 import { isRunLive, type EnvIssue, type RunSession, type RunState } from '@ccm/shared'
-import { desktop, type RunSettings } from '../../lib/desktop'
+import { desktop, type RunSdkKey } from '../../lib/desktop'
 import { baseName } from '../../lib/preview'
 import { issueKey, projectMark, runStep, tidyIssueText } from '../../lib/runUi'
 import { dirKey } from '../../stores/favorites'
@@ -121,7 +121,7 @@ function issueText(issue: EnvIssue, groups: string[]): string {
   return tidyIssueText(t(key, params))
 }
 
-type SdkTarget = Exclude<keyof RunSettings, 'flutterSdkProjects'>
+type SdkTarget = RunSdkKey
 const SDK_TARGET: Record<string, SdkTarget> = {
   'flutter-missing': 'flutterSdk',
   'flutter-setting-invalid': 'flutterSdk',

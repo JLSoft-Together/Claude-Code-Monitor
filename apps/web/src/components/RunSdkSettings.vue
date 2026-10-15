@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { desktop, type RunSettings } from '../lib/desktop'
+import { desktop, type RunSdkKey } from '../lib/desktop'
 import { useRunStore } from '../stores/run'
 
 /** Settings › Run: SDK / JDK folders for the Run pane (desktop with `hasRun`). Read when the panel opens. */
@@ -10,7 +10,7 @@ const props = defineProps<{ open: boolean }>()
 const { t } = useI18n()
 const run = useRunStore()
 const failed = ref(false)
-type SdkKind = Exclude<keyof RunSettings, 'flutterSdkProjects'>
+type SdkKind = RunSdkKey
 const KINDS: SdkKind[] = ['flutterSdk', 'androidSdk', 'jdk']
 
 watch(

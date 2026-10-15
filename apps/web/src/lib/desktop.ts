@@ -56,6 +56,9 @@ export interface RunSettings {
   flutterSdkProjects?: Record<string, string>
 }
 
+/** The folder settings of `RunSettings` (SDK / JDK paths). */
+export type RunSdkKey = 'flutterSdk' | 'androidSdk' | 'jdk'
+
 export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
 
 interface DesktopBridge {
