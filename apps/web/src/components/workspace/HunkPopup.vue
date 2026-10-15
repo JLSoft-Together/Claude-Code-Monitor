@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronDown, ChevronUp, Copy, GitCompare, Undo2, X } from 'lucide-vue-next'
 import { renderLine } from '../../lib/codeView'
+import { isMac } from '../../lib/platform'
+import { keyCombo } from '../../lib/shortcuts'
 import { wordDiff, type Block } from '../../lib/diffBlocks'
 
 /** IntelliJ's change-marker popup: the old text of one change, Prev / Next, Rollback, Show diff, Copy. */
@@ -19,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; step: [dir: 1 | -1]; rollback: []; showDiff: [] }>()
 
 const { t } = useI18n()
+const prevKey = keyCombo(['Shift', 'F7'], isMac)
 const el = ref<HTMLElement | null>(null)
 const pos = ref({ top: 0, left: 0, width: 480 })
 const copied = ref(false)
@@ -113,7 +116,7 @@ const BTN = 'ccm-btn-plain shrink-0'
         <span class="min-w-0 flex-1 truncate text-xs font-medium text-ink">
           {{ t(`workspace.gutter.kind.${block.type}`) }} · <span class="tabular text-ink-muted">{{ t('workspace.gutter.popup', { n: index + 1, total }) }}</span>
         </span>
-        <button type="button" :class="BTN" :disabled="total < 2" :title="t('workspace.gutter.prev')" :aria-label="t('workspace.gutter.prev')" @click="emit('step', -1)">
+        <button type="button" :class="BTN" :disabled="total < 2" :title="t('workspace.gutter.prev', { key: prevKey })" :aria-label="t('workspace.gutter.prev', { key: prevKey })" @click="emit('step', -1)">
           <ChevronUp :size="14" aria-hidden="true" />
         </button>
         <button type="button" :class="BTN" :disabled="total < 2" :title="t('workspace.gutter.next')" :aria-label="t('workspace.gutter.next')" data-hunk-focus @click="emit('step', 1)">

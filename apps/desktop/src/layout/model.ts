@@ -8,7 +8,7 @@ import { analyzeGradleRoot, stripComments } from '../run/android/detect'
 import { androidEnv, gradlewSpawn, type AndroidEnvOpts } from '../run/android/env'
 import { lineSplitter } from '../run/parse'
 import type { Spawner } from '../run/proc'
-import { parseProjectModel, projectModelArgs, type ParsedProjectModel } from './projectModel'
+import { parseProjectModel, projectModelArgs, type ParsedProjectModel, type ProjectLoadPayload } from './projectModel'
 import type { LayoutEvent, LayoutModelInfo, ModelState, ModelTarget } from './types'
 
 export interface ModelDaemon {
@@ -34,6 +34,8 @@ export interface ModelServiceDeps {
   watchDirs: (dirs: string[], onChange: (files: string[]) => void) => () => void
   /** After-build refresh only when the preview is set up (jar + layoutlib). */
   canRun: () => boolean
+  /** Bundled loose kit (ConstraintLayout / AppCompat / Material) for layouts without a usable model; null = none. */
+  looseKit?: () => Promise<ProjectLoadPayload | null>
   timeoutMs?: number
   debounceMs?: number
   genDebounceMs?: number
@@ -74,6 +76,7 @@ const MAX_UP = 16
 const MAX_THEMES = 20
 const MAX_CODE_DIRS = 50
 const CODE_RE = /\.(kt|java)$/i
+const KIT_KEY = 'loose-kit'
 const BLOCKING = new Set(['sdk-missing', 'jdk-missing', 'jdk-old', 'gradlew-missing', 'gradlew-not-executable'])
 
 const isApp = (m: AndroidModule): boolean => m.type === 'application' || m.guessed
@@ -256,6 +259,8 @@ export class LayoutModelService {
   private loadedKey: string | null = null
   private version = 0
   private wanted: Entry | null = null
+  /** Kit load failed in this daemon process: framework-only until the daemon restarts. */
+  private kitFailed = false
   private chain: Promise<unknown> = Promise.resolve()
   private unwatch: (() => void) | null = null
   private watchedKey: string | null = null
@@ -398,17 +403,24 @@ export class LayoutModelService {
   }
 
   /** Before each render: pending res changes flushed, the right project (or none) loaded. `key` changes with the model. */
-  async prepare(file: string): Promise<{ key: string; frameworkOnly: boolean }> {
+  async prepare(file: string): Promise<{ key: string; frameworkOnly: boolean; builtinLibs: boolean }> {
     const e = await this.entryFor(file).catch(() => null)
     this.wanted = e
     await this.flushRes(false)
     await this.serial(() => this.ensureLoaded(e)).catch((err: unknown) => this.deps.log('error', `project load: ${msg(err)}`))
-    return this.loadedKey ? { key: `${this.loadedKey}#${this.version}`, frameworkOnly: false } : { key: 'framework', frameworkOnly: true }
+    if (!this.loadedKey) return { key: 'framework', frameworkOnly: true, builtinLibs: false }
+    const kit = this.loadedKey === KIT_KEY
+    return { key: `${this.loadedKey}#${this.version}`, frameworkOnly: kit, builtinLibs: kit }
   }
 
   private async ensureLoaded(e: Entry | null): Promise<void> {
     if (e?.model && !e.broken) {
       if (this.loadedKey !== e.key) await this.load(e)
+      return
+    }
+    const kit = this.kitFailed ? null : await this.deps.looseKit?.().catch(() => null)
+    if (kit) {
+      if (this.loadedKey !== KIT_KEY) await this.loadKit(kit)
       return
     }
     if (this.loadedKey === null) return
@@ -418,17 +430,42 @@ export class LayoutModelService {
     await this.deps.daemon.request('project/load', {}, this.deps.loadTimeoutMs ?? LOAD_TIMEOUT_MS)
   }
 
+  /** Not a project model: the result stays `frameworkOnly` (no project res / classes), only library views resolve. */
+  private async loadKit(kit: ProjectLoadPayload): Promise<void> {
+    this.stopWatch()
+    this.loadedKey = null
+    let res: Record<string, unknown>
+    this.deps.broadcast({ type: 'loading', kind: 'kit', active: true })
+    try {
+      res = ((await this.deps.daemon.request('project/load', { ...kit, projectId: KIT_KEY }, this.deps.loadTimeoutMs ?? LOAD_TIMEOUT_MS)) ?? {}) as Record<string, unknown>
+    } catch (err) {
+      this.kitFailed = true
+      this.version++
+      throw err
+    } finally {
+      this.deps.broadcast({ type: 'loading', kind: 'kit', active: false })
+    }
+    this.loadedKey = KIT_KEY
+    this.version++
+    this.deps.log('info', `project/load loose kit${res.reused === true ? ' (warm)' : ''}: ${String(res.resCount ?? '?')} res, ${String(res.loadMs ?? '?')} ms`)
+    for (const w of Array.isArray(res.warnings) ? res.warnings.slice(0, 20) : []) this.deps.log('warn', String(w).slice(0, 500))
+    if (res.restartSuggested === true) this.deps.daemon.requestRestart()
+  }
+
   private async load(e: Entry): Promise<void> {
     let res: Record<string, unknown>
     try {
       // projectId: the daemon keeps a few projects warm, so switching back skips the AAR / classpath load.
       const params = { ...e.model!.payload, projectId: e.hash, classesChanged: e.classesChanged }
+      this.deps.broadcast({ type: 'loading', kind: 'project', active: true })
       res = ((await this.deps.daemon.request('project/load', params, this.deps.loadTimeoutMs ?? LOAD_TIMEOUT_MS)) ?? {}) as Record<string, unknown>
     } catch (err) {
       this.loadedKey = null
       e.broken = true
       this.setState(e, { state: 'error', code: 'load-failed', detail: msg(err).slice(0, 600), at: this.now() })
       throw err
+    } finally {
+      this.deps.broadcast({ type: 'loading', kind: 'project', active: false })
     }
     this.loadedKey = e.key
     e.classesChanged = false
@@ -533,6 +570,7 @@ export class LayoutModelService {
   onDaemonState(state: string): void {
     if (state !== 'ready') {
       this.loadedKey = null
+      this.kitFailed = false
       // Idle shutdown = no preview rendered for a while: stop watching until the next load.
       this.stopWatch()
       return

@@ -5,7 +5,7 @@ import { X } from 'lucide-vue-next'
 import { desktop, hasTerminals } from '../lib/desktop'
 import { isMac } from '../lib/platform'
 import { retireOverlay } from '../lib/motion'
-import { SHORTCUTS, viewShortcuts, workspaceShortcuts, type Shortcut } from '../lib/shortcuts'
+import { formatKeys, SHORTCUTS, viewShortcuts, workspaceShortcuts, type Shortcut } from '../lib/shortcuts'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -103,7 +103,7 @@ watch(
                   <dt class="min-w-0 text-ink">{{ t(`keys.item.${s.id}`) }}</dt>
                   <dd class="flex shrink-0 items-center gap-1">
                     <kbd
-                      v-for="(k, i) in s.keys"
+                      v-for="(k, i) in formatKeys(s.keys, isMac)"
                       :key="i"
                       class="inline-flex h-5 min-w-5 items-center justify-center rounded-inner bg-fill px-1.5 font-sans text-2xs font-medium text-ink-muted"
                     >{{ k }}</kbd>

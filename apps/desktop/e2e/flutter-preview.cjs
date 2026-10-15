@@ -90,6 +90,8 @@ async function run(app) {
   check('no horizontal overflow', await evaluate(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`))
   await shot('fwp-01-panel')
 
+  // The panel holds the device trackers: let the real list land first so it does not replace the fake one mid-check.
+  await waitFor(`${S}.get('run').devicesLoaded`, 8000, 'devices listed').catch(() => {})
   await evaluate(`${S}.get('run').devices = [{ id: 'emu-a', name: 'Emu A', platform: 'android-x64', emulator: true, state: 'ready', source: 'flutter' }, { id: 'emu-b', name: 'Emu B', platform: 'android-x64', emulator: true, state: 'ready', source: 'flutter' }]`)
   await waitFor(`!!document.querySelector('[data-fwp-device]')`, 3000, 'device picker').catch(() => {})
   check('device picker lists the mobile devices', await evaluate(`!!document.querySelector('[data-fwp-device]')`))

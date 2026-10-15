@@ -6,6 +6,8 @@ import { useI18n } from 'vue-i18n'
 import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Puzzle, Search, SquareTerminal, Sun } from 'lucide-vue-next'
 import { hasExtensions, hasTerminals } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
+import { isMac } from '../lib/platform'
+import { formatKeys } from '../lib/shortcuts'
 import { withViewTransition } from '../lib/motion'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -175,11 +177,11 @@ function onTabKey(e: KeyboardEvent): void {
             data-tour="palette"
             :aria-label="t('palette.open')"
             :title="t('palette.open')"
-            aria-keyshortcuts="Control+K"
+            :aria-keyshortcuts="isMac ? 'Meta+K' : 'Control+K'"
             @click="ui.paletteOpen = true"
           >
             <Search :size="16" aria-hidden="true" />
-            <kbd class="hidden rounded-[4px] bg-fill px-1 font-mono text-2xs text-ink-faint 2xl:inline">Ctrl K</kbd>
+            <kbd class="hidden rounded-[4px] bg-fill px-1 font-mono text-2xs text-ink-faint 2xl:inline">{{ formatKeys(['Mod', 'K'], isMac).join(isMac ? '' : ' ') }}</kbd>
           </button>
           <button
             type="button"

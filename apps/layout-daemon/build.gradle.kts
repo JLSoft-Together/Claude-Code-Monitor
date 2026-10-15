@@ -96,3 +96,62 @@ tasks.test {
     systemProperty("layoutlib.dir", layoutlibDist.get().asFile.path)
     testLogging { events("passed", "failed", "skipped"); showStandardStreams = false; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }
+
+// Loose kit (PLAN-v44): library views for a layout XML outside any Gradle project; shipped next to the daemon jar.
+val looseKit by configurations.creating
+val looseKitDir = layout.buildDirectory.dir("loose-kit")
+val looseKitTheme = "@style/Theme.Material3.DayNight.NoActionBar"
+dependencies {
+    looseKit("androidx.constraintlayout:constraintlayout:2.2.1")
+    looseKit("androidx.appcompat:appcompat:1.6.1")
+    looseKit("com.google.android.material:material:1.12.0")
+}
+// Never on the view render path: app start-up, background work, Kotlin (the daemon jar already carries a stdlib).
+looseKit.exclude(group = "org.jetbrains.kotlin")
+looseKit.exclude(group = "org.jetbrains.kotlinx")
+looseKit.exclude(group = "org.jetbrains", module = "annotations")
+looseKit.exclude(group = "com.google.errorprone")
+looseKit.exclude(group = "com.google.guava")
+listOf(
+    "androidx.core" to "core-ktx", "androidx.profileinstaller" to "profileinstaller", "androidx.startup" to "startup-runtime",
+    "androidx.lifecycle" to "lifecycle-process", "androidx.documentfile" to "documentfile", "androidx.print" to "print",
+    "androidx.localbroadcastmanager" to "localbroadcastmanager", "androidx.legacy" to "legacy-support-core-utils",
+    "androidx.concurrent" to "concurrent-futures", "androidx.tracing" to "tracing",
+).forEach { (g, m) -> looseKit.exclude(group = g, module = m) }
+
+val kitgen: SourceSet by sourceSets.creating
+dependencies { "kitgenImplementation"("net.bytebuddy:byte-buddy:1.18.14") }
+
+val stageLooseKitFiles by tasks.registering {
+    inputs.files(looseKit)
+    outputs.dir(looseKitDir)
+    doLast {
+        val out = looseKitDir.get().asFile
+        out.deleteRecursively()
+        looseKit.resolvedConfiguration.resolvedArtifacts.distinctBy { it.file }.forEach { a ->
+            val id = a.moduleVersion.id
+            val name = "${id.name}-${id.version}"
+            if (a.file.name.endsWith(".aar")) {
+                copy { from(zipTree(a.file)) { include("R.txt", "AndroidManifest.xml", "res/**") }; into(File(out, "aars/$name")) }
+                copy { from(zipTree(a.file)) { include("classes.jar"); rename { "$name.jar" } }; into(File(out, "classes")) }
+                copy { from(zipTree(a.file)) { include("libs/*.jar"); eachFile { path = "$name-${file.name}" }; includeEmptyDirs = false }; into(File(out, "classes")) }
+            } else {
+                copy { from(a.file); rename { "$name.jar" }; into(File(out, "classes")) }
+            }
+        }
+    }
+}
+
+val stageLooseKit by tasks.registering(JavaExec::class) {
+    dependsOn(stageLooseKitFiles)
+    classpath = kitgen.runtimeClasspath
+    mainClass.set("dev.ccm.layoutdaemon.kitgen.LooseKitGenKt")
+    args(looseKitDir.get().asFile.path, "dev.ccm.loosekit", looseKitTheme, "constraintlayout 2.2.1, appcompat 1.6.1, material 1.12.0")
+    outputs.file(looseKitDir.map { it.file("kit.json") })
+}
+
+tasks.assemble { dependsOn(stageLooseKit) }
+tasks.test {
+    dependsOn(stageLooseKit)
+    systemProperty("loosekit.dir", looseKitDir.get().asFile.path)
+}

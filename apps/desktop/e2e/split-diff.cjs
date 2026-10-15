@@ -8,17 +8,31 @@ const path = require('node:path')
 const { launch, OUT } = require('./cdp.cjs')
 const S = `document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s`
 const W = `${S}.get('workspace')`
+const MOD = process.platform === 'darwin' ? 4 : 2
 const results = []
+
+/** Clipboard text with LF line ends (the OS clipboard may hold CRLF). */
+async function clipboardText(evaluate) {
+  let text = await evaluate(`navigator.clipboard.readText().catch(() => null)`)
+  if (typeof text !== 'string') {
+    text = process.platform === 'darwin' ? execFileSync('pbpaste', { encoding: 'utf8' }) : execFileSync('powershell', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard -Raw'], { encoding: 'utf8' }).replace(/\r?\n$/, '')
+  }
+  return text.replace(/\r\n/g, '\n')
+}
 const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); console.log(results.at(-1)) }
 
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccm-e2e-split-')))
 const git = (...args) => execFileSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@local', '-c', 'commit.gpgsign=false', ...args], { cwd: DIR, stdio: 'ignore' })
 const base = Array.from({ length: 400 }, (_, i) => `const line${i + 1} = ${i + 1}`)
+// v45: past 3 000 rows each side is windowed; select all + copy must still give the whole side.
+const bigOld = Array.from({ length: 4000 }, (_, i) => `export const big${i} = ${i}`)
+const bigNew = bigOld.map((l, i) => (i % 500 === 7 ? `${l} // changed` : l)).filter((_, i) => i !== 2500)
 
 function fixture() {
   fs.mkdirSync(path.join(DIR, 'src'), { recursive: true })
   fs.writeFileSync(path.join(DIR, 'src', 'long.ts'), base.join('\n') + '\n')
   fs.writeFileSync(path.join(DIR, 'src', 'imp.ts'), "import { a } from './a'\n\nexport const x = a\nexport const y = 1\n")
+  fs.writeFileSync(path.join(DIR, 'src', 'big.ts'), bigOld.join('\n') + '\n')
   git('init', '-q', '-b', 'main')
   git('config', 'core.autocrlf', 'false')
   git('add', '-A')
@@ -29,6 +43,7 @@ function fixture() {
   now.splice(299, 10)
   now.splice(150, 0, ...Array.from({ length: 6 }, (_, i) => `const added${i} = ${i}`))
   fs.writeFileSync(path.join(DIR, 'src', 'long.ts'), now.join('\n') + '\n')
+  fs.writeFileSync(path.join(DIR, 'src', 'big.ts'), bigNew.join('\n') + '\n')
   // imp.ts: one import-only change and one real change.
   fs.writeFileSync(path.join(DIR, 'src', 'imp.ts'), "import { a } from './b'\n\nexport const x = a\nexport const y = 2\n")
 }
@@ -119,7 +134,10 @@ async function run(app) {
   await pick(app, '[data-hl="split"]')
   check('Split changes: the modified block becomes deleted + inserted (4 changes)', /4\s*$/.test((await evaluate(position)).trim()) && (await evaluate(`!!document.querySelector('${C} [data-side=left] .sd-row.deleted') && !document.querySelector('${C} .sd-row.modified')`)), await evaluate(position))
   await pick(app, '[data-hl="none"]')
-  check('None: no row tint, no word marks, connectors stay', await evaluate(`(() => {
+  // Connectors are drawn only for changes on screen; the zoom step left both panes between changes.
+  await evaluate(`document.querySelector('${C} [data-side=left]').scrollTop = 0`)
+  await waitFor(`!!document.querySelector('${C} path.sd-conn')`, 3000, 'connectors').catch(() => {})
+  check('None: no row tint, no word marks, connectors stay',await evaluate(`(() => {
     const row = document.querySelector('${C} [data-side=right] .sd-row[data-block]')
     return !!document.querySelector('${C} .is-split.hl-none') && !document.querySelector('${C} [data-side] mark') && getComputedStyle(row).backgroundColor === 'rgba(0, 0, 0, 0)' && !!document.querySelector('${C} path.sd-conn')
   })()`))
@@ -167,6 +185,31 @@ async function run(app) {
   check('Ignore imports hides the import-only change and says so', !!(await evaluate(`document.querySelector('${C} [data-diff-imports-hidden]')`)) && /1\s*$/.test((await evaluate(position)).trim()), await evaluate(position))
   await pick(app, '[data-ws="none"]')
   await evaluate(`document.querySelector('[data-diff-options]') && document.querySelector('${C} [data-diff-options-button]').click()`)
+
+  // Windowed split diff: Ctrl/⌘+A on one side, Ctrl/⌘+C → that whole side (old / new file), not the rendered rows.
+  await evaluate(`${W}.openChanges(${JSON.stringify(DIR)}, { select: ${JSON.stringify(path.join(DIR, 'src', 'big.ts'))} })`)
+  await waitFor(`(document.querySelector('${C} [data-changes-path]')?.textContent ?? '').includes('big.ts') && !!document.querySelector('${C} [data-side=right] [data-i]')`, 10000, 'big.ts').catch(() => {})
+  const bigRows = await evaluate(`[...document.querySelectorAll('${C} [data-side]')].map((p) => p.querySelectorAll('[data-i]').length)`)
+  check('big split diff renders a window of rows per side', bigRows.length === 2 && bigRows.every((n) => n > 0 && n < 1000), JSON.stringify(bigRows))
+  const copySide = async (side) => {
+    await evaluate(`navigator.clipboard.writeText('sentinel').catch(() => {})`)
+    await evaluate(`document.querySelector('${C} [data-side=${side}]').focus()`)
+    await app.key('a', 'KeyA', 65, MOD)
+    await sleep(150)
+    const marked = await evaluate(`[...document.querySelectorAll('${C} [data-side] .sd-body')].map((b) => b.classList.contains('is-all'))`)
+    await app.key('c', 'KeyC', 67, MOD)
+    await sleep(300)
+    return { marked, text: await clipboardText(evaluate) }
+  }
+  const right = await copySide('right')
+  check('Ctrl/⌘+A marks only the focused side', JSON.stringify(right.marked) === '[false,true]', JSON.stringify(right.marked))
+  check('right side copy = whole new file', right.text === bigNew.join('\n'), `${right.text.length} vs ${bigNew.join('\n').length}`)
+  await shot('split-diff-06-select-all')
+  const left = await copySide('left')
+  check('left side copy = whole old file, only the left side marked', left.text === bigOld.join('\n') && JSON.stringify(left.marked) === '[true,false]', `${left.text.length} vs ${bigOld.join('\n').length} ${JSON.stringify(left.marked)}`)
+  await evaluate(`document.querySelector('${C} [data-side=right]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))`)
+  await sleep(100)
+  check('a click clears the select-all mark', await evaluate(`!document.querySelector('${C} .sd-body.is-all')`))
 
   // Split view in the Log: <hash>^ / <hash>; the root commit has no parent side.
   git('add', '-A')

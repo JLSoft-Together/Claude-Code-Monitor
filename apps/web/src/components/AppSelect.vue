@@ -20,6 +20,8 @@ const props = withDefaults(
   { size: 'md', icon: undefined, display: undefined },
 )
 const model = defineModel<T>({ required: true })
+// Two roots (trigger + teleported list): Vue drops fallthrough attrs, so hooks like `data-fwp-device` go on the trigger.
+defineOptions({ inheritAttrs: false })
 
 const id = useId()
 const open = ref(false)
@@ -179,6 +181,7 @@ const triggerCls = computed(() =>
 <template>
   <button
     ref="trigger"
+    v-bind="$attrs"
     type="button"
     role="combobox"
     :aria-label="label"

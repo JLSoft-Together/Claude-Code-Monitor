@@ -9,6 +9,8 @@ export interface MenuAction {
   disabled?: boolean
   /** Second line under the label (why it is disabled, a caveat). */
   hint?: string
+  /** Long hint (a warning): wraps instead of truncating. */
+  wrapHint?: boolean
   children?: MenuEntry[]
 }
 export type MenuEntry = MenuAction | { separator: true }

@@ -17,6 +17,8 @@ import { useUiStore } from '../stores/ui'
 import ContextGauge from './ContextGauge.vue'
 import ProviderBadge from './ProviderBadge.vue'
 import StatusIcon from './StatusIcon.vue'
+import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import type { MapNodeContext } from '../lib/mapNav'
 import TokenCount from './TokenCount.vue'
 
 const props = defineProps<{ id: string; data: { agentId: string }; picked?: boolean }>()
@@ -28,6 +30,16 @@ const ui = useUiStore()
 const extras = useExtrasStore()
 const { id: flowId, viewport, findNode, updateNode } = useVueFlow()
 const highlighted = inject<ComputedRef<Set<string> | null>>('ccm-highlight')
+const mapCtx = inject<MapNodeContext | null>('ccm-map-node', null)
+const tabbable = computed(() => mapCtx?.tabStop.value === props.id)
+const findHit = computed(() => {
+  const set = mapCtx?.matches.value
+  if (!set) return null
+  return mapCtx?.currentMatch.value === props.id ? 'current' : set.has(props.id) ? 'hit' : 'miss'
+})
+const kids = computed(() => mapCtx?.children.value.get(props.id) ?? 0)
+const folded = computed(() => !!mapCtx?.collapsed.value.has(props.id))
+const foldedCount = computed(() => mapCtx?.hiddenUnder.value.get(props.id) ?? 0)
 
 const agent = computed(() => agents.byId[props.data.agentId])
 const popDelay = bootNodeDelay()
@@ -37,6 +49,7 @@ const meta = computed(() => statusMeta(agent.value?.status))
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
 const selected = computed(() => ui.selectedAgentId === props.data.agentId)
 const dimmed = computed(() => {
+  if (findHit.value === 'miss') return true
   const set = highlighted?.value
   return set ? !set.has(props.data.agentId) : false
 })
@@ -182,7 +195,13 @@ onBeforeUnmount(() => stop?.())
   <div v-if="agent" class="ccm-pop" :style="popDelay ? { animationDelay: `${popDelay}ms` } : undefined">
     <div
       ref="box"
-      class="group/node relative rounded-card border bg-surface shadow-card transition-[opacity,color,border-color,box-shadow] duration-200"
+      data-agent-node
+      :tabindex="tabbable ? 0 : -1"
+      role="group"
+      :aria-roledescription="t('map.node.role')"
+      :aria-label="`${title} · ${t(meta.labelKey)}`"
+      :aria-describedby="`${flowId}-keys`"
+      class="group/node relative rounded-card border bg-surface shadow-card transition-[opacity,color,border-color,box-shadow] duration-200 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-focus"
       :style="{ width: `${size?.w ?? (isMain ? MAIN_WIDTH : SUB_WIDTH)}px`, minHeight: size?.h ? `${size.h}px` : undefined }"
       :class="[
         isMain ? 'px-3.5 py-3' : 'px-3 py-2.5',
@@ -192,13 +211,14 @@ onBeforeUnmount(() => stop?.())
         quiet && !selected ? 'text-ink-muted' : '',
         dimmed ? 'opacity-30' : '',
         picked ? 'outline-2 outline-offset-4 outline-focus outline-dashed' : '',
+        findHit === 'current' && !selected ? 'ring-2 ring-accent' : findHit === 'hit' && !selected ? 'ring-1 ring-accent' : '',
       ]"
     >
       <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
       <Handle type="target" :position="Position.Left" />
       <div class="flex items-center gap-2">
         <StatusIcon :status="agent.status" :size="isMain ? 16 : 14" />
-        <span class="min-w-0 flex-1 font-semibold" :class="[isMain ? 'text-base' : 'text-sm', sized ? 'break-words' : 'truncate']" :title="title">
+        <span class="nodrag min-w-0 flex-1 cursor-text select-text font-semibold" :class="[isMain ? 'text-base' : 'text-sm', sized ? 'break-words' : 'truncate']" :title="title">
           {{ title }}
         </span>
         <ProviderBadge v-if="codex" :mode="isMain ? (terminal?.entrypoint ?? agent.type) : agent.type" :variant="isMain ? 'full' : 'short'" />
@@ -207,12 +227,12 @@ onBeforeUnmount(() => stop?.())
         </span>
       </div>
       <div class="mt-1 flex min-w-0 items-center gap-2 text-xs">
-        <p class="min-w-0 flex-1" :class="[working ? 'text-ink' : 'text-ink-muted', sized ? 'break-words' : 'truncate']" :title="subtitle">
+        <p class="nodrag min-w-0 flex-1 cursor-text select-text" :class="[working ? 'text-ink' : 'text-ink-muted', sized ? 'break-words' : 'truncate']" :title="subtitle">
           <span class="sr-only">{{ t(meta.labelKey) }} · </span><component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="mr-1 inline-block align-[-2px]" aria-hidden="true" />{{ subtitle }}
         </p>
         <span
           v-if="model"
-          class="shrink-0 rounded-inner bg-fill px-1.5 py-px text-2xs font-medium text-ink-muted"
+          class="nodrag shrink-0 cursor-text select-text rounded-inner bg-fill px-1.5 py-px text-2xs font-medium text-ink-muted"
           :title="modelTitle"
         >
           {{ model }}<span v-if="effort" class="text-ink-faint"> · {{ effort }}</span>
@@ -240,6 +260,22 @@ onBeforeUnmount(() => stop?.())
         :pct="contextPctOf(agent)"
       />
       <Handle type="source" :position="Position.Bottom" />
+      <button
+        v-if="mapCtx && (kids > 0 || folded)"
+        type="button"
+        tabindex="-1"
+        data-fold
+        class="nodrag nopan absolute -bottom-2.5 left-3 z-20 inline-flex h-5 cursor-pointer items-center gap-0.5 rounded-full border border-line bg-surface px-1 text-2xs font-medium text-ink-muted shadow-card transition-opacity hover:text-ink"
+        :class="folded ? 'opacity-100' : 'opacity-0 group-hover/node:opacity-100 group-focus-visible/node:opacity-100'"
+        :aria-expanded="!folded"
+        :aria-label="folded ? t('map.node.expand', { n: foldedCount }) : t('map.node.collapse', { n: kids })"
+        :title="folded ? t('map.node.expand', { n: foldedCount }) : t('map.node.collapse', { n: kids })"
+        @pointerdown.stop
+        @click.stop="mapCtx.toggleFold(id)"
+      >
+        <component :is="folded ? ChevronRight : ChevronDown" :size="12" aria-hidden="true" />
+        <span v-if="folded" class="tabular-nums">{{ t('map.node.hidden', { n: foldedCount }) }}</span>
+      </button>
       <span
         v-for="h in HANDLES"
         :key="h.dir"

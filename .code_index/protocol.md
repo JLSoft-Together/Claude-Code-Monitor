@@ -6,6 +6,7 @@
 | Event | Emitter | Consumer |
 |---|---|---|
 | snapshot | server on connect + on `resync` | web connection store → hydrate all stores |
+| sessions.loading | MonitorStore.setLoading (index.ts: true before listen, false after the first reconcile) | connection store `sessionsLoading` |
 | terminal.created/updated/removed | MonitorStore.upsertTerminal/removeTerminal | terminals store |
 | agent.created/updated/removed | MonitorStore.upsertAgent/removeAgent | agents store |
 | activity | MonitorStore.pushActivity | activity store |
@@ -58,3 +59,4 @@ Separate WS from the dashboard socket (desktop `pty-host.cjs`, not the collector
 - v30 Git Log: desktop IPC only (`ccm:log-*`, no WebSocket events); shared types in `packages/shared/src/gitlog.ts` (`LOG_PAGE`, `LogQuery` (+ v36 `notRef`: `git log <branch> --not <notRef>`), `LogCommit`, detail / diff results). v36 `packages/shared/src/gitBranch.ts`: `checkBranchName` (mirrors `check-ref-format --branch`), `BranchOpError`, `BranchOpResult` (`detail` = one sanitized stderr line).
 - v31 Run (desktop IPC only) — `packages/shared/src/run.ts`: `FlutterProject` / `AndroidProject` (`RunProject`), `RunDetectResult`, `FlutterEnv` / `AndroidEnv` + `EnvIssue {code, detail}` (i18n `run.env|validate|fail|error.<code>`), `RunDevice` / `RunEmulator`, `RunConfig` = flutter | android | custom, `RunCommandPreview`, `RunState` + `isRunLive`, `RunSession`, `RunLogLine` (stream build|app|logcat), `BuildError`, `RunEvent` session|log|error|devices|projects|configs, `RunStartRequest`, `RunResult`, `RUN_SHARED_DIR`.
 - v40 Flutter widget preview (desktop IPC only) — `packages/shared/src/flutterPreview.ts`: invoke `ccm:fwp-scan(path, withEntries)|start(root, deviceId, flavor)|show(id)|stop|get`, push `ccm:fwp-state` (`FwpSnapshot`). `FwpEntry.skipped` private|params|unknown|type|part; `FwpError.code` (i18n `fwp.error.<code>`) incl. build|reload-failed (while running), device-lost|exited (after start, state `stopped`).
+- v45: `MonitorSnapshot.loading?` (first pass still running; absent = done) + event `sessions.loading {loading}`. Batches merge `terminal|agent.updated` per id (last value per field, folded into a pending `created`, never across `removed`); a new socket's first message is the snapshot.

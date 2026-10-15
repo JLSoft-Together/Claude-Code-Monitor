@@ -202,7 +202,7 @@ const ICON = 'shrink-0 text-ink-muted group-focus:text-on-accent group-aria-disa
           <span v-else class="w-3.5 shrink-0" aria-hidden="true" />
           <span class="min-w-0 flex-1">
             <span class="block truncate">{{ e.label }}</span>
-            <span v-if="e.hint" class="block truncate text-2xs text-ink-faint group-focus:text-on-accent">{{ e.hint }}</span>
+            <span v-if="e.hint" class="block text-2xs text-ink-faint group-focus:text-on-accent" :class="e.wrapHint ? 'whitespace-normal' : 'truncate'">{{ e.hint }}</span>
           </span>
           <kbd v-if="e.shortcut" class="shrink-0 font-sans text-2xs text-ink-faint group-focus:text-on-accent">{{ e.shortcut }}</kbd>
           <ChevronRight v-if="e.children" :size="13" :class="ICON" aria-hidden="true" />

@@ -6,6 +6,8 @@ import AppSelect, { type SelectOption } from '../AppSelect.vue'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import LayoutBoxes from './LayoutBoxes.vue'
 import { desktop } from '../../lib/desktop'
+import { isMac } from '../../lib/platform'
+import { keyCombo } from '../../lib/shortcuts'
 import {
   DENSITIES,
   DEVICE_PRESETS,
@@ -35,11 +37,14 @@ import {
   needsModelNotice,
   nodeForLine,
   onLayoutEvent,
+  renderScale,
+  INIT_STAGE_PROGRESS,
   shortClass,
   stepView,
   validDpi,
   withDensity,
   type CompareConfig,
+  type InitStage,
   type LayoutDiagnostic,
   type LayoutModelInfo,
   type LayoutRenderResult,
@@ -115,6 +120,7 @@ const diagnostics = shallowRef<LayoutDiagnostic[]>([])
 const renderMs = ref<number | null>(null)
 const cached = ref(false)
 const frameworkOnly = ref(false)
+const builtinLibs = ref(false)
 const shots = shallowRef<{ cfg: CompareConfig; res: LayoutRenderResult }[]>([])
 const model = ref<LayoutModelInfo | null>(null)
 const modelBusy = ref(false)
@@ -125,6 +131,19 @@ const localeChoice = ref(customLocale.value ? CUSTOM : opts.value.locale)
 
 const canvas = ref<HTMLElement | null>(null)
 const box = ref({ width: 0, height: 0 })
+// v46 smoothness: the frame being replaced fades out under the new one; waits get staged, delayed indicators.
+const prevUrl = ref<string | null>(null)
+const staleFrame = ref(false)
+const frameSeq = ref(0)
+const shownScale = ref(1)
+const initStage = ref<InitStage | null>(null)
+const libsLoading = ref<'kit' | 'project' | null>(null)
+const busy = ref(false)
+let busyTimer: ReturnType<typeof setTimeout> | null = null
+let prevTimer: ReturnType<typeof setTimeout> | null = null
+const BUSY_DELAY_MS = 150
+const CROSSFADE_MS = 160
+const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const ready = computed(() => !!status.value && status.value.jar && status.value.jdk.ok && status.value.bundle.state === 'ready')
 const device = computed(() => withDensity(deviceFor(opts.value.device, opts.value.landscape), opts.value.density))
@@ -132,6 +151,68 @@ const scale = computed(() => {
   const w = size.value.width || device.value.width
   const h = size.value.height || device.value.height
   return opts.value.zoom === 'fit' ? fitScale(w, h, box.value.width - 32, box.value.height - 32) : opts.value.zoom / 100
+})
+const dpr = (): number => (typeof window !== 'undefined' && window.devicePixelRatio) || 1
+/** Image px per device px for the single stage: what is on screen, never more than the device. */
+const wantScale = computed(() => {
+  const d = device.value
+  const view = opts.value.zoom === 'fit' ? fitScale(d.width, d.height, box.value.width - 32, box.value.height - 32) : opts.value.zoom / 100
+  return box.value.width > 0 ? renderScale(view, dpr()) : 1
+})
+const starting = computed(() => status.value?.daemon === 'starting' || daemonStarting.value)
+const waitTitle = computed(() => {
+  if (starting.value) return t('layout.wait.starting')
+  if (libsLoading.value) return t(libsLoading.value === 'kit' ? 'layout.wait.libraries' : 'layout.wait.project')
+  if (chip.value.kind === 'running') return t('layout.wait.model')
+  return t('layout.wait.rendering')
+})
+const waitDetail = computed(() => {
+  if (starting.value) return t(`layout.wait.stage.${initStage.value ?? 'jvm'}`)
+  if (libsLoading.value) return t(libsLoading.value === 'kit' ? 'layout.wait.librariesHint' : 'layout.wait.projectHint')
+  return ''
+})
+const stageProgress = computed(() => INIT_STAGE_PROGRESS[initStage.value ?? 'jvm'])
+const hasFrame = computed(() => !!pngUrl.value || tree.value !== null)
+/** Nothing rendered yet for this file: the device-shaped skeleton and the staged wait card show. */
+const awaitingFirst = computed(() => ready.value && !hasFrame.value && !error.value && (rendering.value || renderMs.value === null))
+
+/** Decoded before it is shown, so the swap never paints a half-loaded or empty image. */
+function decoded(url: string | null): Promise<void> {
+  if (!url || typeof Image === 'undefined') return Promise.resolve()
+  const img = new Image()
+  img.src = url
+  return img.decode().catch(() => undefined)
+}
+
+function showFrame(url: string | null): void {
+  if (url === pngUrl.value) return
+  if (prevTimer) clearTimeout(prevTimer)
+  prevUrl.value = pngUrl.value && url && !reducedMotion() ? pngUrl.value : null
+  pngUrl.value = url
+  frameSeq.value++
+  prevTimer = setTimeout(() => (prevUrl.value = null), CROSSFADE_MS + 40)
+}
+
+watch(rendering, (on) => {
+  if (busyTimer) clearTimeout(busyTimer)
+  busyTimer = null
+  if (!on) busy.value = false
+  else busyTimer = setTimeout(() => (busy.value = rendering.value), BUSY_DELAY_MS)
+})
+
+// Zoom: the stage jumps to its new size, then eases from the old scale (transform only, no layout per frame).
+const zoomFlip = ref<number | null>(null)
+watch(scale, (next, old) => {
+  if (!old || !next || old === next || !hasFrame.value || reducedMotion()) return
+  zoomFlip.value = old / next
+  requestAnimationFrame(() => requestAnimationFrame(() => (zoomFlip.value = null)))
+})
+const stageMotion = computed(() =>
+  zoomFlip.value === null ? { transform: '', transition: 'transform var(--ccm-dur-base) var(--ease-out-quint)' } : { transform: `scale(${zoomFlip.value})`, transition: 'none' },
+)
+// Zooming in past the pixels of the shown image: render sharper (the cached lower-res frame stays until then).
+watch(wantScale, (s) => {
+  if (ready.value && hasFrame.value && !opts.value.compare && s > shownScale.value) schedule(150)
 })
 const stage = computed(() => ({ width: Math.round((size.value.width || device.value.width) * scale.value), height: Math.round((size.value.height || device.value.height) * scale.value) }))
 const nodes = computed(() => (opts.value.blueprint ? flattenTree(tree.value).slice(0, BLUEPRINT_MAX) : []))
@@ -197,7 +278,7 @@ const chipBase = computed(() => {
   if (c.kind === 'ready') return t('layout.model.ready', { time: new Date(c.at ?? 0).toLocaleTimeString(uiLocale.value, { hour: '2-digit', minute: '2-digit' }) })
   if (c.kind === 'running') return t('layout.model.running')
   if (c.kind === 'error') return t('layout.model.error')
-  return t('layout.model.framework')
+  return t(builtinLibs.value ? 'layout.model.builtin' : 'layout.model.framework')
 })
 const chipText = computed(() => {
   const b = borrowed.value
@@ -210,6 +291,7 @@ const chipTitle = computed(() => {
 })
 const chipState = computed(() => {
   const m = model.value
+  if (builtinLibs.value && chip.value.kind === 'framework') return t('layout.model.builtinHint')
   if (!m?.target) return m?.reason === 'no-app' ? t('layout.model.noApp') : m?.reason === 'no-gradle' ? t('layout.model.noGradle') : t('layout.model.frameworkHint')
   const s = m.state
   if (s.state === 'ready') return t('layout.model.readyHint', { module: m.target.module, res: s.resCount, cp: s.classpathCount })
@@ -319,19 +401,33 @@ async function render(): Promise<void> {
   const theme = opts.value.theme || null
   const locale = opts.value.locale || null
   let res: LayoutRenderResult
+  let usedScale = 1
   if (opts.value.compare) {
-    const out: { cfg: CompareConfig; res: LayoutRenderResult }[] = []
+    const configs = compareConfigs(opts.value.device, opts.value.landscape, opts.value.density)
+    // Cells of the same configurations keep their last frame until their own new one is decoded.
+    const keep = new Map(shots.value.map((s) => [s.cfg.id, s]))
+    let out = configs.flatMap((cfg) => {
+      const old = keep.get(cfg.id)
+      return old ? [{ cfg, res: old.res }] : []
+    })
+    if (out.length !== configs.length) out = []
+    shots.value = out
     // Sequential: the daemon renders one at a time anyway, and each cell shows up as soon as it is ready.
-    for (const [i, cfg] of compareConfigs(opts.value.device, opts.value.landscape, opts.value.density).entries()) {
-      const r = await layoutRender({ file: props.path, device: cfg.device, theme, night: cfg.night, locale, slot: i + 1, ...liveText() })
+    for (const [i, cfg] of configs.entries()) {
+      const k = compareCellAt(cfg.device.width, cfg.device.height, box.value.width, box.value.height, configs.length, opts.value.zoom).scale
+      const r = await layoutRender({ file: props.path, device: cfg.device, theme, night: cfg.night, locale, slot: i + 1, scale: renderScale(k, dpr()), ...liveText() })
+      if (r.ok) await decoded(r.pngUrl)
       if (my !== seq) return
-      out.push({ cfg, res: r })
-      shots.value = [...out]
+      const next = [...shots.value]
+      next[i] = { cfg, res: r }
+      shots.value = next
     }
-    res = out[0]!.res
+    res = shots.value[0]!.res
   } else {
     shots.value = []
-    res = await layoutRender({ file: props.path, device: device.value, theme, night: opts.value.night, locale, slot: 0, ...liveText() })
+    usedScale = wantScale.value
+    res = await layoutRender({ file: props.path, device: device.value, theme, night: opts.value.night, locale, slot: 0, scale: usedScale, ...liveText() })
+    if (res.ok) await decoded(res.pngUrl)
     if (my !== seq) return
   }
   rendering.value = false
@@ -339,18 +435,25 @@ async function render(): Promise<void> {
   if (status.value) status.value = { ...status.value, daemon: 'ready' }
   if (!res.ok) {
     if (res.code === 'cancelled') return
+    staleFrame.value = false
     error.value = { code: res.code, detail: res.detail }
     if (res.code === 'bundle-missing' || res.code.startsWith('jdk')) void refreshStatus(false)
     return
   }
   error.value = null
-  pngUrl.value = res.pngUrl
+  diagnostics.value = res.diagnostics
+  renderMs.value = res.renderMs
+  // Nothing drawn (e.g. half-typed XML): keep the last good frame and tree, dimmed, with the problems below.
+  staleFrame.value = !res.pngUrl && !!pngUrl.value && !opts.value.compare
+  if (staleFrame.value) return
+  showFrame(res.pngUrl)
+  shownScale.value = usedScale
   size.value = { width: res.width, height: res.height }
   tree.value = res.viewTree
-  diagnostics.value = res.diagnostics
   renderMs.value = res.renderMs
   cached.value = res.cached === true
   frameworkOnly.value = res.frameworkOnly === true
+  builtinLibs.value = res.builtinLibs === true
   hovered.value = null
   cellHover.value = null
   selected.value = props.line ? nodeForLine(res.viewTree, props.line) : null
@@ -359,6 +462,7 @@ async function render(): Promise<void> {
 async function refreshStatus(thenRender = true): Promise<void> {
   status.value = await layoutStatus()
   statusLoaded.value = true
+  if (status.value?.daemon === 'starting' && status.value.stage) initStage.value = status.value.stage
   if (status.value?.bundle.state === 'downloading') downloadPct.value = status.value.bundle.pct
   if (thenRender && ready.value) schedule(0)
 }
@@ -386,6 +490,11 @@ const offEvent = onLayoutEvent((e) => {
   } else if (e.type === 'daemon') {
     if (status.value) status.value = { ...status.value, daemon: e.state }
     daemonStarting.value = e.state === 'starting' && rendering.value
+    if (e.state !== 'starting') initStage.value = null
+  } else if (e.type === 'daemon-stage') {
+    initStage.value = e.stage
+  } else if (e.type === 'loading') {
+    libsLoading.value = e.active ? e.kind : null
   } else {
     const target = model.value?.target
     if (!target || target.root !== e.root || target.module !== e.module) return
@@ -396,9 +505,13 @@ const offEvent = onLayoutEvent((e) => {
   }
 })
 
-watch(() => props.revision, () => schedule(300))
+// Editor text is already debounced by FilePane; disk changes still coalesce a little.
+watch(() => props.revision, () => schedule(props.text !== null ? 0 : 120))
 watch(() => props.path, () => {
   pngUrl.value = null
+  prevUrl.value = null
+  staleFrame.value = false
+  renderMs.value = null
   tree.value = null
   diagnostics.value = []
   shots.value = []
@@ -462,7 +575,8 @@ function onCanvasKey(e: KeyboardEvent): void {
   onTreeKey(e, tree.value, selected.value)
 }
 
-const cellKeysHint = computed(() => `${t('layout.keys')}\n${t('layout.keysCompare')}`)
+const keysHint = computed(() => t('layout.keys', { enter: keyCombo(['Enter'], isMac) }))
+const cellKeysHint = computed(() => `${keysHint.value}\n${t('layout.keysCompare', { back: keyCombo(['Shift', 'Tab'], isMac) })}`)
 
 function cellLabel(s: { cfg: CompareConfig; viewTree: LayoutViewNode | null }): string {
   const sel = cellSelected(s.cfg.id, s.viewTree)
@@ -496,6 +610,8 @@ onBeforeUnmount(() => {
   resize.disconnect()
   offEvent()
   if (timer) clearTimeout(timer)
+  if (busyTimer) clearTimeout(busyTimer)
+  if (prevTimer) clearTimeout(prevTimer)
   seq++
 })
 </script>
@@ -598,6 +714,12 @@ onBeforeUnmount(() => {
     </p>
 
     <div ref="canvas" class="ccm-scroll relative min-h-0 flex-1 overflow-auto">
+      <div v-if="ready && busy && (hasFrame || opts.compare)" class="pointer-events-none sticky top-0 z-10 h-0" data-layout-busy>
+        <div class="lp-busy-track absolute inset-x-0 top-0 h-0.5 overflow-hidden"><div class="lp-busy-bar h-full w-1/3 bg-accent" /></div>
+        <span class="lp-wait-card absolute right-2 top-2 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs text-ink" role="status">
+          <LoaderCircle :size="12" class="ccm-spin shrink-0" aria-hidden="true" />{{ waitTitle }}
+        </span>
+      </div>
       <div v-if="!statusLoaded" class="grid size-full place-items-center p-6 text-xs">
         <span class="flex items-center gap-2"><LoaderCircle :size="14" class="ccm-spin" aria-hidden="true" />{{ t('layout.setup.checking') }}</span>
       </div>
@@ -686,10 +808,10 @@ onBeforeUnmount(() => {
         <div
           class="relative shrink-0 overflow-hidden rounded-inner shadow-card outline-none focus-visible:outline-2 focus-visible:outline-focus"
           :class="opts.blueprint ? 'bg-well ring-1 ring-well-line' : 'bg-page'"
-          :style="{ width: `${stage.width}px`, height: `${stage.height}px` }"
+          :style="{ width: `${stage.width}px`, height: `${stage.height}px`, ...stageMotion }"
           tabindex="0"
           role="group"
-          :aria-description="t('layout.keys')"
+          :aria-description="keysHint"
           :aria-label="selected ? `${nodeLabel(selected)}, ${t('layout.view.line', { line: selected.line })}` : t('layout.image')"
           data-layout-stage
           @mousemove="onMove"
@@ -697,8 +819,51 @@ onBeforeUnmount(() => {
           @click="onClick"
           @keydown="onCanvasKey"
         >
-          <img v-if="pngUrl && !opts.blueprint" :src="pngUrl" :alt="t('layout.image')" class="pointer-events-none block size-full select-none" draggable="false" />
+          <img v-if="prevUrl && pngUrl && !opts.blueprint" :src="prevUrl" alt="" aria-hidden="true" class="pointer-events-none absolute inset-0 block size-full select-none" draggable="false" />
+          <img
+            v-if="pngUrl && !opts.blueprint"
+            :key="frameSeq"
+            :src="pngUrl"
+            :alt="t('layout.image')"
+            class="pointer-events-none relative block size-full select-none"
+            :class="[frameSeq === 1 && !prevUrl ? 'lp-frame-first' : 'lp-frame-in', error || staleFrame ? 'lp-stale' : '']"
+            draggable="false"
+            data-layout-frame
+          />
+          <div v-else-if="awaitingFirst && !opts.blueprint" class="absolute inset-0" aria-hidden="true" data-layout-skeleton>
+            <div class="lp-skel-bar left-0 right-0 top-0 h-[7%]" />
+            <div class="lp-skel-bar left-[6%] top-[11%] h-[3%] w-[52%]" />
+            <div class="lp-skel-bar left-[6%] top-[16%] h-[2%] w-[78%] [animation-delay:120ms]" />
+            <div class="lp-skel-bar left-[6%] top-[21%] h-[18%] w-[88%] [animation-delay:240ms]" />
+            <div class="lp-skel-bar left-[6%] top-[43%] h-[2%] w-[64%] [animation-delay:360ms]" />
+            <div class="lp-skel-bar bottom-[5%] right-[6%] h-[5%] w-[30%] [animation-delay:480ms]" />
+          </div>
           <p v-else-if="!opts.blueprint && !rendering && tree === null && !error" class="absolute inset-0 grid place-items-center p-4 text-center text-xs text-well-ink">{{ t('layout.noImage') }}</p>
+          <div v-if="awaitingFirst" class="absolute inset-0 grid place-items-center p-3" data-layout-wait :data-stage="starting ? (initStage ?? 'jvm') : libsLoading ?? 'render'">
+            <div class="lp-wait-card flex w-full max-w-60 flex-col items-center gap-1.5 rounded-inner px-3 py-2.5 text-center" role="status" aria-live="polite">
+              <span class="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                <LoaderCircle :size="13" class="ccm-spin shrink-0" aria-hidden="true" />{{ waitTitle }}
+              </span>
+              <span v-if="waitDetail" class="text-2xs text-ink-muted">{{ waitDetail }}</span>
+              <div
+                v-if="starting"
+                class="mt-1 h-1 w-full overflow-hidden rounded-full bg-well-line"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="stageProgress.pct"
+                :aria-label="t('layout.wait.progress')"
+                data-layout-progress
+              >
+                <div class="lp-progress h-full origin-left rounded-full bg-accent" :style="{ transform: `scaleX(${stageProgress.pct / 100})`, transitionDuration: `${stageProgress.ms}ms` }" />
+              </div>
+              <span v-if="starting" class="text-2xs text-ink-muted">{{ t('layout.wait.firstStart') }}</span>
+            </div>
+          </div>
+          <p v-if="(error || staleFrame) && pngUrl && !opts.blueprint" class="lp-stale-note absolute inset-x-2 bottom-2 flex items-start gap-1.5 rounded-inner px-2 py-1 text-2xs" role="note" data-layout-stale>
+            <CircleAlert :size="12" class="mt-px shrink-0 text-st-error" aria-hidden="true" />
+            <span class="min-w-0">{{ t('layout.staleFrame') }}</span>
+          </p>
           <LayoutBoxes :nodes="nodes" :scale="scale" :hovered="hovered" :selected="selected" />
         </div>
       </div>
@@ -739,3 +904,73 @@ onBeforeUnmount(() => {
     </p>
   </section>
 </template>
+
+<style scoped>
+.lp-frame-in {
+  animation: lp-fade var(--ccm-dur-fast) var(--ease-out-quint) both;
+}
+.lp-frame-first {
+  animation: lp-first var(--ccm-dur-base) var(--ease-out-quint) both;
+}
+.lp-stale {
+  opacity: 0.45;
+  transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
+}
+.lp-stale-note,
+.lp-wait-card {
+  background: var(--ccm-surface);
+  color: var(--ccm-ink);
+  box-shadow: var(--ccm-shadow);
+}
+.lp-skel-bar {
+  position: absolute;
+  border-radius: 4px;
+  background: var(--ccm-well-line);
+  animation: ccm-shimmer 1.4s ease-in-out infinite;
+}
+.lp-progress {
+  transition-property: transform;
+  transition-timing-function: var(--ease-out-quint);
+}
+.lp-busy-track {
+  background: color-mix(in srgb, var(--ccm-accent) 18%, transparent);
+}
+.lp-busy-bar {
+  animation: lp-slide 1.1s var(--ease-out-quint) infinite;
+}
+@keyframes lp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes lp-first {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+@keyframes lp-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-frame-in,
+  .lp-frame-first,
+  .lp-skel-bar,
+  .lp-busy-bar {
+    animation: none;
+  }
+  .lp-busy-bar {
+    width: 100%;
+    opacity: 0.6;
+  }
+  .lp-progress,
+  .lp-stale {
+    transition: none;
+  }
+}
+</style>

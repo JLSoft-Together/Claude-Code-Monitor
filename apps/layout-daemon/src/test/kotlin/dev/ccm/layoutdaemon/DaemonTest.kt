@@ -119,6 +119,26 @@ class DaemonTest {
     }
 
     @Test
+    fun `scaled render draws fewer pixels with the same device geometry`() {
+        val full = call("render", renderParams(FRAMEWORK_XML)).getAsJsonObject("result")
+        val half = call("render", renderParams(FRAMEWORK_XML).apply { addProperty("scale", 0.5) }).getAsJsonObject("result")
+        val img = ImageIO.read(File(half.get("png").asString))
+        assertEquals(540, img.width)
+        assertEquals(1170, img.height)
+        assertEquals(1080, half.get("width").asInt)
+        assertEquals(2340, half.get("height").asInt)
+        assertEquals(540, half.get("imageWidth").asInt)
+        val bounds = { r: JsonObject -> flatten(r.getAsJsonObject("viewTree")).map { n -> n.getAsJsonArray("bounds").map { it.asInt } } }
+        assertEquals(bounds(full), bounds(half), "view tree stays in device px")
+        // The button is drawn where the tree says, at half size: not the blank background.
+        val button = bounds(half).last()
+        val cx = (button[0] + button[2]) / 4
+        val cy = (button[1] + button[3]) / 4
+        val bg = img.getRGB(2, img.height - 3)
+        assertTrue(img.getRGB(cx, cy) != bg, "button pixels at its scaled bounds")
+    }
+
+    @Test
     fun `warm render timings`() {
         val times = (1..10).map {
             call("render", renderParams(FRAMEWORK_XML)).getAsJsonObject("result")

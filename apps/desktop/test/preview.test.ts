@@ -201,7 +201,7 @@ describe('preview helpers', () => {
 })
 
 describe('RootWatcher', () => {
-  it('refcounts, ignores node_modules/.git and debounces', async () => {
+  it('refcounts, ignores node_modules/.git/build output and debounces', async () => {
     const listeners: Array<(e: string, f: string | null) => void> = []
     let closed = 0
     const fake = ((_root: string, _o: unknown, cb: (e: string, f: string | null) => void) => {
@@ -215,6 +215,7 @@ describe('RootWatcher', () => {
     expect(listeners).toHaveLength(1)
     listeners[0]!('change', 'node_modules/x.js')
     listeners[0]!('change', '.git/HEAD')
+    for (const f of ['build/x.class', 'app/build/y.dex', '.gradle/a.lock', '.dart_tool/p.json', 'dist/i.js', '.vitest/r.json', 'out/m.js', '.idea/w.xml']) listeners[0]!('change', f)
     listeners[0]!('change', 'src/a.html')
     listeners[0]!('change', 'src/a.html')
     await new Promise((r) => setTimeout(r, 30))

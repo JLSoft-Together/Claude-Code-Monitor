@@ -58,7 +58,7 @@ function phraseMap(): Record<string, string> {
   return Object.fromEntries(PHRASES.map((p, i) => [p, t(`editor.cm.p${i}`)]))
 }
 
-/** Replace field focused (Ctrl+H / ⌘⌥F); the search panel holds both fields. */
+/** Replace field focused (Ctrl+H / ⌥⌘F); the search panel holds both fields. */
 function openReplace(target: EditorView): boolean {
   openSearchPanel(target)
   requestAnimationFrame(() => target.dom.querySelector<HTMLInputElement>('.cm-search input[name=replace]')?.select())

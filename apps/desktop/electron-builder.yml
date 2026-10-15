@@ -30,6 +30,8 @@ extraResources:
     to: web
   - from: ../layout-daemon/build/libs/layout-daemon.jar
     to: layout-daemon/layout-daemon.jar
+  - from: ../layout-daemon/build/loose-kit
+    to: layout-daemon/loose-kit
   - from: ../layout-daemon/init/ccm-project-model.gradle
     to: layout-daemon/ccm-project-model.gradle
   - from: ../../scripts/statusline-bridge.mjs
@@ -54,6 +56,14 @@ dmg:
   artifactName: GolAIm-${version}-${arch}.${ext}
 win:
   icon: ../../scripts/assets/ccm.ico
+  # koffi (native process table, collector/src/win-procs.ts): loader + the host's prebuilt only; macOS uses ps.
+  extraResources:
+    - from: ../../node_modules/koffi
+      to: koffi/node_modules/koffi
+      filter: [package.json, LICENSE.txt, index.cjs, src/koffi/index.cjs, src/koffi/src/*.cjs]
+    - from: ../../node_modules/@koromix
+      to: koffi/node_modules/@koromix
+      filter: ['koffi-win32-*/**']
   target:
     - target: nsis
       arch: [x64]

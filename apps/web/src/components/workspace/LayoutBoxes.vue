@@ -10,6 +10,12 @@ function boxStyle(n: LayoutViewNode): Record<string, string> {
   return { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` }
 }
 
+/** Hover / selection boxes move by transform so the highlight glides between views. */
+function movingStyle(n: LayoutViewNode): Record<string, string> {
+  const r = boxRect(n.bounds, props.scale)
+  return { left: '0', top: '0', transform: `translate(${r.left}px, ${r.top}px)`, width: `${r.width}px`, height: `${r.height}px` }
+}
+
 function nodeLabel(n: LayoutViewNode): string {
   const cls = shortClass(n.class)
   return n.xmlId ? t('layout.view.id', { cls, id: n.xmlId.replace(/^@\+?id\//, '#') }) : t('layout.view.label', { cls })
@@ -20,10 +26,10 @@ function nodeLabel(n: LayoutViewNode): string {
   <div v-for="(n, i) in nodes" :key="i" class="bp pointer-events-none absolute" :style="boxStyle(n)">
     <span v-if="(n.bounds[2] - n.bounds[0]) * scale > 60" class="bp-label">{{ shortClass(n.class) }}</span>
   </div>
-  <div v-if="hovered && hovered !== selected" class="hover-box pointer-events-none absolute" :style="boxStyle(hovered)">
+  <div v-if="hovered && hovered !== selected" class="hover-box pointer-events-none absolute" :style="movingStyle(hovered)">
     <span class="box-label" :class="hovered.bounds[1] * scale < 18 ? 'is-inside' : ''">{{ nodeLabel(hovered) }}</span>
   </div>
-  <div v-if="selected" class="sel-box pointer-events-none absolute" :style="boxStyle(selected)">
+  <div v-if="selected" class="sel-box pointer-events-none absolute" :style="movingStyle(selected)">
     <span class="box-label" :class="selected.bounds[1] * scale < 18 ? 'is-inside' : ''">{{ nodeLabel(selected) }}</span>
   </div>
 </template>
@@ -43,6 +49,19 @@ function nodeLabel(n: LayoutViewNode): string {
   white-space: nowrap;
   text-overflow: ellipsis;
   color: color-mix(in srgb, var(--ccm-well-ink) 80%, transparent);
+}
+.hover-box,
+.sel-box {
+  transition:
+    transform var(--ccm-dur-fast) var(--ease-out-quint),
+    width var(--ccm-dur-fast) var(--ease-out-quint),
+    height var(--ccm-dur-fast) var(--ease-out-quint);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hover-box,
+  .sel-box {
+    transition: none;
+  }
 }
 .hover-box {
   outline: 1px dashed var(--ccm-focus);

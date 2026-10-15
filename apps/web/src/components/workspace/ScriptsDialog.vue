@@ -163,7 +163,7 @@ const activeId = computed(() => (rows.value[active.value] ? `sc-opt-${active.val
 const HINTS = computed(() => [
   { key: 'move', keys: '↑ ↓' },
   { key: 'run', keys: 'Enter' },
-  { key: 'split', keys: isMac ? '⌘ Enter' : 'Ctrl+Enter' },
+  { key: 'split', keys: isMac ? '⌘↩' : 'Ctrl+Enter' },
   { key: 'close', keys: 'Esc' },
 ])
 </script>

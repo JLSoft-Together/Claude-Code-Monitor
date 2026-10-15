@@ -95,7 +95,7 @@ export class RenderCache<T> {
 
 export function renderKey(params: RenderParams, modelKey: string): string {
   return createHash('sha1')
-    .update(JSON.stringify([params.layoutPath, params.xmlContent, params.device, params.theme, params.night, params.locale, modelKey]))
+    .update(JSON.stringify([params.layoutPath, params.xmlContent, params.device, params.theme, params.night, params.locale, params.scale ?? 1, modelKey]))
     .digest('hex')
 }
 const MAX_XML = 1024 * 1024
@@ -153,6 +153,12 @@ export function cleanDevice(v: unknown): LayoutDevice | null {
 
 const cleanTheme = (v: unknown): string | null => (typeof v === 'string' && /^[@A-Za-z0-9_.:/]{1,128}$/.test(v) ? v : null)
 const cleanLocale = (v: unknown): string | null => (typeof v === 'string' && /^[A-Za-z0-9+_-]{1,35}$/.test(v) ? v : null)
+
+/** Render scale from the renderer (shown px / device px), snapped to 1/8 steps so resizes reuse cached renders. */
+export function cleanScale(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v >= 0.95) return 1
+  return Math.min(1, Math.max(0.125, Math.ceil(v * 8) / 8))
+}
 
 export function cleanTree(raw: unknown): LayoutViewNode | null {
   let count = 0
@@ -247,6 +253,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
         model?.onDaemonState(state)
         broadcast({ type: 'daemon', state, detail })
       },
+      onStage: (stage) => broadcast({ type: 'daemon-stage', stage }),
     })
   const jarExists = (): boolean => existsSync(deps.daemonJar)
   let realRender: string | null = null
@@ -311,7 +318,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     if (!isAppFrame(event)) return null
     const jdk = await findJava()
     const { java: _java, ...pub } = jdk
-    return { bundle: bundle.status(), jdk: pub as JdkStatus, daemon: daemon.state, jar: jarExists(), apiLevel: daemon.apiLevel ?? LAYOUTLIB_API_LEVEL }
+    return { bundle: bundle.status(), jdk: pub as JdkStatus, daemon: daemon.state, jar: jarExists(), apiLevel: daemon.apiLevel ?? LAYOUTLIB_API_LEVEL, stage: daemon.state === 'starting' ? daemon.stage : null }
   })
 
   // A layout was opened: start the JVM (initialize renders a framework-only warm-up layout) and load the cached
@@ -323,8 +330,9 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     if (!jarExists()) return { ok: false, code: 'jar-missing' }
     if (!bundle.isReady()) return { ok: false, code: 'bundle-missing' }
     try {
-      await daemon.ensure()
+      // prepare() first: its project/load hands the AAR list to the JVM start, parsed while layoutlib boots.
       if (model) await model.prepare(file)
+      await daemon.ensure()
       return { ok: true }
     } catch (err) {
       return { ok: false, code: err instanceof LayoutError ? err.code : 'failed' }
@@ -357,8 +365,8 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     const xmlContent = text ?? (await fs.readFile(file, 'utf8').catch(() => null))
     if (xmlContent === null) return { ok: false, code: 'missing' }
     const slot = typeof r.slot === 'number' && Number.isInteger(r.slot) && r.slot >= 0 && r.slot <= MAX_SLOT ? r.slot : 0
-    const params: RenderParams = { layoutPath: file, xmlContent, device, theme: cleanTheme(r.theme), night: r.night === true, locale: cleanLocale(r.locale) }
-    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true }
+    const params: RenderParams = { layoutPath: file, xmlContent, device, theme: cleanTheme(r.theme), night: r.night === true, locale: cleanLocale(r.locale), scale: cleanScale(r.scale) }
+    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false }
     const key = renderKey(params, prepared.key)
     const hit = cache.get(key)
     if (hit) {
@@ -401,6 +409,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
       diagnostics: cleanDiagnostics(res.diagnostics),
       renderMs: Number(res.renderMs) || 0,
       frameworkOnly: prepared.frameworkOnly,
+      builtinLibs: prepared.builtinLibs,
     }
     if (snap || res.png === null) cache.set(key, { result, png: snap })
     return { ...result, pngUrl, cached: false }
@@ -426,7 +435,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     const kind = drawableKind(file, xmlContent)
     if (!kind) return { ok: false, code: 'not-drawable' }
     const states = Array.isArray(r.states) ? [...new Set(r.states.filter((s): s is string => typeof s === 'string' && DRAWABLE_STATES.has(s)))] : []
-    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true }
+    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true, builtinLibs: false }
     let res
     try {
       await fs.mkdir(renderDir, { recursive: true })
@@ -454,6 +463,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
       diagnostics: cleanDiagnostics(res.diagnostics),
       renderMs: Number(res.renderMs) || 0,
       frameworkOnly: prepared.frameworkOnly,
+      builtinLibs: prepared.builtinLibs,
     }
   })
 

@@ -112,7 +112,8 @@ const origin = computed(() => {
   >
     <aside
       v-if="agent"
-      class="absolute z-10 rounded-card border border-focus bg-surface shadow-pop"
+      class="absolute z-10 cursor-auto select-text rounded-card border border-focus bg-surface shadow-pop"
+      data-agent-details
       :class="place ? '' : 'top-3 right-3 w-[300px] max-w-[calc(100%-24px)]'"
       :style="[place?.style, { transformOrigin: origin }]"
       :aria-label="eyebrow"

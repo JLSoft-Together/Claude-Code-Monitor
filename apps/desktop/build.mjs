@@ -12,13 +12,14 @@ const pkg = JSON.parse(readFileSync(path.join(HERE, 'package.json'), 'utf8'))
 rmSync(STAGE, { recursive: true, force: true })
 mkdirSync(STAGE, { recursive: true })
 
-const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node24', sourcemap: false, logLevel: 'info' }
+// win-procs.ts reads import.meta only when `require` is missing (ESM under tsx / vitest), never in these CJS bundles.
+const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node24', sourcemap: false, logLevel: 'info', logOverride: { 'empty-import-meta': 'silent' } }
 
 await build({
   ...common,
   entryPoints: [path.join(HERE, 'src', 'main.ts')],
   outfile: path.join(STAGE, 'main.cjs'),
-  external: ['electron'],
+  external: ['electron', 'koffi'],
 })
 
 await build({
@@ -26,7 +27,8 @@ await build({
   entryPoints: [path.join(HERE, '..', 'collector', 'src', 'index.ts')],
   outfile: path.join(STAGE, 'collector.cjs'),
   // ws loads these optional native peers inside try/catch.
-  external: ['bufferutil', 'utf-8-validate'],
+  // koffi is native: shipped as extraResources (koffi/node_modules), required by path CCM_KOFFI.
+  external: ['bufferutil', 'utf-8-validate', 'koffi'],
   // config.ts touches import.meta only when CCM_WEB_DIST / CCM_STATUSLINE_BRIDGE are unset; the desktop host always sets both.
   logOverride: { 'empty-import-meta': 'silent' },
 })
@@ -43,7 +45,7 @@ await build({
   entryPoints: [path.join(HERE, 'src', 'pty', 'host.ts')],
   outfile: path.join(STAGE, 'pty-host.cjs'),
   // node-pty is native: shipped as extraResources (pty/node_modules) and required by path at runtime.
-  external: ['@lydell/node-pty', 'bufferutil', 'utf-8-validate'],
+  external: ['@lydell/node-pty', 'bufferutil', 'utf-8-validate', 'koffi'],
 })
 
 // Packaged builds ship the XML layout render daemon (extraResources layout-daemon/); layoutlib itself is downloaded at runtime.
@@ -52,14 +54,18 @@ if (process.argv.includes('--dist')) {
   const jar = path.join(daemonDir, 'build', 'libs', 'layout-daemon.jar')
   if (process.env.CCM_SKIP_DAEMON_BUILD !== '1') {
     const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
-    const run = spawnSync(gradlew, ['shadowJar', '--console=plain'], { cwd: daemonDir, stdio: 'inherit', shell: process.platform === 'win32' })
+    const run = spawnSync(gradlew, ['shadowJar', 'stageLooseKit', '--console=plain'], { cwd: daemonDir, stdio: 'inherit', shell: process.platform === 'win32' })
     if (run.status !== 0) {
-      console.error('build: layout-daemon jar build failed (needs JDK 17+ in JAVA_HOME, e.g. the Android Studio JBR)')
+      console.error('build: layout-daemon jar / loose kit build failed (needs JDK 17+ in JAVA_HOME, e.g. the Android Studio JBR)')
       process.exit(1)
     }
   }
   if (!existsSync(jar)) {
     console.error(`build: ${jar} is missing; run "./gradlew shadowJar" in apps/layout-daemon with JAVA_HOME = JDK 17+`)
+    process.exit(1)
+  }
+  if (!existsSync(path.join(daemonDir, 'build', 'loose-kit', 'kit.json'))) {
+    console.error(`build: the loose layout kit is missing; run "./gradlew stageLooseKit" in apps/layout-daemon`)
     process.exit(1)
   }
 }

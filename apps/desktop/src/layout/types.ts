@@ -18,6 +18,8 @@ export interface LayoutStatus {
   daemon: DaemonState
   /** Render daemon jar present (dev: `apps/layout-daemon` built). */
   jar: boolean
+  /** Last cold-start stage while `daemon` is `starting` (v46). */
+  stage?: InitStage | null
   /** API level layoutlib renders with (from `initialize`, else the bundled default). */
   apiLevel: number
 }
@@ -81,6 +83,7 @@ export type DrawableRenderResult =
       diagnostics: LayoutDiagnostic[]
       renderMs: number
       frameworkOnly: boolean
+      builtinLibs: boolean
     }
   | { ok: false; code: string; detail?: string }
 
@@ -95,6 +98,8 @@ export type LayoutRenderResult =
       renderMs: number
       /** No project model loaded: framework views only. */
       frameworkOnly: boolean
+      /** No project model, the bundled ConstraintLayout / AppCompat / Material kit is loaded. */
+      builtinLibs: boolean
       /** Served from the render cache (same XML, config and model version). */
       cached: boolean
     }
@@ -134,3 +139,9 @@ export type LayoutEvent =
   | { type: 'model'; root: string; module: string; state: ModelState }
   | { type: 'project-changed'; root: string; module: string }
   | { type: 'code-changed'; root: string; module: string }
+  /** Cold start progress of the render JVM (v46). */
+  | { type: 'daemon-stage'; stage: InitStage }
+  /** A project model or the built-in library kit is being loaded into the daemon (v46). */
+  | { type: 'loading'; kind: 'kit' | 'project'; active: boolean }
+
+export type InitStage = 'jvm' | 'setup' | 'prepare' | 'warmup'

@@ -16,6 +16,8 @@ const props = defineProps<{
   targetLine: number | null
   /** Change blocks vs HEAD: coloured bars along the left edge. */
   changes?: readonly Pick<Block, 'line1' | 'line2' | 'type'>[]
+  /** Windowed code view: row offsets computed, not read from rows that may not be rendered. */
+  geometry?: { top: (line: number) => number; at: (y: number) => number } | null
 }>()
 
 const WIDTH = 96
@@ -52,6 +54,7 @@ const tokenColor = (c: string | undefined): string => resolve(c?.startsWith('var
 
 /** Fractional line index at content offset `y` of the scroller (rows may wrap, so measure them). */
 function lineAt(y: number): number {
+  if (props.geometry) return props.geometry.at(y)
   const rows = props.content?.children
   if (!rows?.length) return 0
   let lo = 0
@@ -66,6 +69,7 @@ function lineAt(y: number): number {
 }
 
 function rowTop(line: number): number {
+  if (props.geometry) return props.geometry.top(line)
   const rows = props.content?.children
   if (!rows?.length) return 0
   const i = Math.min(rows.length - 1, Math.max(0, Math.floor(line)))

@@ -9,6 +9,9 @@ import type { Block } from '../../lib/diffBlocks'
 import type { DiffHighlight } from '../../lib/diffOpts'
 import { connectorPath, mapRow, midRow, scrollTopFor, splitModel, visibleFragments, type Fragment, type Side, type SplitRow } from '../../lib/splitDiff'
 import { useDiffDecor } from '../../composables/useDiffDecor'
+import { useWindowCopy } from '../../composables/useWindowCopy'
+import { diffSideText } from '../../lib/windowCopy'
+import { maxColumns, spacer, uniformRange, WINDOW_MIN_ROWS } from '../../lib/rowWindow'
 
 const props = defineProps<{
   file: DiffFile
@@ -34,6 +37,8 @@ const { code } = useDiffDecor({ file: () => props.file, blocks: () => props.bloc
 const root = ref<HTMLElement | null>(null)
 const leftEl = ref<HTMLElement | null>(null)
 const rightEl = ref<HTMLElement | null>(null)
+const leftBody = ref<HTMLElement | null>(null)
+const rightBody = ref<HTMLElement | null>(null)
 const probe = ref<HTMLElement | null>(null)
 /** Row height in px: rows are 1.5em of the code font, measured so zoom and font changes stay exact. */
 const lh = ref(19.5)
@@ -51,30 +56,50 @@ const other = (side: Side): Side => (side === 'left' ? 'right' : 'left')
 
 const num = (n: number | undefined): string => (n === undefined ? '' : String(n))
 
-function rowHtml(r: SplitRow, side: Side): string {
-  if (r.kind === 'gap') return `<div class="sd-row gap" aria-hidden="true"><span class="n"></span><span class="c">⋯</span></div>`
+function rowHtml(r: SplitRow, side: Side, i: number): string {
+  const at = ` data-i="${i}"`
+  if (r.kind === 'gap') return `<div class="sd-row gap"${at} aria-hidden="true"><span class="n"></span><span class="c">⋯</span></div>`
   if (r.kind === 'fold') {
     const label = escapeHtml(t('workspace.diff.expand', { n: r.count }, r.count))
-    return `<div class="sd-row fold"><span class="n"></span><button type="button" class="c" data-fold="${r.key}">⋯ ${label}</button></div>`
+    return `<div class="sd-row fold"${at}><span class="n"></span><button type="button" class="c" data-fold="${r.key}">⋯ ${label}</button></div>`
   }
-  if (r.kind === 'note') return `<div class="sd-row note"><span class="n"></span><span class="c">${escapeHtml(r.text)}</span></div>`
-  if (r.kind === 'pad') return `<div class="sd-row pad ${props.blocks[r.block]!.type}" data-block="${r.block}" aria-hidden="true"><span class="n"></span><span class="c"></span></div>`
+  if (r.kind === 'note') return `<div class="sd-row note"${at}><span class="n"></span><span class="c">${escapeHtml(r.text)}</span></div>`
+  if (r.kind === 'pad') return `<div class="sd-row pad ${props.blocks[r.block]!.type}"${at} data-block="${r.block}" aria-hidden="true"><span class="n"></span><span class="c"></span></div>`
   const l = r.line
   const n = num(side === 'left' ? l.old : l.new)
   // Unchanged rows carry the new-side number on both sides (F4 from the left side).
   const newAttr = l.new ? ` data-new="${l.new}"` : ''
-  if (r.block === null) return `<div class="sd-row"${newAttr}><span class="n">${n}</span><span class="c">${code(l, 'w-mod')}\n</span></div>`
+  if (r.block === null) return `<div class="sd-row"${at}${newAttr}><span class="n">${n}</span><span class="c">${code(l, 'w-mod')}\n</span></div>`
   const type = props.blocks[r.block]!.type
   const kind = escapeHtml(t(`workspace.gutter.kind.${type}`))
   const words = type === 'deleted' ? 'w-del' : type === 'added' ? 'w-add' : 'w-mod'
-  return `<div class="sd-row ${type}" data-block="${r.block}"${newAttr}><span class="n" title="${kind}">${n}</span><span class="c">${code(l, words)}\n</span></div>`
+  return `<div class="sd-row ${type}"${at} data-block="${r.block}"${newAttr}><span class="n" title="${kind}">${n}</span><span class="c">${code(l, words)}\n</span></div>`
 }
 
+// v45: past WINDOW_MIN_ROWS each side renders only rows near its scroll position (rows are all `lh` high).
+const windowed = computed(() => Math.max(model.value.left.length, model.value.right.length) > WINDOW_MIN_ROWS)
+/** "start:end" (a string, so the side's HTML recomputes only when the window really moves). */
+function windowKey(side: Side): string {
+  const n = (side === 'left' ? model.value.left : model.value.right).length
+  if (!windowed.value) return `0:${n}`
+  const r = uniformRange(n, lh.value, side === 'left' ? top.left : top.right, viewH.value || 1000)
+  return `${r.start}:${r.end}`
+}
+const leftKey = computed(() => windowKey('left'))
+const rightKey = computed(() => windowKey('right'))
+const bodyWidth = computed(() => {
+  if (!windowed.value) return undefined
+  const cols = (rows: SplitRow[]) => maxColumns(rows.flatMap((r) => (r.kind === 'line' ? [r.line.text] : [])))
+  return `calc(${Math.max(cols(model.value.left), cols(model.value.right))}ch + 5em)`
+})
+
 /** Rows, then a thin line where a fragment has no rows on this side (Inserted on the left, Deleted on the right). */
-function sideHtml(side: Side): string {
+function sideHtml(side: Side, key: string): string {
   const rows = side === 'left' ? model.value.left : model.value.right
-  let out = ''
-  for (const r of rows) out += rowHtml(r, side)
+  const [start, end] = key.split(':').map(Number) as [number, number]
+  let out = windowed.value ? spacer(start * lh.value) : ''
+  for (let i = start; i < end; i++) out += rowHtml(rows[i]!, side, i)
+  if (windowed.value) out += spacer((rows.length - end) * lh.value)
   for (const f of model.value.frags) {
     const at = side === 'left' ? f.l1Start : f.l2Start
     const empty = side === 'left' ? f.l1Start === f.l1End : f.l2Start === f.l2End
@@ -83,8 +108,27 @@ function sideHtml(side: Side): string {
   return out
 }
 
-const leftHtml = computed(() => sideHtml('left'))
-const rightHtml = computed(() => sideHtml('right'))
+const leftHtml = computed(() => sideHtml('left', leftKey.value))
+const rightHtml = computed(() => sideHtml('right', rightKey.value))
+
+function sideCopy(side: Side) {
+  const copy = useWindowCopy({
+    container: () => (side === 'left' ? leftBody.value : rightBody.value),
+    scope: () => el(side),
+    enabled: () => windowed.value,
+    rowText: (i) => {
+      const r = (side === 'left' ? model.value.left : model.value.right)[i]
+      return r?.kind === 'line' ? r.line.text : null
+    },
+    allText: () => diffSideText(props.file, side === 'left' ? 'old' : 'new'),
+  })
+  const html = side === 'left' ? leftHtml : rightHtml
+  watch(html, () => copy.capture(), { flush: 'pre' })
+  watch(html, () => copy.restore(), { flush: 'post' })
+  return copy.allSelected
+}
+const leftAll = sideCopy('left')
+const rightAll = sideCopy('right')
 
 let frame = 0
 /** Gutter redraw: one rAF per burst of scroll events. */
@@ -137,8 +181,9 @@ onBeforeUnmount(() => {
   if (frame) cancelAnimationFrame(frame)
 })
 
+// Keyed on path + sides, not the object: a refresh of the same diff (watcher, keepPosition) must not jump to the top.
 watch(
-  () => props.file,
+  () => [props.file.path, props.sides.left, props.sides.right].join('\0'),
   () => {
     expanded.value = new Set()
     for (const p of [leftEl.value, rightEl.value]) if (p) p.scrollTop = p.scrollLeft = 0
@@ -226,11 +271,24 @@ function sourceLine(): number | undefined {
   const r = rightEl.value
   if (!l || !r) return undefined
   if (f && visibleFragments([f], lh.value, l.scrollTop, r.scrollTop, l.clientHeight).length) {
-    return rowLine(r.querySelector(`.sd-row[data-block="${f.block}"]`) ?? l.querySelector(`.sd-row[data-block="${f.block}"]`))
+    return f.l2End > f.l2Start ? modelLine('right', f.l2Start) : modelLine('left', f.l1Start)
   }
-  const pane = el(lastSide)!
-  const rows = pane.querySelector('.sd-body')?.children
-  return rowLine(rows?.[Math.floor(pane.scrollTop / lh.value + 0.5)])
+  return modelLine(lastSide, Math.floor(el(lastSide)!.scrollTop / lh.value + 0.5))
+}
+
+/** `rowLine` on the model (rows may be outside the rendered window). */
+function modelLine(side: Side, from: number): number | undefined {
+  const rows = side === 'left' ? model.value.left : model.value.right
+  for (let i = Math.max(0, from), k = 0; i < rows.length && k < 500; i++, k++) {
+    const r = rows[i]!
+    if (r.kind === 'line' && r.line.new) return r.line.new
+    const block = r.kind === 'line' || r.kind === 'pad' ? r.block : null
+    if (block !== null) {
+      const b = props.blocks[block]
+      if (b) return Math.max(1, b.line1 + 1)
+    }
+  }
+  return undefined
 }
 
 /** Ctrl+Shift+Tab (IntelliJ): caret to the other side. */
@@ -268,7 +326,7 @@ defineExpose({ scrollToBlock, sourceLine, switchSide })
     <div class="relative flex min-h-0 flex-1">
       <div ref="probe" class="sd-row sd-probe" aria-hidden="true"><span class="n">0</span><span class="c">0</span></div>
       <div ref="leftEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="left" :aria-label="sides.left" @scroll.passive="onScroll('left')" @click="onClick" @focusin="lastSide = 'left'" @keydown="onPaneKey">
-        <div class="sd-body" v-html="leftHtml" />
+        <div ref="leftBody" class="sd-body" :class="{ 'is-all': leftAll }" :style="bodyWidth ? { minWidth: bodyWidth } : undefined" v-html="leftHtml" />
       </div>
       <div class="sd-gutter relative shrink-0 overflow-hidden" :style="{ width: `${GUTTER_W}px` }">
         <svg class="absolute inset-0 size-full" aria-hidden="true">
@@ -292,7 +350,7 @@ defineExpose({ scrollToBlock, sourceLine, switchSide })
         </template>
       </div>
       <div ref="rightEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="right" :aria-label="sides.right" @scroll.passive="onScroll('right')" @click="onClick" @focusin="lastSide = 'right'" @keydown="onPaneKey">
-        <div class="sd-body" v-html="rightHtml" />
+        <div ref="rightBody" class="sd-body" :class="{ 'is-all': rightAll }" :style="bodyWidth ? { minWidth: bodyWidth } : undefined" v-html="rightHtml" />
       </div>
     </div>
   </div>
@@ -498,6 +556,10 @@ defineExpose({ scrollToBlock, sourceLine, switchSide })
 }
 .is-split ::selection,
 .is-split :deep(*)::selection {
+  background: var(--ccm-well-selection);
+}
+/* Windowed Ctrl/⌘+A on one side (see FilePane): "all" is painted on its text rows. */
+.sd-body.is-all :deep(.sd-row:not(.pad):not(.fold):not(.gap):not(.note) .c) {
   background: var(--ccm-well-selection);
 }
 </style>

@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { BellRing, ChevronRight, Ellipsis, Folder, FolderOpen, GitBranch, Plus, X } from 'lucide-vue-next'
 import type { RailCheckout, RailCluster, RailRow as Row } from '../../../lib/rail/railModel'
 import { folderName } from '../../../lib/sidebarRows'
+import { isMac } from '../../../lib/platform'
+import { keyCombo } from '../../../lib/shortcuts'
 import RunBadge from '../RunBadge.vue'
 import RailRow from './RailRow.vue'
 
@@ -16,9 +18,13 @@ const emit = defineEmits<{
   menu: [event: MouseEvent]
   forget: []
   checkout: [checkout: RailCheckout]
+  contextHead: [event: MouseEvent]
+  contextCheckout: [checkout: RailCheckout, event: MouseEvent]
+  contextRow: [row: Row, event: MouseEvent]
 }>()
 
 const { t } = useI18n()
+const MOVE_KEYS = { up: keyCombo(['Alt', '↑'], isMac), down: keyCombo(['Alt', '↓'], isMac) }
 const name = computed(() => (props.cluster.key === 'home' ? t('workspace.side.home') : props.cluster.name))
 /** Folder the header acts on: the active checkout, else the main one. Never assumed allowed beyond what is open. */
 const headDir = computed(() => (props.cluster.checkouts.find((k) => k.active) ?? props.cluster.checkouts[0])?.path ?? props.cluster.root)
@@ -42,7 +48,7 @@ const HEAD_BTN =
     :data-group="cluster.key"
     :aria-labelledby="`ws-rail-${index}`"
   >
-    <div class="group/head flex h-8 min-w-0 items-center gap-0.5 pr-0.5">
+    <div class="group/head flex h-8 min-w-0 items-center gap-0.5 pr-0.5" @contextmenu.prevent.stop="emit('contextHead', $event)">
       <h3 :id="`ws-rail-${index}`" class="min-w-0 flex-1">
         <button
           type="button"
@@ -52,7 +58,7 @@ const HEAD_BTN =
           class="flex h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pl-1 text-left text-xs font-semibold hover:text-ink"
           :class="cluster.live ? 'text-ink-muted' : 'text-ink-faint'"
           :aria-expanded="!collapsed"
-          :title="[cluster.root, t('workspace.rail.moveHint')].filter(Boolean).join('\n')"
+          :title="[cluster.root, t('workspace.rail.moveHint', MOVE_KEYS)].filter(Boolean).join('\n')"
           @click="emit('toggle')"
         >
           <ChevronRight
@@ -126,9 +132,11 @@ const HEAD_BTN =
           type="button"
           data-side-item
           data-side-checkout
+          :data-checkout-key="k.key"
           class="flex h-6 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pr-1.5 pl-5 text-left text-2xs text-ink-muted hover:bg-fill hover:text-ink"
           :title="k.path"
           @click="emit('checkout', k)"
+          @contextmenu.prevent.stop="emit('contextCheckout', k, $event)"
         >
           <component :is="k.branch ? GitBranch : Folder" :size="11" class="shrink-0 text-ink-faint" aria-hidden="true" />
           <span class="min-w-0 truncate">{{ checkoutLabel(k) }}</span>
@@ -136,7 +144,7 @@ const HEAD_BTN =
         </button>
         <ul class="flex flex-col" role="list">
           <li v-for="row in k.rows" :key="row.key">
-            <RailRow :row="row" @focus="(key) => emit('focus', key)" @close="(r) => emit('close', r)" />
+            <RailRow :row="row" @focus="(key) => emit('focus', key)" @close="(r) => emit('close', r)" @menu="(r, e) => emit('contextRow', r, e)" />
           </li>
         </ul>
       </template>

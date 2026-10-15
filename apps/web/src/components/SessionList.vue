@@ -91,6 +91,9 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
         <Trash2 :size="14" aria-hidden="true" />{{ t('sessions.clearEnded', { n: endedCount }) }}
       </button>
     </div>
+    <p v-if="connection.hasData && connection.sessionsLoading && terminals.list.length > 0" role="status" class="mb-2 text-xs text-ink-muted">
+      {{ t('sessions.loadingSessions') }}
+    </p>
     <div v-if="!connection.hasData" class="rounded-card border border-dashed border-line-strong px-4 py-6 text-sm">
       <template v-if="connection.state === 'disconnected'">
         <p class="font-medium text-st-error">{{ t('sessions.offline') }}</p>
@@ -100,6 +103,15 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
         <LottieArt name="radar-scan" loop class="size-10 shrink-0" />
         <p class="text-ink-muted">{{ t('sessions.loading') }}</p>
       </div>
+    </div>
+
+    <div
+      v-else-if="connection.sessionsLoading && terminals.list.length === 0"
+      role="status"
+      class="flex items-center gap-3 rounded-card border border-dashed border-line-strong px-4 py-6 text-sm"
+    >
+      <LottieArt name="radar-scan" loop class="size-10 shrink-0" />
+      <p class="text-ink-muted">{{ t('sessions.loadingSessions') }}</p>
     </div>
 
     <div

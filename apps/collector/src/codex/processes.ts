@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { windowsPowerShell } from '../win-exe'
+import { nativeCommandLine, nativeProcessTable, type WinProc } from '../win-procs'
 
 export type ProcessMode = 'exec' | 'tui' | 'app-server' | 'other'
 
@@ -131,6 +132,41 @@ export function parseWindowsProcesses(stdout: string): CodexProcess[] {
   return topLevel(out)
 }
 
+/**
+ * The CIM script's walk over a native table. Null when a codex.exe can't be opened (elevated / other user): the
+ * caller then asks CIM, which reads every process.
+ */
+export function windowsCodexProcesses(table: WinProc[], commandLine: (pid: number) => string | null): CodexProcess[] | null {
+  const all = new Map(table.map((p) => [p.pid, p]))
+  const newer = (a: WinProc, b: WinProc): boolean => a.start !== null && b.start !== null && a.start > b.start
+  const out: CodexProcess[] = []
+  for (const proc of table) {
+    if (proc.name.toLowerCase() !== 'codex.exe') continue
+    const cmd = proc.start === null ? null : commandLine(proc.pid)
+    if (proc.start === null || cmd === null) return null
+    const ancestors: number[] = []
+    let cur = proc
+    let cut = false
+    for (let i = 0; i < MAX_ANCESTORS; i++) {
+      const parent = all.get(cur.ppid)
+      if (!parent || parent.pid === cur.pid || newer(parent, cur)) {
+        cut = cur.ppid > 4 && parent?.pid !== cur.pid
+        break
+      }
+      ancestors.push(parent.pid)
+      cur = parent
+    }
+    out.push({
+      pid: proc.pid,
+      start: Number(proc.start / 10_000n - FILETIME_EPOCH_OFFSET),
+      ...modeOfCommandLine(cmd),
+      ancestors: ancestors.filter((a) => a > 0),
+      orphan: cut && isShellish(cur.name),
+    })
+  }
+  return topLevel(out)
+}
+
 const PS_ALL_ROW = /^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d\d:\d\d:\d\d\s+\d{4})\s+(.+)$/
 const PS_ARGS_ROW = /^\s*(\d+)\s+(.*)$/
 
@@ -191,6 +227,9 @@ function run(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<str
 /** All running Codex CLI processes, or null when the platform query failed (callers keep their last view). */
 export async function listCodexProcesses(platform: NodeJS.Platform = process.platform): Promise<CodexProcess[] | null> {
   if (platform === 'win32') {
+    const table = nativeProcessTable()
+    const native = table && windowsCodexProcesses(table, nativeCommandLine)
+    if (native) return native
     const out = await run(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_SCRIPT])
     if (out === null) return null
     try {

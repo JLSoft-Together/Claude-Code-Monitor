@@ -66,7 +66,7 @@ export function gitMarks(root: string, entries: readonly ChangeEntry[]): GitMark
   return { files, dirs }
 }
 
-/** "Show diff" from a list row: Ctrl+D (⌘⌥D on macOS, where ⌘D splits the pane). */
+/** "Show diff" from a list row: Ctrl+D (⌥⌘D on macOS, where ⌘D splits the pane). */
 export const isShowDiffKey = (e: KeyboardEvent): boolean =>
   e.code === 'KeyD' && !e.shiftKey && (isMac ? e.metaKey && e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey && !e.metaKey)
 

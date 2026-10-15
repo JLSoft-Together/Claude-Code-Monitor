@@ -44,6 +44,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const state = ref<ConnectionState>('connecting')
   const lastEventAt = ref<number | null>(null)
   const hasData = ref(false)
+  const sessionsLoading = ref(false)
   const supportedClaudeVersion = ref<string | null>(null)
 
   let socket: WebSocket | null = null
@@ -83,6 +84,7 @@ export const useConnectionStore = defineStore('connection', () => {
     snooze.replaceAll(snapshot.snoozes ?? {})
     if (snapshot.notify) settings.stuckMinutes = snapshot.notify.stuckMinutes
     if (ui.selectedAgentId && !agents.byId[ui.selectedAgentId]) ui.selectAgent(null)
+    sessionsLoading.value = snapshot.loading === true
     hasData.value = true
     if (pendingFocus && terminals.byId[pendingFocus]) {
       ui.setView('monitor')
@@ -98,6 +100,9 @@ export const useConnectionStore = defineStore('connection', () => {
       switch (event.type) {
         case 'snapshot':
           hydrate(event.payload)
+          break
+        case 'sessions.loading':
+          sessionsLoading.value = event.payload?.loading === true
           break
         case 'terminal.created':
           terminals.upsert(event.payload)
@@ -366,6 +371,7 @@ export const useConnectionStore = defineStore('connection', () => {
     state,
     lastEventAt,
     hasData,
+    sessionsLoading,
     supportedClaudeVersion,
     start,
     apply,

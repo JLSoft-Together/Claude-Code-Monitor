@@ -12,6 +12,8 @@ export interface LayoutStatus {
   jar: boolean
   /** API level layoutlib renders with; the bundled version supports exactly one. */
   apiLevel?: number
+  /** Cold-start stage while the daemon is starting (v46). */
+  stage?: InitStage | null
 }
 
 export interface LayoutDevice {
@@ -46,6 +48,8 @@ export type LayoutRenderResult =
       diagnostics: LayoutDiagnostic[]
       renderMs: number
       frameworkOnly?: boolean
+      /** No project model, the bundled ConstraintLayout / AppCompat / Material kit rendered it. */
+      builtinLibs?: boolean
       cached?: boolean
     }
   | { ok: false; code: string; detail?: string }
@@ -78,6 +82,8 @@ export interface LayoutRenderRequest {
   slot?: number
   /** v42: unsaved editor text rendered instead of the file (resources still resolve from `file`). */
   text?: string
+  /** v46: image px per device px (`renderScale`); geometry in the result stays in device px. */
+  scale?: number
 }
 
 export type LayoutEvent =
@@ -86,6 +92,10 @@ export type LayoutEvent =
   | { type: 'model'; root: string; module: string; state: ModelState }
   | { type: 'project-changed'; root: string; module: string }
   | { type: 'code-changed'; root: string; module: string }
+  | { type: 'daemon-stage'; stage: InitStage }
+  | { type: 'loading'; kind: 'kit' | 'project'; active: boolean }
+
+export type InitStage = 'jvm' | 'setup' | 'prepare' | 'warmup'
 
 export type LayoutMode = 'code' | 'split' | 'design'
 
@@ -141,6 +151,27 @@ export function dpSize(d: LayoutDevice): { width: number; height: number } {
 }
 
 /** Scale that fits `w×h` inside the box (never above 1: the image is already device pixels). */
+/**
+ * Pixels worth rendering: what the stage shows (CSS px per device px × devicePixelRatio), capped at the device px.
+ * Snapped up to 1/8 steps like the desktop, so a pane resize within a step reuses the cached render.
+ */
+export function renderScale(viewScale: number, dpr: number): number {
+  const s = viewScale * (dpr > 0 ? dpr : 1)
+  if (!Number.isFinite(s) || s >= 0.95) return 1
+  return Math.min(1, Math.max(0.125, Math.ceil(s * 8) / 8))
+}
+
+/**
+ * Cold-start progress for the stage the daemon reported: the bar moves to the stage's ceiling over its typical
+ * duration (measured on Windows, JBR 21: spawn ~0.3 s, setup ~0.6–1 s, framework resources ~2.4–3.5 s, warm-up ~0.4 s).
+ */
+export const INIT_STAGE_PROGRESS: Record<InitStage, { pct: number; ms: number }> = {
+  jvm: { pct: 16, ms: 600 },
+  setup: { pct: 34, ms: 1000 },
+  prepare: { pct: 84, ms: 3200 },
+  warmup: { pct: 96, ms: 700 },
+}
+
 export function fitScale(w: number, h: number, boxW: number, boxH: number): number {
   if (w <= 0 || h <= 0 || boxW <= 0 || boxH <= 0) return 1
   return Math.min(1, boxW / w, boxH / h)
@@ -217,6 +248,25 @@ export const layoutDownload = (): Promise<BundleStatus | { state: 'cancelled' } 
 export const layoutRender = (req: LayoutRenderRequest): Promise<LayoutRenderResult> =>
   desktop?.layoutRender?.(req) ?? Promise.resolve({ ok: false, code: 'unavailable' })
 export const layoutWarmup = (file: string): Promise<unknown> => desktop?.layoutWarmup?.({ file }) ?? Promise.resolve(null)
+
+/** An XML in an Android `res/layout*|drawable*|mipmap*|color*` folder: a clear enough signal to start the renderer early. */
+export function isAndroidResXml(path: string): boolean {
+  return /[\\/]res[\\/](layout|drawable|mipmap|color)(-[^\\/]+)?[\\/][^\\/]+\.xml$/i.test(path)
+}
+
+const warmed = new Set<string>()
+let warmTimer: ReturnType<typeof setTimeout> | null = null
+/** Explorer hover / focus on such a file: start the JVM after a short dwell (once per file); idle shutdown still applies. */
+export function warmOnIntent(path: string | null, dwellMs = 250): void {
+  if (warmTimer) clearTimeout(warmTimer)
+  warmTimer = null
+  if (!path || !hasLayoutPreview || warmed.has(path) || !isAndroidResXml(path)) return
+  warmTimer = setTimeout(() => {
+    warmTimer = null
+    warmed.add(path)
+    void layoutWarmup(path)
+  }, dwellMs)
+}
 export const onLayoutEvent = (handler: (e: LayoutEvent) => void): (() => void) => desktop?.onLayoutEvent?.(handler) ?? (() => undefined)
 
 export const layoutModelStatus = (file: string): Promise<LayoutModelInfo | null> => desktop?.layoutModelStatus?.({ file }) ?? Promise.resolve(null)

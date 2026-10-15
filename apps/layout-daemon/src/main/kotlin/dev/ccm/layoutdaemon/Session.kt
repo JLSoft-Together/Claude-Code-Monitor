@@ -17,9 +17,12 @@ import com.android.ide.common.rendering.api.SessionParams
 import com.android.ide.common.resources.ResourceRepository
 import com.android.ide.common.resources.getConfiguredResources
 import com.android.layoutlib.bridge.Bridge
+import com.android.layoutlib.bridge.android.RenderParamsFlags
 import com.android.layoutlib.bridge.impl.RenderSessionImpl
 import com.android.resources.LayoutDirection
 import com.android.resources.ResourceType
+import java.awt.image.BufferedImage
+import kotlin.math.roundToInt
 
 /**
  * Rebuilds PaparazziSdk's render session with our own [LayoutlibCallback] and project resources.
@@ -44,8 +47,15 @@ class SessionSwapper(private val sdk: PaparazziSdk) {
         callback: LayoutlibCallback,
         minSdk: Int,
         targetSdk: Int,
+        imageScale: Float = 1f,
     ) {
         val params = build(device, theme, projectResources, callback, minSdk, targetSdk)
+        // layoutlib draws through a scaled canvas when the factory image is smaller than the screen: same dp,
+        // density and resources, fewer pixels to draw and encode.
+        if (imageScale < 1f) {
+            params.setImageFactory { w, h -> BufferedImage(scaled(w, imageScale), scaled(h, imageScale), BufferedImage.TYPE_INT_ARGB_PRE) }
+            params.setFlag(RenderParamsFlags.FLAG_KEY_RESULT_IMAGE_AUTO_SCALE, true)
+        }
         runCatching { sdkField<RenderSessionImpl>("renderSession")?.release() }
         runCatching { sdkField<RenderSession>("bridgeRenderSession")?.dispose() }
         Looper_Accessor.cleanupThread()
@@ -121,7 +131,9 @@ class SessionSwapper(private val sdk: PaparazziSdk) {
         PaparazziSdk::class.java.getDeclaredField(name).apply { isAccessible = true }.set(sdk, value)
     }
 
-    private companion object {
+    companion object {
+        fun scaled(px: Int, scale: Float): Int = (px * scale).roundToInt().coerceAtLeast(1)
+
         // PaparazziSdk.contentRoot(NORMAL) without Compose on the classpath.
         const val CONTENT_ROOT = """<?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent"/>"""

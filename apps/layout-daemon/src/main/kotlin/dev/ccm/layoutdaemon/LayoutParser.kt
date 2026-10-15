@@ -23,6 +23,9 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
         private set
     private var overlay: List<Attr>? = null
 
+    // A loose / unsaved buffer is in no res repository, so `@id/x` to an id this XML declares would not resolve.
+    private val declaredIds: Set<String> = Regex("""@\+id/([A-Za-z0-9_.]+)""").findAll(xml).map { it.groupValues[1] }.toSet()
+
     init {
         setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
         setInput(StringReader(xml))
@@ -72,12 +75,15 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
 
     override fun getAttributePrefix(index: Int): String? = overlay?.let { it[index].prefix } ?: super.getAttributePrefix(index)
 
-    override fun getAttributeValue(index: Int): String = overlay?.get(index)?.value ?: super.getAttributeValue(index)
+    override fun getAttributeValue(index: Int): String = declared(overlay?.get(index)?.value ?: super.getAttributeValue(index))
 
     override fun getAttributeValue(namespace: String?, name: String): String? {
-        val o = overlay ?: return super.getAttributeValue(namespace, name)
-        return o.firstOrNull { (namespace == null || it.ns == namespace) && it.name == name }?.value
+        val o = overlay ?: return super.getAttributeValue(namespace, name)?.let(::declared)
+        return o.firstOrNull { (namespace == null || it.ns == namespace) && it.name == name }?.value?.let(::declared)
     }
+
+    private fun declared(value: String): String =
+        if (value.startsWith("@id/") && value.substring(4) in declaredIds) "@+id/" + value.substring(4) else value
 
     override fun getViewCookie(): Any? = if (eventType == XmlPullParser.START_TAG) current else null
 
@@ -98,13 +104,17 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
         )
 
         /** Root tag's `tools:context` (activity whose theme the preview uses), null when absent or unparsable. */
-        fun toolsContext(xml: String): String? = try {
+        fun toolsContext(xml: String): String? = rootTools(xml, "context")
+
+        fun toolsTheme(xml: String): String? = rootTools(xml, "theme")?.trim()?.takeIf { it.isNotEmpty() }
+
+        private fun rootTools(xml: String, name: String): String? = try {
             val p = KXmlParser()
             p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
             p.setInput(StringReader(xml))
             var e = p.next()
             while (e != XmlPullParser.START_TAG && e != XmlPullParser.END_DOCUMENT) e = p.next()
-            if (e == XmlPullParser.START_TAG) p.getAttributeValue(TOOLS_NS, "context") else null
+            if (e == XmlPullParser.START_TAG) p.getAttributeValue(TOOLS_NS, name) else null
         } catch (_: Exception) {
             null
         }

@@ -152,6 +152,7 @@ export const unwatchRoot = (root: string): Promise<boolean> => bridge?.unwatch?.
 /** `near`: folder the dialog opens in (the focused terminal's). */
 export const pickFile = (kind: 'html' | 'any', near?: string): Promise<string | null> => bridge?.pickFile?.(kind, near) ?? Promise.resolve(null)
 export const openExternal = (url: string): Promise<boolean> => bridge?.openExternal?.(url) ?? Promise.resolve(false)
+export const hasReveal = typeof bridge?.reveal === 'function'
 export const revealPath = (path: string): Promise<boolean> => bridge?.reveal?.(path) ?? Promise.resolve(false)
 export const openPath = (path: string): Promise<string> => bridge?.openPath?.(path) ?? Promise.resolve('denied')
 /** Native "allow this folder?" prompt; true when the path is (now) readable. */

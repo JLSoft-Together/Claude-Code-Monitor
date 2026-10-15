@@ -14,8 +14,8 @@ import {
   type ToolSpan,
 } from '@ccm/shared'
 import type { RegistryRecord } from './registry'
-import { JsonlTailer } from './tailer'
-import { ToolSpanLog } from './tool-spans'
+import { JsonlTailer, type LineFilter } from './tailer'
+import { SPAN_RETENTION_MS, ToolSpanLog } from './tool-spans'
 import { extractSignals, TranscriptState, type Signal } from './transcript'
 
 export type ActivityDraft = Omit<ActivityEvent, 'id' | 'at'> & { at?: string }
@@ -52,6 +52,63 @@ interface SubagentEntry {
 
 const AGENT_TOOL_NAMES = new Set(['Agent', 'Task'])
 const MAX_DESCRIPTION = 160
+/** A finished subagent's last bytes are always parsed in full, whatever the lite filter would skip. */
+export const LITE_TAIL_BYTES = 1024 * 1024
+
+/** What a sync reads. No scope = every file; the projects watcher passes the files it saw change. */
+export interface SyncScope {
+  files?: Iterable<string>
+  skipResolved?: boolean
+}
+
+interface SyncPlan {
+  all: boolean
+  unresolved: boolean
+  files: Set<string>
+}
+
+const TYPE_KEY = Buffer.from('"type":"')
+const BRANCH_KEY = Buffer.from('"gitBranch":"')
+const SIGNAL_TYPES = ['assistant"', 'user"', 'system"', 'permission-mode"', 'queue-operation"'].map((t) => Buffer.from(t))
+const USER_TYPE = Buffer.from('"type":"user"')
+const NOTIFICATION_TAG = Buffer.from('<task-notification>')
+const TOOL_USE_ID_KEY = Buffer.from('"tool_use_id":"')
+
+function hasTypeValue(line: Buffer, values: Buffer[]): boolean {
+  let at = line.indexOf(TYPE_KEY)
+  while (at !== -1) {
+    const from = at + TYPE_KEY.length
+    for (const v of values) if (line.compare(v, 0, v.length, from, from + v.length) === 0) return true
+    at = line.indexOf(TYPE_KEY, from)
+  }
+  return false
+}
+
+/**
+ * Lines whose top-level type yields no signal but the branch (attachments, titles, file history…) skip JSON.parse.
+ * Keys inside JSON string values are escaped (\"type\"), so a raw match is a real key; a nested match only costs a parse.
+ */
+export const signalLineFilter: LineFilter = (line) => {
+  if (hasTypeValue(line, SIGNAL_TYPES)) return undefined
+  const at = line.lastIndexOf(BRANCH_KEY)
+  if (at === -1) return null
+  const from = at + BRANCH_KEY.length
+  const m = /^([^"\\]{1,200})"/.exec(line.subarray(from, from + 202).toString('utf8'))
+  return m ? { gitBranch: m[1] } : undefined
+}
+
+function toolUseIdsOf(line: Buffer): string[] {
+  const ids: string[] = []
+  let at = line.indexOf(TOOL_USE_ID_KEY)
+  while (at !== -1) {
+    const from = at + TOOL_USE_ID_KEY.length
+    const end = line.indexOf(0x22, from)
+    if (end === -1 || end - from > 200) break
+    ids.push(line.toString('latin1', from, end))
+    at = line.indexOf(TOOL_USE_ID_KEY, end)
+  }
+  return ids
+}
 
 const toIso = (ms: number | undefined): string | undefined =>
   ms === undefined || ms <= 0 ? undefined : new Date(ms).toISOString()
@@ -132,6 +189,7 @@ export class SessionTracker {
   private agentToolUses = new Set<string>()
   private syncing: Promise<ActivityDraft[]> | null = null
   private syncAgain = false
+  private plan: SyncPlan = { all: false, unresolved: false, files: new Set() }
   private readonly spans: ToolSpanLog
   private pendingSpans: ToolSpan[] = []
 
@@ -140,7 +198,7 @@ export class SessionTracker {
     record: RegistryRecord,
     private readonly projectsDir: string,
     private readonly hints: ContextHints = {},
-    now: () => number = Date.now,
+    private readonly now: () => number = Date.now,
   ) {
     this.record = record
     this.spans = new ToolSpanLog(terminalId, now)
@@ -193,7 +251,10 @@ export class SessionTracker {
     this.agentToolUses.clear()
   }
 
-  sync(catchUp: boolean): Promise<ActivityDraft[]> {
+  sync(catchUp: boolean, scope: SyncScope = {}): Promise<ActivityDraft[]> {
+    if (scope.files) for (const f of scope.files) this.plan.files.add(path.basename(f))
+    else if (scope.skipResolved) this.plan.unresolved = true
+    else this.plan.all = true
     if (this.syncing) {
       this.syncAgain = true
       return this.syncing.then(() => [])
@@ -202,7 +263,9 @@ export class SessionTracker {
       const out: ActivityDraft[] = []
       do {
         this.syncAgain = false
-        out.push(...(await this.syncOnce(catchUp)))
+        const plan = this.plan
+        this.plan = { all: false, unresolved: false, files: new Set() }
+        out.push(...(await this.syncOnce(catchUp, plan)))
       } while (this.syncAgain)
       return out
     })().finally(() => {
@@ -211,36 +274,67 @@ export class SessionTracker {
     return this.syncing
   }
 
-  private async syncOnce(catchUp: boolean): Promise<ActivityDraft[]> {
+  private async syncOnce(catchUp: boolean, plan: SyncPlan): Promise<ActivityDraft[]> {
     const activity: ActivityDraft[] = []
     const sessionId = this.record.sessionId
     if (!sessionId) return activity
 
+    let readMain = plan.all || plan.unresolved || plan.files.has(`${sessionId}.jsonl`)
     if (!this.transcriptPath) {
       this.transcriptPath = await findTranscript(this.projectsDir, sessionId, this.record.cwd)
       if (!this.transcriptPath) return activity
       this.mainTailer = new JsonlTailer(this.transcriptPath)
+      readMain = true
     }
 
-    if (this.mainTailer) {
-      const records = await this.mainTailer.read()
-      for (const rec of records) this.applyMain(extractSignals(rec), catchUp, activity)
+    if (this.mainTailer && readMain) {
+      await this.mainTailer.readEach((rec) => this.applyMain(extractSignals(rec), catchUp, activity), signalLineFilter)
     }
 
-    await this.discoverSubagents(catchUp, activity)
+    const fresh = await this.discoverSubagents(catchUp, activity)
 
     for (const entry of this.subagents.values()) {
-      const records = await entry.tailer.read()
-      for (const rec of records) {
-        const signals = extractSignals(rec)
-        this.recordLinks(signals)
-        this.trackSpans(signals, entry.agentId, catchUp)
-        if (!catchUp) this.toolActivity(signals, entry.state, entry.agentId, activity)
-        entry.state.apply(signals)
-      }
+      const wanted = plan.all || fresh.has(entry) || plan.files.has(`agent-${entry.agentId}.jsonl`) || (plan.unresolved && !entry.resolved)
+      if (wanted) await this.readSubagent(entry, catchUp, activity)
     }
     for (const entry of this.subagents.values()) this.resolveSubagent(entry, catchUp, activity)
+    this.spans.prune()
     return activity
+  }
+
+  private async readSubagent(entry: SubagentEntry, catchUp: boolean, activity: ActivityDraft[]): Promise<void> {
+    const lite = catchUp && !entry.resolved && (await this.isLiteCatchUp(entry))
+    await entry.tailer.readEach(
+      (rec) => {
+        const signals = extractSignals(rec)
+        this.recordLinks(signals)
+        if (!lite) this.trackSpans(signals, entry.agentId, catchUp)
+        if (!catchUp) this.toolActivity(signals, entry.state, entry.agentId, activity)
+        entry.state.apply(signals)
+      },
+      lite ? this.liteFilter : signalLineFilter,
+    )
+  }
+
+  /**
+   * Catch-up of a subagent the main transcript already reports finished, every write older than span retention:
+   * all its spans would end before the cutoff and be pruned, and its open-tool list is hidden once finished. So it
+   * records no spans, and its user lines before the last LITE_TAIL_BYTES are dropped unparsed unless they carry a
+   * notification or another agent's result.
+   */
+  private async isLiteCatchUp(entry: SubagentEntry): Promise<boolean> {
+    const linked = this.linkedOutcome(entry)
+    const cutoff = this.now() - SPAN_RETENTION_MS
+    if (!linked || (!isAgentFinished(linked.status) && linked.status !== 'unknown') || !(Date.parse(linked.at ?? '') < cutoff)) return false
+    const mtime = await stat(entry.tailer.file).then((st) => st.mtimeMs, () => Infinity)
+    return mtime < cutoff
+  }
+
+  private readonly liteFilter: LineFilter = (line, end, size) => {
+    if (end > size - LITE_TAIL_BYTES || line.indexOf(USER_TYPE) === -1) return signalLineFilter(line, end, size)
+    if (line.indexOf(NOTIFICATION_TAG) !== -1) return undefined
+    for (const id of toolUseIdsOf(line)) if (this.agentToolUses.has(id)) return undefined
+    return null
   }
 
   private applyMain(signals: Signal[], catchUp: boolean, activity: ActivityDraft[]): void {
@@ -323,14 +417,15 @@ export class SessionTracker {
     }
   }
 
-  private async discoverSubagents(catchUp: boolean, activity: ActivityDraft[]): Promise<void> {
-    if (!this.transcriptPath) return
+  private async discoverSubagents(catchUp: boolean, activity: ActivityDraft[]): Promise<Set<SubagentEntry>> {
+    const fresh = new Set<SubagentEntry>()
+    if (!this.transcriptPath) return fresh
     const dir = path.join(this.transcriptPath.slice(0, -'.jsonl'.length), 'subagents')
     let names: string[]
     try {
       names = await readdir(dir)
     } catch {
-      return
+      return fresh
     }
     for (const name of names) {
       const m = name.match(/^agent-([A-Za-z0-9_-]+)\.meta\.json$/)
@@ -356,6 +451,7 @@ export class SessionTracker {
         resolved: false,
       }
       this.subagents.set(agentId, entry)
+      fresh.add(entry)
       if (!catchUp) {
         activity.push({
           kind: 'agent.started',
@@ -366,21 +462,27 @@ export class SessionTracker {
         })
       }
     }
+    return fresh
+  }
+
+  /** What the main (or a parent) transcript says about this subagent: a notification wins over a foreground result. */
+  private linkedOutcome(entry: SubagentEntry): { status: AgentStatus; at?: string } | null {
+    const toolUseId = entry.meta.toolUseId
+    if (!toolUseId) return null
+    const note = this.notifications.get(toolUseId)
+    if (note) return { status: mapTaskNotificationStatus(note.status), at: note.at }
+    const fg = this.foregroundResults.get(toolUseId)
+    return fg ? { status: fg.isError ? 'error' : 'completed', at: fg.at } : null
   }
 
   private resolveSubagent(entry: SubagentEntry, catchUp: boolean, activity: ActivityDraft[]): void {
     if (entry.resolved) return
-    const toolUseId = entry.meta.toolUseId
     let status: AgentStatus = 'working'
     let at: string | undefined
-    const note = toolUseId ? this.notifications.get(toolUseId) : undefined
-    const fg = toolUseId ? this.foregroundResults.get(toolUseId) : undefined
-    if (note) {
-      status = mapTaskNotificationStatus(note.status)
-      at = note.at
-    } else if (fg) {
-      status = fg.isError ? 'error' : 'completed'
-      at = fg.at
+    const linked = this.linkedOutcome(entry)
+    if (linked) {
+      status = linked.status
+      at = linked.at
     } else if (entry.state.ended && entry.state.openTools.size === 0) {
       status = 'completed'
       at = entry.state.lastEndAt

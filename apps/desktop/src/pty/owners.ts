@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { nativeProcessTable, type WinProc } from '../../../collector/src/win-procs'
 
 const ROW = /^\s*(\d+)\s+(\d+)\s*$/
 const MAX_DEPTH = 32
@@ -40,7 +41,13 @@ function tableCommand(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): [strin
   return ['/bin/ps', ['-A', '-o', 'pid=', '-o', 'ppid=']]
 }
 
-export function readPidTable(platform = process.platform, env = process.env): Promise<Map<number, number> | null> {
+export function readPidTable(
+  platform = process.platform,
+  env = process.env,
+  native: () => WinProc[] | null = nativeProcessTable,
+): Promise<Map<number, number> | null> {
+  const table = platform === 'win32' ? native() : null
+  if (table) return Promise.resolve(new Map(table.map((p) => [p.pid, p.ppid])))
   const [file, args] = tableCommand(platform, env)
   return new Promise((resolve) => {
     execFile(file, args, { windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {

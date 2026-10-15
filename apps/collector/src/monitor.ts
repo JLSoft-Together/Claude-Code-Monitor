@@ -24,7 +24,7 @@ import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
 import { latestLimits, StatusLineReader } from './statusline'
 import type { MonitorStore } from './store'
-import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints } from './tracker'
+import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints, type SyncScope } from './tracker'
 import { CodexMonitor } from './codex/monitor'
 import type { ClaudeTarget } from './codex/link'
 
@@ -67,6 +67,7 @@ export interface MonitorDeps {
 export type Reply = (event: MonitorEvent) => void
 
 const DIFF_DEBOUNCE_MS = 2_000
+const RESOLVED_SWEEP_MS = 60_000
 
 const defaultDeps: MonitorDeps = { queryProcesses, isPidAlive, now: () => Date.now(), launch: (dir, mode, terminalApp) => launchClaude(dir, mode, undefined, terminalApp), focusWindow: (pid) => focusTerminalWindow(pid), pickFolder, openFolder, diffStat: readDiffStat }
 
@@ -78,6 +79,8 @@ export class Monitor {
   private readonly watchers: FSWatcher[] = []
   private readonly timers: NodeJS.Timeout[] = []
   private readonly syncTimers = new Map<string, NodeJS.Timeout>()
+  private readonly syncFiles = new Map<string, Set<string>>()
+  private readonly sweptAt = new Map<string, number>()
   private registryTimer: NodeJS.Timeout | null = null
   private reconciling: Promise<void> | null = null
   private reconcileAgain = false
@@ -132,9 +135,9 @@ export class Monitor {
   }
 
   async start(options: { watch?: boolean } = {}): Promise<void> {
-    await this.refreshHints()
     this.store.setFavorites(this.favorites.list())
     this.store.setResponse(this.response.stats())
+    await this.refreshHints()
     await this.pollExtras()
     await this.reconcile(true)
     if (options.watch === false) return
@@ -326,6 +329,7 @@ export class Monitor {
     const accepted = await this.verifyNew(created)
     for (const tracker of accepted) {
       this.trackers.set(tracker.terminalId, tracker)
+      this.sweptAt.set(tracker.terminalId, now)
       await tracker.sync(true)
       this.publish(tracker)
       this.scheduleDiff(tracker)
@@ -340,12 +344,20 @@ export class Monitor {
 
     for (const tracker of [...this.trackers.values()]) {
       if (!tracker.ended) {
-        if (!accepted.includes(tracker)) await this.syncTracker(tracker)
+        if (!accepted.includes(tracker)) await this.syncTracker(tracker, this.reconcileScope(tracker, now))
         continue
       }
       const endedAt = Date.parse(tracker.endedAt ?? '')
       if (Number.isFinite(endedAt) && now - endedAt >= this.config.staleTtlMs) this.forget(tracker)
     }
+  }
+
+  /** The watcher reports writes to finished subagents; reconcile re-reads them only once per sweep as a safety net. */
+  private reconcileScope(tracker: SessionTracker, now: number): SyncScope {
+    const last = this.sweptAt.get(tracker.terminalId)
+    if (last !== undefined && now - last < RESOLVED_SWEEP_MS) return { skipResolved: true }
+    this.sweptAt.set(tracker.terminalId, now)
+    return {}
   }
 
   private applyRecordChange(tracker: SessionTracker, entry: SessionTracker['record']): void {
@@ -421,9 +433,9 @@ export class Monitor {
     this.pushActivity([{ kind: 'terminal.ended', terminalId: tracker.terminalId, data: { title: tracker.buildTerminal().title } }])
   }
 
-  private async syncTracker(tracker: SessionTracker): Promise<void> {
+  private async syncTracker(tracker: SessionTracker, scope?: SyncScope): Promise<void> {
     try {
-      const drafts = await tracker.sync(false)
+      const drafts = await tracker.sync(false, scope)
       this.publish(tracker)
       for (const span of tracker.drainSpans()) this.store.toolSpan(span)
       this.pushActivity(drafts)
@@ -481,6 +493,8 @@ export class Monitor {
     this.diffTimers.delete(tracker.terminalId)
     clearTimeout(this.syncTimers.get(tracker.terminalId))
     this.syncTimers.delete(tracker.terminalId)
+    this.syncFiles.delete(tracker.terminalId)
+    this.sweptAt.delete(tracker.terminalId)
     this.store.removeTerminal(tracker.terminalId)
     this.aliases.delete(tracker.terminalId)
     this.notes.delete(tracker.terminalId)
@@ -765,12 +779,18 @@ export class Monitor {
     if (!sessionId) return
     for (const tracker of this.trackers.values()) {
       if (tracker.ended || tracker.sessionId !== sessionId) continue
-      if (this.syncTimers.has(tracker.terminalId)) return
+      const id = tracker.terminalId
+      let files = this.syncFiles.get(id)
+      if (!files) this.syncFiles.set(id, (files = new Set()))
+      files.add(file)
+      if (this.syncTimers.has(id)) return
       this.syncTimers.set(
-        tracker.terminalId,
+        id,
         setTimeout(() => {
-          this.syncTimers.delete(tracker.terminalId)
-          void this.syncTracker(tracker)
+          this.syncTimers.delete(id)
+          const changed = this.syncFiles.get(id)
+          this.syncFiles.delete(id)
+          void this.syncTracker(tracker, { files: changed ?? [] })
         }, 150),
       )
       return

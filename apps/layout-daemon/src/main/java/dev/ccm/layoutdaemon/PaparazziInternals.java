@@ -2,6 +2,7 @@ package dev.ccm.layoutdaemon;
 
 import app.cash.paparazzi.PaparazziSdk;
 import app.cash.paparazzi.internal.parsers.LayoutPullParser;
+import app.cash.paparazzi.internal.parsers.TagSnapshot;
 import app.cash.paparazzi.internal.resources.AarSourceResourceRepository;
 import app.cash.paparazzi.internal.resources.AppResourceRepository;
 import com.android.ide.common.rendering.api.ILayoutPullParser;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Paparazzi's resource repositories and parsers are Kotlin {@code internal}; Kotlin callers cannot
@@ -39,7 +41,16 @@ public final class PaparazziInternals {
         return LayoutPullParser.Companion.createFromString(xml);
     }
 
-    public static ILayoutPullParser parserFromFile(File file) throws FileNotFoundException {
-        return LayoutPullParser.Companion.createFromFile(file);
+    /** {@code aaptOut} receives the file's inline {@code <aapt:attr>} subtrees, keyed by their {@code @aapt:_aapt/…} value. */
+    public static ILayoutPullParser parserFromFile(File file, Map<String, Object> aaptOut) throws FileNotFoundException {
+        LayoutPullParser parser = LayoutPullParser.Companion.createFromFile(file);
+        aaptOut.putAll(parser.getAaptDeclaredAttrs());
+        return parser;
+    }
+
+    public static ILayoutPullParser parserFromAapt(Object tag, Map<String, Object> aaptOut) {
+        LayoutPullParser parser = LayoutPullParser.Companion.createFromAaptResource((TagSnapshot) tag);
+        aaptOut.putAll(parser.getAaptDeclaredAttrs());
+        return parser;
     }
 }

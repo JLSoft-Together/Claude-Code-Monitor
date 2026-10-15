@@ -11,6 +11,7 @@ import run from './run-v31'
 import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
+import mapV47 from './map-v47'
 
 export default {
   ...v25.en,
@@ -294,6 +295,7 @@ export default {
     version: 'Codex {v}',
   },
   map: {
+    ...mapV47.en.map,
     showSessions: 'Show Sessions',
     showActivity: 'Show Activity',
     resizeHint: 'Drag to resize, double-click to reset',
@@ -336,6 +338,7 @@ export default {
     empty: 'No Claude Code sessions running.',
     emptyHint: 'Start claude in any terminal — it appears here automatically.',
     loading: 'Connecting to collector…',
+    loadingSessions: 'Loading sessions…',
     offline: 'Collector not reachable.',
     offlineHint: 'Start it with npm run dev in the project folder. Retrying automatically.',
   },
@@ -472,6 +475,7 @@ export default {
     group: { panels: 'Panels and bar', map: 'Map and tabs', workspace: 'Workspace', view: 'Zoom and text size', help: 'Help' },
     workspaceNote: 'Work on the Workspace tab, also while a terminal has focus.',
     item: {
+      ...mapV47.en.keys,
       sessions: 'Show or hide Sessions',
       sessionsPin: 'Pin Sessions as a column, or float it',
       activity: 'Show or hide Activity',
@@ -922,8 +926,8 @@ export default {
         absent: 'Not shown yet: these numbers come from the status line bridge. Open Settings, copy the snippet into ~/.claude/settings.json and they appear after the next Claude reply.',
       },
       palette: {
-        title: 'Find anything: Ctrl K',
-        body: 'Type part of a session name, folder or branch to jump to it. Shift+Enter brings its terminal to the front. Commands for theme, language, notifications and diagnostics live here too.',
+        title: 'Find anything: {palette}',
+        body: 'Type part of a session name, folder or branch to jump to it. {reveal} brings its terminal to the front. Commands for theme, language, notifications and diagnostics live here too.',
       },
       compact: {
         title: 'Compact view',
@@ -935,7 +939,7 @@ export default {
       },
       finish: {
         title: 'You are set',
-        body: 'Leave this tab open while you work; it updates on its own. Open this guide again from Settings or Ctrl K.',
+        body: 'Leave this tab open while you work; it updates on its own. Open this guide again from Settings or {palette}.',
       },
     },
   },

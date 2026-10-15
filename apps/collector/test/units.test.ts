@@ -164,10 +164,35 @@ describe('MonitorStore', () => {
     expect(messages).toHaveLength(1)
     const msg = messages[0] as { seq: number; events: { type: string; payload: Record<string, unknown> }[] }
     expect(msg.seq).toBe(1)
-    expect(msg.events[0]?.type).toBe('terminal.created')
-    expect(msg.events[1]).toEqual({ type: 'terminal.updated', payload: { id: 't', title: 'B', waitingFor: null } })
-    expect(msg.events.filter((e) => e.type === 'terminal.updated')).toHaveLength(1)
+    expect(msg.events[0]).toEqual({ type: 'terminal.created', payload: { id: 't', title: 'B', status: 'idle' } })
+    expect(msg.events.filter((e) => e.type === 'terminal.updated')).toHaveLength(0)
     expect(store.snapshot().activity).toHaveLength(3)
+
+    store.upsertTerminal({ id: 't', title: 'C', status: 'working', waitingFor: 'y' })
+    store.upsertTerminal({ id: 't', title: 'C', status: 'idle' })
+    store.flush()
+    expect((messages[1] as typeof msg).events).toEqual([{ type: 'terminal.updated', payload: { id: 't', title: 'C', status: 'idle', waitingFor: null } }])
+  })
+
+  it('merges patches per id in a batch, last value per field, without crossing a removal', () => {
+    const store = new MonitorStore({ activityLimit: 3, batchMs: 5 })
+    const messages: { events: { type: string; payload: Record<string, unknown> }[] }[] = []
+    store.subscribe((m) => messages.push(m as (typeof messages)[number]))
+    const agent = { id: 'a', terminalId: 't', role: 'subagent' as const, name: 'x', status: 'working' as const }
+    store.upsertAgent(agent)
+    store.flush()
+    store.upsertAgent({ ...agent, status: 'waiting', currentTool: 'Bash' })
+    store.upsertAgent({ ...agent, id: 'b' })
+    store.upsertAgent({ ...agent, status: 'completed' })
+    store.pushActivity({ kind: 'agent.completed', agentId: 'a' })
+    store.removeAgent('a')
+    store.upsertAgent({ ...agent, name: 'again' })
+    store.upsertAgent({ ...agent, name: 'again', status: 'completed' })
+    store.flush()
+    const events = messages[1]!.events
+    expect(events.map((e) => e.type)).toEqual(['agent.updated', 'agent.created', 'activity', 'agent.removed', 'agent.created'])
+    expect(events[0]!.payload).toEqual({ id: 'a', status: 'completed', currentTool: null })
+    expect(events[4]!.payload).toMatchObject({ id: 'a', name: 'again', status: 'completed' })
   })
 
   it('keeps broadcasting when one listener throws', () => {

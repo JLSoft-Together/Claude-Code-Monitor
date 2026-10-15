@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
-import { BLUEPRINT_MAX, borrowedModel, COMPARE_CAPTION_MIN, DEVICE_PRESETS, boxRect, compareCell, compareCellAt, compareConfigs, deviceFor, dpSize, fitScale, flattenTree, hitTest, isLayoutXml, modelChip, needsModelNotice, nodeForLine, shortClass, stepView, type LayoutModelInfo, type LayoutViewNode } from './layoutPreview'
+import { BLUEPRINT_MAX, INIT_STAGE_PROGRESS, isAndroidResXml, renderScale, borrowedModel, COMPARE_CAPTION_MIN, DEVICE_PRESETS, boxRect, compareCell, compareCellAt, compareConfigs, deviceFor, dpSize, fitScale, flattenTree, hitTest, isLayoutXml, modelChip, needsModelNotice, nodeForLine, shortClass, stepView, type LayoutModelInfo, type LayoutViewNode } from './layoutPreview'
 
 const node = (cls: string, line: number, bounds: [number, number, number, number], children: LayoutViewNode[] = [], xmlId: string | null = null): LayoutViewNode => ({ class: cls, xmlId, line, column: 1, bounds, children })
 
@@ -162,5 +162,32 @@ describe('project model + compare helpers', () => {
   it('has the model strings in en and vi', () => {
     for (const code of Object.keys(en.layout.model.errors)) expect(vi.layout.model.errors[code as keyof typeof vi.layout.model.errors]).toBeTruthy()
     expect(vi.layout.themePick.auto).toBeTruthy()
+  })
+})
+
+describe('v46 render scale + warm-up intent', () => {
+  it('renders only the pixels on screen, snapped up to 1/8, never above the device', () => {
+    expect(renderScale(0.34, 1.25)).toBe(0.5)
+    expect(renderScale(0.34, 1)).toBe(0.375)
+    expect(renderScale(1, 1)).toBe(1)
+    expect(renderScale(4, 2)).toBe(1)
+    expect(renderScale(0.01, 1)).toBe(0.125)
+    expect(renderScale(Number.NaN, 1)).toBe(1)
+  })
+  it('stages the cold-start bar monotonically', () => {
+    const pcts = (['jvm', 'setup', 'prepare', 'warmup'] as const).map((s) => INIT_STAGE_PROGRESS[s].pct)
+    expect([...pcts].sort((a, b) => a - b)).toEqual(pcts)
+    expect(pcts.at(-1)).toBeLessThan(100)
+  })
+  it('warms up only for Android res XML', () => {
+    expect(isAndroidResXml(String.raw`C:\p\app\src\main\res\layout\a.xml`)).toBe(true)
+    expect(isAndroidResXml('/p/res/drawable-v24/bg.xml')).toBe(true)
+    expect(isAndroidResXml('/p/res/values/strings.xml')).toBe(false)
+    expect(isAndroidResXml('/web/src/layout/a.xml')).toBe(false)
+    expect(isAndroidResXml('/p/res/layout/a.kt')).toBe(false)
+  })
+  it('has the wait strings in en and vi', () => {
+    for (const k of Object.keys(en.layout.wait.stage)) expect(vi.layout.wait.stage[k as keyof typeof vi.layout.wait.stage]).toBeTruthy()
+    expect(vi.layout.wait.libraries && vi.layout.staleFrame).toBeTruthy()
   })
 })

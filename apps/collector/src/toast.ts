@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   CONTEXT_THRESHOLDS,
@@ -28,7 +27,7 @@ import {
   type ToastTestResult,
 } from '@ccm/shared'
 import { JsonFile } from './json-file'
-import { windowsPowerShell } from './win-exe'
+import { PsHost } from './ps-host'
 
 export type ToastLocale = 'en' | 'vi'
 
@@ -53,71 +52,80 @@ export interface ToastDeps {
 
 const APP_ID = String.raw`{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe`
 
+// Request fields arrive as data (base64 JSON on stdin, see ps-host.ts), never inside the script text.
 const SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-$app = $env:CCM_TOAST_APP
-if ($env:CCM_TOAST_MODE -eq 'health') {
-  $g = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications' -Name ToastEnabled -ErrorAction SilentlyContinue).ToastEnabled
-  $a = (Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\$app" -Name Enabled -ErrorAction SilentlyContinue).Enabled
-  if ($g -eq 0) { 'globalOff' } elseif ($a -eq 0) { 'appOff' } else { 'ok' }
-  exit
-}
-if ($env:CCM_TOAST_MODE -eq 'hide') {
-  [Windows.UI.Notifications.ToastNotificationManager]::History.Remove($env:CCM_TOAST_TAG, 'ccm', $app)
-  'ok'; exit
-}
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime]
+$app = $env:CCM_TOAST_APP
 function Esc([string]$v) { [System.Security.SecurityElement]::Escape($v) }
-$url = Esc $env:CCM_TOAST_URL
-$snooze = if ($env:CCM_TOAST_SNOOZE_URL) { "<action content='$(Esc $env:CCM_TOAST_SNOOZE_LABEL)' arguments='$(Esc $env:CCM_TOAST_SNOOZE_URL)' activationType='protocol'/>" } else { '' }
-$scenario = if ($env:CCM_TOAST_PERSIST -eq '1') { " scenario='reminder'" } else { '' }
-$xml = "<toast$scenario activationType='protocol' launch='$url'><visual><binding template='ToastGeneric'><text>$(Esc $env:CCM_TOAST_TITLE)</text><text>$(Esc $env:CCM_TOAST_BODY)</text></binding></visual><actions><action content='$(Esc $env:CCM_TOAST_OPEN)' arguments='$url' activationType='protocol'/>$snooze<action content='$(Esc $env:CCM_TOAST_DISMISS)' arguments='dismiss' activationType='system'/></actions></toast>"
-$doc = [Windows.Data.Xml.Dom.XmlDocument]::new()
-$doc.LoadXml($xml)
-$toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
-$toast.Tag = $env:CCM_TOAST_TAG
-$toast.Group = 'ccm'
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show($toast)
-'ok'
+function Run($r) {
+  if ($r.mode -eq 'health') {
+    $g = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications' -Name ToastEnabled -ErrorAction SilentlyContinue).ToastEnabled
+    $a = (Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\$app" -Name Enabled -ErrorAction SilentlyContinue).Enabled
+    if ($g -eq 0) { return 'globalOff' } elseif ($a -eq 0) { return 'appOff' } else { return 'ok' }
+  }
+  if ($r.mode -eq 'hide') {
+    [Windows.UI.Notifications.ToastNotificationManager]::History.Remove([string]$r.tag, 'ccm', $app)
+    return 'ok'
+  }
+  $url = Esc $r.url
+  $snooze = if ($r.snoozeUrl) { "<action content='$(Esc $r.snoozeLabel)' arguments='$(Esc $r.snoozeUrl)' activationType='protocol'/>" } else { '' }
+  $scenario = if ($r.persist -eq '1') { " scenario='reminder'" } else { '' }
+  $xml = "<toast$scenario activationType='protocol' launch='$url'><visual><binding template='ToastGeneric'><text>$(Esc $r.title)</text><text>$(Esc $r.body)</text></binding></visual><actions><action content='$(Esc $r.open)' arguments='$url' activationType='protocol'/>$snooze<action content='$(Esc $r.dismiss)' arguments='dismiss' activationType='system'/></actions></toast>"
+  $doc = [Windows.Data.Xml.Dom.XmlDocument]::new()
+  $doc.LoadXml($xml)
+  $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
+  $toast.Tag = [string]$r.tag
+  $toast.Group = 'ccm'
+  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show($toast)
+  'ok'
+}
+$in = [Console]::In
+while ($null -ne ($line = $in.ReadLine())) {
+  $id = 0
+  try {
+    $r = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line)) | ConvertFrom-Json
+    $id = [int]$r.id
+    $res = Run $r
+  } catch { $res = 'error' }
+  [Console]::Out.WriteLine("$id$([char]9)$res")
+  [Console]::Out.Flush()
+}
 `
 
-function runPs(env: Record<string, string>): Promise<string | null> {
+let host: PsHost | null = null
+
+function runPs(request: Record<string, string>): Promise<string | null> {
   if (process.platform !== 'win32') return Promise.resolve(null)
-  return new Promise((resolve) => {
-    execFile(
-      windowsPowerShell(),
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
-      { timeout: 15_000, windowsHide: true, maxBuffer: 64_000, env: { ...process.env, CCM_TOAST_APP: APP_ID, ...env } },
-      (err, stdout) => resolve(err ? null : (stdout.trim().split(/\r?\n/).at(-1)?.trim() ?? null)),
-    )
-  })
+  host ??= new PsHost({ script: SCRIPT, env: { CCM_TOAST_APP: APP_ID } })
+  return host.run(request)
 }
 
-const runScript = async (env: Record<string, string>): Promise<boolean> => (await runPs(env)) === 'ok'
+const runScript = async (request: Record<string, string>): Promise<boolean> => (await runPs(request)) === 'ok'
 
 export function showToast(c: ToastContent): Promise<boolean> {
   return runScript({
-    CCM_TOAST_MODE: 'show',
-    CCM_TOAST_TAG: c.tag,
-    CCM_TOAST_TITLE: c.title,
-    CCM_TOAST_BODY: c.body,
-    CCM_TOAST_URL: c.url,
-    CCM_TOAST_OPEN: c.open,
-    CCM_TOAST_DISMISS: c.dismiss,
-    CCM_TOAST_PERSIST: c.persistent ? '1' : '0',
-    CCM_TOAST_SNOOZE_URL: c.snoozeUrl ?? '',
-    CCM_TOAST_SNOOZE_LABEL: c.snoozeLabel ?? '',
+    mode: 'show',
+    tag: c.tag,
+    title: c.title,
+    body: c.body,
+    url: c.url,
+    open: c.open,
+    dismiss: c.dismiss,
+    persist: c.persistent ? '1' : '0',
+    snoozeUrl: c.snoozeUrl ?? '',
+    snoozeLabel: c.snoozeLabel ?? '',
   })
 }
 
 export async function toastHealth(): Promise<ToastHealth> {
-  const out = await runPs({ CCM_TOAST_MODE: 'health' })
+  const out = await runPs({ mode: 'health' })
   return out === 'ok' || out === 'globalOff' || out === 'appOff' ? out : 'unknown'
 }
 
 export function hideToast(tag: string): Promise<boolean> {
-  return runScript({ CCM_TOAST_MODE: 'hide', CCM_TOAST_TAG: tag })
+  return runScript({ mode: 'hide', tag })
 }
 
 export const defaultToastDeps: ToastDeps = { show: showToast, hide: hideToast, now: () => Date.now(), health: toastHealth }

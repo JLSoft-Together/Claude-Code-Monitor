@@ -8,7 +8,7 @@ import { deflateRawSync } from 'node:zlib'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { LayoutDaemon, LayoutError, daemonArgs, type DaemonChild, type DaemonDeps } from '../src/layout/daemon'
 import { downloadArtifact, isAllowedUrl, artifactUrl, ARTIFACTS, DownloadError, type Artifact, type Fetcher } from '../src/layout/download'
-import { cleanTree, isLayoutFile, registerLayoutIpc } from '../src/layout/ipc'
+import { cleanScale, cleanTree, isLayoutFile, registerLayoutIpc, renderKey } from '../src/layout/ipc'
 import { FrameParser, encodeMessage } from '../src/layout/rpc'
 import { extractZip, safeEntryName } from '../src/layout/zip'
 
@@ -189,6 +189,48 @@ describe('LayoutDaemon', () => {
     await expect(daemon.render(params, 's')).rejects.toMatchObject({ code: 'jdk-old', detail: '11' })
     expect(children).toHaveLength(0)
   })
+
+  it('records a class list, dumps the AppCDS archive in a second JVM, then starts from it', async () => {
+    const root = path.join(tmp, 'cds')
+    mkdirSync(path.join(root, 'jdk'), { recursive: true })
+    writeFileSync(path.join(root, 'jdk', 'release'), 'JAVA_VERSION="21.0.10"\n')
+    writeFileSync(path.join(root, 'd.jar'), 'jar')
+    const cacheDir = path.join(root, 'cache')
+    const spawns: { args: string[]; child: FakeChild }[] = []
+    const log = vi.fn()
+    const make = () =>
+      new LayoutDaemon({
+        spawn: (_java, args) => {
+          const child = new FakeChild((m, c) => (m.method === 'initialize' ? c.reply(m.id, { initMs: 1 }) : m.method === 'shutdown' ? c.reply(m.id, null) : undefined))
+          spawns.push({ args, child })
+          return child
+        },
+        kill: (c) => (c as FakeChild).die(137),
+        findJava: async () => ({ ok: true, home: path.join(root, 'jdk'), version: 21, java: 'java' }),
+        daemonJar: path.join(root, 'd.jar'),
+        layoutlibDir: () => path.join(root, 'll'),
+        cacheDir,
+        platform: process.platform,
+        cdsDumpDelayMs: 0,
+        log,
+      })
+    const first = make()
+    await first.ensure()
+    const record = spawns[0]!.args.find((a) => a.startsWith('-XX:DumpLoadedClassList='))!
+    expect(record).toBeTruthy()
+    writeFileSync(record.split('=')[1]!, 'java/lang/Object id: 0\n'.repeat(1500))
+    await vi.waitFor(() => expect(spawns).toHaveLength(2), { timeout: 3000 })
+    const dump = spawns[1]!
+    expect(dump.args).toContain('-Xshare:dump')
+    writeFileSync(dump.args.find((a) => a.startsWith('-XX:SharedArchiveFile='))!.split('=')[1]!, 'x'.repeat(2_000_000))
+    dump.child.die(0)
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith('info', expect.stringMatching(/^AppCDS archive written/)))
+    first.killNow()
+
+    await make().ensure()
+    expect(spawns[2]!.args.some((a) => /^-XX:SharedArchiveFile=.*\.jsa$/.test(a))).toBe(true)
+    expect(spawns[2]!.args.indexOf('-cp')).toBeGreaterThan(spawns[2]!.args.indexOf('-Xshare:auto'))
+  })
 })
 
 function fetcherOf(body: Buffer, status = 200, length: number | null = body.length): Fetcher & { calls: string[] } {
@@ -364,5 +406,48 @@ describe('render gate', () => {
   it('cleanTree keeps known fields and drops broken nodes', () => {
     const tree = cleanTree({ class: 'LinearLayout', xmlId: null, line: 2, column: 1, bounds: [0, 0, 10, 10], extra: 'x', children: [{ class: 'TextView', line: 3, bounds: [0, 0, 5] }, { class: 'Button', xmlId: '@+id/b', line: 9, column: 5, bounds: [1, 2, 3, 4] }] })
     expect(tree).toEqual({ class: 'LinearLayout', xmlId: null, line: 2, column: 1, bounds: [0, 0, 10, 10], children: [{ class: 'Button', xmlId: '@+id/b', line: 9, column: 5, bounds: [1, 2, 3, 4], children: [] }] })
+  })
+})
+
+describe('v46 speed', () => {
+  const init = (m: { id?: number; method: string; params: Record<string, unknown> }, c: FakeChild): void => {
+    if (m.method === 'initialize') {
+      c.stdout.write(encodeMessage({ jsonrpc: '2.0', method: 'progress', params: { stage: 'setup' } }))
+      c.stdout.write(encodeMessage({ jsonrpc: '2.0', method: 'progress', params: { stage: 'bogus' } }))
+      c.stdout.write(encodeMessage({ jsonrpc: '2.0', method: 'progress', params: { stage: 'prepare' } }))
+      c.reply(m.id, { protocolVersion: 1, apiLevel: 36, initMs: 10, timings: { setupMs: 1 } })
+    } else if (m.method === 'render') okRender(m, c)
+    else c.reply(m.id, { ok: true })
+  }
+
+  it('hands the AAR list of the first project/load to initialize and reports start stages', async () => {
+    const stages: string[] = []
+    const { daemon, children } = setup(init, { cds: false, onStage: (s) => stages.push(s) })
+    const aars = [{ dir: '/kit/aars/a/res', name: 'a' }]
+    await daemon.request('project/load', { aarResDirs: aars, packageName: 'x' })
+    const initMsg = children[0]!.received.find((m) => m.method === 'initialize')!
+    expect(initMsg.params.prefetchAars).toEqual(aars)
+    expect(stages).toEqual(['jvm', 'setup', 'prepare'])
+    expect(daemon.stage).toBeNull()
+    daemon.killNow()
+  })
+
+  it('sends scale only below 1', async () => {
+    const { daemon, children } = setup(init, { cds: false })
+    await daemon.render({ ...params, scale: 0.5 }, 's')
+    await daemon.render({ ...params, xmlContent: '<FrameLayout/>', scale: 1 }, 's')
+    const renders = children[0]!.received.filter((m) => m.method === 'render')
+    expect(renders[0]!.params.scale).toBe(0.5)
+    expect(renders[1]!.params).not.toHaveProperty('scale')
+    daemon.killNow()
+  })
+
+  it('snaps the requested scale and keys the render cache by it', () => {
+    expect(cleanScale(0.34)).toBe(0.375)
+    expect(cleanScale(0.96)).toBe(1)
+    expect(cleanScale('x')).toBe(1)
+    expect(cleanScale(0.001)).toBe(0.125)
+    expect(renderKey({ ...params, scale: 0.5 }, 'k')).not.toBe(renderKey({ ...params, scale: 1 }, 'k'))
+    expect(renderKey({ ...params }, 'k')).toBe(renderKey({ ...params, scale: 1 }, 'k'))
   })
 })

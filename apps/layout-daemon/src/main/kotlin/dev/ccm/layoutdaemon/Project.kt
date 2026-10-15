@@ -16,10 +16,46 @@ import java.io.FileNotFoundException
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Modifier
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.zip.ZipFile
 
 data class AarRes(val dir: File, val name: String)
+
+/**
+ * AAR resource repositories parsed ahead of `project/load` (e.g. while `initialize` still boots layoutlib on the
+ * worker thread); parsing only reads res folders, it needs no Bridge. Unused entries are dropped after each load.
+ */
+object AarPrefetch {
+    private val pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors().coerceIn(1, 8)) { r ->
+        Thread(r, "aar-res").apply { isDaemon = true }
+    }
+    private val pending = LinkedHashMap<AarRes, Future<Result<ResourceRepository>>>()
+
+    @Synchronized
+    fun prefetch(aars: List<AarRes>) {
+        for (aar in aars) {
+            if (aar in pending) continue
+            pending[aar] = pool.submit(Callable { runCatching { PaparazziInternals.aarRepository(aar.dir.toPath(), aar.name) } })
+        }
+    }
+
+    fun take(aar: AarRes): Result<ResourceRepository> {
+        val f = synchronized(this) { pending.remove(aar) } ?: return Result.failure(IllegalStateException("not prefetched"))
+        return try {
+            f.get()
+        } catch (e: ExecutionException) {
+            Result.failure(e.cause ?: e)
+        }
+    }
+
+    @Synchronized
+    fun clear() {
+        pending.values.forEach { it.cancel(false) }
+        pending.clear()
+    }
+}
 
 data class ProjectSpec(
     val resDirs: List<File>,
@@ -140,11 +176,19 @@ class ProjectCallback(
 
     override fun getOrGenerateResourceId(resource: ResourceReference): Int = ids.idOf(resource)
 
+    // AAR res are uncompiled sources, so inline <aapt:attr> blocks (Material's animated-vector checkbox / switch
+    // drawables) reach layoutlib as `@aapt:_aapt/<id>` values that only the parser of the enclosing file knows.
+    private val aaptDeclared = object : LinkedHashMap<String, Any>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Any>?) = size > MAX_AAPT_TAGS
+    }
+
     override fun getParser(layoutResource: ResourceValue): ILayoutPullParser? {
         val path = layoutResource.value ?: return null
-        if (layoutResource.resourceType == ResourceType.AAPT) return null
+        if (layoutResource.resourceType == ResourceType.AAPT) {
+            return aaptDeclared[path]?.let { PaparazziInternals.parserFromAapt(it, aaptDeclared) }
+        }
         return try {
-            PaparazziInternals.parserFromFile(File(path))
+            PaparazziInternals.parserFromFile(File(path), aaptDeclared)
         } catch (_: FileNotFoundException) {
             null
         }
@@ -172,6 +216,8 @@ class ProjectCallback(
     override fun getResourcePackage(): String = applicationId
 
     companion object {
+        // Every parse mints fresh aapt ids (Paparazzi's global counter); the bound keeps a long session from growing.
+        private const val MAX_AAPT_TAGS = 4096
         private val RECYCLER_ADAPTERS = setOf(
             "androidx.recyclerview.widget.RecyclerView\$Adapter",
             "android.support.v7.widget.RecyclerView\$Adapter",
@@ -195,10 +241,19 @@ class LoadedProject(val spec: ProjectSpec, private val parentLoader: ClassLoader
     var rIdCount = 0
         private set
 
+    val loadTimings = LinkedHashMap<String, Long>()
+
     fun load() {
+        val t0 = System.nanoTime()
         aarRepos = loadAars()
+        val t1 = System.nanoTime()
         loadLocalResources()
+        val t2 = System.nanoTime()
         loadClasses()
+        val t3 = System.nanoTime()
+        loadTimings["aarResMs"] = (t1 - t0) / 1_000_000
+        loadTimings["projectResMs"] = (t2 - t1) / 1_000_000
+        loadTimings["classesMs"] = (t3 - t2) / 1_000_000
     }
 
     fun reloadResources() {
@@ -237,20 +292,15 @@ class LoadedProject(val spec: ProjectSpec, private val parentLoader: ClassLoader
 
     private fun loadAars(): List<ResourceRepository> {
         if (spec.aarRes.isEmpty()) return emptyList()
-        val pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors().coerceIn(1, 8))
-        try {
-            val futures = spec.aarRes.map { aar ->
-                pool.submit(Callable { runCatching { PaparazziInternals.aarRepository(aar.dir.toPath(), aar.name) } })
+        AarPrefetch.prefetch(spec.aarRes)
+        val repos = spec.aarRes.mapNotNull { aar ->
+            AarPrefetch.take(aar).getOrElse { t ->
+                warnings += "AAR resources skipped (${aar.name}): ${t.describe()}"
+                null
             }
-            return futures.mapIndexedNotNull { i, f ->
-                f.get().getOrElse { t ->
-                    warnings += "AAR resources skipped (${spec.aarRes[i].name}): ${t.describe()}"
-                    null
-                }
-            }
-        } finally {
-            pool.shutdown()
         }
+        AarPrefetch.clear()
+        return repos
     }
 
     private fun loadLocalResources() {

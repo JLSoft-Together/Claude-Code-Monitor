@@ -159,7 +159,8 @@ const offEvent = onLayoutEvent((e) => {
   else if (e.type === 'project-changed') schedule(300)
 })
 
-watch(() => props.revision, () => schedule(300))
+// Editor text is already debounced by FilePane; disk changes still coalesce a little.
+watch(() => props.revision, () => schedule(props.text !== null ? 0 : 120))
 watch(
   () => props.path,
   () => {

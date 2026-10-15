@@ -7,8 +7,8 @@ const os = require('node:os')
 const REPO = path.resolve(__dirname, '../../..')
 const WS = require(path.join(REPO, 'node_modules/ws'))
 const OUT = process.env.CCM_E2E_OUT || path.join(os.tmpdir(), 'ccm-e2e')
-const PORT = 4399
-const DBG = 9333
+const PORT = Number(process.env.CCM_E2E_PORT) || 4399
+const DBG = Number(process.env.CCM_E2E_DBG) || 9333
 const TMP = path.join(OUT, 'run')
 fs.mkdirSync(OUT, { recursive: true })
 

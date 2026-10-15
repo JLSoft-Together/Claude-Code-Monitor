@@ -118,7 +118,7 @@ async function run(app) {
 
   check('preload exposes the run bridge', await evaluate(`typeof window.ccmDesktop.runStart === 'function' && typeof window.ccmDesktop.onRunEvent === 'function'`))
   const saved = await evaluate(`${R}.updateSettings(${JSON.stringify(SDK)})`)
-  check('SDK settings point at the fakes', JSON.stringify(saved) === JSON.stringify(SDK), JSON.stringify(saved))
+  check('SDK settings point at the fakes', Object.entries(SDK).every(([k, v]) => saved?.[k] === v), JSON.stringify(saved))
 
   await evaluate(`${W}.openRun(${JSON.stringify(DIR)})`)
   await waitFor(`!!document.querySelector('[data-run-pane] [data-run-start]')`, 15000, 'run pane')
@@ -171,10 +171,16 @@ async function run(app) {
   await shot('run-01b-toolchain')
   await app.key('Escape', 'Escape', 27)
   await sleep(300)
+  // Back to the Projects rail: its header carries the RunBadge checked below.
+  await evaluate(`document.querySelector('[data-side-view=projects]')?.click()`)
+  await sleep(300)
 
   // pubspec.yaml edited → watcher re-detects → banner without any click.
-  const future = new Date(Date.now() + 60000)
-  fs.utimesSync(path.join(FLUTTER_DIR, 'pubspec.yaml'), future, future)
+  // pubspec newer than the lock, and the lock the fake pub get rewrites later is newer again.
+  const past = new Date(Date.now() - 60000)
+  fs.utimesSync(path.join(FLUTTER_DIR, 'pubspec.lock'), past, past)
+  const now = new Date()
+  fs.utimesSync(path.join(FLUTTER_DIR, 'pubspec.yaml'), now, now)
   await waitFor(`!!document.querySelector('[data-run-pubget]')`, 10000, 'pub get banner').catch(() => {})
   check('pub get banner appears after pubspec.yaml changes (watcher)', await evaluate(`!!document.querySelector('[data-run-pubget]')`))
 

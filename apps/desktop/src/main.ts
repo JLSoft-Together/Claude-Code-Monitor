@@ -56,6 +56,8 @@ const REPO = path.resolve(__dirname, '..', '..', '..')
 const resource = (packaged: string, dev: string): string =>
   app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(REPO, dev)
 const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process.platform, os.homedir())
+// Native process table (collector/src/win-procs.ts); collector and pty host inherit it through their env.
+if (process.platform === 'win32') process.env.CCM_KOFFI ||= resource('koffi/node_modules/koffi', 'node_modules/koffi')
 
 let t: Strings
 let host: CollectorHost
@@ -812,6 +814,7 @@ async function ready(): Promise<void> {
     getJdk: () => runManager?.getSettings().jdk ?? null,
     getRunSettings: () => runManager?.getSettings() ?? { androidSdk: null, jdk: null },
     initScript: resource('layout-daemon/ccm-project-model.gradle', 'apps/layout-daemon/init/ccm-project-model.gradle'),
+    looseKitDir: resource('layout-daemon/loose-kit', 'apps/layout-daemon/build/loose-kit'),
     server: preview,
     daemonJar: resource('layout-daemon/layout-daemon.jar', 'apps/layout-daemon/build/libs/layout-daemon.jar'),
     logFile: path.join(app.getPath('logs'), 'layout.log'),

@@ -68,7 +68,7 @@ export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string
   ]
   if (ctx.run && isRunnableRow(row)) entries.push({ id: 'run', label: t(`${M}run`) })
   if (ctx.repo) {
-    entries.push({ separator: true }, { id: 'git', label: t(`${M}git`), children: [{ id: 'show-diff', label: t(`${M}showDiff`), shortcut: ctx.mac ? '⌘⌥D' : 'Ctrl+D', disabled: !ctx.changed }] })
+    entries.push({ separator: true }, { id: 'git', label: t(`${M}git`), children: [{ id: 'show-diff', label: t(`${M}showDiff`), shortcut: ctx.mac ? '⌥⌘D' : 'Ctrl+D', disabled: !ctx.changed }] })
   }
   entries.push({ separator: true }, { id: 'reload', label: t(`${M}reload`) })
   return entries

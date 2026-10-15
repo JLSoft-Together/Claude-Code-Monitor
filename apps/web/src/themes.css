@@ -15,7 +15,7 @@
   --ccm-fill: color-mix(in srgb, var(--ccm-ink-muted) 14%, transparent);
   --ccm-fill-strong: color-mix(in srgb, var(--ccm-ink-muted) 24%, transparent);
   --ccm-material: color-mix(in srgb, var(--ccm-raised) 80%, transparent);
-  --ccm-material-pop: color-mix(in srgb, var(--ccm-raised) 95%, transparent);
+  --ccm-material-pop: var(--ccm-raised);
   --ccm-well-line: color-mix(in srgb, var(--ccm-well-ink) 10%, transparent);
   --ccm-accent-soft: color-mix(in srgb, var(--ccm-accent) 10%, transparent);
   --ccm-working-soft: color-mix(in srgb, var(--ccm-working) 10%, transparent);

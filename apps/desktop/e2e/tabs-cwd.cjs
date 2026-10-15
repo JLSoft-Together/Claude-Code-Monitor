@@ -101,10 +101,12 @@ async function phaseOne(app) {
   const shown = await waitFor(`document.querySelector('[data-kind="file"] [data-line="2"]')?.textContent ?? ''`, 6000, 'file content').catch(() => '')
   check('file tab shows y.ts content', /b = 2/.test(shown), shown)
 
-  // A folder outside every terminal: denied state with the Allow button, no prompt on its own.
+  // A folder outside every terminal: denied state offers every folder first, this folder as the secondary action; no prompt on its own.
   await evaluate(`${W}.openBrowser(${JSON.stringify(path.join(OUTSIDE, 'page.html'))})`)
-  const denied = await waitFor(`document.querySelector('[data-kind="browser"]:not([style*="display: none"]) [data-access-denied] [data-allow-access]')?.textContent.trim()`, 8000, 'denied card').catch(() => '')
-  check('outside folder → inline "Allow access to <folder>" button', denied === `Allow access to ${path.basename(OUTSIDE)}`, denied)
+  const card = `document.querySelector('[data-kind="browser"]:not([style*="display: none"]) [data-access-denied]')`
+  const denied = await waitFor(`${card}?.querySelector('[data-allow-access]')?.textContent.trim()`, 8000, 'denied card').catch(() => '')
+  const all = await evaluate(`${card}?.querySelector('[data-allow-all]')?.textContent.trim() ?? ''`)
+  check('outside folder → "Allow access to every folder" + "Only <folder>"', all === 'Allow access to every folder' && denied === `Only ${path.basename(OUTSIDE)}`, `${all} | ${denied}`)
   await sleep(400)
   await shot('fix-02-browser-denied-allow')
   // Chromium rate-limits localStorage commits; a hard kill can lose the latest ccm.workspace.last, so hand it over.

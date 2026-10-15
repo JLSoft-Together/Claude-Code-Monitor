@@ -12,6 +12,7 @@ import run from './run-v31'
 import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
+import mapV47 from './map-v47'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -295,6 +296,7 @@ const vi: typeof en = {
     version: 'Codex {v}',
   },
   map: {
+    ...mapV47.vi.map,
     showSessions: 'Hiện Sessions',
     showActivity: 'Hiện Hoạt động',
     resizeHint: 'Kéo để đổi kích thước, nhấp đúp để về mặc định',
@@ -337,6 +339,7 @@ const vi: typeof en = {
     empty: 'Chưa có session Claude Code nào chạy.',
     emptyHint: 'Mở claude ở terminal bất kỳ — session tự hiện ở đây.',
     loading: 'Đang kết nối collector…',
+    loadingSessions: 'Đang tải session…',
     offline: 'Không kết nối được collector.',
     offlineHint: 'Chạy npm run dev trong thư mục project. Tự thử lại liên tục.',
   },
@@ -473,6 +476,7 @@ const vi: typeof en = {
     group: { panels: 'Panel và thanh', map: 'Map và tab', workspace: 'Workspace', view: 'Thu phóng và cỡ chữ', help: 'Trợ giúp' },
     workspaceNote: 'Dùng ở tab Workspace, kể cả khi đang gõ trong terminal.',
     item: {
+      ...mapV47.vi.keys,
       sessions: 'Hiện/ẩn Sessions',
       sessionsPin: 'Ghim Sessions thành cột hoặc cho nổi',
       activity: 'Hiện/ẩn Hoạt động',
@@ -923,8 +927,8 @@ const vi: typeof en = {
         absent: 'Chưa hiện vì số liệu này lấy từ status line bridge. Mở Cài đặt, chép đoạn cấu hình vào ~/.claude/settings.json, sau lần Claude trả lời kế tiếp là có.',
       },
       palette: {
-        title: 'Tìm mọi thứ: Ctrl K',
-        body: 'Gõ một phần tên session, thư mục hay branch để nhảy tới. Shift+Enter đưa terminal của session lên trước. Các lệnh đổi theme, ngôn ngữ, thông báo, chẩn đoán cũng nằm ở đây.',
+        title: 'Tìm mọi thứ: {palette}',
+        body: 'Gõ một phần tên session, thư mục hay branch để nhảy tới. {reveal} đưa terminal của session lên trước. Các lệnh đổi theme, ngôn ngữ, thông báo, chẩn đoán cũng nằm ở đây.',
       },
       compact: {
         title: 'Chế độ gọn',
@@ -936,7 +940,7 @@ const vi: typeof en = {
       },
       finish: {
         title: 'Xong rồi',
-        body: 'Cứ để tab này mở trong lúc làm việc, nó tự cập nhật. Muốn xem lại hướng dẫn thì mở trong Cài đặt hoặc Ctrl K.',
+        body: 'Cứ để tab này mở trong lúc làm việc, nó tự cập nhật. Muốn xem lại hướng dẫn thì mở trong Cài đặt hoặc {palette}.',
       },
     },
   },

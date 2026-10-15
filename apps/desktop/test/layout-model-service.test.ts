@@ -255,7 +255,7 @@ describe('daemon loading', () => {
   it('never runs Gradle on open: framework-only until a model exists', async () => {
     const p = project()
     const { service, spawns, calls } = setup()
-    expect(await service.prepare(p.appLayout)).toEqual({ key: 'framework', frameworkOnly: true })
+    expect(await service.prepare(p.appLayout)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
     expect((await service.info(p.appLayout)).state).toEqual({ state: 'none' })
     expect(spawns).toHaveLength(0)
     expect(calls).toHaveLength(0)
@@ -548,5 +548,56 @@ describe('RunManager.onSessionState', () => {
     expect(seen).toEqual(['building:android::app:R58', 'running:android::app:R58'])
     off()
     expect(existsSync(root)).toBe(true)
+  })
+})
+
+describe('loose kit (PLAN-v44)', () => {
+  const kit = { resDirs: [], aarResDirs: [{ dir: '/kit/aars/m/res', name: 'm' }], classpath: ['/kit/classes/m.jar'], rJar: '/kit/R.jar', packageName: 'dev.ccm.loosekit', namespace: 'dev.ccm.loosekit', appTheme: '@style/Theme.Material3.DayNight.NoActionBar', activityThemes: {} }
+
+  it('loads the kit for a layout without a model and a real model wins', async () => {
+    const p = project()
+    const s = setup()
+    s.deps.looseKit = async () => kit
+    const loose = path.join(tmp, `loose${Date.now()}`, 'ad.xml')
+    write(loose, '<androidx.constraintlayout.widget.ConstraintLayout/>')
+
+    const first = await s.service.prepare(loose)
+    expect(first).toEqual({ key: expect.stringMatching(/^loose-kit#/), frameworkOnly: true, builtinLibs: true })
+    expect(s.calls).toEqual([{ method: 'project/load', params: { ...kit, projectId: 'loose-kit' } }])
+    expect(await s.service.prepare(loose)).toEqual(first)
+    expect(s.calls).toHaveLength(1)
+
+    // In a Gradle project without a built model: the kit stays loaded.
+    expect((await s.service.prepare(p.appLayout)).key).toBe(first.key)
+    expect(s.calls).toHaveLength(1)
+
+    await s.service.refresh({ root: p.root, module: ':app' })
+    const real = await s.service.prepare(p.appLayout)
+    expect(real.frameworkOnly).toBe(false)
+    expect((s.calls.at(-1)!.params as { packageName: string }).packageName).toBe('com.example.app')
+
+    const back = await s.service.prepare(loose)
+    expect(back.key).toMatch(/^loose-kit#/)
+    expect(back.key).not.toBe(first.key)
+    expect(s.calls.at(-1)!.params).toMatchObject({ projectId: 'loose-kit' })
+  })
+
+  it('no kit = framework only; a failed kit load is not retried until the daemon restarts', async () => {
+    const none = setup()
+    none.deps.looseKit = async () => null
+    const loose = path.join(tmp, `loose${Date.now()}b`, 'ad.xml')
+    write(loose, '<View/>')
+    expect(await none.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
+    expect(none.calls).toHaveLength(0)
+
+    const s = setup({ daemon: () => { throw new Error('boom') } })
+    s.deps.looseKit = async () => kit
+    expect(await s.service.prepare(loose)).toEqual({ key: 'framework', frameworkOnly: true, builtinLibs: false })
+    await s.service.prepare(loose)
+    expect(s.calls).toHaveLength(1)
+    s.service.onDaemonState('starting')
+    s.service.onDaemonState('ready')
+    await s.service.prepare(loose)
+    expect(s.calls).toHaveLength(2)
   })
 })

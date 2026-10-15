@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import type { FocusWindowResult } from '@ccm/shared'
 import { focusMacWindow } from './focus-mac'
 import { windowsPowerShell } from './win-exe'
+import { nativeProcessTable, type WinProc } from './win-procs'
 
 // First asks the session's own console: ConPTY's hidden pseudo-console window is owned by the hosting terminal window
 // (Windows Terminal sets it per tab), and a classic console window is the console itself, so this names the exact
@@ -47,6 +48,7 @@ public static int CountTop(uint pid) {
 }
 '@
 $id = [int]$env:CCM_FOCUS_PID
+$chain = @(if ($env:CCM_FOCUS_CHAIN) { $env:CCM_FOCUS_CHAIN -split ',' | ForEach-Object { [int]$_ } })
 $h = [Ccm.Win]::ConsoleHost([uint32]$id)
 for ($i = 0; $h -eq [IntPtr]::Zero -and $i -lt 8 -and $id -gt 4; $i++) {
   $p = Get-Process -Id $id -ErrorAction SilentlyContinue
@@ -55,6 +57,10 @@ for ($i = 0; $h -eq [IntPtr]::Zero -and $i -lt 8 -and $id -gt 4; $i++) {
     # One WindowsTerminal process owns every WT window; with several, its main window is a guess.
     if ($p.ProcessName -eq 'WindowsTerminal' -and [Ccm.Win]::CountTop([uint32]$p.Id) -gt 1) { 'ambiguous'; exit }
     $h = $p.MainWindowHandle; break
+  }
+  if ($chain.Count -gt 0) {
+    if ($i + 1 -ge $chain.Count) { break }
+    $id = $chain[$i + 1]; continue
   }
   $c = Get-CimInstance Win32_Process -Filter "ProcessId=$id"
   if (-not $c) { break }
@@ -88,14 +94,30 @@ export function parseFocusOutput(stdout: string): FocusWindowResult {
   return last === 'ok' || last === 'notFound' || last === 'ambiguous' ? last : 'failed'
 }
 
-export function focusProcessWindow(pid: number): Promise<FocusWindowResult> {
+/** pid and its live ancestors (parent created before child), as the script would walk them with CIM. */
+export function ancestorChain(pid: number, table: WinProc[], max = 9): number[] {
+  const all = new Map(table.map((p) => [p.pid, p]))
+  const chain: number[] = []
+  let cur = all.get(pid)
+  while (cur && chain.length < max && cur.pid > 4) {
+    chain.push(cur.pid)
+    const parent = all.get(cur.ppid)
+    if (!parent || parent.pid === cur.pid || (parent.start !== null && cur.start !== null && parent.start > cur.start)) break
+    cur = parent
+  }
+  return chain
+}
+
+export function focusProcessWindow(pid: number, native: () => WinProc[] | null = nativeProcessTable): Promise<FocusWindowResult> {
   if (process.platform !== 'win32') return Promise.resolve('unsupported')
   if (!Number.isInteger(pid) || pid <= 4) return Promise.resolve('notFound')
+  const table = native()
+  const chain = table ? ancestorChain(pid, table) : []
   return new Promise((resolve) => {
     execFile(
       windowsPowerShell(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
-      { timeout: 15_000, windowsHide: true, maxBuffer: 64_000, env: { ...process.env, CCM_FOCUS_PID: String(pid) } },
+      { timeout: 15_000, windowsHide: true, maxBuffer: 64_000, env: { ...process.env, CCM_FOCUS_PID: String(pid), CCM_FOCUS_CHAIN: chain.join(',') } },
       (err, stdout) => resolve(err ? 'failed' : parseFocusOutput(stdout)),
     )
   })

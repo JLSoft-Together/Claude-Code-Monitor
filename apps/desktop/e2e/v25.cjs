@@ -91,19 +91,28 @@ async function main() {
     if (terminalId) {
       await evaluate(`${S}.get('ui').view = 'monitor'`)
       await sleep(1500)
-      // Fit the whole map so the new session's node is on screen (other live sessions may push it off).
-      await evaluate(`${S}.get('ui').fitRequest++`)
+      // Zoom to this session: fitting the whole map with other big live sessions leaves its node tiny / under the toolbar.
+      await evaluate(`${S}.get('ui').focusTerminal(${JSON.stringify(terminalId)})`)
       await sleep(1200)
       const agentId = await evaluate(`${S}.get('agents').mainOf(${JSON.stringify(terminalId)})?.id`)
-      const node = await waitFor(`(() => { const n = document.querySelector('.vue-flow__node[data-id="${agentId}"]'); if (!n) return null; const r = n.getBoundingClientRect(); return r.width && r.right <= innerWidth && r.bottom <= innerHeight ? [r.left + r.width / 2, r.top + Math.min(20, r.height / 2)] : null })()`, 15000, 'map node').catch(() => null)
+      // Right-click a point that really hits the node (not the floating map toolbar over it).
+      const node = await waitFor(`(() => {
+        const n = document.querySelector('.vue-flow__node[data-id="${agentId}"]'); if (!n) return null
+        const r = n.getBoundingClientRect(); if (!r.width || r.right > innerWidth || r.bottom > innerHeight) return null
+        for (let fy = 0.1; fy < 1; fy += 0.1) for (let fx = 0.1; fx < 1; fx += 0.1) {
+          const x = r.left + r.width * fx, y = r.top + r.height * fy
+          if (n.contains(document.elementFromPoint(x, y))) return [x, y]
+        }
+        return null
+      })()`, 15000, 'map node').catch(() => null)
       check('main agent node on the map', !!node)
       if (node) {
         for (const type of ['mousePressed', 'mouseReleased']) await cmd('Input.dispatchMouseEvent', { type, x: node[0], y: node[1], button: 'right', clickCount: 1 })
-        const menu = await waitFor(`!!document.querySelector('[data-agent-menu] [data-menu=show-in-workspace]')`, 3000, 'agent menu').catch(() => false)
+        const menu = await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id=show-in-workspace]')`, 3000, 'agent menu').catch(() => false)
         check('right-click main agent → "Show in workspace"', menu)
         await sleep(250); await shot('v25-07-agent-menu')
         if (menu) {
-          await evaluate(`document.querySelector('[data-agent-menu] [data-menu=show-in-workspace]').click()`)
+          await evaluate(`document.querySelector('[data-context-menu] [data-menu-id=show-in-workspace]').click()`)
           await sleep(500)
           check('menu lands on the pane in Workspace', await evaluate(`${S}.get('ui').view === 'workspace' && ${W}.activeKey === ${JSON.stringify(claudeKey)}`))
         }

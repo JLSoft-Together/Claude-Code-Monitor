@@ -135,3 +135,44 @@ function strings(v: unknown): string[] {
 function sdk(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isInteger(v) && v > 0 && v < 1000 ? v : undefined
 }
+
+const KIT_THEME = '@style/Theme.Material3.DayNight.NoActionBar'
+
+/**
+ * `kit.json` of the bundled loose kit (apps/layout-daemon `stageLooseKit`) → `project/load` params: library views
+ * (ConstraintLayout, AppCompat, Material) for a layout XML that has no project model. Paths must stay inside `dir`.
+ */
+export function parseLooseKit(input: string | unknown, dir: string, opts: { exists?: (p: string) => boolean } = {}): ProjectLoadPayload {
+  const exists = opts.exists ?? existsSync
+  const raw = typeof input === 'string' ? JSON.parse(input) : input
+  if (!raw || typeof raw !== 'object') throw new Error('loose kit: not an object')
+  const m = raw as Record<string, unknown>
+  const inside = (rel: unknown): string | null => {
+    if (typeof rel !== 'string' || !rel || rel.includes('\0') || path.isAbsolute(rel)) return null
+    const abs = path.resolve(dir, rel)
+    const back = path.relative(dir, abs)
+    return back && !back.startsWith('..') && !path.isAbsolute(back) && exists(abs) ? abs : null
+  }
+  const aarResDirs: ProjectLoadPayload['aarResDirs'] = []
+  for (const a of Array.isArray(m.aarRes) ? m.aarRes.slice(0, MODEL_CAPS.aarResDirs) : []) {
+    const o = a && typeof a === 'object' ? (a as Record<string, unknown>) : {}
+    const abs = inside(o.dir)
+    if (abs) aarResDirs.push({ dir: abs, name: str(o.name) || path.basename(path.dirname(abs)) })
+  }
+  const classpath = strings(m.classpath).slice(0, MODEL_CAPS.classpath).map(inside).filter((p): p is string => !!p)
+  const rJar = inside(m.rJar)
+  if (!classpath.length || !rJar) throw new Error('loose kit: classes or R.jar missing')
+  const pkg = str(m.packageName)
+  const packageName = PACKAGE_RE.test(pkg) ? pkg : 'dev.ccm.loosekit'
+  const theme = str(m.appTheme)
+  return {
+    resDirs: [],
+    aarResDirs,
+    classpath,
+    rJar,
+    packageName,
+    namespace: packageName,
+    appTheme: THEME_RE.test(theme) ? theme : KIT_THEME,
+    activityThemes: {},
+  }
+}

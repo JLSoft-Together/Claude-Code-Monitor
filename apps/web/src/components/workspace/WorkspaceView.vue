@@ -147,6 +147,15 @@ const sideEvents = {
   openLayout: (layout: SavedLayout) => openLayout(layout),
   close: (keys: string[]) => closePanes(keys),
   closeProject: (cluster: RailCluster) => closeProject(cluster),
+  split: (key: string, dir: SplitDir, choice: SplitChoice) => {
+    workspace.activate(key)
+    void nextTick(() => splitActive(dir, choice, key))
+  },
+  explorer: (key: string) => {
+    workspace.activate(key)
+    void showExplorer()
+  },
+  mission: () => toggleMission(),
 }
 
 const rail = useRail()
@@ -1220,7 +1229,7 @@ onBeforeUnmount(() => {
         type="button"
         class="ccm-btn shrink-0"
         :class="needs.entries.some((e) => e.state === 'failed') ? 'text-st-error!' : 'text-st-waiting!'"
-        :title="t('workspace.rail.needsList.chipTip', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
+        :title="t('workspace.rail.needsList.chipTip', { keys: isMac ? '⇧⌘A' : 'Ctrl+Shift+A' })"
         aria-haspopup="listbox"
         :aria-expanded="!!needsAnchor"
         data-attention-chip

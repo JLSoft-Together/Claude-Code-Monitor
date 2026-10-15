@@ -173,6 +173,8 @@ export interface MonitorSnapshot {
   dayStartedAt?: string
   notify?: NotifySettings
   snoozes?: Record<string, SnoozeEntry>
+  /** True while the collector's first pass over live sessions runs; `sessions.loading` reports the end. */
+  loading?: boolean
 }
 
 export type ToastState = 'on' | 'off' | 'unsupported'
@@ -384,6 +386,7 @@ export interface ToolSpansData {
 
 export type MonitorEvent =
   | { type: 'snapshot'; payload: MonitorSnapshot }
+  | { type: 'sessions.loading'; payload: { loading: boolean } }
   | { type: 'terminal.created'; payload: TerminalSession }
   | { type: 'terminal.updated'; payload: TerminalPatch }
   | { type: 'terminal.removed'; payload: { id: string } }

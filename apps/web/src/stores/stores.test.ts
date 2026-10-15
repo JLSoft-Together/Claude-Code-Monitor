@@ -71,6 +71,19 @@ describe('connection message handling', () => {
     expect(extras.limits).toBeNull()
   })
 
+  it('shows sessions loading from the snapshot until the collector reports the first pass done', () => {
+    const conn = useConnectionStore()
+    const terminals = useTerminalsStore()
+    conn.onMessage(msg(1, [{ type: 'snapshot', payload: snapshot({ terminals: [], loading: true }) }]))
+    expect(conn.sessionsLoading).toBe(true)
+    conn.onMessage(msg(2, [{ type: 'terminal.created', payload: terminal('t9') }]))
+    expect(terminals.byId.t9).toBeDefined()
+    conn.onMessage(msg(3, [{ type: 'sessions.loading', payload: { loading: false } }]))
+    expect(conn.sessionsLoading).toBe(false)
+    conn.onMessage(msg(4, [{ type: 'snapshot', payload: snapshot() }]))
+    expect(conn.sessionsLoading).toBe(false)
+  })
+
   it('ignores events after a seq gap until a new snapshot arrives', () => {
     const conn = useConnectionStore()
     const terminals = useTerminalsStore()

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ccm/shared": "*",
+    "koffi": "3.3.2",
     "tsx": "^4.20.6",
     "ws": "^8.18.3"
   },

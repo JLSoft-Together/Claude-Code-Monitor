@@ -62,6 +62,7 @@ export class MonitorStore implements UsageSink {
   private modelNames: Record<string, string> = {}
   statusLineCommand?: string
   dayStartedAt?: string
+  private loading = false
   notify?: NotifySettings
   private snoozes: Record<string, SnoozeEntry> = {}
   private readonly usage = new Map<string, UsageBucket>()
@@ -71,6 +72,7 @@ export class MonitorStore implements UsageSink {
   /** Called with project dirs that have no repo root yet; the owner resolves them async. */
   onNewProjects: ((dirs: string[]) => void) | null = null
   private pending: MonitorEvent[] = []
+  private readonly pendingById = new Map<string, MonitorEvent>()
   private flushTimer: NodeJS.Timeout | null = null
   private listeners = new Set<Listener>()
   private activityCounter = 0
@@ -118,6 +120,12 @@ export class MonitorStore implements UsageSink {
 
   toolEvents(): readonly ActivityEvent[] {
     return this.toolActivity
+  }
+
+  setLoading(loading: boolean): void {
+    if (loading === this.loading) return
+    this.loading = loading
+    this.emit({ type: 'sessions.loading', payload: { loading } })
   }
 
   setNotify(settings: NotifySettings): void {
@@ -305,6 +313,7 @@ export class MonitorStore implements UsageSink {
       dayStartedAt: this.dayStartedAt,
       notify: this.notify,
       snoozes: { ...this.snoozes },
+      ...(this.loading ? { loading: true } : {}),
     }
   }
 
@@ -321,6 +330,7 @@ export class MonitorStore implements UsageSink {
     if (this.pending.length === 0) return
     const message: ServerMessage = { seq: ++this.seqValue, events: this.pending }
     this.pending = []
+    this.pendingById.clear()
     for (const listener of this.listeners) {
       try {
         listener(message)
@@ -331,7 +341,39 @@ export class MonitorStore implements UsageSink {
   }
 
   private emit(event: MonitorEvent): void {
-    this.pending.push(event)
+    if (!this.coalesce(event)) this.pending.push(event)
     if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), this.options.batchMs)
+  }
+
+  /**
+   * Folds an update into the same batch's created/updated event for that id (last value per field wins, as the
+   * client would end up with). A removal ends the chain, so a later created starts a new event.
+   */
+  private coalesce(event: MonitorEvent): boolean {
+    const kind = event.type.startsWith('terminal.') ? 'terminal' : event.type.startsWith('agent.') ? 'agent' : null
+    if (!kind) return false
+    const key = `${kind}:${(event.payload as { id: string }).id}`
+    const verb = event.type.slice(kind.length + 1)
+    if (verb === 'removed') {
+      this.pendingById.delete(key)
+      return false
+    }
+    const prev = verb === 'updated' ? this.pendingById.get(key) : undefined
+    if (!prev) {
+      if (verb === 'created' || verb === 'updated') this.pendingById.set(key, event)
+      return false
+    }
+    const patch = event.payload as Record<string, unknown>
+    if (prev.type.endsWith('.created')) {
+      const full = { ...(prev.payload as Record<string, unknown>) }
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null) delete full[k]
+        else full[k] = v
+      }
+      ;(prev as { payload: unknown }).payload = full
+    } else {
+      Object.assign(prev.payload as Record<string, unknown>, patch)
+    }
+    return true
   }
 }

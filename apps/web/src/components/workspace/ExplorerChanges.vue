@@ -119,7 +119,7 @@ const title = (e: ChangeEntry): string =>
           class="flex h-[22px] min-w-0 items-center gap-1.5 rounded-inner px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
           :class="e.kind === 'deleted' ? 'cursor-default text-ink-muted' : 'cursor-pointer text-ink hover:bg-fill'"
           :title="`${title(e)}
-${t('workspace.gutter.showDiff')}: ${isMac ? '⌘⌥D' : 'Ctrl+D'}`"
+${t('workspace.gutter.showDiff')}: ${isMac ? '⌥⌘D' : 'Ctrl+D'}`"
           :data-change="e.path"
           :draggable="e.kind !== 'deleted'"
           @dragstart="drag($event, e)"

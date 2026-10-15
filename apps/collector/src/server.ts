@@ -271,13 +271,16 @@ export function startServer(options: {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
   })
 
-  const send = (ws: WebSocket, message: ServerMessage) => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message))
+  const sendRaw = (ws: WebSocket, data: string) => {
+    if (ws.readyState === ws.OPEN) ws.send(data)
   }
+  const send = (ws: WebSocket, message: ServerMessage) => sendRaw(ws, JSON.stringify(message))
 
   let nextClientId = 0
   wss.on('connection', (ws) => {
     const clientId = ++nextClientId
+    // Pending events go out before this socket joins, so its first message is the snapshot that already includes them.
+    store.flush()
     clients.add(ws)
     alive.set(ws, true)
     ws.on('pong', () => alive.set(ws, true))
@@ -355,7 +358,9 @@ export function startServer(options: {
   })
 
   store.subscribe((message) => {
-    for (const ws of clients) send(ws, message)
+    if (clients.size === 0) return
+    const data = JSON.stringify(message)
+    for (const ws of clients) sendRaw(ws, data)
   })
 
   return new Promise((resolve, reject) => {

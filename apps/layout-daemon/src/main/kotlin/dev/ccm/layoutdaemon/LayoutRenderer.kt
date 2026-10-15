@@ -41,6 +41,8 @@ data class RenderRequest(
     val night: Boolean,
     val locale: String?,
     val apiLevel: Int?,
+    /** Image size / device size (0.1–1); the view tree and `width`/`height` stay in device px. */
+    val scale: Float = 1f,
 )
 
 class ViewNode(
@@ -60,9 +62,12 @@ class RenderOutcome(
     val diagnostics: List<Diagnostic>,
     val renderMs: Long,
     val timings: Map<String, Long>,
+    val imageWidth: Int = width,
+    val imageHeight: Int = height,
+    val image: BufferedImage? = null,
 )
 
-data class InitInfo(val layoutlibVersion: String, val apiLevel: Int, val initMs: Long)
+data class InitInfo(val layoutlibVersion: String, val apiLevel: Int, val initMs: Long, val timings: Map<String, Long> = emptyMap())
 
 private data class Config(
     val width: Int,
@@ -72,6 +77,7 @@ private data class Config(
     val night: Boolean,
     val locale: String?,
     val projectGen: Int,
+    val scale: Float = 1f,
 )
 
 class ProjectLoadInfo(
@@ -82,6 +88,7 @@ class ProjectLoadInfo(
     val loadMs: Long,
     val reused: Boolean,
     val cached: Int,
+    val timings: Map<String, Long> = emptyMap(),
 )
 
 class ProjectChangeInfo(val kind: String, val ms: Long, val restartSuggested: Boolean, val warnings: List<String>)
@@ -104,7 +111,8 @@ class LayoutRenderer(private val layoutlibDir: File) {
         private set
     val initialized get() = ::sdk.isInitialized
 
-    fun initialize(cacheDir: File): InitInfo {
+    /** [onStage] (setup, prepare, warmup) lets the IDE show what a cold start is waiting on. */
+    fun initialize(cacheDir: File, onStage: (String) -> Unit = {}): InitInfo {
         val t0 = System.nanoTime()
         if (initialized) return InitInfo(layoutlibVersion(), apiLevel, 0)
         val runtime = File(layoutlibDir, "runtime")
@@ -142,13 +150,29 @@ class LayoutRenderer(private val layoutlibDir: File) {
             useDeviceResolution = true,
             onNewFrame = { frameHook?.invoke(it) },
         )
+        val since = { a: Long -> (System.nanoTime() - a) / 1_000_000 }
+        val tSetup = System.nanoTime()
+        onStage("setup")
         sdk.setup()
+        val setupMs = since(tSetup)
+        val tPrepare = System.nanoTime()
+        onStage("prepare")
         sdk.prepare()
         swapper = SessionSwapper(sdk)
         frameworkCallback = ProjectCallback(daemonLoader, "dev.ccm.preview", ResourceIds())
         config = null
-        render(RenderRequest("warmup", null, WARMUP_XML, Device(initial.width, initial.height, initial.dpi), null, false, null, null), writePng = false)
-        return InitInfo(layoutlibVersion(), apiLevel, (System.nanoTime() - t0) / 1_000_000)
+        val prepareMs = since(tPrepare)
+        val tWarm = System.nanoTime()
+        onStage("warmup")
+        val warm = render(RenderRequest("warmup", null, WARMUP_XML, Device(initial.width, initial.height, initial.dpi), null, false, null, null), writePng = false)
+        val warmMs = since(tWarm)
+        warm.image?.let(PngWriter::warmUpAsync)
+        return InitInfo(
+            layoutlibVersion(),
+            apiLevel,
+            since(t0),
+            linkedMapOf("checksMs" to (tSetup - t0) / 1_000_000, "setupMs" to setupMs, "prepareMs" to prepareMs, "warmupRenderMs" to warmMs),
+        )
     }
 
     fun render(req: RenderRequest, writePng: Boolean = true): RenderOutcome {
@@ -216,10 +240,14 @@ class LayoutRenderer(private val layoutlibDir: File) {
         val pngPath = if (img != null && writePng) writePng(img) else null
         val t4 = System.nanoTime()
         val ms = { a: Long, b: Long -> (b - a) / 1_000_000 }
+        val scaled = img != null && wanted.scale < 1f
         return RenderOutcome(
             png = pngPath,
-            width = img?.width ?: wanted.width,
-            height = img?.height ?: wanted.height,
+            width = if (scaled) wanted.width else img?.width ?: wanted.width,
+            height = if (scaled) wanted.height else img?.height ?: wanted.height,
+            imageWidth = img?.width ?: wanted.width,
+            imageHeight = img?.height ?: wanted.height,
+            image = img,
             viewTree = tree,
             diagnostics = diags,
             renderMs = ms(t0, t4),
@@ -314,6 +342,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
                         callback = callback,
                         minSdk = p?.spec?.minSdk ?: 0,
                         targetSdk = p?.spec?.targetSdk ?: apiLevel,
+                        imageScale = wanted.scale,
                     )
                 }
                 config = wanted
@@ -372,6 +401,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
             loadMs = (System.nanoTime() - t0) / 1_000_000,
             reused = reuse,
             cached = cache.size,
+            timings = if (reuse) emptyMap() else p.loadTimings.toMap(),
         )
     }
 
@@ -419,7 +449,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
             }
         }
         val requested = theme?.trim()?.takeIf { it.isNotEmpty() }
-        var resolved = normalizeTheme(requested ?: project?.themeFor(LayoutParser.toolsContext(xml)))
+        var resolved = normalizeTheme(requested ?: LayoutParser.toolsTheme(xml) ?: project?.themeFor(LayoutParser.toolsContext(xml)))
         if (project == null && !resolved.startsWith("android:")) {
             diags += Diagnostic("warning", "Theme '$resolved' comes from the project; build the project to use it (framework default shown)")
             resolved = DEFAULT_THEME
@@ -432,6 +462,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
             night = night,
             locale = qualifier,
             projectGen = project?.generation ?: 0,
+            scale = imageScale(scale),
         )
     }
 
@@ -606,6 +637,12 @@ class LayoutRenderer(private val layoutlibDir: File) {
         private val SPECIAL_TAGS = setOf("fragment", "include", "merge", "requestFocus", "tag", "blink")
         private const val WARMUP_XML = """<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="warmup"/><Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OK"/><EditText android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="x"/><ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_search"/></LinearLayout></FrameLayout>"""
+
+        /** 1/16 steps keep the session (and its image) stable across tiny pane resizes. */
+        fun imageScale(requested: Float): Float {
+            if (requested.isNaN() || requested >= 0.95f) return 1f
+            return (Math.round(requested.coerceAtLeast(0.1f) * 16f) / 16f).coerceIn(0.125f, 1f)
+        }
 
         fun normalizeTheme(theme: String?): String {
             val t = theme?.trim().orEmpty()

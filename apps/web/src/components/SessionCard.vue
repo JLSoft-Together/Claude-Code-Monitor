@@ -10,7 +10,10 @@ import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
 import { contextPctOf, isCodex } from '../lib/provider'
 import { statusMeta } from '../lib/status'
-import { retireOverlay } from '../lib/motion'
+import { nodeMenu, type NodeAction } from '../lib/mapMenu'
+import { isMac } from '../lib/platform'
+import { isTyping } from '../lib/shortcuts'
+import { useAgentActions } from '../composables/useAgentActions'
 import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
 import { displayTitle } from '../lib/title'
@@ -20,7 +23,6 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useUiStore } from '../stores/ui'
-import AgentContextMenu from './AgentContextMenu.vue'
 import ContextGauge from './ContextGauge.vue'
 import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
@@ -29,20 +31,9 @@ import ProviderBadge from './ProviderBadge.vue'
 import StatusBadge from './StatusBadge.vue'
 import SubagentCounts from './SubagentCounts.vue'
 import TokenCount from './TokenCount.vue'
+import ContextMenu from './ui/ContextMenu.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
-
-// Same session menu as the map nodes; the cursor anchors it, the menu key anchors it on the card.
-const ctxAt = ref<DOMRect | null>(null)
-const ctxTrigger = ref<HTMLElement | null>(null)
-function openMenu(e: MouseEvent | KeyboardEvent): void {
-  if (e instanceof KeyboardEvent && e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return
-  const el = e.currentTarget as HTMLElement
-  if ((e.target as HTMLElement).closest('input, textarea')) return
-  e.preventDefault()
-  ctxTrigger.value = (document.activeElement as HTMLElement | null) ?? el
-  ctxAt.value = e instanceof MouseEvent && e.clientX ? new DOMRect(e.clientX, e.clientY, 0, 0) : el.getBoundingClientRect()
-}
 
 const { t, locale } = useI18n()
 const agents = useAgentsStore()
@@ -50,6 +41,74 @@ const ui = useUiStore()
 const connection = useConnectionStore()
 const extras = useExtrasStore()
 const snooze = useSnoozeStore()
+const actions = useAgentActions((id) => agents.byTerminal[id] ?? [])
+const notice = actions.notice
+
+// The map node menu in its card scope; the cursor anchors it, the menu key anchors it on the card.
+const menu = ref<{ at: DOMRect; trigger: HTMLElement | null } | null>(null)
+const mainId = computed(() => agents.mainOf(props.terminal.id)?.id)
+const menuEntries = computed(() =>
+  menu.value
+    ? nodeMenu(
+        {
+          ...actions.menuBase(props.terminal.id, mainId.value),
+          scope: 'card',
+          children: 0,
+          collapsed: false,
+          picked: 0,
+          detailsOpen: !!mainId.value && ui.selectedAgentId === mainId.value,
+        },
+        t,
+        isMac,
+      )
+    : [],
+)
+const CARD_KEYS = isMac ? 'Shift+F10 Meta+C' : 'Shift+F10 Control+C'
+
+/** Windows fires a native `contextmenu` after the ContextMenu / Shift+F10 keydown that already opened the menu. */
+const KEY_MENU_ECHO_MS = 300
+let keyMenuAt = 0
+
+function onContextMenu(e: MouseEvent): void {
+  if ((e.target as HTMLElement).closest('input, textarea')) return
+  e.preventDefault()
+  if (menu.value && performance.now() - keyMenuAt < KEY_MENU_ECHO_MS) return
+  const el = e.currentTarget as HTMLElement
+  menu.value = { at: e.clientX ? new DOMRect(e.clientX, e.clientY, 0, 0) : el.getBoundingClientRect(), trigger: (document.activeElement as HTMLElement | null) ?? el }
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (e.defaultPrevented || isTyping(e.target)) return
+  const el = e.currentTarget as HTMLElement
+  if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    e.preventDefault()
+    keyMenuAt = performance.now()
+    menu.value = { at: el.getBoundingClientRect(), trigger: (document.activeElement as HTMLElement | null) ?? el }
+    return
+  }
+  const mod = isMac ? e.metaKey : e.ctrlKey
+  if (mod && !e.altKey && !e.shiftKey && e.code === 'KeyC' && mainId.value && !window.getSelection()?.toString()) {
+    e.preventDefault()
+    actions.copySummary(mainId.value)
+  }
+}
+
+function showDetails(): void {
+  const id = mainId.value
+  if (!id) return
+  if (ui.selectedAgentId === id) {
+    ui.selectAgent(null)
+    return
+  }
+  ui.setView('monitor')
+  ui.mapView = 'map'
+  ui.focusTerminal(props.terminal.id)
+  ui.selectAgent(id)
+}
+
+function onPick(id: string): void {
+  if (!actions.run(id as NodeAction, props.terminal.id, mainId.value) && id === 'details') showDetails()
+}
 
 const meta = computed(() => statusMeta(props.terminal.status))
 const ended = computed(() => props.terminal.status === 'stale')
@@ -191,16 +250,37 @@ function commitNote(): void {
 
 <template>
   <article
-    class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200"
+    class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     :class="[focused ? 'ring-2 ring-focus' : '', ended ? 'text-ink-muted' : '']"
-    @contextmenu="openMenu"
-    @keydown="openMenu"
+    tabindex="0"
+    :aria-label="title"
+    :aria-keyshortcuts="CARD_KEYS"
+    :data-session-card="terminal.id"
+    @contextmenu="onContextMenu"
+    @keydown="onKey"
   >
-    <Teleport to="body">
-      <Transition name="ccm-menu" @before-leave="retireOverlay">
-        <AgentContextMenu v-if="ctxAt" :at="ctxAt" :terminal-id="terminal.id" :trigger="ctxTrigger" @close="ctxAt = null" />
+    <ContextMenu
+      v-if="menu"
+      :at="menu.at"
+      :entries="menuEntries"
+      :label="t('agentMenu.label', { title })"
+      :trigger="menu.trigger"
+      @pick="onPick"
+      @close="menu = null"
+    />
+    <div class="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center px-3" role="status" aria-live="polite">
+      <Transition name="ccm-menu">
+        <p
+          v-if="notice"
+          :key="notice.n"
+          class="ccm-menu max-w-full truncate px-3 py-1.5 text-xs"
+          :class="notice.failed ? 'text-st-error' : 'text-ink'"
+          data-card-notice
+        >
+          {{ notice.text }}
+        </p>
       </Transition>
-    </Teleport>
+    </div>
     <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
 

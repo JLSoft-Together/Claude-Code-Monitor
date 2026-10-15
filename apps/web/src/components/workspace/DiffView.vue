@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '../../lib/codeView'
 import type { DiffFile, DiffLine } from '../../lib/diff'
 import { foldRows, type Block } from '../../lib/diffBlocks'
 import type { DiffHighlight } from '../../lib/diffOpts'
 import { useDiffDecor } from '../../composables/useDiffDecor'
+import { useWindowCopy } from '../../composables/useWindowCopy'
+import { diffSideText } from '../../lib/windowCopy'
+import { prefixOffsets, sameRange, spacer, windowRange, WINDOW_MIN_ROWS, type RowRange } from '../../lib/rowWindow'
 import SplitDiff from './SplitDiff.vue'
 
 const props = defineProps<{
@@ -71,42 +74,141 @@ function foldHtml(key: string, count: number, cols: string): string {
 /** Index of the first line of each block (where its revert button sits). */
 const firstOf = computed(() => new Set(props.blocks.map((b) => props.file.hunks[b.hunk]!.lines[b.from])))
 
-function inlineRows(lines: readonly DiffLine[]): { changed: boolean[]; render: (i: number) => string } {
-  const { block } = lineInfo.value
-  return {
-    changed: lines.map((l) => l.type === 'add' || l.type === 'del'),
-    render: (i) => {
-      const l = lines[i]!
-      if (l.type === 'note') {
-        return `<div class="r note"><span class="n"></span><span class="n"></span><span class="a"></span><span class="s"></span><span class="c">${escapeHtml(l.text)}</span></div>`
-      }
-      const b = block.get(l)
-      const attrs = `${b !== undefined ? ` data-block="${b}"` : ''}${l.new ? ` data-new="${l.new}"` : ''}`
-      const act = b !== undefined && firstOf.value.has(l) ? revertButton(b, UNDO) : ''
-      return `<div class="r ${l.type}"${attrs}><span class="n">${num(l.old)}</span><span class="n">${num(l.new)}</span><span class="a">${act}</span><span class="s">${SIGN[l.type]}</span><span class="c">${code(l)}\n</span></div>`
-    },
+function rowHtml(l: DiffLine, i: number): string {
+  if (l.type === 'note') {
+    return `<div class="r note" data-i="${i}"><span class="n"></span><span class="n"></span><span class="a"></span><span class="s"></span><span class="c">${escapeHtml(l.text)}</span></div>`
   }
+  const b = lineInfo.value.block.get(l)
+  const attrs = `${b !== undefined ? ` data-block="${b}"` : ''}${l.new ? ` data-new="${l.new}"` : ''}`
+  const act = b !== undefined && firstOf.value.has(l) ? revertButton(b, UNDO) : ''
+  return `<div class="r ${l.type}" data-i="${i}"${attrs}><span class="n">${num(l.old)}</span><span class="n">${num(l.new)}</span><span class="a">${act}</span><span class="s">${SIGN[l.type]}</span><span class="c">${code(l)}
+</span></div>`
 }
 
-const html = computed(() => {
-  if (props.layout === 'split') return ''
-  let out = ''
+type Item = { kind: 'gap' } | { kind: 'fold'; key: string; count: number } | { kind: 'row'; line: DiffLine }
+
+/** Rendered items in order: hunk gaps, folds, rows. */
+const items = computed<Item[]>(() => {
+  if (props.layout === 'split') return []
+  const out: Item[] = []
   props.file.hunks.forEach((h, hi) => {
-    if (hi > 0) out += `<div class="gap" aria-hidden="true">⋯</div>`
-    const { changed, render } = inlineRows(h.lines)
+    if (hi > 0) out.push({ kind: 'gap' })
+    const changed = h.lines.map((l) => l.type === 'add' || l.type === 'del')
     const segments = props.collapse
       ? foldRows(changed, props.context, new Set([...expanded.value].filter((k) => k.startsWith(`${hi}:`)).map((k) => Number(k.slice(k.indexOf(':') + 1)))))
       : [{ kind: 'rows' as const, from: 0, to: changed.length }]
     for (const seg of segments) {
-      if (seg.kind === 'fold') {
-        out += foldHtml(`${hi}:${seg.from}`, seg.to - seg.from, 'r')
-        continue
-      }
-      for (let i = seg.from; i < seg.to; i++) out += render(i)
+      if (seg.kind === 'fold') out.push({ kind: 'fold', key: `${hi}:${seg.from}`, count: seg.to - seg.from })
+      else for (let i = seg.from; i < seg.to; i++) out.push({ kind: 'row', line: h.lines[i]! })
     }
   })
   return out
 })
+
+const itemHtml = (it: Item, i: number): string =>
+  it.kind === 'gap' ? `<div class="gap" data-i="${i}" aria-hidden="true">⋯</div>` : it.kind === 'fold' ? foldHtml(it.key, it.count, `r" data-i="${i}`) : rowHtml(it.line, i)
+
+// v45: long diffs render a window of items; heights per kind are measured (rows one height, folds / gaps their own).
+const windowed = computed(() => items.value.length > WINDOW_MIN_ROWS)
+const heights = ref({ row: 19, fold: 22, gap: 26 })
+const range = shallowRef<RowRange>({ start: 0, end: 0 })
+const offsets = computed(() => {
+  if (!windowed.value) return null
+  const list = items.value
+  const h = heights.value
+  return prefixOffsets(list.length, (i) => h[list[i]!.kind])
+})
+let scroller: HTMLElement | null = null
+let frame = 0
+const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => onScroll())
+
+function scrollParent(): HTMLElement | null {
+  for (let p = root.value?.parentElement ?? null; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY
+    if (o === 'auto' || o === 'scroll') return p
+  }
+  return null
+}
+
+/** Scroller offset of item 0 (the top spacer). */
+function origin(): number {
+  const first = root.value?.firstElementChild
+  if (!first || !scroller) return 0
+  return first.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
+}
+
+function measure(): void {
+  const el = root.value
+  if (!el) return
+  const next = { ...heights.value }
+  for (const kind of ['row', 'fold', 'gap'] as const) {
+    const h = el.querySelector<HTMLElement>(kind === 'row' ? '.r' : `.${kind}`)?.getBoundingClientRect().height
+    if (h) next[kind] = h
+  }
+  if (next.row !== heights.value.row || next.fold !== heights.value.fold || next.gap !== heights.value.gap) heights.value = next
+}
+
+function updateRange(): void {
+  if (frame) cancelAnimationFrame(frame)
+  frame = 0
+  const offs = offsets.value
+  if (!offs) return
+  const top = scroller ? scroller.scrollTop - origin() : 0
+  const next = windowRange(offs, top, scroller?.clientHeight || 1000)
+  if (!sameRange(next, range.value)) range.value = next
+}
+
+const onScroll = (): void => {
+  if (windowed.value && !frame) frame = requestAnimationFrame(updateRange)
+}
+
+watch(offsets, () => updateRange())
+
+// The inline root comes and goes with the split layout: follow its scroll container.
+watch(
+  root,
+  (el) => {
+    scroller?.removeEventListener('scroll', onScroll)
+    if (scroller) resize?.unobserve(scroller)
+    scroller = el ? scrollParent() : null
+    scroller?.addEventListener('scroll', onScroll, { passive: true })
+    if (scroller) resize?.observe(scroller)
+    updateRange()
+  },
+  { flush: 'post' },
+)
+onBeforeUnmount(() => {
+  scroller?.removeEventListener('scroll', onScroll)
+  resize?.disconnect()
+  if (frame) cancelAnimationFrame(frame)
+})
+
+const html = computed(() => {
+  if (props.layout === 'split') return ''
+  const list = items.value
+  const offs = offsets.value
+  if (!offs) return list.map(itemHtml).join('')
+  const { start, end } = range.value
+  let out = spacer(offs[start]!)
+  for (let i = start; i < end; i++) out += itemHtml(list[i]!, i)
+  return out + spacer(offs[list.length]! - offs[end]!)
+})
+
+const windowCopy = useWindowCopy({
+  container: () => root.value,
+  scope: () => scroller,
+  enabled: () => windowed.value && props.layout !== 'split',
+  rowText: (i) => {
+    const it = items.value[i]
+    return it?.kind === 'row' && it.line.type !== 'note' ? it.line.text : null
+  },
+  // Inline mixes both sides; "all" is the new file (the old one for a deletion).
+  allText: () => diffSideText(props.file, hasNew.value ? 'new' : 'old'),
+})
+const hasNew = computed(() => props.file.hunks.some((h) => h.lines.some((l) => l.type === 'add' || l.type === 'ctx')))
+const allSelected = windowCopy.allSelected
+watch(html, () => windowCopy.capture(), { flush: 'pre' })
+watch(html, () => windowCopy.restore(), { flush: 'post' })
 
 function markCurrent(): void {
   const el = root.value
@@ -115,7 +217,15 @@ function markCurrent(): void {
   for (const r of el.querySelectorAll(`[data-block="${props.current}"]`)) r.classList.add('is-current')
 }
 
-watch([html, () => props.current], () => void nextTick(markCurrent), { flush: 'post' })
+watch(
+  [html, () => props.current],
+  () =>
+    void nextTick(() => {
+      if (windowed.value) measure()
+      markCurrent()
+    }),
+  { flush: 'post' },
+)
 
 function onClick(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
@@ -140,6 +250,14 @@ async function scrollToBlock(i: number): Promise<void> {
   // A stale caret would win over the change F7 just moved to (sourceLine).
   const sel = window.getSelection()
   if (sel?.rangeCount && root.value?.contains(sel.focusNode)) sel.removeAllRanges()
+  const offs = offsets.value
+  if (offs && scroller) {
+    const at = items.value.findIndex((it) => it.kind === 'row' && lineInfo.value.block.get(it.line) === i)
+    if (at >= 0) {
+      scroller.scrollTop = origin() + offs[at]! - scroller.clientHeight / 2
+      updateRange()
+    }
+  }
   await nextTick()
   markCurrent()
   root.value?.querySelector<HTMLElement>(`[data-block="${i}"]`)?.scrollIntoView({ block: 'center' })
@@ -225,7 +343,7 @@ defineExpose({ scrollToBlock, lineOf, sourceLine, switchSide: () => split.value?
     v-else
     ref="root"
     class="diff ccm-code w-max min-w-full py-1"
-    :class="{ 'hl-none': highlight === 'none' }"
+    :class="{ 'hl-none': highlight === 'none', 'is-all': allSelected, 'all-old': allSelected && !hasNew }"
     role="document"
     data-code-zoom
     :aria-label="blocks.length ? t('workspace.diff.change', { n: current + 1, total: blocks.length }) : undefined"
@@ -364,6 +482,11 @@ defineExpose({ scrollToBlock, lineOf, sourceLine, switchSide: () => split.value?
 }
 .diff ::selection,
 .diff :deep(*)::selection {
+  background: var(--ccm-well-selection, #3f638b);
+}
+/* Windowed Ctrl/⌘+A (see FilePane): "all" is painted on the text rows. */
+.diff.is-all :deep(.r:not(.del):not(.note) .c),
+.diff.all-old :deep(.r.del .c) {
   background: var(--ccm-well-selection, #3f638b);
 }
 </style>

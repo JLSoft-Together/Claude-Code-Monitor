@@ -1,8 +1,9 @@
 import path from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { FrameParser, RpcClient, RpcError } from './rpc'
+import { finishDump, nodeCdsFs, planCds, snapshotClassList, type CdsFs, type CdsPlan } from './cds'
 import { JAR_NAME } from './download'
-import type { DaemonDrawableResult, DaemonRenderResult, DaemonState, JdkStatus, LayoutDevice } from './types'
+import type { DaemonDrawableResult, DaemonRenderResult, DaemonState, InitStage, JdkStatus, LayoutDevice } from './types'
 
 export interface DaemonChild {
   stdin: Writable | null
@@ -24,12 +25,18 @@ export interface DaemonDeps {
   kill: (child: DaemonChild) => void
   log?: (level: string, message: string) => void
   onState?: (state: DaemonState, detail?: string) => void
+  /** Cold-start stage: `jvm` (spawned), then the daemon's own `setup` / `prepare` / `warmup`. */
+  onStage?: (stage: InitStage) => void
   renderTimeoutMs?: number
   initTimeoutMs?: number
   idleMs?: number
   maxRestarts?: number
   restartWindowMs?: number
   now?: () => number
+  /** AppCDS (`cds.ts`), on unless false. */
+  cds?: boolean
+  cdsFs?: CdsFs
+  cdsDumpDelayMs?: number
 }
 
 export interface RenderParams {
@@ -39,6 +46,8 @@ export interface RenderParams {
   theme: string | null
   night: boolean
   locale: string | null
+  /** Image px / device px (0.125–1): layoutlib draws through a scaled canvas, dp / density / view tree unchanged. */
+  scale?: number
 }
 
 export interface DrawableParams {
@@ -62,13 +71,14 @@ export class LayoutError extends Error {
 const PROTOCOL_VERSION = 1
 const CANCELLED = -32800
 
-export function daemonArgs(daemonJar: string, layoutlibDir: string, platform: NodeJS.Platform): string[] {
+export function daemonArgs(daemonJar: string, layoutlibDir: string, platform: NodeJS.Platform, jvmExtra: string[] = []): string[] {
   const p = platform === 'win32' ? path.win32 : path.posix
   const sep = platform === 'win32' ? ';' : ':'
   return [
     '-Xmx1g',
     '-XX:+EnableDynamicAgentLoading',
     '-Djdk.attach.allowAttachSelf=true',
+    ...jvmExtra,
     '-cp',
     `${daemonJar}${sep}${p.join(layoutlibDir, JAR_NAME)}`,
     'dev.ccm.layoutdaemon.MainKt',
@@ -96,11 +106,19 @@ export class LayoutDaemon {
   private starting: Promise<void> | null = null
   private restartPending = false
   private api: number | null = null
+  private dumpTimer: ReturnType<typeof setTimeout> | null = null
+  private dumping: DaemonChild | null = null
+  private initStage: InitStage | null = null
 
   constructor(private readonly deps: DaemonDeps) {}
 
   get state(): DaemonState {
     return this.current
+  }
+
+  /** Cold-start stage of the running start, null when none. */
+  get stage(): InitStage | null {
+    return this.initStage
   }
 
   /** API level reported by `initialize`; null before the first start. */
@@ -114,6 +132,11 @@ export class LayoutDaemon {
     this.deps.onState?.(state, detail)
   }
 
+  private toStage(stage: InitStage): void {
+    this.initStage = stage
+    this.deps.onStage?.(stage)
+  }
+
   private now(): number {
     return this.deps.now?.() ?? Date.now()
   }
@@ -125,28 +148,35 @@ export class LayoutDaemon {
     return this.restarts.length < (this.deps.maxRestarts ?? 3)
   }
 
-  ensure(): Promise<void> {
+  /** `prefetchAars`: AAR res dirs of the project about to be loaded, parsed by the daemon while layoutlib boots. */
+  ensure(opts: { prefetchAars?: unknown[] } = {}): Promise<void> {
     if (this.live && !this.live.stopping) return this.live.ready
     if (this.starting) return this.starting
     if (this.current === 'failed' && !this.budgetLeft()) return Promise.reject(new LayoutError('crash-loop'))
-    const starting = this.start().finally(() => {
+    const starting = this.start(opts.prefetchAars).finally(() => {
       if (this.starting === starting) this.starting = null
     })
     this.starting = starting
     return starting
   }
 
-  private async start(): Promise<void> {
+  private async start(prefetchAars?: unknown[]): Promise<void> {
     this.set('starting')
     const jdk = await this.deps.findJava()
     if (!jdk.ok || !jdk.java) {
       this.set('stopped')
       throw new LayoutError(jdk.ok ? 'jdk-missing' : jdk.code, jdk.ok ? undefined : jdk.detail)
     }
+    const java = jdk.java
     const dir = this.deps.layoutlibDir()
+    const t0 = this.now()
+    const cds =
+      this.deps.cds === false
+        ? null
+        : await planCds({ jdkHome: jdk.home, cacheDir: this.deps.cacheDir, daemonJar: this.deps.daemonJar, layoutlibDir: dir, platform: this.deps.platform }, this.deps.cdsFs).catch(() => null)
     let child: DaemonChild
     try {
-      child = this.deps.spawn(jdk.java, daemonArgs(this.deps.daemonJar, dir, this.deps.platform), this.deps.cacheDir)
+      child = this.deps.spawn(java, daemonArgs(this.deps.daemonJar, dir, this.deps.platform, cds?.jvmArgs), this.deps.cacheDir)
     } catch (err) {
       this.set('stopped')
       throw new LayoutError('spawn-failed', err instanceof Error ? err.message : String(err))
@@ -157,11 +187,17 @@ export class LayoutDaemon {
         child.stdin.write(buf)
       },
       (method, params) => {
+        if (method === 'progress') {
+          const stage = ((params ?? {}) as { stage?: unknown }).stage
+          if (stage === 'setup' || stage === 'prepare' || stage === 'warmup') this.toStage(stage)
+          return
+        }
         if (method !== 'log') return
         const p = (params ?? {}) as { level?: unknown; message?: unknown }
         this.deps.log?.(String(p.level ?? 'info'), String(p.message ?? '').slice(0, 2000))
       },
     )
+    this.toStage('jvm')
     const live: Live = { child, rpc, ready: Promise.resolve(), stopping: false }
     this.live = live
     const parser = new FrameParser()
@@ -183,16 +219,18 @@ export class LayoutDaemon {
     child.on('exit', (code) => this.onExit(live, code, errTail))
 
     live.ready = this.withTimeout(
-      rpc.request('initialize', { protocolVersion: PROTOCOL_VERSION, cacheDir: this.deps.cacheDir }),
+      rpc.request('initialize', { protocolVersion: PROTOCOL_VERSION, cacheDir: this.deps.cacheDir, ...(prefetchAars?.length ? { prefetchAars } : {}) }),
       this.deps.initTimeoutMs ?? 60_000,
       () => this.deps.kill(child),
     ).then(
       (res) => {
         if (this.live !== live) throw new LayoutError('crashed')
-        const r = (res ?? {}) as { initMs?: unknown; layoutlibVersion?: unknown; apiLevel?: unknown }
+        const r = (res ?? {}) as { initMs?: unknown; layoutlibVersion?: unknown; apiLevel?: unknown; timings?: unknown }
         if (typeof r.apiLevel === 'number' && Number.isInteger(r.apiLevel) && r.apiLevel > 0) this.api = r.apiLevel
-        this.deps.log?.('info', `initialized layoutlib ${String(r.layoutlibVersion ?? '?')} in ${String(r.initMs ?? '?')} ms`)
+        this.deps.log?.('info', `initialized layoutlib ${String(r.layoutlibVersion ?? '?')} in ${String(r.initMs ?? '?')} ms (spawn → ready ${this.now() - t0} ms) ${JSON.stringify(r.timings ?? {})}`)
+        this.initStage = null
         this.set('ready')
+        if (cds?.mode === 'record') this.scheduleDump(cds, java)
         this.touch()
       },
       (err: unknown) => {
@@ -252,6 +290,7 @@ export class LayoutDaemon {
       night: params.night,
       ...(params.theme ? { theme: params.theme } : {}),
       ...(params.locale ? { locale: params.locale } : {}),
+      ...(params.scale !== undefined && params.scale < 1 ? { scale: params.scale } : {}),
     })) as Promise<DaemonRenderResult>
   }
 
@@ -299,7 +338,8 @@ export class LayoutDaemon {
     this.inFlight++
     this.clearIdle()
     try {
-      await this.ensure()
+      const aars = method === 'project/load' ? (params as { aarResDirs?: unknown } | null)?.aarResDirs : undefined
+      await this.ensure(Array.isArray(aars) ? { prefetchAars: aars } : {})
       const live = this.live
       if (!live) throw new LayoutError('crashed')
       return await this.withTimeout(live.rpc.request(method, params), timeoutMs, () => {
@@ -314,6 +354,46 @@ export class LayoutDaemon {
       this.touch()
       this.maybeRestart()
     }
+  }
+
+  /** Builds the AppCDS archive in a separate short JVM once the recording daemon is warm (init + first renders). */
+  private scheduleDump(plan: Extract<CdsPlan, { mode: 'record' }>, java: string): void {
+    if (this.dumpTimer || this.dumping) return
+    this.dumpTimer = setTimeout(() => {
+      this.dumpTimer = null
+      void this.dump(plan, java)
+    }, this.deps.cdsDumpDelayMs ?? 30_000)
+    this.dumpTimer.unref?.()
+  }
+
+  private async dump(plan: Extract<CdsPlan, { mode: 'record' }>, java: string): Promise<void> {
+    const fs = this.deps.cdsFs ?? nodeCdsFs
+    if (!(await snapshotClassList(plan, fs).catch(() => false))) return
+    const t0 = this.now()
+    let child: DaemonChild
+    try {
+      child = this.deps.spawn(java, plan.dumpArgs, this.deps.cacheDir)
+    } catch {
+      await finishDump(plan, false, fs)
+      return
+    }
+    this.dumping = child
+    child.stdout?.resume()
+    child.stderr?.resume()
+    child.stdin?.on('error', () => undefined)
+    child.stdin?.end()
+    const code = await new Promise<number | null>((resolve) => {
+      const watchdog = setTimeout(() => this.deps.kill(child), 180_000)
+      watchdog.unref?.()
+      child.on('exit', (c) => {
+        clearTimeout(watchdog)
+        resolve(c)
+      })
+      child.on('error', () => resolve(null))
+    })
+    if (this.dumping === child) this.dumping = null
+    const ok = await finishDump(plan, code === 0, fs)
+    this.deps.log?.('info', `AppCDS archive ${ok ? 'written' : `failed (exit ${code})`} in ${this.now() - t0} ms`)
   }
 
   /** `restartSuggested` (leaked project ClassLoaders): restart once nothing is in flight, then warm up again. */
@@ -367,6 +447,9 @@ export class LayoutDaemon {
   killNow(): void {
     const live = this.live
     this.clearIdle()
+    if (this.dumpTimer) clearTimeout(this.dumpTimer)
+    this.dumpTimer = null
+    if (this.dumping) this.deps.kill(this.dumping)
     if (!live) return
     live.stopping = true
     this.deps.kill(live.child)

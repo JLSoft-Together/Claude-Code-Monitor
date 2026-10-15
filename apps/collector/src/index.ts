@@ -89,8 +89,8 @@ async function main(): Promise<void> {
   }, 15_000)
   toastTimer.unref()
 
-  await monitor.start()
-  await monitor.codex?.start()
+  // Listen first: the dashboard opens at once and sessions arrive as the first pass publishes them.
+  store.setLoading(true)
   const server = await startServer({
     host: config.host,
     port: config.port,
@@ -193,13 +193,12 @@ async function main(): Promise<void> {
       }
     },
   })
-  await usage.start()
-
   console.log(`[collector] watching ${config.claudeRoot}${config.codex ? ` + ${config.codexHome}` : ''}`)
   console.log(`[collector] data dir ${config.dataDir}`)
   console.log(`[collector] dashboard http://${config.host}:${config.port}  websocket ws://${config.host}:${config.port}/ws`)
 
   let closing = false
+  let usageStarted = false
   const shutdown = () => {
     if (closing) return
     closing = true
@@ -210,7 +209,7 @@ async function main(): Promise<void> {
       toaster.clear(),
       toaster.flush(),
       snoozes.flush(),
-      usage.stop(),
+      usageStarted ? usage.stop() : undefined,
       response.save(),
       limitHistory.save(),
       codexLimitHistory.save(),
@@ -226,6 +225,14 @@ async function main(): Promise<void> {
   parentPort?.on('message', (e) => {
     if (e.data === 'shutdown') shutdown()
   })
+
+  await monitor.start()
+  store.setLoading(false)
+  if (closing) return
+  await monitor.codex?.start()
+  if (closing) return
+  await usage.start()
+  usageStarted = true
 }
 
 process.on('unhandledRejection', (err: unknown) => {

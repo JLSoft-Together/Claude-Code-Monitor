@@ -1,14 +1,37 @@
 import { ref } from 'vue'
 
 export const now = ref(Date.now())
-let ticking = false
+let timer: ReturnType<typeof setInterval> | null = null
+let started = false
 
+const tick = (): void => {
+  now.value = Date.now()
+}
+
+function syncClock(): void {
+  const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  if (hidden) {
+    if (timer) clearInterval(timer)
+    timer = null
+  } else if (!timer) {
+    tick()
+    timer = setInterval(tick, 1_000)
+  }
+}
+
+/** 1 s clock for every age / duration label; stops while the window is hidden (tray), ticks at once on return. */
 export function startClock(): void {
-  if (ticking) return
-  ticking = true
-  setInterval(() => {
-    now.value = Date.now()
-  }, 1_000)
+  if (started) return
+  started = true
+  syncClock()
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', syncClock)
+}
+
+export function stopClock(): void {
+  started = false
+  if (timer) clearInterval(timer)
+  timer = null
+  if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', syncClock)
 }
 
 const ts = (iso: string | undefined): number | null => {
@@ -17,12 +40,23 @@ const ts = (iso: string | undefined): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+const rtfCache = new Map<string, Intl.RelativeTimeFormat>()
+
+function relativeFormat(locale: string): Intl.RelativeTimeFormat {
+  let rtf = rtfCache.get(locale)
+  if (!rtf) {
+    rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' })
+    rtfCache.set(locale, rtf)
+  }
+  return rtf
+}
+
 export function relativeTime(iso: string | number | undefined | null, locale: string, nowMs: number): string | null {
   const t = typeof iso === 'number' ? iso : ts(iso ?? undefined)
   if (t === null) return null
   const sec = Math.round((t - nowMs) / 1000)
   const abs = Math.abs(sec)
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' })
+  const rtf = relativeFormat(locale)
   if (abs < 60) return rtf.format(sec, 'second')
   if (abs < 3600) return rtf.format(Math.round(sec / 60), 'minute')
   if (abs < 86400) return rtf.format(Math.round(sec / 3600), 'hour')

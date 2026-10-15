@@ -5,7 +5,8 @@ import { rootKey } from './paths'
 export type ChangeListener = (root: string, changed: string[]) => void
 type WatchFn = (root: string, options: { recursive: boolean }, listener: (event: string, file: string | Buffer | null) => void) => FSWatcher
 
-const IGNORED = new Set(['node_modules', '.git'])
+// Build output and IDE state: a running build would otherwise wake every Changes pane and git status.
+const IGNORED = new Set(['node_modules', '.git', 'build', '.gradle', '.dart_tool', 'dist', '.vitest', 'out', '.idea'])
 
 const ignored = (rel: string): boolean => rel.split(/[\\/]/).some((part) => IGNORED.has(part))
 

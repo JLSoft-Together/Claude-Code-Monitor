@@ -15,11 +15,24 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
 const DIR = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccm-e2e-editor-')))
 const NOTES = path.join(DIR, 'notes.txt')
 const LAYOUT = path.join(DIR, 'bg_native_ad_cta.xml')
+const BIG = path.join(DIR, 'big.ts')
+const BIG_LINES = Array.from({ length: 5000 }, (_, i) => `export const v${i} = '${'x'.repeat(i % 37)}'\t// ${i}`)
 const LAYOUT_XML = '<?xml version="1.0" encoding="utf-8"?>\n<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"\n    android:layout_width="match_parent"\n    android:layout_height="match_parent"\n    android:orientation="vertical">\n    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hello" />\n</LinearLayout>\n'
 
 function fixture() {
   fs.writeFileSync(NOTES, 'line one\r\nline two\r\n')
   fs.writeFileSync(LAYOUT, LAYOUT_XML)
+  fs.writeFileSync(BIG, BIG_LINES.join('\n') + '\n')
+}
+
+/** Clipboard text with LF line ends (the OS clipboard may hold CRLF). */
+async function clipboardText(evaluate) {
+  let text = await evaluate(`navigator.clipboard.readText().catch(() => null)`)
+  if (typeof text !== 'string') {
+    const { execFileSync } = require('node:child_process')
+    text = process.platform === 'darwin' ? execFileSync('pbpaste', { encoding: 'utf8' }) : execFileSync('powershell', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard -Raw'], { encoding: 'utf8' }).replace(/\r?\n$/, '')
+  }
+  return text.replace(/\r\n/g, '\n')
 }
 
 const read = (p) => fs.readFileSync(p, 'utf8')
@@ -100,6 +113,45 @@ async function run(app) {
   await click('[data-close-save]')
   await waitFor(`!${W}.panes.some((p) => p.kind === 'file')`, 5000, 'pane closed').catch(() => {})
   check('Save writes the file, then closes the pane', !(await evaluate(`${W}.panes.some((p) => p.kind === 'file')`)) && read(NOTES).startsWith('ysecond outside'), JSON.stringify(read(NOTES)))
+
+  // v45 windowed view: Ctrl/⌘+A, Ctrl/⌘+C copies the whole file, not just the rendered rows; a selection whose rows
+  // scrolled out of the DOM still copies from the model.
+  await evaluate(`${W}.openFile(${JSON.stringify(BIG)})`)
+  await waitFor(`!!document.querySelector('[data-windowed] [data-i]')`, 10000, 'windowed view')
+  const rendered = await evaluate(`document.querySelectorAll('[data-windowed] [data-i]').length`)
+  check('big file renders a window of rows', rendered > 0 && rendered < 1000, String(rendered))
+  await evaluate(`document.querySelector('[data-windowed]').closest('section[tabindex]').focus()`)
+  await evaluate(`navigator.clipboard.writeText('sentinel').catch(() => {})`)
+  await key('a', 'KeyA', 65, MOD)
+  await sleep(150)
+  check('Ctrl/⌘+A marks the windowed view all-selected', await evaluate(`!!document.querySelector('[data-windowed].is-all')`))
+  await key('c', 'KeyC', 67, MOD)
+  await sleep(300)
+  const all = await clipboardText(evaluate)
+  check('Ctrl/⌘+C after select all copies the whole file', all === BIG_LINES.join('\n') + '\n', `${all.length} chars, ${all.split('\n').length} lines`)
+  await shot('editor-5-select-all')
+  await evaluate(`(async () => {
+    const code = document.querySelector('[data-windowed]')
+    const a = code.querySelector('[data-i="10"] .c')
+    const b = code.querySelector('[data-i="11"] .c')
+    getSelection().setBaseAndExtent(a, 0, b, 0)
+    await new Promise((r) => setTimeout(r, 100))
+    const sc = code.parentElement
+    sc.scrollTop = sc.scrollHeight * 0.8
+    await new Promise((r) => setTimeout(r, 400))
+  })()`)
+  const rowsNow = await evaluate(`[...document.querySelectorAll('[data-windowed] [data-i]')].map((r) => +r.dataset.i)`)
+  const end = rowsNow[Math.floor(rowsNow.length / 2)]
+  check('scrolling recycled the anchor row', !rowsNow.includes(10), `${rowsNow[0]}..${rowsNow.at(-1)}`)
+  await evaluate(`(async () => { getSelection().extend(document.querySelector('[data-windowed] [data-i="${end}"] .c'), 0); await new Promise((r) => setTimeout(r, 100)) })()`)
+  check('select all mark cleared by a new selection', await evaluate(`!document.querySelector('[data-windowed].is-all')`))
+  await key('c', 'KeyC', 67, MOD)
+  await sleep(300)
+  const part = await clipboardText(evaluate)
+  const want = BIG_LINES.slice(10, end).join('\n') + '\n'
+  check('a selection across recycled rows copies from the model', part === want, `${part.length} vs ${want.length} chars`)
+  await closePane()
+  await waitFor(`!${W}.panes.some((p) => p.kind === 'file')`, 5000, 'big pane closed').catch(() => {})
 
   // Loose layout XML: design mode, live preview of unsaved text.
   await evaluate(`${W}.openFile(${JSON.stringify(LAYOUT)})`)

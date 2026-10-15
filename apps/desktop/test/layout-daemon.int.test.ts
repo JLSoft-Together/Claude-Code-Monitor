@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { LayoutDaemon, LayoutError, type DaemonChild } from '../src/layout/daemon'
 import { findJdk } from '../src/layout/jdk'
+import { parseLooseKit } from '../src/layout/projectModel'
 
 // Real JVM + layoutlib: needs `apps/layout-daemon` built (`gradlew assemble`) and a JDK ≥ 17; skipped otherwise.
 const daemonDir = path.resolve(__dirname, '../../layout-daemon/build')
@@ -45,6 +46,7 @@ describe.skipIf(!built)('layout daemon (real jar)', () => {
       kill: (child) => (child as unknown as { kill: () => void }).kill(),
       initTimeoutMs: 120_000,
       renderTimeoutMs: 60_000,
+      cds: false,
     })
   })
 
@@ -90,4 +92,24 @@ describe.skipIf(!built)('layout daemon (real jar)', () => {
     expect(((a as PromiseRejectedResult).reason as LayoutError).code).toBe('cancelled')
     expect(b.status).toBe('fulfilled')
   }, 120_000)
+
+  it('loads the bundled loose kit: ConstraintLayout + Material render without class-not-found', async (ctx) => {
+    const kitDir = path.join(daemonDir, 'loose-kit')
+    if (!jdkOk || !existsSync(path.join(kitDir, 'kit.json'))) return ctx.skip()
+    const kit = parseLooseKit(readFileSync(path.join(kitDir, 'kit.json'), 'utf8'), kitDir)
+    const load = (await daemon.request('project/load', { ...kit, projectId: 'loose-kit' }, 120_000)) as { ok: boolean }
+    expect(load.ok).toBe(true)
+    const xml = `<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent">
+  <com.google.android.material.button.MaterialButton android:id="@+id/cta" android:layout_width="wrap_content" android:layout_height="wrap_content"
+      android:text="Install" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintBottom_toBottomOf="parent"/>
+</androidx.constraintlayout.widget.ConstraintLayout>`
+    const res = await daemon.render({ ...params(), xmlContent: xml }, 'it:kit')
+    const messages = (res.diagnostics as { message: string }[]).map((d) => d.message)
+    expect(messages.filter((m) => /class not found|theme/i.test(m))).toEqual([])
+    const cta = (res.viewTree as { children: { class: string; bounds: number[] }[] }).children[0]!
+    expect(cta.class).toBe('com.google.android.material.button.MaterialButton')
+    expect(cta.bounds[2]).toBe(540)
+    expect(cta.bounds[3]).toBe(960)
+  }, 180_000)
 })

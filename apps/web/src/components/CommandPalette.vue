@@ -39,6 +39,8 @@ import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
 import { shortPath } from '../lib/format'
+import { isMac } from '../lib/platform'
+import { keyCombo } from '../lib/shortcuts'
 import { statusMeta } from '../lib/status'
 import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
@@ -437,7 +439,7 @@ const HINTS = [
                   <span v-if="item.index === active" class="hidden shrink-0 items-center gap-2 text-2xs text-on-accent sm:inline-flex">
                     <span v-if="item.alt" class="inline-flex items-center gap-1"
                       ><AppWindow v-if="item.group === 'sessions'" :size="12" aria-hidden="true" />{{ item.altHint }}
-                      <kbd class="rounded-inner bg-on-accent/20 px-1 font-sans">⇧↵</kbd></span
+                      <kbd class="rounded-inner bg-on-accent/20 px-1 font-sans">{{ keyCombo(['Shift', 'Enter'], isMac) }}</kbd></span
                     >
                     <kbd class="inline-flex items-center rounded-inner bg-on-accent/20 px-1 py-px"><CornerDownLeft :size="12" aria-hidden="true" /></kbd>
                   </span>

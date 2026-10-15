@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { MODEL_CAPS, parseProjectModel, projectModelArgs } from '../src/layout/projectModel'
+import { MODEL_CAPS, parseLooseKit, parseProjectModel, projectModelArgs } from '../src/layout/projectModel'
 
 const root = path.resolve('/proj')
 const p = (...parts: string[]) => path.join(root, ...parts)
@@ -91,5 +91,35 @@ describe('parseProjectModel', () => {
     expect(r.payload.appTheme).toBeUndefined()
     expect(() => parseProjectModel(model({ namespace: '' }))).toThrow()
     expect(() => parseProjectModel('null')).toThrow()
+  })
+})
+
+describe('parseLooseKit', () => {
+  const dir = path.resolve('/kit')
+  const kit = {
+    packageName: 'dev.ccm.loosekit',
+    appTheme: '@style/Theme.Material3.DayNight.NoActionBar',
+    rJar: 'R.jar',
+    aarRes: [{ dir: 'aars/material-1.12.0/res', name: 'material-1.12.0' }, { dir: '../outside/res', name: 'x' }],
+    classpath: ['classes/material-1.12.0.jar', '/abs/evil.jar', '../evil.jar'],
+  }
+
+  it('maps kit.json to project/load params inside the kit dir only', () => {
+    const p = parseLooseKit(kit, dir, { exists: () => true })
+    expect(p).toEqual({
+      resDirs: [],
+      aarResDirs: [{ dir: path.join(dir, 'aars/material-1.12.0/res'), name: 'material-1.12.0' }],
+      classpath: [path.join(dir, 'classes/material-1.12.0.jar')],
+      rJar: path.join(dir, 'R.jar'),
+      packageName: 'dev.ccm.loosekit',
+      namespace: 'dev.ccm.loosekit',
+      appTheme: '@style/Theme.Material3.DayNight.NoActionBar',
+      activityThemes: {},
+    })
+  })
+
+  it('rejects a kit without classes or R.jar', () => {
+    expect(() => parseLooseKit({ ...kit, rJar: undefined }, dir, { exists: () => true })).toThrow(/R.jar/)
+    expect(() => parseLooseKit(kit, dir, { exists: () => false })).toThrow()
   })
 })

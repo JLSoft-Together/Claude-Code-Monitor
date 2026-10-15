@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { appendFile } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMain, type IpcMainInvokeEvent } from 'electron'
 import { maskLog } from '../log-mask'
 import type { PreviewServer } from '../preview/server'
@@ -8,6 +10,7 @@ import { RootWatcher } from '../preview/watch'
 import { defaultSpawner, killTree, killTreeSparing, runEnv } from '../run/proc'
 import type { DaemonChild } from './daemon'
 import { registerLayoutIpc, type LayoutIpc } from './ipc'
+import { parseLooseKit, type ProjectLoadPayload } from './projectModel'
 
 export interface WireLayoutDeps {
   ipcMain: IpcMain
@@ -19,6 +22,8 @@ export interface WireLayoutDeps {
   getRunSettings: () => { androidSdk: string | null; jdk: string | null }
   /** `ccm-project-model.gradle` (dev: apps/layout-daemon/init, packaged: resources/layout-daemon). */
   initScript: string
+  /** Loose kit dir with `kit.json` (dev: apps/layout-daemon/build/loose-kit, packaged: resources/layout-daemon/loose-kit). */
+  looseKitDir: string
   server: PreviewServer
   daemonJar: string
   /** `logs/layout.log`; daemon `log` notifications and stderr, masked. */
@@ -44,6 +49,22 @@ const STRINGS = {
   },
 }
 
+/** Read once; a missing kit (dev without `gradlew stageLooseKit`) is retried on the next render. */
+function looseKitLoader(dir: string, log: (level: string, message: string) => void): () => Promise<ProjectLoadPayload | null> {
+  let kit: ProjectLoadPayload | null = null
+  return async () => {
+    if (kit) return kit
+    const text = await readFile(path.join(dir, 'kit.json'), 'utf8').catch(() => null)
+    if (text === null) return null
+    try {
+      kit = parseLooseKit(text, dir)
+    } catch (err) {
+      log('warn', `loose kit unusable: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    return kit
+  }
+}
+
 export function wireLayout(deps: WireLayoutDeps): LayoutIpc {
   const s = deps.locale.toLowerCase().startsWith('vi') ? STRINGS.vi : STRINGS.en
   const home = os.homedir()
@@ -63,6 +84,7 @@ export function wireLayout(deps: WireLayoutDeps): LayoutIpc {
     log,
     model: {
       initScript: deps.initScript,
+      looseKit: looseKitLoader(deps.looseKitDir, log),
       platform: process.platform,
       env: process.env,
       home,

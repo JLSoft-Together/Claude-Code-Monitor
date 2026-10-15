@@ -1,3 +1,7 @@
+<script lang="ts">
+let filePanes = 0
+</script>
+
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -9,9 +13,11 @@ import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLi
 import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
 import { tokenize } from '../../lib/highlight'
+import { maxColumns, sameRange, spacer, uniformRange, WINDOW_MIN_ROWS, type RowRange } from '../../lib/rowWindow'
 import { renderMarkdown } from '../../lib/markdown'
 import { isMac } from '../../lib/platform'
 import { useFileChanges } from '../../composables/useFileChanges'
+import { useWindowCopy } from '../../composables/useWindowCopy'
 import { useSettingsStore } from '../../stores/settings'
 import AccessPrompt from './AccessPrompt.vue'
 import ChangeRuler from './ChangeRuler.vue'
@@ -50,6 +56,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const settings = useSettingsStore()
 const FLASH_MS = 1200
+// Only debounce between a keystroke and a live XML render (the preview renders at once on a new revision).
+const LIVE_PREVIEW_MS = 120
+const tokenKey = `file${++filePanes}`
 const MINIMAP_MIN_WIDTH = 420
 
 const view = shallowRef<FileView | null>(null)
@@ -211,6 +220,44 @@ const sidePanel = computed(() => showDesign.value || showFwp.value)
 const codeWidth = computed(() => (sidePanel.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
 const minimap = computed(() => settings.minimap && !editing.value && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
 
+// v45: above WINDOW_MIN_ROWS (no wrap) only rows around the viewport are in the DOM; rows are one measured height.
+const windowed = computed(() => !wrap.value && !editing.value && showSource.value && lines.value.length > WINDOW_MIN_ROWS)
+const rowH = ref(19.5)
+const range = shallowRef<RowRange>({ start: 0, end: 0 })
+const codeMinWidth = computed(() => (windowed.value ? `calc(${maxColumns(lines.value)}ch + 6em)` : undefined))
+let rangeFrame = 0
+
+/** Scroller offset of row 0 (the top spacer). */
+const rowOrigin = (): number => (codeEl.value?.firstElementChild as HTMLElement | null)?.offsetTop ?? 8
+
+function updateRange(): void {
+  if (rangeFrame) cancelAnimationFrame(rangeFrame)
+  rangeFrame = 0
+  if (!windowed.value) return
+  const sc = scroller.value
+  const row = codeEl.value?.querySelector<HTMLElement>('.r')
+  const h = row?.getBoundingClientRect().height
+  if (h && Math.abs(h - rowH.value) > 0.01) rowH.value = h
+  const top = sc ? sc.scrollTop - rowOrigin() : 0
+  const next = uniformRange(lines.value.length, rowH.value, top, sc?.clientHeight || 1000)
+  if (!sameRange(next, range.value)) range.value = next
+}
+
+function onCodeScroll(): void {
+  if (windowed.value && !rangeFrame) rangeFrame = requestAnimationFrame(updateRange)
+}
+
+watch([windowed, lines, rowH], () => updateRange())
+
+/** Puts row `i` (0-based) in the middle of the view and renders it. */
+async function revealRow(i: number): Promise<void> {
+  const sc = scroller.value
+  if (!windowed.value || !sc) return
+  sc.scrollTop = rowOrigin() + i * rowH.value - sc.clientHeight / 2 + rowH.value / 2
+  updateRange()
+  await nextTick()
+}
+
 const html = computed(() => {
   if (!showSource.value || editing.value) return ''
   const byLine = new Map<number, Array<{ start: number; end: number; current?: boolean }>>()
@@ -221,16 +268,39 @@ const html = computed(() => {
   })
   const tok = tokens.value
   const marks = gutter.value
-  let out = ''
-  for (let i = 0; i < lines.value.length; i++) {
+  const n = lines.value.length
+  const { start, end } = windowed.value ? range.value : { start: 0, end: n }
+  let out = windowed.value ? spacer(start * rowH.value) : ''
+  for (let i = start; i < end; i++) {
     const lineTokens = tok?.[i] ?? [{ content: lines.value[i]! }]
     const g = marks.get(i)
     const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${flash.value.has(i) ? ' is-flash' : ''}${g ? ` g-${g.kind}` : ''}`
     const gAttr = g ? ` data-block="${g.block}"` : ''
     const nAttr = g ? ` data-gutter title="${gutterTitle(g.block)}"` : ''
-    out += `<div class="${cls}" data-line="${i + 1}"${gAttr}><span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
+    out += `<div class="${cls}" data-line="${i + 1}" data-i="${i}"${gAttr}><span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
   }
+  if (windowed.value) out += spacer((n - end) * rowH.value)
   return out
+})
+
+let paintedText = ''
+const windowCopy = useWindowCopy({
+  container: () => codeEl.value,
+  scope: () => root.value,
+  enabled: () => windowed.value && props.active,
+  rowText: (i) => lines.value[i] ?? null,
+  allText: () => paintedText,
+})
+const allSelected = windowCopy.allSelected
+watch(html, () => windowCopy.capture(), { flush: 'pre' })
+watch(html, () => windowCopy.restore(), { flush: 'post' })
+
+/** Minimap row geometry while windowed (its own lookup walks the rendered rows). */
+const minimapGeometry = computed(() => {
+  if (!windowed.value) return null
+  const h = rowH.value
+  const n = lines.value.length
+  return { top: (line: number) => rowOrigin() + line * h, at: (y: number) => Math.min(n, Math.max(0, (y - rowOrigin()) / h)) }
 })
 
 function gutterTitle(i: number): string {
@@ -275,6 +345,7 @@ async function paintText(text: string, seq: number, keepScroll: boolean): Promis
   const prevLines = lines.value
   const scrollTop = scroller.value?.scrollTop ?? 0
   const nextLines = splitLines(text)
+  paintedText = text
   lines.value = nextLines
   if (keepScroll) {
     flashLines(changedLines(prevLines, nextLines))
@@ -283,7 +354,7 @@ async function paintText(text: string, seq: number, keepScroll: boolean): Promis
   }
   const lang = grammarFor(view.value?.lang, view.value?.path ?? props.path)
   if (!keepScroll) tokens.value = null
-  const tok = await tokenize(text, lang)
+  const tok = await tokenize(text, lang, tokenKey)
   if (seq !== loadSeq) return
   tokens.value = tok
   plainBecauseLarge.value = !!lang && !tok && text.length > 400_000
@@ -341,7 +412,7 @@ function onEditorChange(): void {
     liveTimer = null
     liveText.value = dirty.value ? (editor.value?.text() ?? null) : null
     layoutRevision.value++
-  }, 150)
+  }, LIVE_PREVIEW_MS)
 }
 
 watch(dirty, (d) => {
@@ -449,6 +520,7 @@ async function jumpTo(line: number | undefined): Promise<void> {
   if (line && editing.value) return editor.value?.revealLine(line)
   if (!line || !showSource.value) return
   targetLine.value = line
+  if (windowed.value) return revealRow(line - 1)
   await nextTick()
   scroller.value?.querySelector<HTMLElement>(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' })
 }
@@ -503,14 +575,19 @@ async function stepMatch(dir: 1 | -1): Promise<void> {
   const total = matches.value.length
   if (!total) return
   matchIndex.value = (matchIndex.value + dir + total) % total
-  await nextTick()
-  scroller.value?.querySelector('mark.ccm-find-current')?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  await revealMatch()
+}
+
+async function revealMatch(): Promise<void> {
+  const m = matches.value[matchIndex.value]
+  if (m && windowed.value) await revealRow(m.line)
+  else await nextTick()
+  scroller.value?.querySelector('mark.ccm-find-current')?.scrollIntoView({ block: windowed.value ? 'nearest' : 'center', inline: 'nearest' })
 }
 
 watch(query, async () => {
   matchIndex.value = 0
-  await nextTick()
-  scroller.value?.querySelector('mark.ccm-find-current')?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  await revealMatch()
 })
 
 function onFindKey(e: KeyboardEvent): void {
@@ -575,7 +652,8 @@ async function openChange(i: number, scroll = false): Promise<void> {
   const total = changes.blocks.value.length
   if (!total) return
   const at = ((i % total) + total) % total
-  if (scroll) {
+  if (scroll && windowed.value) await revealRow(Math.min(changes.blocks.value[at]!.line1, lines.value.length - 1))
+  else if (scroll) {
     await nextTick()
     rowsOf(at)?.top?.scrollIntoView({ block: 'center' })
   }
@@ -593,7 +671,7 @@ function stepChange(dir: 1 | -1): void {
     return
   }
   const top = scroller.value?.scrollTop ?? 0
-  const offsets = blocks.map((_, i) => rowsOf(i)?.top?.offsetTop ?? 0)
+  const offsets = windowed.value ? blocks.map((b) => rowOrigin() + Math.min(b.line1, lines.value.length - 1) * rowH.value) : blocks.map((_, i) => rowsOf(i)?.top?.offsetTop ?? 0)
   const before = offsets.filter((y) => y < top - 1).length
   const next = dir === 1 ? offsets.findIndex((y) => y > top + 1) : before - 1
   void openChange(next >= 0 ? next : dir === 1 ? 0 : blocks.length - 1, true)
@@ -664,6 +742,21 @@ watch(
 watch(showSource, (src) => {
   if (!src) closePopup()
 })
+// v-html replaced the rows (window moved, flash, find): measure the row height again, re-anchor an open popup.
+watch(
+  html,
+  () => {
+    if (windowed.value) {
+      const h = codeEl.value?.querySelector<HTMLElement>('.r')?.getBoundingClientRect().height
+      if (h && Math.abs(h - rowH.value) > 0.01) rowH.value = h
+    }
+    if (popupIndex.value === null) return
+    const rows = rowsOf(popupIndex.value)
+    if (rows) popupRows.value = rows
+    else closePopup()
+  },
+  { flush: 'post' },
+)
 
 async function copyPath(): Promise<void> {
   try {
@@ -722,7 +815,10 @@ watch(showSource, (src) => {
   if (src && targetLine.value) void jumpTo(targetLine.value)
 })
 
-const resize = new ResizeObserver(([entry]) => (paneWidth.value = entry?.contentRect.width ?? 0))
+const resize = new ResizeObserver(([entry]) => {
+  paneWidth.value = entry?.contentRect.width ?? 0
+  onCodeScroll()
+})
 
 onMounted(async () => {
   if (props.paneKey) workspace.registerSaver(props.paneKey, save)
@@ -746,6 +842,7 @@ onBeforeUnmount(() => {
   if (stackTimer) clearTimeout(stackTimer)
   offChange()
   if (flashTimer) clearTimeout(flashTimer)
+  if (rangeFrame) cancelAnimationFrame(rangeFrame)
   void setWatch(null)
 })
 
@@ -957,7 +1054,7 @@ const lineCount = computed(() => lines.value.length)
         @save="save()"
         @cursor-line="onCursorLine"
       />
-      <div v-else ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
+      <div v-else ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto" @scroll.passive="onCodeScroll">
         <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
         <div v-else-if="!hasPreview || !view || (view.kind !== 'text' && view.kind !== 'image')" class="grid size-full place-items-center p-6">
           <div class="flex max-w-sm flex-col items-center gap-2 text-center">
@@ -973,7 +1070,18 @@ const lineCount = computed(() => lines.value.length)
           <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
         </div>
         <article v-else-if="!showSource" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />
-        <div v-else ref="codeEl" class="code ccm-code min-w-full py-2" :class="wrap ? 'is-wrap' : 'w-max'" role="document" data-code-zoom @click="onCodeClick" v-html="html" />
+        <div
+          v-else
+          ref="codeEl"
+          class="code ccm-code min-w-full py-2"
+          :class="[wrap ? 'is-wrap' : 'w-max', { 'is-all': allSelected }]"
+          :style="codeMinWidth ? { minWidth: codeMinWidth } : undefined"
+          role="document"
+          :data-windowed="windowed ? '' : undefined"
+          data-code-zoom
+          @click="onCodeClick"
+          v-html="html"
+        />
       </div>
       <CodeMinimap
         v-if="minimap"
@@ -985,6 +1093,7 @@ const lineCount = computed(() => lines.value.length)
         :current="matchIndex"
         :target-line="targetLine"
         :changes="changes.blocks.value"
+        :geometry="minimapGeometry"
       />
       <ChangeRuler v-else-if="!editing && pending === null && showSource && !loading && changes.blocks.value.length":blocks="changes.blocks.value" :line-count="lineCount" @jump="(i) => openChange(i, true)" />
       </div>
@@ -1112,6 +1221,10 @@ const lineCount = computed(() => lines.value.length)
 }
 .code ::selection,
 .code :deep(*)::selection {
+  background: var(--ccm-selection, #3f638b);
+}
+/* Windowed Ctrl/⌘+A: rows outside the DOM cannot hold a real selection, so "all" is painted. */
+.code.is-all :deep(.c) {
   background: var(--ccm-selection, #3f638b);
 }
 @keyframes file-flash {

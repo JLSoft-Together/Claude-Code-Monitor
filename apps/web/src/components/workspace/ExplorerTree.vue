@@ -29,6 +29,7 @@ import {
 import ContextMenu from '../ui/ContextMenu.vue'
 import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMarks } from '../../lib/changesView'
 import { hasRun } from '../../lib/desktop'
+import { warmOnIntent } from '../../lib/layoutPreview'
 import { explorerKey, explorerMenu, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { setDragPath } from '../../lib/explorer/dragPath'
 import { findAction, isSeparator, type MenuEntry } from '../../lib/menu'
@@ -50,7 +51,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   open: [path: string, keep: boolean]
-  /** Ctrl+D (⌘⌥D) on a changed file. */
+  /** Ctrl+D (⌥⌘D) on a changed file. */
   openDiff: [path: string]
   create: [kind: 'file' | 'directory']
   /** Row context menu / shortcut. */
@@ -315,7 +316,9 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           :title="row.depth === 0 ? (explorer.root ?? undefined) : row.outOfRoot ? t('workspace.explorer.outOfRoot') : row.directory ? row.name : t('workspace.explorer.openHint')"
           :draggable="row.depth > 0"
           @dragstart="setDragPath($event.dataTransfer, row.path)"
-          @focus="explorer.setFocused(index === 0 ? null : row.path)"
+          @focus="explorer.setFocused(index === 0 ? null : row.path), warmOnIntent(row.directory ? null : row.path)"
+          @pointerenter="warmOnIntent(row.directory ? null : row.path)"
+          @pointerleave="warmOnIntent(null)"
           @click="activate(row, index)"
           @dblclick="!row.directory && emit('open', row.path, true)"
           @contextmenu="onContextMenu($event, row, index)"

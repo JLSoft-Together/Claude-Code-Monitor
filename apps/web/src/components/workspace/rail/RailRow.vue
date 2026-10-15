@@ -9,7 +9,7 @@ import StatusIcon from '../../StatusIcon.vue'
 import PaneIcon from '../PaneIcon.vue'
 
 const props = defineProps<{ row: RailRow }>()
-const emit = defineEmits<{ focus: [paneKey: string]; close: [row: RailRow] }>()
+const emit = defineEmits<{ focus: [paneKey: string]; close: [row: RailRow]; menu: [row: RailRow, event: MouseEvent] }>()
 
 const { t } = useI18n()
 const { sessionOf } = usePaneInfo()
@@ -36,12 +36,14 @@ const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'wai
     :class="row.focused ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill'"
     data-rail-row
     :data-state="row.state"
+    @contextmenu.prevent.stop="emit('menu', row, $event)"
   >
     <button
       type="button"
       data-side-item
       data-side-row
       :data-side-pane="row.paneKey"
+      :data-row-key="row.key"
       class="absolute inset-0 cursor-pointer rounded-inner"
       :aria-current="row.focused ? 'true' : undefined"
       :aria-label="t('workspace.rail.rowLabel', lines)"

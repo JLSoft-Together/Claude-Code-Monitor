@@ -248,6 +248,47 @@ describe('openFolder', () => {
   })
 })
 
+describe('listen before the first pass', () => {
+  it('sends a loading snapshot, then sessions and the end of loading in seq order, one payload for every client', async () => {
+    const store = new MonitorStore({ activityLimit: 10, batchMs: 5 })
+    store.setLoading(true)
+    const server = await startServer({ host: '127.0.0.1', port: 0, webDist: os.tmpdir(), store })
+    const port = (server.address() as AddressInfo).port
+    const open = async () => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+      const messages: { seq: number; events: { type: string; payload: Record<string, unknown> }[] }[] = []
+      ws.on('message', (raw) => messages.push(JSON.parse(String(raw))))
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      return { ws, messages }
+    }
+    const a = await open()
+    const b = await open()
+    try {
+      await new Promise((r) => setTimeout(r, 30))
+      store.upsertTerminal({ id: 't', title: 'A', status: 'working' })
+      store.upsertTerminal({ id: 't', title: 'B', status: 'working' })
+      store.setLoading(false)
+      await new Promise((r) => setTimeout(r, 60))
+      const [snap, next] = a.messages
+      expect(snap!.events[0]).toMatchObject({ type: 'snapshot', payload: { loading: true, terminals: [] } })
+      expect(next!.seq).toBe(snap!.seq + 1)
+      expect(next!.events).toEqual([
+        { type: 'terminal.created', payload: { id: 't', title: 'B', status: 'working' } },
+        { type: 'sessions.loading', payload: { loading: false } },
+      ])
+      expect(b.messages[1]).toEqual(next)
+      expect(store.snapshot().loading).toBeUndefined()
+    } finally {
+      a.ws.close()
+      b.ws.close()
+      server.close()
+    }
+  })
+})
+
 describe('port already taken', () => {
   it('rejects with an error isPortInUse recognises', async () => {
     const store = new MonitorStore({ activityLimit: 10, batchMs: 10 })

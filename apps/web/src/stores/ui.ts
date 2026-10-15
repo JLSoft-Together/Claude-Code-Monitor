@@ -184,6 +184,14 @@ export const useUiStore = defineStore('ui', () => {
   const nodeResized = ref(0)
   // Positions the user set by dragging or by resizing from the north / west edge; layout leaves them alone.
   const nodePos = ref<Record<string, Point>>(savedMap.pos)
+  /** Map subtrees folded by the user (in memory; shared by the All map and session tabs). */
+  const collapsedAgents = ref<ReadonlySet<string>>(new Set())
+  function setCollapsed(id: string, folded: boolean): void {
+    const next = new Set(collapsedAgents.value)
+    if (folded) next.add(id)
+    else next.delete(id)
+    collapsedAgents.value = next
+  }
 
   let mapSaveTimer: number | undefined
   watch([nodeSizes, nodePos], () => {
@@ -454,6 +462,8 @@ export const useUiStore = defineStore('ui', () => {
     setNodeSize,
     nodePos,
     setNodePos,
+    collapsedAgents,
+    setCollapsed,
     paletteOpen,
     opening,
     openResult,

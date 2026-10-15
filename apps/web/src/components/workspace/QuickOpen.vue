@@ -164,7 +164,7 @@ const activeId = computed(() => (hits.value[active.value] ? `qo-opt-${active.val
 const HINTS = computed(() => [
   { key: 'move', keys: '↑ ↓' },
   { key: 'open', keys: 'Enter' },
-  { key: 'split', keys: isMac ? '⌘ Enter' : 'Ctrl+Enter' },
+  { key: 'split', keys: isMac ? '⌘↩' : 'Ctrl+Enter' },
   { key: 'close', keys: 'Esc' },
 ])
 </script>

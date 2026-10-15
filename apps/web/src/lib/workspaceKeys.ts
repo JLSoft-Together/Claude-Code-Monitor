@@ -11,9 +11,9 @@ export type WorkspaceAction =
   | { t: 'attention' }
   /** ⌘P on macOS, Ctrl+Shift+P elsewhere: Ctrl+P is shell history. */
   | { t: 'quickOpen' }
-  /** Sidebar → Explorer (⌘⇧E / Ctrl+Shift+E, as in VS Code). */
+  /** Sidebar → Explorer (⇧⌘E / Ctrl+Shift+E, as in VS Code). */
   | { t: 'explorer' }
-  /** Mission Control: every tab of every project (⌘⇧O / Ctrl+Shift+O). */
+  /** Mission Control: every tab of every project (⇧⌘O / Ctrl+Shift+O). */
   | { t: 'mission' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }

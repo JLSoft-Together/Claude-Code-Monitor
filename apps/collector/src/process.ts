@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { windowsPowerShell } from './win-exe'
+import { nativeProcessTable, type WinProc } from './win-procs'
 
 export type ProcessStart = { kind: 'filetime'; value: bigint } | { kind: 'lstart'; value: string }
 
@@ -117,7 +118,20 @@ async function queryProcessesUnix(pids: number[]): Promise<Map<number, ProcessIn
   return info
 }
 
-function queryProcessesWindows(pids: number[]): Promise<Map<number, ProcessInfo> | null> {
+/** Same shape as the CIM query; null when a wanted pid is listed but its creation time can't be read (CIM can). */
+export function processInfoFromTable(pids: number[], table: WinProc[]): Map<number, ProcessInfo> | null {
+  const byPid = new Map(table.map((p) => [p.pid, p]))
+  const result = new Map<number, ProcessInfo>()
+  for (const pid of pids) {
+    const p = byPid.get(pid)
+    if (!p) continue
+    if (p.start === null) return null
+    result.set(pid, { pid, start: { kind: 'filetime', value: p.start }, parentPid: p.ppid, parentName: byPid.get(p.ppid)?.name })
+  }
+  return result
+}
+
+function queryProcessesCim(pids: number[]): Promise<Map<number, ProcessInfo> | null> {
   return new Promise((resolve) => {
     execFile(
       windowsPowerShell(),
@@ -133,6 +147,16 @@ function queryProcessesWindows(pids: number[]): Promise<Map<number, ProcessInfo>
       },
     )
   })
+}
+
+export function queryProcessesWindows(
+  pids: number[],
+  native: () => WinProc[] | null = nativeProcessTable,
+  cim: (pids: number[]) => Promise<Map<number, ProcessInfo> | null> = queryProcessesCim,
+): Promise<Map<number, ProcessInfo> | null> {
+  const table = native()
+  const info = table && processInfoFromTable(pids, table)
+  return info ? Promise.resolve(info) : cim(pids)
 }
 
 export function queryProcesses(pids: number[]): Promise<Map<number, ProcessInfo> | null> {

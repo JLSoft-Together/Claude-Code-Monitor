@@ -15,6 +15,8 @@ export default defineConfig({
       '/health': { target: collector, changeOrigin: true },
     },
   },
+  // ES worker: the highlight worker lazy-loads shiki grammars (code splitting is not possible in an iife worker).
+  worker: { format: 'es' },
   test: {
     environment: 'happy-dom',
   },

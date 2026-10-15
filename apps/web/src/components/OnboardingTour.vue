@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-vue-next'
 import { hasTerminals } from '../lib/desktop'
 import { isMac } from '../lib/platform'
-import { shortcutText } from '../lib/shortcuts'
+import { keyCombo, shortcutText } from '../lib/shortcuts'
 import { TOURS, markTourDone, tourDone, type TourId } from '../lib/tour'
 import { useUiStore } from '../stores/ui'
 import ArtImage from './ArtImage.vue'
@@ -26,7 +26,16 @@ const text = (part: 'title' | 'body' | 'absent') => t(`${TOURS[active.value].i18
 // Shortcuts quoted in the workspace guide, per OS.
 const params = computed(() => {
   const k = (id: string) => shortcutText(id, isMac)
-  return { keys: k('wsNew'), right: k('wsSplitRight'), down: k('wsSplitDown'), focus: k('wsFocus'), find: k('wsFind'), click: isMac ? '⌘' : 'Ctrl' }
+  return {
+    keys: k('wsNew'),
+    right: k('wsSplitRight'),
+    down: k('wsSplitDown'),
+    focus: k('wsFocus'),
+    find: k('wsFind'),
+    click: isMac ? '⌘' : 'Ctrl',
+    palette: keyCombo(['Mod', 'K'], isMac),
+    reveal: keyCombo(['Shift', 'Enter'], isMac),
+  }
 })
 let restoreFocus: HTMLElement | null = null
 let frame = 0

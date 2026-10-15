@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { PtyPreset } from '@ccm/shared'
 import { FolderPlus, LoaderCircle } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
 import { useOpenProject } from '../../composables/useOpenProject'
 import { useRail } from '../../composables/useRail'
+import { hasRun } from '../../lib/desktop'
+import type { MenuEntry } from '../../lib/menu'
 import { pinLeaving, retireOverlay } from '../../lib/motion'
-import type { SavedLayout } from '../../lib/projects'
+import { isMac } from '../../lib/platform'
+import { hasChanges, hasExplorer, hasLog, hasPreview, hasReveal, pickFile, revealPath } from '../../lib/preview'
+import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import type { RailCheckout, RailCluster, RailRow } from '../../lib/rail/railModel'
-import { leaves } from '../../lib/splitLayout'
-import { useWorkspaceStore, type SplitChoice } from '../../stores/workspace'
+import { emptyMenu, isMenuKey, projectMenu as buildProjectMenu, rowMenu } from '../../lib/rail/railMenu'
+import { leaves, type SplitDir } from '../../lib/splitLayout'
+import { useRunStore } from '../../stores/run'
+import { useUiStore } from '../../stores/ui'
+import { isTerm, useWorkspaceStore, workCwd, type SplitChoice } from '../../stores/workspace'
+import ContextMenu from '../ui/ContextMenu.vue'
 import ProjectMenu from './ProjectMenu.vue'
 import RailClusterView from './rail/RailClusterView.vue'
 import SplitMenu from './SplitMenu.vue'
@@ -24,12 +33,15 @@ const emit = defineEmits<{
   openLayout: [layout: SavedLayout]
   close: [keys: string[]]
   closeProject: [cluster: RailCluster]
+  split: [paneKey: string, dir: SplitDir, choice: SplitChoice]
+  explorer: [paneKey: string]
+  mission: []
 }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const rail = useRail()
-const { available: openable, picking, openProject: pickProject } = useOpenProject()
+const { available: openable, picking, openProject: pickProjectFolder } = useOpenProject()
 const clusters = computed(() => (props.only ? rail.clusters.value.filter((c) => c.key === props.only) : rail.clusters.value))
 
 const COLLAPSED_KEY = 'ccm.workspace.sideCollapsed'
@@ -89,22 +101,264 @@ const drag = useClusterDrag(list, (from, to) => {
 const announce = ref('')
 
 async function moveBy(head: HTMLElement, step: number): Promise<void> {
-  const key = head.dataset.orderKey
+  if (!props.only && head.dataset.orderKey) await moveCluster(head.dataset.orderKey, step)
+}
+
+async function moveCluster(key: string, step: number): Promise<void> {
   const all = rail.clusters.value
   const from = all.findIndex((c) => c.key === key)
   const to = from + step
-  if (props.only || from < 0 || to < 0 || to >= all.length) return
+  if (from < 0 || to < 0 || to >= all.length) return
   rail.move(from, to)
   await nextTick()
   const moved = rail.clusters.value.find((c) => c.key === key)
-  list.value?.querySelector<HTMLElement>(`[data-side-head][data-order-key="${CSS.escape(key!)}"]`)?.focus()
+  list.value?.querySelector<HTMLElement>(`[data-side-head][data-order-key="${CSS.escape(key)}"]`)?.focus()
   if (moved) announce.value = t('workspace.rail.moved', { name: nameOf(moved), n: to + 1 })
+}
+
+const ui = useUiStore()
+const run = useRunStore()
+const status = ref('')
+let statusTimer: ReturnType<typeof setTimeout> | undefined
+function flash(text: string): void {
+  status.value = announce.value = text
+  clearTimeout(statusTimer)
+  statusTimer = setTimeout(() => (status.value = ''), 2500)
+}
+
+async function copyPath(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path)
+    flash(t('workspace.rail.menu.copied'))
+  } catch {
+    flash(t('workspace.rail.menu.copyFailed'))
+  }
+}
+
+/** Pane a checkout's actions anchor to (Explorer root, Mission Control): its focused row, else the active tab's, else the first. */
+const anchorOf = (k: RailCheckout | undefined): RailRow | undefined => k && (k.rows.find((r) => r.focused) ?? k.rows.find((r) => r.tabActive) ?? k.rows[0])
+
+const ctxMenu = ref<{ at: DOMRect; trigger: HTMLElement | null; label: string; entries: MenuEntry[]; pick: (id: string) => void } | null>(null)
+/** Windows fires a native `contextmenu` right after the ContextMenu / Shift+F10 keydown that already opened the menu. */
+const KEY_MENU_ECHO_MS = 300
+let keyMenuAt = 0
+let menuSeq = 0
+const echo = (): boolean => !!ctxMenu.value && performance.now() - keyMenuAt < KEY_MENU_ECHO_MS
+const cursorAt = (e: MouseEvent): DOMRect => new DOMRect(e.clientX, e.clientY, 0, 0)
+
+// Layouts and Run detection are async: fetched before the menu shows so its height never changes once measured.
+async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: DOMRect, trigger: HTMLElement | null): Promise<void> {
+  const seq = ++menuSeq
+  const dir = k?.path ?? headDir(c)
+  const settle = <T,>(p: Promise<T>, fallback: T): Promise<T> => Promise.race([p.catch(() => fallback), new Promise<T>((r) => setTimeout(() => r(fallback), 400))])
+  const [layouts] = await Promise.all([
+    hasLayouts && dir ? settle(listLayouts(dir), []) : Promise.resolve(null),
+    hasRun && dir && !run.detected(dir) ? settle(run.detect(dir), null) : Promise.resolve(null),
+  ])
+  if (seq !== menuSeq) return
+  const all = rail.clusters.value
+  const at_ = all.findIndex((x) => x.key === c.key)
+  const anchor = anchorOf(k ?? c.checkouts.find((x) => x.active) ?? c.checkouts[0])
+  const entries = buildProjectMenu(
+    {
+      mac: isMac,
+      dir,
+      home: c.key === 'home',
+      live: c.live,
+      anchored: !!anchor,
+      viewers: { file: hasPreview, changes: hasChanges, log: hasLog },
+      scripts: hasScripts,
+      run: hasRun && !!dir && run.runnable(dir),
+      layouts,
+      explorer: hasExplorer,
+      reveal: hasReveal,
+      canUp: at_ > 0,
+      canDown: at_ >= 0 && at_ < all.length - 1,
+      collapsed: collapsed.value.has(c.key),
+    },
+    t,
+  )
+  const name = k && k.path && k.path !== headDir(c) ? `${nameOf(c)} · ${k.branch ?? k.path}` : nameOf(c)
+  ctxMenu.value = { at, trigger, label: t('workspace.rail.menu.label', { name }), entries, pick: (id) => void pickProject(id, c, dir, anchor, layouts ?? []) }
+}
+
+async function pickProject(id: string, c: RailCluster, dir: string | null, anchor: RailRow | undefined, layouts: SavedLayout[]): Promise<void> {
+  const cwd = dir ?? undefined
+  if (id.startsWith('new:')) {
+    const choice = id.slice(4)
+    if (choice === 'browser') workspace.openBrowser('', { cwd })
+    else if (choice === 'changes' && dir) workspace.openChanges(dir)
+    else if (choice === 'log' && dir) workspace.openLog(dir)
+    else if (choice === 'file') {
+      const path = await pickFile('any', cwd)
+      if (path && /\.html?$/i.test(path)) workspace.openBrowser(path, { cwd })
+      else if (path) workspace.openFile(path, undefined, { cwd })
+    } else workspace.open(choice as PtyPreset, cwd)
+    return
+  }
+  if (id.startsWith('layout:')) {
+    const layout = layouts.find((l) => `layout:${l.id}` === id)
+    if (layout) emit('openLayout', layout)
+    return
+  }
+  switch (id) {
+    case 'run':
+      if (dir) emit('run', dir)
+      break
+    case 'scripts':
+      if (dir) emit('scripts', dir)
+      break
+    case 'layout-save':
+      if (dir) emit('saveLayout', dir, nameOf(c))
+      break
+    case 'layout-manage':
+      if (dir) emit('manageLayouts', dir, nameOf(c))
+      break
+    case 'explorer':
+      if (anchor) emit('explorer', anchor.paneKey)
+      break
+    case 'mission':
+      if (anchor) workspace.activate(anchor.paneKey)
+      await nextTick()
+      emit('mission')
+      break
+    case 'copy-path':
+      if (dir) await copyPath(dir)
+      break
+    case 'reveal':
+      if (dir) void revealPath(dir)
+      break
+    case 'move-up':
+    case 'move-down':
+      await moveCluster(c.key, id === 'move-up' ? -1 : 1)
+      break
+    case 'toggle':
+      toggle(c)
+      break
+    case 'close-project':
+      emit('closeProject', c)
+      break
+    case 'forget':
+      forget(c)
+      break
+  }
+}
+
+function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): void {
+  ++menuSeq
+  const tab = workspace.tabs.find((x) => x.key === row.tabKey)
+  const cwd = workCwd(row.pane) ?? null
+  const entries = rowMenu(
+    {
+      tabRow: row.key.startsWith('tab:'),
+      cwd,
+      explorer: hasExplorer,
+      agent: row.kind === 'agent' && isTerm(row.pane),
+      linked: !!row.pane.terminalId,
+      others: tab ? leaves(tab.root).length - 1 : 0,
+    },
+    t,
+  )
+  ctxMenu.value = { at, trigger, label: t('workspace.rail.menu.label', { name: row.task ?? row.ordinal }), entries, pick: (id) => pickRow(id, row, cwd) }
+}
+
+function pickRow(id: string, row: RailRow, cwd: string | null): void {
+  if (id.startsWith('split:')) {
+    const [, dir, choice] = id.split(':') as [string, SplitDir, SplitChoice]
+    emit('split', row.paneKey, dir, choice)
+    return
+  }
+  switch (id) {
+    case 'focus':
+      workspace.activate(row.paneKey)
+      break
+    case 'copy-cwd':
+      if (cwd) void copyPath(cwd)
+      break
+    case 'explorer':
+      emit('explorer', row.paneKey)
+      break
+    case 'monitor':
+      if (row.pane.terminalId) {
+        ui.setView('monitor')
+        ui.focusTerminal(row.pane.terminalId)
+      }
+      break
+    case 'close':
+      closeRow(row)
+      break
+    case 'close-others': {
+      const tab = workspace.tabs.find((x) => x.key === row.tabKey)
+      const others = tab ? leaves(tab.root).filter((k) => k !== row.paneKey) : []
+      if (others.length) emit('close', others)
+      break
+    }
+  }
+}
+
+function showEmptyMenu(e: MouseEvent): void {
+  if (props.only || (e.target as Element).closest('[data-group], [data-rail-open-project]')) return
+  e.preventDefault()
+  if (echo()) return
+  ++menuSeq
+  const entries = emptyMenu({ open: openable, any: clusters.value.length > 0 }, t)
+  if (!entries.length) return
+  ctxMenu.value = {
+    at: cursorAt(e),
+    trigger: null,
+    label: t('workspace.rail.menu.empty'),
+    entries,
+    pick: (id) => {
+      if (id === 'open-project') void pickProjectFolder()
+      else collapsed.value = id === 'collapse-all' ? new Set([...collapsed.value, ...clusters.value.map((c) => c.key)]) : new Set()
+    },
+  }
+}
+
+function onHeadMenu(c: RailCluster, e: MouseEvent): void {
+  if (echo()) return
+  const head = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-side-head]')
+  void showProjectMenu(c, undefined, cursorAt(e), head)
+}
+
+function onCheckoutMenu(c: RailCluster, k: RailCheckout, e: MouseEvent): void {
+  if (echo()) return
+  void showProjectMenu(c, k, cursorAt(e), e.currentTarget as HTMLElement)
+}
+
+function onRowMenu(row: RailRow, e: MouseEvent): void {
+  if (echo()) return
+  const el = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-side-row]')
+  showRowMenu(row, cursorAt(e), el)
+}
+
+/** Keyboard: menu under the focused header / checkout line / row. */
+function openMenuFromKey(el: HTMLElement): void {
+  const cluster = clusters.value.find((c) => c.key === el.closest<HTMLElement>('[data-group]')?.dataset.group)
+  if (!cluster) return
+  const r = el.getBoundingClientRect()
+  const at = new DOMRect(r.left + 24, r.bottom, 0, 0)
+  keyMenuAt = performance.now()
+  if (el.hasAttribute('data-side-head')) void showProjectMenu(cluster, undefined, at, el)
+  else if (el.hasAttribute('data-side-checkout')) {
+    const k = cluster.checkouts.find((x) => x.key === el.dataset.checkoutKey)
+    if (k) void showProjectMenu(cluster, k, at, el)
+  } else {
+    const row = cluster.checkouts.flatMap((k) => k.rows).find((x) => x.key === el.dataset.rowKey)
+    if (row) showRowMenu(row, at, el)
+  }
 }
 
 // Roving focus over headers, checkout lines and rows, in screen order; Alt+↑/↓ on a header reorders projects.
 function onKey(e: KeyboardEvent): void {
   const el = document.activeElement as HTMLElement | null
   if (!el?.matches('[data-side-item]')) return
+  if (isMenuKey(e)) {
+    e.preventDefault()
+    e.stopPropagation()
+    openMenuFromKey(el)
+    return
+  }
   const isHeader = el.hasAttribute('data-side-head')
   if (isHeader && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     e.preventDefault()
@@ -163,6 +417,7 @@ function pickNew(choice: SplitChoice): void {
     data-rail
     @keydown="onKey"
     @pointerdown="drag.onDown"
+    @contextmenu="showEmptyMenu"
   >
     <button
       v-if="!only && openable"
@@ -171,7 +426,7 @@ function pickNew(choice: SplitChoice): void {
       :title="t('workspace.rail.openProjectHint')"
       :disabled="picking"
       data-rail-open-project
-      @click="pickProject"
+      @click="pickProjectFolder"
     >
       <LoaderCircle v-if="picking" :size="14" class="ccm-spin shrink-0" aria-hidden="true" />
       <FolderPlus v-else :size="14" class="shrink-0" aria-hidden="true" />
@@ -195,10 +450,23 @@ function pickNew(choice: SplitChoice): void {
         @menu="(e) => openProject(c, e)"
         @forget="forget(c)"
         @checkout="openCheckout"
+        @context-head="(e) => onHeadMenu(c, e)"
+        @context-checkout="(k, e) => onCheckoutMenu(c, k, e)"
+        @context-row="onRowMenu"
       />
     </TransitionGroup>
     </div>
+    <p v-if="status" class="shrink-0 truncate px-1 text-2xs text-ink-muted" aria-hidden="true" data-rail-status>{{ status }}</p>
     <span class="sr-only" aria-live="polite">{{ announce }}</span>
+    <ContextMenu
+      v-if="ctxMenu"
+      :at="ctxMenu.at"
+      :entries="ctxMenu.entries"
+      :label="ctxMenu.label"
+      :trigger="ctxMenu.trigger"
+      @pick="ctxMenu.pick"
+      @close="ctxMenu = null"
+    />
 
     <Teleport to="body">
       <Transition name="ccm-menu" @before-leave="retireOverlay">

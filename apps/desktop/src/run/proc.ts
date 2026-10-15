@@ -2,6 +2,7 @@ import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_pro
 import path from 'node:path'
 import { childEnv, taskkillPath } from '../pty/presets'
 import type { SubstituteVars } from './args'
+import { nativeCommandLine, nativeProcessTable, type WinProc } from '../../../collector/src/win-procs'
 
 export interface SpawnSpec {
   file: string
@@ -110,6 +111,32 @@ export function treePids(root: number, rows: readonly ProcRow[], spare: (cmd: st
   return out
 }
 
+/** Rows for treePids from the native table: command lines only for root's subtree, the only ones `spare` sees. */
+export function nativeProcRows(root: number, table: WinProc[] | null, commandLine: (pid: number) => string | null): ProcRow[] | null {
+  if (!table) return null
+  const kids = new Map<number, number[]>()
+  for (const p of table) if (p.pid !== p.ppid) kids.set(p.ppid, [...(kids.get(p.ppid) ?? []), p.pid])
+  const subtree = new Set<number>()
+  const stack = [root]
+  while (stack.length && subtree.size < 4096) {
+    const pid = stack.pop()!
+    if (subtree.has(pid)) continue
+    subtree.add(pid)
+    stack.push(...(kids.get(pid) ?? []))
+  }
+  const rows: ProcRow[] = []
+  for (const p of table) {
+    if (!subtree.has(p.pid)) {
+      rows.push({ pid: p.pid, ppid: p.ppid, cmd: '' })
+      continue
+    }
+    const cmd = commandLine(p.pid)
+    if (cmd === null) return null
+    rows.push({ pid: p.pid, ppid: p.ppid, cmd })
+  }
+  return rows
+}
+
 function procTableCommand(env: NodeJS.ProcessEnv): [string, string[]] {
   const ps = path.win32.join(env.SystemRoot ?? env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
   const script = "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CommandLine | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId,$_.ParentProcessId,($_.CommandLine -replace '[\\r\\n]',' ') }"
@@ -125,9 +152,8 @@ export function killTreeSparing(child: ChildProcess, spare: RegExp, opts: { sync
   const pid = child.pid
   const sync = opts.sync === true
   if (!pid || process.platform !== 'win32') return killTree(child, sync)
-  const [file, args] = procTableCommand(process.env)
-  const finish = (stdout: string | null): void => {
-    const rows = stdout ? parseProcRows(stdout) : []
+  const finish = (stdout: string | null, parsed?: ProcRow[]): void => {
+    const rows = parsed ?? (stdout ? parseProcRows(stdout) : [])
     if (!rows.length) {
       opts.onFallback?.()
       return killTree(child, sync)
@@ -135,6 +161,9 @@ export function killTreeSparing(child: ChildProcess, spare: RegExp, opts: { sync
     const pids = treePids(pid, rows, (cmd) => spare.test(cmd))
     if (pids.length) taskkill(pids, false, sync)
   }
+  const native = nativeProcRows(pid, nativeProcessTable(), nativeCommandLine)
+  if (native) return finish(null, native)
+  const [file, args] = procTableCommand(process.env)
   if (sync) {
     let out: string | null = null
     try {

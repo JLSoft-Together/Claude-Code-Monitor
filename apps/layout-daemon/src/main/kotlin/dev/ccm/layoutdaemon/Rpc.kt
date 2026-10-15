@@ -109,7 +109,10 @@ class RpcServer(
         val params = msg.get("params")?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
         try {
             when (method) {
-                "initialize" -> onWorker(id) { initialize(params) }
+                "initialize" -> {
+                    parseAars(params, "prefetchAars").takeIf { it.isNotEmpty() }?.let(AarPrefetch::prefetch)
+                    onWorker(id) { initialize(params) }
+                }
                 "render" -> render(id, params)
                 "drawable/render" -> drawableRender(id, params)
                 "cancel", "\$/cancelRequest" -> {
@@ -119,6 +122,7 @@ class RpcServer(
                 }
                 "project/load" -> {
                     val spec = parseProjectSpec(params)
+                    spec?.aarRes?.takeIf { it.isNotEmpty() }?.let(AarPrefetch::prefetch)
                     val projectId = params.str("projectId")?.takeIf { it.isNotEmpty() }
                     val classesChanged = params.get("classesChanged")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
                     onWorker(id) { projectLoad(spec, projectId, classesChanged) }
@@ -143,12 +147,13 @@ class RpcServer(
     private fun initialize(params: JsonObject): JsonElement {
         val cacheDir = params.str("cacheDir")?.let(::File) ?: File(System.getProperty("java.io.tmpdir"), "ccm-layout-daemon")
         cacheDir.mkdirs()
-        val info = renderer.initialize(cacheDir)
+        val info = renderer.initialize(cacheDir) { stage -> notify("progress", JsonObject().apply { addProperty("stage", stage) }) }
         return JsonObject().apply {
             addProperty("protocolVersion", PROTOCOL_VERSION)
             addProperty("layoutlibVersion", info.layoutlibVersion)
             addProperty("apiLevel", info.apiLevel)
             addProperty("initMs", info.initMs)
+            add("timings", JsonObject().also { t -> info.timings.forEach { (k, v) -> t.addProperty(k, v) } })
         }
     }
 
@@ -166,6 +171,7 @@ class RpcServer(
             addProperty("cached", info.cached)
             addProperty("restartSuggested", renderer.restartSuggested)
             add("warnings", JsonArray().also { a -> info.warnings.forEach(a::add) })
+            add("timings", JsonObject().also { t -> info.timings.forEach { (k, v) -> t.addProperty(k, v) } })
         }
     }
 
@@ -192,16 +198,7 @@ class RpcServer(
     private fun parseProjectSpec(params: JsonObject): ProjectSpec? {
         val resDirs = params.paths("resDirs")
         val classpath = params.paths("classpath")
-        val aars = params.get("aarResDirs")?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { e ->
-            when {
-                e.isJsonPrimitive -> File(e.asString).let { AarRes(it, it.parentFile?.name ?: it.name) }
-                e.isJsonObject -> e.asJsonObject.str("dir")?.let { d ->
-                    val dir = File(d)
-                    AarRes(dir, e.asJsonObject.str("name") ?: dir.parentFile?.name ?: dir.name)
-                }
-                else -> null
-            }
-        }.orEmpty()
+        val aars = parseAars(params, "aarResDirs")
         if (resDirs.isEmpty() && classpath.isEmpty() && aars.isEmpty()) return null
         val packageName = params.str("packageName") ?: throw RpcError(ErrorCodes.INVALID_PARAMS, "packageName required")
         val themes = params.get("activityThemes")?.takeIf { it.isJsonObject }?.asJsonObject?.entrySet()
@@ -219,6 +216,18 @@ class RpcServer(
             targetSdk = params.int("targetSdk"),
         )
     }
+
+    private fun parseAars(params: JsonObject, key: String): List<AarRes> =
+        params.get(key)?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { e ->
+            when {
+                e.isJsonPrimitive -> File(e.asString).let { AarRes(it, it.parentFile?.name ?: it.name) }
+                e.isJsonObject -> e.asJsonObject.str("dir")?.let { d ->
+                    val dir = File(d)
+                    AarRes(dir, e.asJsonObject.str("name") ?: dir.parentFile?.name ?: dir.name)
+                }
+                else -> null
+            }
+        }.orEmpty()
 
     private fun render(id: JsonElement?, params: JsonObject) {
         val requestId = params.str("requestId") ?: id?.let { if (it.isJsonPrimitive) it.asString else null }
@@ -238,6 +247,7 @@ class RpcServer(
             night = params.get("night")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false,
             locale = params.str("locale"),
             apiLevel = params.int("apiLevel"),
+            scale = params.get("scale")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asFloat ?: 1f,
         )
         cancellable(id, requestId) { toJson(requestId, renderer.render(req)) }
     }
@@ -305,6 +315,8 @@ class RpcServer(
         addProperty("png", r.png)
         addProperty("width", r.width)
         addProperty("height", r.height)
+        addProperty("imageWidth", r.imageWidth)
+        addProperty("imageHeight", r.imageHeight)
         add("viewTree", r.viewTree?.let(::nodeJson) ?: JsonNull.INSTANCE)
         add("diagnostics", diagnosticsJson(r.diagnostics))
         addProperty("renderMs", r.renderMs)

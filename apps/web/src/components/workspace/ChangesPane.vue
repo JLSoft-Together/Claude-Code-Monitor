@@ -10,6 +10,7 @@ import { blockPatch, viewBlocks } from '../../lib/diffBlocks'
 import { hideImportChanges } from '../../lib/diffImports'
 import { CONTEXTS, HIGHLIGHTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
 import { isMac } from '../../lib/platform'
+import { keyCombo } from '../../lib/shortcuts'
 import {
   baseName,
   changesDiff,
@@ -81,6 +82,7 @@ let statusSeq = 0
 let diffSeq = 0
 let watched: string | null = null
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let stale = false
 
 function readLocal(key: string): string | null {
   try {
@@ -235,8 +237,11 @@ function scheduleRefresh(): void {
   }, 250)
 }
 
+// Hidden panes skip git spawns (build output keeps writing); one refresh when shown again.
 const offUpdated = onChangesUpdated((c) => {
-  if (repoRoot.value && samePath(c.root, repoRoot.value)) scheduleRefresh()
+  if (!repoRoot.value || !samePath(c.root, repoRoot.value)) return
+  if (props.active) scheduleRefresh()
+  else stale = true
 })
 
 function onWindowFocus(): void {
@@ -295,7 +300,7 @@ function stepBlock(dir: 1 | -1): void {
   const at = list.findIndex((e) => e.path === selected.value)
   if (!list[at + dir]) return
   armed = dir
-  notice.value = t(dir === 1 ? 'workspace.diff.nextFile' : 'workspace.diff.prevFile')
+  notice.value = t(dir === 1 ? 'workspace.diff.nextFile' : 'workspace.diff.prevFile', { key: keyCombo(['Shift', 'F7'], isMac) })
 }
 
 function moveCursor(dir: 1 | -1 | 'home' | 'end'): void {
@@ -535,7 +540,9 @@ watch(optionsOpen, (open) => {
 watch(
   () => props.active,
   (active) => {
-    if (active) scheduleRefresh()
+    if (!active || !stale) return
+    stale = false
+    scheduleRefresh()
   },
 )
 
