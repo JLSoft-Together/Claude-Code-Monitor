@@ -121,7 +121,7 @@ const en = {
       downloading: 'Downloading layoutlib… {pct}%',
       bundleError: 'Download failed ({code}). Check the connection and try again.',
       retry: 'Try again',
-      jarMissing: 'The render daemon is not built. Run ./gradlew assemble in apps/layout-daemon (JDK 17+).',
+      jarMissing: 'This dev build has no render daemon (apps/layout-daemon/build is missing). Start the app again with npm run desktop, which builds it, or run gradlew assemble in apps/layout-daemon with JAVA_HOME set to a JDK 17–24 (Gradle 8.14 does not run on Java 25), then restart.',
       checking: 'Checking the renderer…',
     },
     error: {
@@ -264,7 +264,7 @@ const vi: typeof en = {
       downloading: 'Đang tải layoutlib… {pct}%',
       bundleError: 'Tải lỗi ({code}). Kiểm tra mạng rồi thử lại.',
       retry: 'Thử lại',
-      jarMissing: 'Chưa build render daemon. Chạy ./gradlew assemble trong apps/layout-daemon (JDK 17+).',
+      jarMissing: 'Bản dev này chưa có render daemon (thiếu apps/layout-daemon/build). Mở lại app bằng npm run desktop để tự build, hoặc chạy gradlew assemble trong apps/layout-daemon với JAVA_HOME là JDK 17–24 (Gradle 8.14 không chạy trên Java 25), rồi khởi động lại.',
       checking: 'Đang kiểm tra bộ dựng…',
     },
     error: {

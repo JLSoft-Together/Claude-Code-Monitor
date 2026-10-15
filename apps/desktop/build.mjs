@@ -1,6 +1,7 @@
 // Bundles the Electron main process and the collector into stage/, the app dir electron-builder packs.
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -48,17 +49,51 @@ await build({
   external: ['@lydell/node-pty', 'bufferutil', 'utf-8-validate', 'koffi'],
 })
 
+const daemonDir = path.join(HERE, '..', 'layout-daemon')
+const jar = path.join(daemonDir, 'build', 'libs', 'layout-daemon.jar')
+const skipDaemon = process.env.CCM_SKIP_DAEMON_BUILD === '1'
+
+// Java range the daemon's Gradle wrapper (8.14) runs on; raise the max with the wrapper.
+const GRADLE_JAVA = { min: 17, max: 24 }
+
+function jdkMajor(home) {
+  try {
+    const m = /^JAVA_VERSION="(?:1\.)?(\d+)/m.exec(readFileSync(path.join(home, 'release'), 'utf8'))
+    return m ? Number(m[1]) : null
+  } catch {
+    return null
+  }
+}
+
+/** JAVA_HOME when Gradle runs on it, else the newest fitting JDK of Gradle's own toolchains (~/.gradle/jdks) or the Android Studio JBR (paths as `studioJbr` in src/run/android/env.ts). */
+function gradleJavaHome(env) {
+  const fits = (home) => {
+    const v = home ? jdkMajor(home) : null
+    return v !== null && v >= GRADLE_JAVA.min && v <= GRADLE_JAVA.max ? v : null
+  }
+  if (fits(env.JAVA_HOME?.trim())) return env.JAVA_HOME
+  const toolchains = path.join(env.GRADLE_USER_HOME?.trim() || path.join(os.homedir(), '.gradle'), 'jdks')
+  const homes = existsSync(toolchains) ? readdirSync(toolchains).map((d) => path.join(toolchains, d)) : []
+  if (process.platform === 'win32') homes.push(path.win32.join(env.ProgramFiles || 'C:\\Program Files', 'Android', 'Android Studio', 'jbr'))
+  if (process.platform === 'darwin') homes.push('/Applications/Android Studio.app/Contents/jbr/Contents/Home')
+  const best = homes.map((home) => ({ home, v: fits(home) })).filter((j) => j.v !== null).sort((a, b) => b.v - a.v)[0]
+  return best?.home ?? env.JAVA_HOME
+}
+
+/** Gradle in apps/layout-daemon with a JAVA_HOME it runs on. */
+function buildDaemon(tasks) {
+  const env = { ...process.env }
+  const javaHome = gradleJavaHome(env)
+  if (javaHome) env.JAVA_HOME = javaHome
+  const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
+  return spawnSync(gradlew, [...tasks, '--console=plain'], { cwd: daemonDir, env, stdio: 'inherit', shell: process.platform === 'win32' }).status === 0
+}
+
 // Packaged builds ship the XML layout render daemon (extraResources layout-daemon/); layoutlib itself is downloaded at runtime.
 if (process.argv.includes('--dist')) {
-  const daemonDir = path.join(HERE, '..', 'layout-daemon')
-  const jar = path.join(daemonDir, 'build', 'libs', 'layout-daemon.jar')
-  if (process.env.CCM_SKIP_DAEMON_BUILD !== '1') {
-    const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
-    const run = spawnSync(gradlew, ['shadowJar', 'stageLooseKit', '--console=plain'], { cwd: daemonDir, stdio: 'inherit', shell: process.platform === 'win32' })
-    if (run.status !== 0) {
-      console.error('build: layout-daemon jar / loose kit build failed (needs JDK 17+ in JAVA_HOME, e.g. the Android Studio JBR)')
-      process.exit(1)
-    }
+  if (!skipDaemon && !buildDaemon(['shadowJar', 'stageLooseKit'])) {
+    console.error('build: layout-daemon jar / loose kit build failed (needs a JDK 17–24 in JAVA_HOME or ~/.gradle/jdks; Gradle 8.14 does not run on Java 25)')
+    process.exit(1)
   }
   if (!existsSync(jar)) {
     console.error(`build: ${jar} is missing; run "./gradlew shadowJar" in apps/layout-daemon with JAVA_HOME = JDK 17+`)
@@ -67,6 +102,12 @@ if (process.argv.includes('--dist')) {
   if (!existsSync(path.join(daemonDir, 'build', 'loose-kit', 'kit.json'))) {
     console.error(`build: the loose layout kit is missing; run "./gradlew stageLooseKit" in apps/layout-daemon`)
     process.exit(1)
+  }
+} else if (!skipDaemon) {
+  // Dev runs the jar, loose kit and layoutlib-dist straight from build/ (main.ts); rebuilt only when one is gone.
+  const built = [jar, path.join(daemonDir, 'build', 'loose-kit', 'kit.json'), path.join(daemonDir, 'build', 'layoutlib-dist')].every((p) => existsSync(p))
+  if (!built && !buildDaemon(['assemble'])) {
+    console.warn('build: layout-daemon build failed, the XML preview stays off (needs a JDK 17–24 in JAVA_HOME or ~/.gradle/jdks; Gradle 8.14 does not run on Java 25)')
   }
 }
 
