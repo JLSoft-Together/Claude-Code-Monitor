@@ -37,6 +37,9 @@ export const isEditKey = (e: KeyboardEvent): boolean => plain(e) && (e.code === 
 export const isSaveKey = (e: KeyboardEvent, mac: boolean): boolean =>
   (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyS'
 
+export const isSelectAllKey = (e: KeyboardEvent, mac: boolean): boolean =>
+  (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyA'
+
 /**
  * Workspace chords the editor keeps while it has focus. Alt+↑/↓ move the current line (VS Code / CodeMirror);
  * Alt+←/→ still move pane focus, every other chord (tabs, split, close, quick open) still reaches the workspace.

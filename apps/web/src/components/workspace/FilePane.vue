@@ -6,7 +6,7 @@ let filePanes = 0
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
-import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, type EditBlock } from '../../lib/fileEditor'
+import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { useWorkspaceStore, type SaveOutcome } from '../../stores/workspace'
 import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
@@ -81,6 +81,7 @@ const findInput = ref<HTMLInputElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const codeEl = ref<HTMLElement | null>(null)
+const mdEl = ref<HTMLElement | null>(null)
 const paneWidth = ref(0)
 
 // v42 editor. `pending` = unsaved text kept after Done (the view shows it, ● stays); `baseText` = disk text it started from.
@@ -620,6 +621,15 @@ function onWindowKey(e: KeyboardEvent): void {
     }
     return
   }
+  // Windowed rows: useWindowCopy paints "all". Otherwise select only the code / rendered markdown, not the whole window.
+  if (inPane && isSelectAllKey(e, isMac) && !windowed.value && !isTyping(e.target)) {
+    const el = showSource.value ? codeEl.value : mdEl.value
+    if (el) {
+      e.preventDefault()
+      window.getSelection()?.selectAllChildren(el)
+    }
+    return
+  }
   if (inPane && canEdit.value && isEditKey(e) && !isTyping(e.target)) {
     e.preventDefault()
     void startEdit()
@@ -1069,7 +1079,7 @@ const lineCount = computed(() => lines.value.length)
         <div v-else-if="view.kind === 'image'" class="grid min-h-full place-items-center p-6">
           <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
         </div>
-        <article v-else-if="!showSource" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />
+        <article v-else-if="!showSource" ref="mdEl" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />
         <div
           v-else
           ref="codeEl"

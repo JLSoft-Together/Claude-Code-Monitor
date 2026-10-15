@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { isLayoutRootName, isLooseLayoutXml } from '@ccm/shared'
 import { useWorkspaceStore } from '../stores/workspace'
-import { diskChangeAction, editBlock, editorKeepsKey, inEditor, isEditKey, isSaveKey, MAX_EDIT_BYTES, MAX_EDIT_LINES } from './fileEditor'
+import { diskChangeAction, editBlock, editorKeepsKey, inEditor, isEditKey, isSaveKey, isSelectAllKey, MAX_EDIT_BYTES, MAX_EDIT_LINES } from './fileEditor'
 import { isLayoutXml } from './layoutPreview'
 import type { FileView } from './preview'
 import { workspaceAction } from './workspaceKeys'
@@ -48,6 +48,14 @@ describe('editor keys vs workspace chords', () => {
     expect(isSaveKey(key('KeyS', { metaKey: true }), true)).toBe(true)
     expect(isSaveKey(key('KeyS', { ctrlKey: true }), true)).toBe(false)
     expect(isSaveKey(key('KeyS', { ctrlKey: true, shiftKey: true }), false)).toBe(false)
+  })
+
+  it('Ctrl/⌘+A selects all', () => {
+    expect(isSelectAllKey(key('KeyA', { ctrlKey: true }), false)).toBe(true)
+    expect(isSelectAllKey(key('KeyA', { metaKey: true }), true)).toBe(true)
+    expect(isSelectAllKey(key('KeyA', { ctrlKey: true }), true)).toBe(false)
+    expect(isSelectAllKey(key('KeyA', { ctrlKey: true, shiftKey: true }), false)).toBe(false)
+    expect(isSelectAllKey(key('KeyA', {}), false)).toBe(false)
   })
 
   it('editor save / find / replace keys are not workspace chords', () => {
