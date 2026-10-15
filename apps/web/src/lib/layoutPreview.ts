@@ -1,3 +1,4 @@
+import { drawableFolderKind, DRAWABLE_SNIFF_BYTES, isLooseLayoutXml } from '@ccm/shared'
 import { desktop } from './desktop'
 
 export type BundleStatus = { state: 'missing' } | { state: 'downloading'; pct: number } | { state: 'ready'; dir: string } | { state: 'error'; code: string }
@@ -9,6 +10,8 @@ export interface LayoutStatus {
   jdk: JdkStatus
   daemon: DaemonState
   jar: boolean
+  /** API level layoutlib renders with; the bundled version supports exactly one. */
+  apiLevel?: number
 }
 
 export interface LayoutDevice {
@@ -61,6 +64,8 @@ export interface LayoutModelInfo {
   state: ModelState
   hasModel: boolean
   themes: string[]
+  /** .kt / .java changed after the model was built. */
+  codeChanged?: boolean
 }
 
 export interface LayoutRenderRequest {
@@ -71,6 +76,8 @@ export interface LayoutRenderRequest {
   locale: string | null
   /** 0 = main view, 1..3 = compare cells; renders of different slots do not cancel each other. */
   slot?: number
+  /** v42: unsaved editor text rendered instead of the file (resources still resolve from `file`). */
+  text?: string
 }
 
 export type LayoutEvent =
@@ -78,6 +85,7 @@ export type LayoutEvent =
   | { type: 'daemon'; state: DaemonState; detail?: string }
   | { type: 'model'; root: string; module: string; state: ModelState }
   | { type: 'project-changed'; root: string; module: string }
+  | { type: 'code-changed'; root: string; module: string }
 
 export type LayoutMode = 'code' | 'split' | 'design'
 
@@ -99,7 +107,26 @@ export const DEVICE_PRESETS: readonly DevicePreset[] = [
 
 export const LOCALES = ['en', 'vi', 'ja', 'de', 'ar'] as const
 
-export const ZOOMS = [25, 50, 75, 100] as const
+export const ZOOMS = [25, 50, 75, 100, 150, 200, 300, 400] as const
+
+/** Android density buckets; the device preset's own dpi is the default. */
+export const DENSITIES = [
+  { id: 'ldpi', dpi: 120 },
+  { id: 'mdpi', dpi: 160 },
+  { id: 'hdpi', dpi: 240 },
+  { id: 'xhdpi', dpi: 320 },
+  { id: 'xxhdpi', dpi: 480 },
+  { id: 'xxxhdpi', dpi: 640 },
+] as const
+export const DPI_MIN = 72
+export const DPI_MAX = 960
+
+export const validDpi = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= DPI_MIN && n <= DPI_MAX
+
+/** Same pixels, other density: the dp size (and so the layout) changes, like a custom AVD. 0 = keep the preset. */
+export function withDensity(d: LayoutDevice, dpi: number): LayoutDevice {
+  return validDpi(dpi) ? { ...d, density: dpi } : d
+}
 
 export const hasLayoutPreview = typeof desktop?.layoutRender === 'function'
 
@@ -119,10 +146,13 @@ export function fitScale(w: number, h: number, boxW: number, boxH: number): numb
   return Math.min(1, boxW / w, boxH / h)
 }
 
-export function isLayoutXml(path: string): boolean {
+/** `res/layout*` by path; with `text`, also a loose `.xml` outside `res/` whose root element is a view (v42). */
+export function isLayoutXml(path: string, text: string | null = null): boolean {
   const parts = path.split(/[\\/]/).filter(Boolean)
   const n = parts.length
-  return n >= 3 && /\.xml$/i.test(parts[n - 1]!) && /^layout(-[A-Za-z0-9_+-]+)?$/i.test(parts[n - 2]!) && parts[n - 3]!.toLowerCase() === 'res'
+  if (n >= 3 && /\.xml$/i.test(parts[n - 1]!) && /^layout(-[A-Za-z0-9_+-]+)?$/i.test(parts[n - 2]!) && parts[n - 3]!.toLowerCase() === 'res') return true
+  if (text === null || parts[n - 3]?.toLowerCase() === 'res' || drawableFolderKind(path)) return false
+  return isLooseLayoutXml(path, text.slice(0, DRAWABLE_SNIFF_BYTES))
 }
 
 export const shortClass = (cls: string): string => cls.slice(cls.lastIndexOf('.') + 1)
@@ -186,6 +216,7 @@ export const layoutStatus = ():Promise<LayoutStatus | null> => desktop?.layoutSt
 export const layoutDownload = (): Promise<BundleStatus | { state: 'cancelled' } | null> => desktop?.layoutDownload?.() ?? Promise.resolve(null)
 export const layoutRender = (req: LayoutRenderRequest): Promise<LayoutRenderResult> =>
   desktop?.layoutRender?.(req) ?? Promise.resolve({ ok: false, code: 'unavailable' })
+export const layoutWarmup = (file: string): Promise<unknown> => desktop?.layoutWarmup?.({ file }) ?? Promise.resolve(null)
 export const onLayoutEvent = (handler: (e: LayoutEvent) => void): (() => void) => desktop?.onLayoutEvent?.(handler) ?? (() => undefined)
 
 export const layoutModelStatus = (file: string): Promise<LayoutModelInfo | null> => desktop?.layoutModelStatus?.({ file }) ?? Promise.resolve(null)
@@ -228,12 +259,13 @@ export interface CompareConfig {
 }
 
 /** Up to three side-by-side configurations: current device light + dark, then the other form factor. */
-export function compareConfigs(deviceId: string, landscape: boolean): CompareConfig[] {
+export function compareConfigs(deviceId: string, landscape: boolean, dpi = 0): CompareConfig[] {
   const other = deviceId === 'tablet' ? 'pixel5' : 'tablet'
+  const dev = (id: string): LayoutDevice => withDensity(deviceFor(id, landscape), dpi)
   return [
-    { id: 'light', deviceId, device: deviceFor(deviceId, landscape), night: false },
-    { id: 'dark', deviceId, device: deviceFor(deviceId, landscape), night: true },
-    { id: 'other', deviceId: other, device: deviceFor(other, landscape), night: false },
+    { id: 'light', deviceId, device: dev(deviceId), night: false },
+    { id: 'dark', deviceId, device: dev(deviceId), night: true },
+    { id: 'other', deviceId: other, device: dev(other), night: false },
   ]
 }
 

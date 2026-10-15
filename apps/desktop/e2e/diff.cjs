@@ -31,7 +31,8 @@ function fixture() {
   now.splice(10, 0, 'added A')
   fs.writeFileSync(A, now.join('\n') + '\n')
   fs.writeFileSync(CRLF, ['one', 'TWO', 'three', 'four'].join('\r\n') + '\r\n')
-  fs.writeFileSync(path.join(DIR, 'new.md'), '# new\n')
+  // Wide enough to scroll sideways: ← / → must still step files there (v34 ruling 4).
+  fs.writeFileSync(path.join(DIR, 'new.md'), '# new ' + 'wide '.repeat(200) + '\n')
 }
 
 const filePane = (name) => `[...document.querySelectorAll('[data-kind=file]')].find((p) => p.offsetParent && p.textContent.includes(${JSON.stringify(name)}))`
@@ -132,6 +133,18 @@ async function run(app) {
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true }))`)
   await sleep(300)
   check('Alt+→ does not step files', (await evaluate(selected)).includes('a.ts'))
+  // new.md overflows sideways: Shift+→ scrolls it, ← on the scroller itself still steps back a file.
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`)
+  await waitFor(`(${selected}).includes('new.md') && !!document.querySelector('[data-kind=changes] [role=document]')`, 5000, 'new.md diff').catch(() => {})
+  await sleep(300)
+  const doc = `document.querySelector('[data-kind=changes] [role=document]')`
+  check('new.md diff overflows sideways', await evaluate(`${doc}.parentElement.scrollWidth > ${doc}.parentElement.clientWidth`))
+  await evaluate(`${doc}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true }))`)
+  await sleep(200)
+  check('Shift+→ scrolls the diff sideways and keeps the file', (await evaluate(`${doc}.parentElement.scrollLeft > 0`)) && (await evaluate(selected)).includes('new.md'))
+  await evaluate(`${doc}.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))`)
+  await sleep(500)
+  check('← over an overflowing diff steps to the previous file', (await evaluate(selected)).includes('a.ts'), await evaluate(selected))
   await sleep(500)
   await key('F4', 'F4', 115)
   await sleep(500)

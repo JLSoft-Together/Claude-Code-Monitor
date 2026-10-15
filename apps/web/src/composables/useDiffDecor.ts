@@ -47,18 +47,25 @@ export function useDiffDecor(src: DiffDecorSource) {
     const block = new Map<DiffLine, number>()
     const marks = new Map<DiffLine, WordMark[]>()
     const mode = src.highlight()
-    src.blocks().forEach((b, i) => {
-      for (const l of b.dels) block.set(l, i)
-      for (const l of b.adds) block.set(l, i)
-      if (mode === 'lines' || b.type !== 'modified') return
+    const blocks = src.blocks()
+    const mark = (dels: readonly DiffLine[], adds: readonly DiffLine[]): void => {
       const res = wordDiff(
-        b.dels.map((l) => l.text),
-        b.adds.map((l) => l.text),
-        mode,
+        dels.map((l) => l.text),
+        adds.map((l) => l.text),
+        mode === 'chars' ? 'chars' : 'words',
       )
       if (!res) return
-      b.dels.forEach((l, k) => res.old[k]!.length && marks.set(l, res.old[k]!))
-      b.adds.forEach((l, k) => res.new[k]!.length && marks.set(l, res.new[k]!))
+      dels.forEach((l, k) => res.old[k]!.length && marks.set(l, res.old[k]!))
+      adds.forEach((l, k) => res.new[k]!.length && marks.set(l, res.new[k]!))
+    }
+    blocks.forEach((b, i) => {
+      for (const l of b.dels) block.set(l, i)
+      for (const l of b.adds) block.set(l, i)
+      if (mode === 'lines' || mode === 'none') return
+      if (b.type === 'modified') mark(b.dels, b.adds)
+      // Split changes: a Deleted part right before its Inserted part (one Modified run) keeps its word marks.
+      const next = blocks[i + 1]
+      if (mode === 'split' && b.type === 'deleted' && next?.type === 'added' && next.hunk === b.hunk && next.from === b.to) mark(b.dels, next.adds)
     })
     return { block, marks }
   })

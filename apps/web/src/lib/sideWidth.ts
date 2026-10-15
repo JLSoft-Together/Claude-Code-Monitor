@@ -29,3 +29,12 @@ export function writeSideWidth(px: number): void {
     // preference only
   }
 }
+
+/** Pane split (XML layout / widget preview beside code): stacks below 700 px, side by side again above 760 px. */
+export const STACK_BELOW = 700
+export const UNSTACK_ABOVE = 760
+
+export function nextStacked(stacked: boolean, width: number): boolean {
+  if (width <= 0) return stacked
+  return stacked ? width <= UNSTACK_ABOVE : width < STACK_BELOW
+}

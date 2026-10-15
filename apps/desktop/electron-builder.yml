@@ -1,6 +1,6 @@
 appId: dev.ccm.monitor
-productName: Agent Monitor
-copyright: Agent Monitor
+productName: GolAIm
+copyright: GolAIm
 directories:
   app: stage
   output: release
@@ -51,7 +51,7 @@ mac:
   identity: '-'
   hardenedRuntime: false
 dmg:
-  artifactName: Agent-Monitor-${version}-${arch}.${ext}
+  artifactName: GolAIm-${version}-${arch}.${ext}
 win:
   icon: ../../scripts/assets/ccm.ico
   target:
@@ -65,7 +65,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Agent Monitor
-  artifactName: Agent-Monitor-Setup-${version}.${ext}
+  shortcutName: GolAIm
+  artifactName: GolAIm-Setup-${version}.${ext}
 portable:
-  artifactName: Agent-Monitor-Portable-${version}.${ext}
+  artifactName: GolAIm-Portable-${version}.${ext}

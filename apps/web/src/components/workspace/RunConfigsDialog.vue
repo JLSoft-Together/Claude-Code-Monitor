@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowUp, CircleAlert, Copy, Download, LoaderCircle, Plus, Settings2, Trash2, X } from 'lucide-vue-next'
-import { type FlutterMode, type RunCommandPreview, type RunConfig, type RunKind } from '@ccm/shared'
+import { ArrowDown, ArrowLeft, ArrowUp, CircleAlert, Copy, Download, LayoutTemplate, LoaderCircle, Plus, Settings2, Trash2, X } from 'lucide-vue-next'
+import { DEFAULT_RUN_TEMPLATES, type FlutterMode, type RunCommandPreview, type RunConfig, type RunKind, type RunTemplates } from '@ccm/shared'
 import { retireOverlay } from '../../lib/motion'
 import { appModules, cloneConfig, configChanges, configIssues, envRows, issueKey, moveItem, newConfig, rowsToEnv, sameConfig, tidyIssueText, type EnvRow } from '../../lib/runUi'
 import { dirKey } from '../../stores/favorites'
@@ -50,7 +50,9 @@ watch(
     }
     restoreFocus = document.activeElement as HTMLElement | null
     notice.value = null
+    view.value = 'configs'
     loading.value = true
+    void run.loadTemplates()
     if (!run.detected(props.root)) await run.detect(props.root)
     reset(await run.loadConfigs(props.root))
     loading.value = false
@@ -150,6 +152,37 @@ const previewErrors = computed(() =>
   }),
 )
 
+/** "Edit configuration templates…": defaults for detected and new configs, saved in app data by main. */
+const view = ref<'configs' | 'templates'>('configs')
+const tpl = ref<RunTemplates>(structuredClone(DEFAULT_RUN_TEMPLATES))
+const tplNotice = ref<{ text: string; error?: boolean } | null>(null)
+
+async function openTemplates(): Promise<void> {
+  tpl.value = JSON.parse(JSON.stringify((await run.loadTemplates()) ?? DEFAULT_RUN_TEMPLATES)) as RunTemplates
+  tplNotice.value = null
+  view.value = 'templates'
+  await nextTick()
+  sheet.value?.querySelector<HTMLElement>('[data-template-back]')?.focus()
+}
+
+const tplValid = computed(() => /^[A-Za-z0-9_]*$/.test(tpl.value.flutter.flavor) && /^[A-Za-z0-9_]{1,64}$/.test(tpl.value.android.variant))
+
+async function saveTemplates(): Promise<void> {
+  if (!tplValid.value) return
+  busy.value = true
+  try {
+    const saved = await run.saveTemplates(tpl.value)
+    tplNotice.value = saved ? { text: t('run.templates.saved') } : { text: t('run.templates.failed'), error: true }
+    if (saved) {
+      const fresh = await run.loadConfigs(props.root)
+      const autoUntouched = working.value.every((c) => !c.id.startsWith('auto-') || !isDirty(c))
+      if (autoUntouched) reset(fresh, selectedId.value)
+    }
+  } finally {
+    busy.value = false
+  }
+}
+
 const newId = (): string => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`)
 
 async function focusName(): Promise<void> {
@@ -159,7 +192,7 @@ async function focusName(): Promise<void> {
 
 function add(kind: RunKind): void {
   addOpen.value = false
-  const cfg = newConfig(kind, newId(), t(`run.configs.newName.${kind}`), projects.value, props.root)
+  const cfg = newConfig(kind, newId(), t(`run.configs.newName.${kind}`), projects.value, props.root, run.templates)
   working.value.push(cfg)
   rows.value[cfg.id] = []
   selectedId.value = cfg.id
@@ -259,6 +292,7 @@ function trap(e: KeyboardEvent): void {
 
 function onEsc(): void {
   if (addOpen.value) addOpen.value = false
+  else if (view.value === 'templates') view.value = 'configs'
   else emit('close')
 }
 
@@ -350,9 +384,50 @@ const ICON_BTN =
                   </button>
                 </template>
               </div>
+              <button type="button" class="ccm-btn-plain m-1.5 min-w-0 justify-start text-xs text-link" :aria-pressed="view === 'templates'" data-config-templates @click="openTemplates">
+                <LayoutTemplate :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ t('run.templates.open') }}</span>
+              </button>
             </aside>
 
-            <section class="ccm-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+            <section v-if="view === 'templates'" class="ccm-scroll flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4" aria-labelledby="run-templates-title" data-config-templates-view>
+              <div class="flex min-w-0 items-center gap-2">
+                <button type="button" :class="ICON_BTN" :title="t('run.templates.back')" :aria-label="t('run.templates.back')" data-template-back @click="view = 'configs'">
+                  <ArrowLeft :size="14" aria-hidden="true" />
+                </button>
+                <h3 id="run-templates-title" class="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{{ t('run.templates.title') }}</h3>
+              </div>
+              <p class="text-2xs leading-relaxed text-ink-faint">{{ t('run.templates.hint') }}</p>
+              <p class="text-xs font-semibold text-ink-muted">{{ t('run.templates.flutter') }}</p>
+              <div class="grid grid-cols-1 gap-x-3 gap-y-3 @lg:grid-cols-[9rem_minmax(0,1fr)]">
+                <span :class="LABEL">{{ t('run.configs.mode') }}</span>
+                <div class="min-w-0"><SegmentedControl v-model="tpl.flutter.mode" :options="modeOptions" :label="t('run.configs.mode')" /></div>
+                <label :class="LABEL" for="rt-flavor">{{ t('run.configs.flavor') }}</label>
+                <div class="min-w-0">
+                  <input id="rt-flavor" v-model.trim="tpl.flutter.flavor" type="text" maxlength="64" class="ccm-field h-8 w-full font-mono text-xs" spellcheck="false" data-template-flavor />
+                  <p :class="HINT">{{ t('run.templates.flavorHint') }}</p>
+                </div>
+                <label :class="LABEL" for="rt-args">{{ t('run.configs.args') }}</label>
+                <input id="rt-args" v-model="tpl.flutter.args" type="text" maxlength="2000" class="ccm-field h-8 min-w-0 font-mono text-xs" spellcheck="false" data-template-args />
+              </div>
+              <p class="border-t border-line pt-3 text-xs font-semibold text-ink-muted">{{ t('run.templates.android') }}</p>
+              <div class="grid grid-cols-1 gap-x-3 gap-y-3 @lg:grid-cols-[9rem_minmax(0,1fr)]">
+                <label :class="LABEL" for="rt-variant">{{ t('run.configs.variant') }}</label>
+                <div class="min-w-0">
+                  <input id="rt-variant" v-model.trim="tpl.android.variant" type="text" maxlength="64" class="ccm-field h-8 w-full font-mono text-xs" spellcheck="false" />
+                  <p :class="HINT">{{ t('run.configs.variantHint') }}</p>
+                </div>
+                <label :class="LABEL" for="rt-gradle">{{ t('run.configs.gradleArgs') }}</label>
+                <input id="rt-gradle" v-model="tpl.android.args" type="text" maxlength="2000" class="ccm-field h-8 min-w-0 font-mono text-xs" spellcheck="false" />
+              </div>
+              <p v-if="!tplValid" class="flex items-start gap-1.5 text-xs text-st-error" role="alert"><CircleAlert :size="13" class="mt-px shrink-0" aria-hidden="true" />{{ t('run.configs.invalid.variant') }}</p>
+              <div class="flex min-w-0 items-center gap-2">
+                <p v-if="tplNotice" class="min-w-0 flex-1 truncate text-xs" :class="tplNotice.error ? 'text-st-error' : 'text-success'" role="status">{{ tplNotice.text }}</p>
+                <span v-else class="flex-1" />
+                <button type="button" class="ccm-btn ccm-btn-primary shrink-0" :disabled="busy || !tplValid" data-template-save @click="saveTemplates">{{ t('run.templates.save') }}</button>
+              </div>
+            </section>
+
+            <section v-else class="ccm-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
               <p v-if="!current" class="m-auto max-w-xs px-6 text-center text-xs text-ink-muted">{{ t('run.configs.noSelection') }}</p>
               <form v-else class="flex flex-col gap-3 p-4" @submit.prevent="ok">
                 <div class="grid grid-cols-1 gap-x-3 gap-y-3 @lg:grid-cols-[9rem_minmax(0,1fr)]">
@@ -499,7 +574,7 @@ const ICON_BTN =
             </section>
           </div>
 
-          <div v-if="current" class="shrink-0 border-t border-line bg-well px-4 py-2.5" data-config-preview>
+          <div v-if="current && view === 'configs'" class="shrink-0 border-t border-line bg-well px-4 py-2.5" data-config-preview>
             <p class="mb-1 flex items-center gap-1.5 text-2xs font-medium text-(--ccm-ansi-8)">
               {{ t('run.configs.preview') }}<LoaderCircle v-if="previewing" :size="11" class="ccm-spin" aria-hidden="true" />
             </p>

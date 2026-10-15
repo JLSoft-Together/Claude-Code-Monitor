@@ -241,7 +241,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     const res = await trashEntryIpc(at, path)
     if (root.value !== at) return false
     if (!res.ok) {
-      const key = res.error === 'denied' || res.error === 'missing' || res.error === 'busy' || res.error === 'exists' ? res.error : 'trashFailed'
+      const key = res.error === 'denied' || res.error === 'missing' || res.error === 'busy' ? res.error : 'trashFailed'
       status.value = { key, name: rootName(path), failed: true }
       return false
     }

@@ -5,11 +5,13 @@ export interface RunSettings {
   flutterSdk: string | null
   androidSdk: string | null
   jdk: string | null
+  /** Per-project Flutter SDK, keyed by `projectSdkKey(project dir)`; tried before `flutterSdk` and FVM. */
+  flutterSdkProjects: Record<string, string>
 }
 
 /** Session manager side: the runner reports, the manager owns the RunSession and broadcasts. */
 export interface RunnerHooks {
-  state: (state: RunState, patch?: Partial<Pick<RunSession, 'appId' | 'vmServiceUri' | 'devtoolsUri' | 'progress'>>) => void
+  state: (state: RunState, patch?: Partial<Pick<RunSession, 'appId' | 'vmServiceUri' | 'devtoolsUri' | 'progress' | 'failure'>>) => void
   fail: (failure: EnvIssue) => void
   log: (line: Omit<RunLogLine, 'at'>) => void
   error: (error: BuildError) => void

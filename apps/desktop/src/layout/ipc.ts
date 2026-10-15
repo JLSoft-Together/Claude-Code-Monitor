@@ -2,13 +2,15 @@ import { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { drawableFolderKind, drawableKind, DRAWABLE_SNIFF_BYTES, isLooseLayoutXml } from '@ccm/shared'
 import { isWithin } from '../preview/paths'
 import type { PreviewServer } from '../preview/server'
 import { LayoutDaemon, LayoutError, type DaemonDeps, type RenderParams } from './daemon'
 import { LayoutlibBundle } from './download'
 import { findJdk } from './jdk'
 import { LayoutModelService, type ModelServiceDeps } from './model'
-import type { DaemonRenderResult, JdkStatus, LayoutDevice, LayoutDiagnostic, LayoutEvent, LayoutModelInfo, LayoutRenderResult, LayoutStatus, LayoutViewNode } from './types'
+import { LAYOUTLIB_API_LEVEL } from './types'
+import type { DaemonRenderResult, DrawableRenderResult, DrawableSwatch, JdkStatus, LayoutDevice, LayoutDiagnostic, LayoutEvent, LayoutModelInfo, LayoutRenderResult, LayoutStatus, LayoutViewNode } from './types'
 
 export interface LayoutIpcDeps {
   ipcMain: IpcMain
@@ -46,7 +48,7 @@ export interface LayoutIpc {
   model: LayoutModelService | null
 }
 
-const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render', 'ccm:layout-model-status', 'ccm:layout-model-refresh', 'ccm:layout-model-pick']
+const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render', 'ccm:layout-model-status', 'ccm:layout-model-refresh', 'ccm:layout-model-pick', 'ccm:layout-warmup', 'ccm:drawable-render']
 const RENDER_CACHE = 32
 const MAX_SLOT = 3
 
@@ -112,6 +114,34 @@ export function isLayoutFile(file: string, platform: NodeJS.Platform = process.p
   return res === 'res' && /^layout(-[a-z0-9_+-]+)?$/i.test(dir) && dir.startsWith('layout')
 }
 
+async function readHead(file: string): Promise<string | null> {
+  const handle = await fs.open(file, 'r').catch(() => null)
+  if (!handle) return null
+  try {
+    const buf = Buffer.alloc(DRAWABLE_SNIFF_BYTES)
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0)
+    return buf.subarray(0, bytesRead).toString('utf8')
+  } catch {
+    return null
+  } finally {
+    await handle.close().catch(() => undefined)
+  }
+}
+
+/** `res/layout*` by path, else a loose `.xml` (not in another `res/` folder) whose root element is a view. */
+export async function isLayoutTarget(file: string, text: string | null, platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  if (isLayoutFile(file, platform)) return true
+  if (path.extname(file).toLowerCase() !== '.xml' || drawableFolderKind(file)) return false
+  if (path.basename(path.dirname(path.dirname(file))).toLowerCase() === 'res') return false
+  return isLooseLayoutXml(file, text ?? (await readHead(file)))
+}
+
+/** Unsaved editor text (v42 live preview); undefined = read the file, null = unusable. */
+export function cleanText(v: unknown): string | null | undefined {
+  if (v === undefined || v === null) return undefined
+  return typeof v === 'string' && Buffer.byteLength(v, 'utf8') <= MAX_XML ? v : null
+}
+
 export function cleanDevice(v: unknown): LayoutDevice | null {
   const d = (v ?? {}) as Record<string, unknown>
   const int = (x: unknown, lo: number, hi: number): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= lo && x <= hi ? x : null)
@@ -154,6 +184,28 @@ export function cleanDiagnostics(raw: unknown): LayoutDiagnostic[] {
     if (typeof o.line === 'number' && o.line > 0) out.line = Math.floor(o.line)
     if (typeof o.column === 'number' && o.column > 0) out.column = Math.floor(o.column)
     return [out]
+  })
+}
+
+const DRAWABLE_STATES = new Set(['pressed', 'focused', 'selected', 'checked', 'activated', 'disabled'])
+
+/** Size in dp (1–1024 each way) at `dpi` → device pixels for the daemon. */
+export function drawableDevice(v: unknown): LayoutDevice | null {
+  const r = (v ?? {}) as Record<string, unknown>
+  const int = (x: unknown, lo: number, hi: number): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= lo && x <= hi ? x : null)
+  const w = int(r.width, 1, 1024)
+  const h = int(r.height, 1, 1024)
+  const dpi = int(r.density, 72, 960)
+  if (!w || !h || !dpi) return null
+  const px = (dp: number): number => Math.min(4096, Math.max(16, Math.round((dp * dpi) / 160)))
+  return { width: px(w), height: px(h), density: dpi }
+}
+
+export function cleanSwatches(raw: unknown): DrawableSwatch[] | null {
+  if (!Array.isArray(raw)) return null
+  return raw.slice(0, 20).flatMap((s): DrawableSwatch[] => {
+    const o = (s ?? {}) as Record<string, unknown>
+    return typeof o.state === 'string' && typeof o.color === 'string' && /^#[0-9A-F]{8}$/i.test(o.color) ? [{ state: o.state.slice(0, 40), color: o.color.toUpperCase() }] : []
   })
 }
 
@@ -229,7 +281,7 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
   const gateFile = async (event: IpcMainInvokeEvent, req: unknown): Promise<string | null> => {
     if (!isAppFrame(event)) return null
     const file = await resolveDir(((req ?? {}) as Record<string, unknown>).file)
-    return file && isLayoutFile(file, platform) ? file : null
+    return file && (await isLayoutTarget(file, null, platform)) ? file : null
   }
 
   const noModel: LayoutModelInfo = { target: null, state: { state: 'none' }, hasModel: false, themes: [] }
@@ -259,7 +311,24 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     if (!isAppFrame(event)) return null
     const jdk = await findJava()
     const { java: _java, ...pub } = jdk
-    return { bundle: bundle.status(), jdk: pub as JdkStatus, daemon: daemon.state, jar: jarExists() }
+    return { bundle: bundle.status(), jdk: pub as JdkStatus, daemon: daemon.state, jar: jarExists(), apiLevel: daemon.apiLevel ?? LAYOUTLIB_API_LEVEL }
+  })
+
+  // A layout was opened: start the JVM (initialize renders a framework-only warm-up layout) and load the cached
+  // project model, so the first real render skips the cold start. Never Gradle; the daemon's idle timer still applies.
+  ipcMain.handle('ccm:layout-warmup', async (event, req: unknown): Promise<{ ok: boolean; code?: string }> => {
+    // Any explorer-allowed .xml (layouts and drawables); nothing is read here.
+    const file = isAppFrame(event) ? await resolveDir(((req ?? {}) as Record<string, unknown>).file) : null
+    if (!file || path.extname(file).toLowerCase() !== '.xml') return { ok: false, code: 'denied' }
+    if (!jarExists()) return { ok: false, code: 'jar-missing' }
+    if (!bundle.isReady()) return { ok: false, code: 'bundle-missing' }
+    try {
+      await daemon.ensure()
+      if (model) await model.prepare(file)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, code: err instanceof LayoutError ? err.code : 'failed' }
+    }
   })
 
   ipcMain.handle('ccm:layout-download', async (event) => {
@@ -275,15 +344,17 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     if (!isAppFrame(event)) return { ok: false, code: 'denied' }
     const r = (req ?? {}) as Record<string, unknown>
     const file = await resolveDir(r.file)
-    if (!file || !isLayoutFile(file, platform)) return { ok: false, code: 'denied' }
+    const text = cleanText(r.text)
+    if (text === null) return { ok: false, code: 'too-large' }
+    if (!file || !(await isLayoutTarget(file, text ?? null, platform))) return { ok: false, code: 'denied' }
     const device = cleanDevice(r.device)
     if (!device) return { ok: false, code: 'bad-params' }
     if (!jarExists()) return { ok: false, code: 'jar-missing' }
     if (!bundle.isReady()) return { ok: false, code: 'bundle-missing' }
     const stat = await fs.stat(file).catch(() => null)
     if (!stat?.isFile()) return { ok: false, code: 'missing' }
-    if (stat.size > MAX_XML) return { ok: false, code: 'too-large' }
-    const xmlContent = await fs.readFile(file, 'utf8').catch(() => null)
+    if (text === undefined && stat.size > MAX_XML) return { ok: false, code: 'too-large' }
+    const xmlContent = text ?? (await fs.readFile(file, 'utf8').catch(() => null))
     if (xmlContent === null) return { ok: false, code: 'missing' }
     const slot = typeof r.slot === 'number' && Number.isInteger(r.slot) && r.slot >= 0 && r.slot <= MAX_SLOT ? r.slot : 0
     const params: RenderParams = { layoutPath: file, xmlContent, device, theme: cleanTheme(r.theme), night: r.night === true, locale: cleanLocale(r.locale) }
@@ -333,6 +404,57 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     }
     if (snap || res.png === null) cache.set(key, { result, png: snap })
     return { ...result, pngUrl, cached: false }
+  })
+
+  // Drawable / color state list (v41): any file the explorer may open, judged by folder or root element (≤ 1 MB).
+  ipcMain.handle('ccm:drawable-render', async (event, req: unknown): Promise<DrawableRenderResult> => {
+    if (!isAppFrame(event)) return { ok: false, code: 'denied' }
+    const r = (req ?? {}) as Record<string, unknown>
+    const file = await resolveDir(r.file)
+    if (!file || path.extname(file).toLowerCase() !== '.xml') return { ok: false, code: 'denied' }
+    const device = drawableDevice({ width: r.width, height: r.height, density: r.density })
+    if (!device) return { ok: false, code: 'bad-params' }
+    const text = cleanText(r.text)
+    if (text === null) return { ok: false, code: 'too-large' }
+    if (!jarExists()) return { ok: false, code: 'jar-missing' }
+    if (!bundle.isReady()) return { ok: false, code: 'bundle-missing' }
+    const stat = await fs.stat(file).catch(() => null)
+    if (!stat?.isFile()) return { ok: false, code: 'missing' }
+    if (text === undefined && stat.size > MAX_XML) return { ok: false, code: 'too-large' }
+    const xmlContent = text ?? (await fs.readFile(file, 'utf8').catch(() => null))
+    if (xmlContent === null) return { ok: false, code: 'missing' }
+    const kind = drawableKind(file, xmlContent)
+    if (!kind) return { ok: false, code: 'not-drawable' }
+    const states = Array.isArray(r.states) ? [...new Set(r.states.filter((s): s is string => typeof s === 'string' && DRAWABLE_STATES.has(s)))] : []
+    const prepared = model ? await model.prepare(file) : { key: 'framework', frameworkOnly: true }
+    let res
+    try {
+      await fs.mkdir(renderDir, { recursive: true })
+      res = await daemon.renderDrawable({ path: file, xmlContent, device, night: r.night === true, states, colorList: kind === 'color' }, `${event.sender.id}:${file}:drawable`)
+    } catch (err) {
+      if (err instanceof LayoutError) return { ok: false, code: err.code, ...(err.detail ? { detail: err.detail.slice(-600) } : {}) }
+      return { ok: false, code: 'render-failed' }
+    }
+    let pngUrl: string | null = null
+    if (typeof res.png === 'string' && path.isAbsolute(res.png)) {
+      realRender ??= await fs.realpath(renderDir).catch(() => null)
+      const png = await fs.realpath(res.png).catch(() => null)
+      if (realRender && png && isWithin(realRender, png, platform) && path.extname(png).toLowerCase() === '.png') {
+        const target = await deps.server.urlFor(png, [realRender])
+        if (target) pngUrl = `${target.url}?r=${encodeURIComponent(res.requestId)}`
+      }
+    }
+    return {
+      ok: true,
+      kind,
+      pngUrl,
+      width: Number(res.width) || device.width,
+      height: Number(res.height) || device.height,
+      swatches: cleanSwatches(res.swatches),
+      diagnostics: cleanDiagnostics(res.diagnostics),
+      renderMs: Number(res.renderMs) || 0,
+      frameworkOnly: prepared.frameworkOnly,
+    }
   })
 
   return {

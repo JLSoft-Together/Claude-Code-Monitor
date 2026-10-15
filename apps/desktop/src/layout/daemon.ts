@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { FrameParser, RpcClient, RpcError } from './rpc'
 import { JAR_NAME } from './download'
-import type { DaemonRenderResult, DaemonState, JdkStatus, LayoutDevice } from './types'
+import type { DaemonDrawableResult, DaemonRenderResult, DaemonState, JdkStatus, LayoutDevice } from './types'
 
 export interface DaemonChild {
   stdin: Writable | null
@@ -39,6 +39,15 @@ export interface RenderParams {
   theme: string | null
   night: boolean
   locale: string | null
+}
+
+export interface DrawableParams {
+  path: string
+  xmlContent: string
+  device: LayoutDevice
+  night: boolean
+  states: string[]
+  colorList: boolean
 }
 
 export class LayoutError extends Error {
@@ -86,11 +95,17 @@ export class LayoutDaemon {
   private inFlight = 0
   private starting: Promise<void> | null = null
   private restartPending = false
+  private api: number | null = null
 
   constructor(private readonly deps: DaemonDeps) {}
 
   get state(): DaemonState {
     return this.current
+  }
+
+  /** API level reported by `initialize`; null before the first start. */
+  get apiLevel(): number | null {
+    return this.api
   }
 
   private set(state: DaemonState, detail?: string): void {
@@ -174,7 +189,8 @@ export class LayoutDaemon {
     ).then(
       (res) => {
         if (this.live !== live) throw new LayoutError('crashed')
-        const r = (res ?? {}) as { initMs?: unknown; layoutlibVersion?: unknown }
+        const r = (res ?? {}) as { initMs?: unknown; layoutlibVersion?: unknown; apiLevel?: unknown }
+        if (typeof r.apiLevel === 'number' && Number.isInteger(r.apiLevel) && r.apiLevel > 0) this.api = r.apiLevel
         this.deps.log?.('info', `initialized layoutlib ${String(r.layoutlibVersion ?? '?')} in ${String(r.initMs ?? '?')} ms`)
         this.set('ready')
         this.touch()
@@ -227,7 +243,24 @@ export class LayoutDaemon {
   }
 
   /** `slot` (one per pane / file): a newer render cancels the older one still queued, a stale finished one is dropped. */
-  async render(params: RenderParams, slot: string): Promise<DaemonRenderResult> {
+  render(params: RenderParams, slot: string): Promise<DaemonRenderResult> {
+    return this.slotted('render', slot, (requestId) => ({
+      requestId,
+      layoutPath: params.layoutPath,
+      xmlContent: params.xmlContent,
+      device: params.device,
+      night: params.night,
+      ...(params.theme ? { theme: params.theme } : {}),
+      ...(params.locale ? { locale: params.locale } : {}),
+    })) as Promise<DaemonRenderResult>
+  }
+
+  /** `drawable/render`: same slot / cancel / watchdog rules as a layout render. */
+  renderDrawable(params: DrawableParams, slot: string): Promise<DaemonDrawableResult> {
+    return this.slotted('drawable/render', slot, (requestId) => ({ requestId, ...params })) as Promise<DaemonDrawableResult>
+  }
+
+  private async slotted(method: string, slot: string, payload: (requestId: string) => Record<string, unknown>): Promise<unknown> {
     const requestId = `r${++this.seq}`
     const prev = this.slots.get(slot)
     this.slots.set(slot, requestId)
@@ -240,15 +273,7 @@ export class LayoutDaemon {
       if (prev) live.rpc.request('cancel', { requestId: prev }).catch(() => undefined)
       if (this.slots.get(slot) !== requestId) throw new LayoutError('cancelled')
       const res = await this.withTimeout(
-        live.rpc.request('render', {
-          requestId,
-          layoutPath: params.layoutPath,
-          xmlContent: params.xmlContent,
-          device: params.device,
-          night: params.night,
-          ...(params.theme ? { theme: params.theme } : {}),
-          ...(params.locale ? { locale: params.locale } : {}),
-        }),
+        live.rpc.request(method, payload(requestId)),
         this.deps.renderTimeoutMs ?? 15_000,
         () => {
           this.deps.log?.('error', `render ${requestId} exceeded the watchdog, restarting the daemon`)
@@ -260,7 +285,7 @@ export class LayoutDaemon {
         throw err
       })
       if (this.slots.get(slot) !== requestId) throw new LayoutError('cancelled')
-      return res as DaemonRenderResult
+      return res
     } finally {
       this.inFlight--
       if (this.slots.get(slot) === requestId) this.slots.delete(slot)

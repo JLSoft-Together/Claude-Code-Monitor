@@ -5,9 +5,10 @@ import { commonDir, discardFile, discardHunk, diff as changesDiff, fileDiff, Git
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir, renameEntry, trashEntry } from './explorer'
 import { readFileForView } from './files'
+import { writeTextFile } from './fileWrite'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
-import { GrantStore } from './grants'
+import { filesystemRoots, FullAccess, GrantStore } from './grants'
 import { FileListCache } from './listFiles'
 import { createBranch, deletePlan, fetchAll, runDelete, updateBranch } from './branches'
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
@@ -68,21 +69,26 @@ export interface PreviewIpcDeps {
   clipboardImage?: ClipboardImageDeps
   /** Folders the user allowed; persisted by the app (`preview-grants.json`). In-memory when omitted. */
   grants?: GrantStore
+  /** Settings switch: every folder readable. Off and in-memory when omitted. */
+  fullAccess?: FullAccess
+  /** Native yes/no before turning full access on; the page cannot enable it itself. */
+  confirmFullAccess?: () => Promise<boolean>
 }
 
 export interface PreviewIpc {
   /** Lets a folder the user chose elsewhere (e.g. a native picker) be read too. */
   grant: (dir: string) => void
-  /** A known repo toplevel or allowed folder (real path), else null — the gate other features reuse. */
+  /** A known repo toplevel or allowed folder (real path), else null â€” the gate other features reuse. */
   resolveDir: (dir: unknown) => Promise<string | null>
   dispose: () => void
 }
 
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
-  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
+  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
+  'ccm:file-write',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -90,6 +96,7 @@ type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: stri
 export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   const { ipcMain, isAppFrame, server, watcher, shell, dialog } = deps
   const grants = deps.grants ?? new GrantStore()
+  const full = deps.fullAccess ?? new FullAccess()
   // webContents id -> watched root key -> { root, refs }; released when the page navigates or closes.
   const subs: Subs = new Map()
   const changeSubs: Subs = new Map()
@@ -106,7 +113,8 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return deps.trash ?? (shellTrash ? (p: string) => shellTrash.call(deps.shell, p) : null)
   }
 
-  const allowedRoots = async (fresh = false): Promise<string[]> => realRoots([...(await deps.getRoots(fresh)), ...grants.list()])
+  const allowedRoots = async (fresh = false): Promise<string[]> =>
+    realRoots([...(await deps.getRoots(fresh)), ...grants.list(), ...(full.get() ? filesystemRoots() : [])])
 
   async function allowedPath(p: unknown, fresh = false): Promise<{ real: string; roots: string[] } | null> {
     if (typeof p !== 'string' || !path.isAbsolute(p)) return null
@@ -125,6 +133,20 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const real = await realOrNull(root)
     const repo = real && repos.get(rootKey(real))
     return repo && (await allowedPath(repo.from)) ? repo.root : null
+  }
+
+  /**
+   * Remembered rail folder without a pane: toplevel + common dir only, so it groups by repo. Grants nothing and
+   * registers no repo, so Changes / Log / scripts there stay refused until a pane opens (docs Â§11t).
+   */
+  async function rootFacts(dir: unknown): Promise<{ root: string; repo: boolean; common?: string } | null> {
+    if (typeof dir !== 'string' || dir.length > 1024 || !path.isAbsolute(dir)) return null
+    const real = await realOrNull(dir)
+    if (!real || !(await fs.stat(real).catch(() => null))?.isDirectory()) return null
+    const top = await toplevel(real)
+    if ('error' in top) return { root: real, repo: false }
+    const common = await commonDir(top.root)
+    return { root: top.root, repo: true, ...(common ? { common } : {}) }
   }
 
   /** Known repo for `dir`, else its toplevel registered once the folder is allowed (Changes and Log panes). */
@@ -197,6 +219,18 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return readFileForView(target, await allowedRoots())
   })
 
+  // Same folders the viewer and the Explorer reach: allowed roots plus repo toplevels found from an allowed folder.
+  async function writeRoots(): Promise<string[]> {
+    const roots = await allowedRoots()
+    for (const { root, from } of repos.values()) if (rootOf(from, roots)) roots.push(root)
+    return roots
+  }
+
+  ipcMain.handle('ccm:file-write', async (event, req: unknown) => {
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    return writeTextFile(req, await writeRoots())
+  })
+
   ipcMain.handle('ccm:watch', async (event, root: unknown) => {
     if (!isAppFrame(event)) return false
     const ok = await allowedPath(root)
@@ -235,7 +269,7 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return file
   })
 
-  // Attachments tray "Add files…": paths only go into the agent's prompt as @mentions, nothing is read here.
+  // Attachments tray "Add filesâ€¦": paths only go into the agent's prompt as @mentions, nothing is read here.
   ipcMain.handle('ccm:pick-files', async (event) => {
     if (!isAppFrame(event)) return []
     const win = deps.getWindow()
@@ -496,11 +530,11 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   })
 
   // Git toplevel of an allowed folder (else the folder itself): groups sidebar rows and roots the scripts menu.
-  ipcMain.handle('ccm:project-root', async (event, dir: unknown) => {
+  ipcMain.handle('ccm:project-root', async (event, dir: unknown, remembered?: unknown) => {
     if (!isAppFrame(event)) return null
     // A pane spawned a moment ago is missing from the cached census: re-ask once before giving up.
     const ok = (await allowedPath(dir)) ?? (await allowedPath(dir, true))
-    if (!ok) return null
+    if (!ok) return remembered === true ? rootFacts(dir) : null
     const top = await toplevel(ok.real)
     if ('error' in top) return { root: ok.real, repo: false }
     repos.set(rootKey(top.root), { root: top.root, from: ok.real })
@@ -513,6 +547,20 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const real = (await repoOf(dir)) ?? (await allowedPath(dir))?.real
     if (!real || !(await fs.stat(real).catch(() => null))?.isDirectory()) return null
     return detectScripts(real).catch(() => null)
+  })
+
+  // No argument reads; true asks natively first, false turns it off at once; 'first' asks only while never decided.
+  let confirming: Promise<boolean> | null = null
+  ipcMain.handle('ccm:full-access', async (event, on: unknown) => {
+    if (!isAppFrame(event)) return null
+    if (on === false) full.set(false)
+    const ask = (on === true || (on === 'first' && !full.asked())) && !full.get()
+    if (ask) {
+      confirming ??= (deps.confirmFullAccess?.() ?? Promise.resolve(false)).catch(() => false).finally(() => (confirming = null))
+      const yes = await confirming
+      if (yes || !full.asked()) full.set(yes)
+    }
+    return full.get()
   })
 
   ipcMain.handle('ccm:forget-grants', (event) => {

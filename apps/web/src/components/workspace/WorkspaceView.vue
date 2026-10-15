@@ -14,11 +14,12 @@ import { createStartGuard } from '../../lib/startGuard'
 import { dirKey } from '../../stores/favorites'
 import type { LinkOpenOptions, LinkTarget } from '../../lib/fileLinks'
 import { shortPath } from '../../lib/format'
-import { changesStatus, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
+import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
 import { pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, type Box, type Divider, type SplitDir } from '../../lib/splitLayout'
 import { workspaceAction } from '../../lib/workspaceKeys'
+import { editorKeepsKey, inEditor, onSaveAllRequest, reportDirty } from '../../lib/fileEditor'
 import { shortcutText } from '../../lib/shortcuts'
 import type { TipAction } from '../../lib/tips'
 import { useTerminalsStore } from '../../stores/terminals'
@@ -155,6 +156,7 @@ const visibleTabs = computed(() => visibleTabKeys.value.map((k) => workspace.tab
 const tabSpaces = computed(() => spaceIndexes(workspace.tabs, (t) => tabProject(t, paneOf)))
 const activeCluster = computed(() => rail.clusters.value.find((c) => c.active) ?? null)
 const otherNeeds = computed(() => rail.clusters.value.filter((c) => !c.active).reduce((n, c) => n + c.needs, 0))
+const otherFailed = computed(() => rail.clusters.value.some((c) => !c.active && c.failed > 0))
 
 const missionOpen = ref(false)
 const missionOpener = ref<HTMLElement | null>(null)
@@ -250,9 +252,30 @@ const closing = computed(() => (workspace.pendingClose ?? []).map((k) => workspa
 const confirmButton = ref<HTMLButtonElement | null>(null)
 const confirmSheet = ref<HTMLElement | null>(null)
 let confirmReturn: HTMLElement | null = null
+// v42 unsaved file editors in the close sheet: Save (then close) / Don't save / Cancel.
+const closingDirty = computed(() => closing.value.filter((p) => p.dirty))
+const closingBusy = computed(() => closing.value.filter((p) => isBusy(p)))
+const closeSaving = ref(false)
+const closeErrors = ref<string[]>([])
+async function saveAndClose(): Promise<void> {
+  if (closeSaving.value) return
+  closeSaving.value = true
+  const failed = await workspace.saveFiles(closingDirty.value.map((p) => p.key))
+  closeSaving.value = false
+  closeErrors.value = failed.map((f) => t('editor.close.failed', { name: baseName(paneOf(f.key)?.path ?? f.key), reason: f.error }))
+  if (!failed.length) workspace.confirmClose()
+}
+// Quit (main process): it lists unsaved editors and may ask the page to save them all first.
+watch(
+  () => workspace.dirtyPanes.map((p) => `${p.key}\n${p.path}`).join('\n'),
+  () => reportDirty(workspace.dirtyPanes.map((p) => ({ name: baseName(p.path ?? ''), path: p.path ?? '' }))),
+  { immediate: true },
+)
+onSaveAllRequest(async () => (await workspace.saveFiles(workspace.dirtyPanes.map((p) => p.key))).length === 0)
 watch(
   () => workspace.pendingClose,
   async (keys, before) => {
+    closeErrors.value = []
     if (keys && !before) confirmReturn = document.activeElement as HTMLElement | null
     await nextTick()
     if (keys) return confirmButton.value?.focus()
@@ -283,10 +306,12 @@ const contextCwd = computed(() => (workspace.active ? workCwd(workspace.active) 
 
 const HTML = /\.html?$/i
 
-/** Paths outside every open project folder are denied until the user allows that folder once. */
+/** A path outside every allowed folder asks for every folder at once (one native confirm), not that folder alone. */
 async function ensureReadable(path: string, html: boolean): Promise<void> {
   const ok = html ? !!(await previewUrl(path)) : (await readFile(path))?.kind !== 'denied'
-  if (!ok) await requestAccess(path)
+  if (ok) return
+  if (hasFullAccess) await fullAccess(true)
+  else await requestAccess(path)
 }
 
 /** Ctrl/⌘+click in a terminal. Each target opens in its own tab, reusing one already showing it. */
@@ -552,12 +577,14 @@ function onChoiceKey(e: KeyboardEvent): void {
 
 /** Panes that close without asking morph away; a confirmation sheet opens without one. */
 function closePanes(keys: string[]): void {
+  // v42: a file pane with unsaved edits asks too (Save / Don't save / Cancel in the same sheet).
+  const asksFor = (pane: Pane): boolean => isBusy(pane) || !!pane.dirty
   const asks = keys.some((k) => {
     const pane = paneOf(k)
-    return !!pane && isBusy(pane)
+    return !!pane && asksFor(pane)
   })
-  if (asks) workspace.requestClose(keys, isBusy)
-  else withViewTransition(() => workspace.requestClose(keys, isBusy))
+  if (asks) workspace.requestClose(keys, asksFor)
+  else withViewTransition(() => workspace.requestClose(keys, asksFor))
 }
 
 function closeTab(tab: Tab): void {
@@ -619,6 +646,15 @@ watch(
     if (shown) return
     needsAnchor.value = null
     missionOpen.value = false
+  },
+)
+// Not closeMission: refocusing the pane would pull focus out of the dialog that just opened.
+watch(
+  () => quickOpen.value || ui.settingsOpen,
+  (covered) => {
+    if (!covered || !missionOpen.value) return
+    missionOpen.value = false
+    missionReturn = null
   },
 )
 
@@ -871,6 +907,7 @@ function onGlobalKey(e: KeyboardEvent): void {
   if (!props.visible || e.defaultPrevented) return
   // Alt+↑/↓ on a rail project header reorders projects (WorkspaceSidebar), not pane focus.
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && (e.target as Element | null)?.closest?.('[data-side-head]')) return
+  if (inEditor(e.target) && editorKeepsKey(e, isMac)) return
   const action = workspaceAction(e, isMac, multiPane.value)
   if (!action) return
   e.preventDefault()
@@ -953,6 +990,16 @@ function measurePill(): void {
 }
 watch(() => [workspace.activeTab?.key, visibleTabKeys.value.join(), props.visible], measurePill, { flush: 'post' })
 
+// A plain mouse wheel only sends deltaY; the strip scrolls sideways. Trackpad sideways swipes keep their native path.
+function onStripWheel(e: WheelEvent): void {
+  const el = tabStrip.value
+  if (!el || e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY) || el.scrollWidth <= el.clientWidth) return
+  const step = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * el.clientWidth : e.deltaY
+  const before = el.scrollLeft
+  el.scrollLeft += step
+  if (el.scrollLeft !== before) e.preventDefault()
+}
+
 const tabPrimary = (tab: Tab): Pane | undefined => paneOf(primaryPaneKey(tab.root, paneOf))
 
 function tabLabel(tab: Tab): string {
@@ -971,6 +1018,8 @@ function tabTitle(tab: Tab): string | undefined {
 }
 
 onMounted(() => {
+  // First workspace visit (or after the app's data was reset): ask for every folder once instead of per folder later.
+  void fullAccess('first')
   // Capture: runs before xterm's own handler sees the key.
   window.addEventListener('keydown', onGlobalKey, true)
   window.addEventListener('focus', clearSeenAttention)
@@ -1062,12 +1111,12 @@ onBeforeUnmount(() => {
       >
         <FolderOpen :size="14" class="shrink-0" aria-hidden="true" />
         <span class="min-w-0 truncate">{{ activeCluster.key === 'home' ? t('workspace.side.home') : activeCluster.name }}</span>
-        <span v-if="otherNeeds" class="inline-flex shrink-0 items-center gap-0.5 text-st-waiting tabular">
+        <span v-if="otherNeeds" class="inline-flex shrink-0 items-center gap-0.5 tabular" :class="otherFailed ? 'text-st-error' : 'text-st-waiting'">
           <BellRing :size="12" aria-hidden="true" />{{ otherNeeds }}<span class="sr-only"> {{ t('workspace.rail.needs', { n: otherNeeds }, otherNeeds) }}</span>
         </span>
       </button>
       <div class="flex min-w-0 flex-1 items-center gap-1" data-tab-row @dblclick="onStripDblClick">
-      <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')">
+      <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')" @wheel="onStripWheel">
         <span
           v-if="tabPill"
           aria-hidden="true"
@@ -1098,6 +1147,9 @@ onBeforeUnmount(() => {
             <StatusIcon v-if="tabSession(tab)" :status="tabSession(tab)!.status" :size="13" />
             <PaneIcon v-else-if="tabPrimary(tab)" :pane="tabPrimary(tab)!" :size="13" class="shrink-0" />
             <span class="max-w-[20ch] shrink-0 truncate font-medium" :class="tabPrimary(tab)?.preview ? 'italic' : ''" data-tab-label>{{ tabLabel(tab) }}</span>
+            <span v-if="leaves(tab.root).some((k) => paneOf(k)?.dirty)" class="shrink-0 text-warning" :title="t('editor.unsaved')" data-tab-dirty>
+              <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>
+            </span>
             <span v-if="tabPrimary(tab) && isTerm(tabPrimary(tab)!) && workCwd(tabPrimary(tab)!)" class="min-w-0 truncate text-ink-faint">{{ shortPath(workCwd(tabPrimary(tab)!)) }}</span>
             <span v-if="leaves(tab.root).length > 1" class="shrink-0 rounded-[4px] bg-fill px-1 text-2xs text-ink-muted tabular" data-pane-count>
               {{ leaves(tab.root).length }}<span class="sr-only"> {{ t('workspace.panes') }}</span>
@@ -1168,7 +1220,7 @@ onBeforeUnmount(() => {
         type="button"
         class="ccm-btn shrink-0"
         :class="needs.entries.some((e) => e.state === 'failed') ? 'text-st-error!' : 'text-st-waiting!'"
-        :title="t('workspace.attention.jump', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
+        :title="t('workspace.rail.needsList.chipTip', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
         aria-haspopup="listbox"
         :aria-expanded="!!needsAnchor"
         data-attention-chip
@@ -1289,6 +1341,7 @@ onBeforeUnmount(() => {
           <FilePane
             v-else-if="pane.kind === 'file'"
             class="min-h-0 flex-1"
+            :pane-key="pane.key"
             :path="pane.path!"
             :line="pane.line"
             :active="visible && tabBoxes.has(pane.key)"
@@ -1381,6 +1434,37 @@ onBeforeUnmount(() => {
           @keydown.esc.stop="workspace.cancelClose()"
           @keydown="trapConfirm"
         >
+          <template v-if="closingDirty.length">
+            <h2 id="ws-close-title" class="text-base font-semibold text-ink" data-close-unsaved>{{ t('editor.close.title', { n: closingDirty.length }, closingDirty.length) }}</h2>
+            <div id="ws-close-body" class="flex flex-col gap-2 text-sm text-ink-muted">
+              <p>{{ t('editor.close.body') }}</p>
+              <ul class="flex flex-col gap-1 rounded-inner bg-fill p-2 text-xs text-ink">
+                <li v-for="p in closingDirty" :key="p.key" class="flex min-w-0 items-center gap-1.5">
+                  <PaneIcon :pane="p" :size="13" class="shrink-0" />
+                  <span class="truncate" :title="p.path">{{ baseName(p.path ?? '') }}</span>
+                  <span class="shrink-0 text-warning" aria-hidden="true">●</span>
+                </li>
+              </ul>
+              <template v-if="closingBusy.length">
+                <p>{{ t('editor.close.busy') }}</p>
+                <ul class="flex flex-col gap-1 rounded-inner bg-fill p-2 text-xs text-ink">
+                  <li v-for="p in closingBusy" :key="p.key" class="flex min-w-0 items-center gap-1.5">
+                    <PaneIcon :pane="p" :size="13" class="shrink-0" />
+                    <span class="truncate" :title="p.cwd">{{ describe(p) }}</span>
+                  </li>
+                </ul>
+              </template>
+              <p v-for="(err, i) in closeErrors" :key="i" class="flex items-start gap-1.5 text-xs text-st-error" role="alert">
+                <X :size="13" class="mt-0.5 shrink-0" aria-hidden="true" /><span class="min-w-0">{{ err }}</span>
+              </p>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="ccm-btn" @click="workspace.cancelClose()">{{ t('editor.close.cancel') }}</button>
+              <button type="button" class="ccm-btn ccm-btn-danger" :disabled="closeSaving" data-close-discard @click="workspace.confirmClose()">{{ t('editor.close.discard') }}</button>
+              <button ref="confirmButton" type="button" class="ccm-btn ccm-btn-primary" :disabled="closeSaving" data-close-save @click="saveAndClose">{{ t('editor.close.save') }}</button>
+            </div>
+          </template>
+          <template v-else>
           <h2 id="ws-close-title" class="text-base font-semibold text-ink">{{ t('workspace.closeConfirm.title', { n: closing.length }, closing.length) }}</h2>
           <div id="ws-close-body" class="flex flex-col gap-2 text-sm text-ink-muted">
             <p>{{ t('workspace.closeConfirm.body') }}</p>
@@ -1397,6 +1481,7 @@ onBeforeUnmount(() => {
               {{ t('workspace.closeConfirm.action', { n: closing.length }, closing.length) }}
             </button>
           </div>
+          </template>
         </div>
       </div>
       </Transition>

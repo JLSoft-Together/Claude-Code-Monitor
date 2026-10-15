@@ -2,11 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, fileStepKey, groupChanges, inSidewaysScroller, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
+import { absoluteIn, dirOfRel, fileStepKey, groupChanges, KIND_CLASS, KIND_LETTER, samePath, scrollSideways } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
-import { blockPatch, changeBlocks } from '../../lib/diffBlocks'
+import { blockPatch, viewBlocks } from '../../lib/diffBlocks'
+import { hideImportChanges } from '../../lib/diffImports'
 import { CONTEXTS, HIGHLIGHTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
 import { isMac } from '../../lib/platform'
 import {
@@ -54,6 +55,8 @@ const loading = ref(true)
 const selected = ref<string | null>(null)
 const diffFile = shallowRef<DiffFile | null>(null)
 const partial = ref(false)
+/** Import-only changes dropped by Whitespace "Ignore imports". */
+const hiddenImports = ref(0)
 const diffState = ref<'idle' | 'loading' | 'binary' | 'too-large' | 'empty' | 'error'>('idle')
 const diffError = ref<ChangesError | null>(null)
 const notice = ref<string | null>(null)
@@ -115,7 +118,7 @@ const rowKey = (g: string, r: ChangesTreeRow): string => (r.kind === 'dir' ? `d:
 const visibleKeys = computed(() => treeGroups.value.flatMap((g) => g.rows.map((r) => rowKey(g.key, r))))
 
 const selectedEntry = computed(() => entries.value.find((e) => e.path === selected.value) ?? null)
-const blocks = computed(() => (diffFile.value ? changeBlocks(diffFile.value) : []))
+const blocks = computed(() => (diffFile.value ? viewBlocks(diffFile.value, opts.value.highlight) : []))
 const lineCount = computed(() => diffFile.value?.hunks.reduce((n, h) => n + h.lines.length, 0) ?? 0)
 const collapse = computed(() => opts.value.collapse || lineCount.value > FORCE_COLLAPSE_LINES)
 const canRevert = computed(() => selectedEntry.value?.kind === 'modified' && blocks.value.length > 0)
@@ -194,7 +197,10 @@ async function loadDiff(keepPosition = false): Promise<void> {
     diffFile.value = null
     return
   }
-  const file = parseUnifiedDiff(res.text)[0] ?? null
+  const parsed = parseUnifiedDiff(res.text)[0] ?? null
+  const shown = parsed && opts.value.whitespace === 'imports' ? hideImportChanges(parsed) : { file: parsed, hidden: 0 }
+  const file = shown.file
+  hiddenImports.value = shown.hidden
   diffFile.value = file
   partial.value = !!res.partial
   diffState.value = file?.hunks.length ? 'idle' : 'empty'
@@ -206,6 +212,13 @@ async function loadDiff(keepPosition = false): Promise<void> {
 }
 
 watch(selected, () => void loadDiff())
+// Highlight "Split changes" turns one Modified block into two: keep the position in range.
+watch(
+  () => blocks.value.length,
+  (n) => {
+    if (currentBlock.value >= n) currentBlock.value = Math.max(0, n - 1)
+  },
+)
 
 async function setWatch(root: string | null): Promise<void> {
   if (watched === root) return
@@ -348,6 +361,12 @@ function onKey(e: KeyboardEvent): void {
   const target = e.target as HTMLElement | null
   if (target?.closest('input, textarea, select, [contenteditable="true"], [data-diff-options]')) return
   const key = e.key
+  // IntelliJ's diff popup; ⌘⇧D on macOS is the v18 split, so it is ⌃⇧D there too.
+  if (e.code === 'KeyD' && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+    e.preventDefault()
+    optionsOpen.value = true
+    return
+  }
   if (key === 'F7' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     e.preventDefault()
     stepBlock(e.shiftKey ? -1 : 1)
@@ -355,11 +374,15 @@ function onKey(e: KeyboardEvent): void {
   }
   if (key === 'F4' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
     e.preventDefault()
-    openSelected(diffView.value?.lineOf(currentBlock.value))
+    openSelected()
     return
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return
   const inList = !!listEl.value?.contains(target)
+  if (!inList && scrollSideways(e)) {
+    e.preventDefault()
+    return
+  }
   if (treeMode.value && inList && onTreeKey(e)) {
     e.preventDefault()
     return
@@ -367,7 +390,7 @@ function onKey(e: KeyboardEvent): void {
   const step = fileStepKey(e)
   if (step) {
     // Tree rows keep ← / → for folders; toolbar / radiogroup keep them for their own focus.
-    if ((treeMode.value && inList) || target?.closest('[role=toolbar],[role=radiogroup]') || (!inList && inSidewaysScroller(target))) return
+    if ((treeMode.value && inList) || target?.closest('[role=toolbar],[role=radiogroup]')) return
     e.preventDefault()
     armed = 0
     notice.value = null
@@ -404,8 +427,7 @@ function onKey(e: KeyboardEvent): void {
 function openSelected(line?: number): void {
   const entry = selectedEntry.value
   if (!entry || entry.kind === 'deleted') return
-  const blockLine = diffView.value?.lineOf(currentBlock.value)
-  emit('open', absolute(entry.path), line ?? blockLine)
+  emit('open', absolute(entry.path), line ?? diffView.value?.sourceLine() ?? diffView.value?.lineOf(currentBlock.value))
 }
 
 const trashName = computed(() => t(`workspace.changes.trash.${isMac ? 'mac' : 'win'}`))
@@ -458,6 +480,30 @@ async function confirmDiscard(): Promise<void> {
 
 function setOpt<K extends keyof DiffOpts>(key: K, value: DiffOpts[K]): void {
   opts.value = { ...opts.value, [key]: value }
+}
+
+type DiffCommand = 'prevChange' | 'nextChange' | 'prevFile' | 'nextFile' | 'source' | 'side'
+const COMMANDS: { id: DiffCommand; keys: string }[] = [
+  { id: 'prevChange', keys: 'Shift+F7' },
+  { id: 'nextChange', keys: 'F7' },
+  { id: 'prevFile', keys: '←' },
+  { id: 'nextFile', keys: '→' },
+  { id: 'source', keys: 'F4' },
+  { id: 'side', keys: isMac ? '⌃⇧Tab' : '' },
+]
+const optionsKeys = isMac ? '⌃⇧D' : 'Ctrl+Shift+D'
+
+function runCommand(id: DiffCommand): void {
+  optionsOpen.value = false
+  if (id === 'side') {
+    diffView.value?.switchSide()
+    return
+  }
+  rootEl.value?.focus()
+  notice.value = null
+  if (id === 'prevChange' || id === 'nextChange') stepBlock(id === 'nextChange' ? 1 : -1)
+  else if (id === 'prevFile' || id === 'nextFile') stepFile(id === 'nextFile' ? 1 : -1, 'first', false)
+  else openSelected()
 }
 
 function onOptionsKey(e: KeyboardEvent): void {
@@ -577,7 +623,7 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           class="ccm-btn-plain"
           aria-haspopup="menu"
           :aria-expanded="optionsOpen"
-          :title="t('workspace.diff.options')"
+          :title="`${t('workspace.diff.options')} (${optionsKeys})`"
           :aria-label="t('workspace.diff.options')"
           data-diff-options-button
           @click="optionsOpen = !optionsOpen"
@@ -588,13 +634,31 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           <div
             v-if="optionsOpen"
             ref="optionsEl"
-            class="ccm-menu absolute top-full right-0 z-20 mt-1 flex w-64 flex-col p-1"
+            class="ccm-menu ccm-scroll absolute top-full right-0 z-20 mt-1 flex max-h-[70vh] w-64 flex-col overflow-y-auto p-1"
             style="--ccm-origin: top right"
             role="menu"
             :aria-label="t('workspace.diff.options')"
             data-diff-options
             @keydown="onOptionsKey"
           >
+            <p class="px-2 pt-1 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.commands') }}</p>
+            <div role="group" :aria-label="t('workspace.diff.commands')">
+              <template v-for="c in COMMANDS" :key="c.id">
+                <button
+                  v-if="c.id !== 'side' || opts.layout === 'split'"
+                  type="button"
+                  role="menuitem"
+                  :class="MENU_ROW"
+                  :data-diff-cmd="c.id"
+                  @click="runCommand(c.id)"
+                >
+                  <span class="w-[13px] shrink-0" aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate">{{ t(`workspace.diff.cmd.${c.id}`) }}</span>
+                  <span v-if="c.keys" class="shrink-0 text-2xs text-ink-faint">{{ c.keys }}</span>
+                </button>
+              </template>
+            </div>
+            <div class="my-1 border-t border-line" aria-hidden="true" />
             <button type="button" role="menuitemcheckbox" :aria-checked="opts.collapse" :class="MENU_ROW" @click="setOpt('collapse', !opts.collapse)">
               <Check :size="13" class="shrink-0" :class="opts.collapse ? '' : 'invisible'" aria-hidden="true" />
               {{ t('workspace.diff.collapse') }}
@@ -645,6 +709,24 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
               >
                 <Check :size="13" class="shrink-0" :class="opts.highlight === h ? '' : 'invisible'" aria-hidden="true" />
                 {{ t(`workspace.diff.hl.${h}`) }}
+              </button>
+            </div>
+            <p class="px-2 pt-2 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.splitView') }}</p>
+            <div role="group" :aria-label="t('workspace.diff.splitView')">
+              <button
+                v-for="k in ['align', 'sync'] as const"
+                :key="k"
+                type="button"
+                role="menuitemcheckbox"
+                :aria-checked="opts[k]"
+                :aria-disabled="opts.layout !== 'split'"
+                :title="opts.layout !== 'split' ? t('workspace.diff.splitOnly') : undefined"
+                :class="[MENU_ROW, opts.layout === 'split' ? '' : 'text-ink-faint']"
+                :data-diff-toggle="k"
+                @click="opts.layout === 'split' && setOpt(k, !opts[k])"
+              >
+                <Check :size="13" class="shrink-0" :class="opts[k] ? '' : 'invisible'" aria-hidden="true" />
+                {{ t(`workspace.diff.${k}`) }}
               </button>
             </div>
           </div>
@@ -802,6 +884,9 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           </button>
         </div>
         <p v-if="partial && diffState === 'idle'" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.diff.partial') }}</p>
+        <p v-if="hiddenImports && (diffState === 'idle' || diffState === 'empty')" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink" data-diff-imports-hidden>
+          {{ t('workspace.diff.importsHidden', { n: hiddenImports }, hiddenImports) }}
+        </p>
         <div class="ccm-scroll min-h-0 flex-1" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
           <div v-if="!selectedEntry" class="grid size-full place-items-center p-6 text-sm text-well-ink">{{ t('workspace.changes.selectFile') }}</div>
           <div v-else-if="diffState === 'loading'" class="grid size-full place-items-center text-xs text-well-ink" role="status">{{ t('workspace.changes.loading') }}</div>
@@ -828,6 +913,8 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
             :collapse="collapse"
             :context="opts.context"
             :highlight="opts.highlight"
+            :align="opts.align"
+            :sync="opts.sync"
             :can-revert="canRevert"
             :revert-blocked="revertBlocked"
             :current="currentBlock"

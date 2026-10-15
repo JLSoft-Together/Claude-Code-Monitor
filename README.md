@@ -1,4 +1,4 @@
-# Agent Monitor
+# GolAIm
 
 App desktop (Windows exe, macOS `.dmg`) theo dõi realtime mọi session Claude Code CLI đang chạy, kèm các lần Codex CLI do chúng gọi: session nào đang `working` / `waiting` / `idle`, session nào chờ bạn, agent đang chạy tool gì, token và chi phí. Có thêm **Workspace**: terminal ngay trong app để chạy Claude Code / Codex / shell, chia ô, tab, worktree.
 
@@ -17,7 +17,7 @@ Tên cũ: **Claude Code Monitor**. Mã nội bộ giữ nguyên (`appId` `dev.cc
 
 ## Cài và chạy (Windows)
 
-Chạy `Agent-Monitor-Setup-<ver>.exe` (hoặc bản `Agent-Monitor-Portable-<ver>.exe` không cần cài), rồi chạy `claude` ở terminal bất kỳ: session hiện lên trong khoảng 1 giây.
+Chạy `GolAIm-Setup-<ver>.exe` (hoặc bản `GolAIm-Portable-<ver>.exe` không cần cài), rồi chạy `claude` ở terminal bất kỳ: session hiện lên trong khoảng 1 giây.
 
 - Icon ở khay hệ thống (tray): Mở dashboard, Cửa sổ gọn, **Chạy cùng Windows** (chỉ bản đã đóng gói, khởi động ẩn dưới tray), Mở thư mục log, Thoát.
 - Đóng cửa sổ = ẩn xuống tray, monitor vẫn chạy. Thoát thật từ menu tray (còn terminal đang chạy thì app hỏi trước).
@@ -39,7 +39,7 @@ Build:
 ```powershell
 npm install
 npm run dist        # tự chọn theo OS (Windows → dist:win, macOS → dist:mac)
-npm run dist:win    # → apps/desktop/release/: Agent-Monitor-Setup-<ver>.exe (NSIS) + Agent-Monitor-Portable-<ver>.exe
+npm run dist:win    # → apps/desktop/release/: GolAIm-Setup-<ver>.exe (NSIS) + GolAIm-Portable-<ver>.exe
 npm run desktop     # chạy thử bản dev, không đóng gói
 ```
 
@@ -50,12 +50,12 @@ Cùng app Electron, đóng gói `.dmg` cho Apple Silicon (`arm64`) và Intel (`x
 ```bash
 npm ci
 npm run dist        # = dist:mac trên macOS
-npm run dist:mac    # → apps/desktop/release/: Agent-Monitor-<ver>-arm64.dmg + Agent-Monitor-<ver>-x64.dmg
+npm run dist:mac    # → apps/desktop/release/: GolAIm-<ver>-arm64.dmg + GolAIm-<ver>-x64.dmg
 ```
 
 Không có Mac: GitHub → Actions → **desktop** → *Run workflow* (hoặc push tag `v*`). Workflow build DMG trên `macos-latest` và exe trên `windows-latest`, tải về ở mục *Artifacts* của lần chạy.
 
-- App ký **ad-hoc**, chưa notarize (chưa có Apple Developer ID). Lần đầu mở: kéo app vào **Applications**, mở → bị chặn → **System Settings → Privacy & Security → Open Anyway**. Hoặc: `xattr -dr com.apple.quarantine "/Applications/Agent Monitor.app"`. Đã cài bản tên cũ thì xoá `Claude Code Monitor.app` sau khi chép bản mới.
+- App ký **ad-hoc**, chưa notarize (chưa có Apple Developer ID). Lần đầu mở: kéo app vào **Applications**, mở → bị chặn → **System Settings → Privacy & Security → Open Anyway**. Hoặc: `xattr -dr com.apple.quarantine "/Applications/GolAIm.app"`. Đã cài bản tên cũ thì xoá `Claude Code Monitor.app` sau khi chép bản mới.
 - Chạy từ ổ DMG / Downloads thì app hỏi chuyển vào Applications (đường dẫn app nằm trong lệnh status line).
 - Lần đầu nhảy tới terminal hoặc mở phiên mới, macOS hỏi quyền **Automation** cho Terminal / iTerm2; nếu đã từ chối: **System Settings → Privacy & Security → Automation**.
 - Icon ở menu bar thay cho tray; Cmd W ẩn cửa sổ, bấm icon Dock để mở lại, Cmd Q thoát.
@@ -122,7 +122,7 @@ Mở **Cài đặt → Chẩn đoán** trước; nút **Lưu file log…** gom p
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| App báo cổng bận | Bản cũ chạy bằng `.bat` / `npm start` hoặc app khác giữ cổng: tắt nó (xoá lối tắt `Agent-Monitor.lnk` cũ trong thư mục Startup) hoặc đổi `CCM_PORT` |
+| App báo cổng bận | Bản cũ chạy bằng `.bat` / `npm start` hoặc app khác giữ cổng: tắt nó (xoá lối tắt `GolAIm.lnk` cũ trong thư mục Startup) hoặc đổi `CCM_PORT` |
 | Dashboard trống | Kiểm `~/.claude/sessions/` có file `<pid>.json`; thư mục khác thì đặt `CLAUDE_CONFIG_DIR` |
 | Không có giới hạn gói | Chưa cài status line bridge, hoặc Claude chưa trả lời lần nào sau khi cài |
 | Không có thông báo | Chưa bấm chuông, Windows chặn thông báo của app, hoặc session đang hoãn nhắc |

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { asElementPick, consoleLevel, formatConsoleBlock, formatElementBlock, pickerScript, pushConsole, sanitize, type ConsoleEntry } from './agentHandoff'
-import { fileStepKey, inSidewaysScroller } from './changesView'
+import { fileStepKey, scrollSideways, sidewaysScroller } from './changesView'
 import { DevServerDetector, devUrlLabel, normalizeDevUrl, stripAnsi } from './devServer'
 import { firstChangedLine, hunkPatch, parseUnifiedDiff } from './diff'
 import { fuzzyFilter, fuzzyScore, highlightRuns, parseQuickOpen } from './fuzzy'
@@ -193,21 +193,29 @@ describe('fileStepKey', () => {
   })
 })
 
-describe('inSidewaysScroller', () => {
+describe('sidewaysScroller', () => {
   const widths = (el: HTMLElement, scroll: number, client: number) => {
     Object.defineProperty(el, 'scrollWidth', { value: scroll, configurable: true })
     Object.defineProperty(el, 'clientWidth', { value: client, configurable: true })
   }
-  it('lets ← / → scroll a split side only while it overflows', () => {
+  it('finds a split side only while it overflows', () => {
     const side = document.createElement('div')
     side.dataset.side = 'left'
     const line = document.createElement('span')
     side.append(line)
     document.body.append(side)
     widths(side, 100, 100)
-    expect(inSidewaysScroller(line)).toBe(false)
+    expect(sidewaysScroller(line)).toBe(null)
     widths(side, 300, 100)
-    expect(inSidewaysScroller(line)).toBe(true)
+    expect(sidewaysScroller(line)).toBe(side)
+    const key = (k: string, shiftKey: boolean) => {
+      const e = new KeyboardEvent('keydown', { key: k, shiftKey })
+      Object.defineProperty(e, 'target', { value: line })
+      return e
+    }
+    expect(scrollSideways(key('ArrowRight', false))).toBe(false)
+    expect(scrollSideways(key('ArrowRight', true))).toBe(true)
+    expect(side.scrollLeft).toBeGreaterThanOrEqual(0)
     side.remove()
   })
   it('treats an overflowing overflow-x:auto ancestor (inline diff) the same', () => {
@@ -217,9 +225,9 @@ describe('inSidewaysScroller', () => {
     box.append(inner)
     document.body.append(box)
     widths(box, 300, 100)
-    expect(inSidewaysScroller(inner)).toBe(true)
+    expect(sidewaysScroller(inner)).toBe(box)
     box.style.overflowX = 'hidden'
-    expect(inSidewaysScroller(inner)).toBe(false)
+    expect(sidewaysScroller(inner)).toBe(null)
     box.remove()
   })
 })

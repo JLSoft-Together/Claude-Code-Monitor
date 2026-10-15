@@ -10,6 +10,7 @@ import v28 from './extensions-v28'
 import run from './run-v31'
 import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
+import fileEditor from './file-editor-v42'
 
 export default {
   ...v25.en,
@@ -18,8 +19,9 @@ export default {
   ...run.en,
   ...layout.en,
   ...fwp.en,
+  ...fileEditor.en,
   app: {
-    title: 'Agent Monitor',
+    title: 'GolAIm',
     skipToContent: 'Skip to content',
   },
   nav: {
@@ -57,7 +59,7 @@ export default {
       error: 'Error',
       gone: 'Session ended',
       disconnected: 'Disconnected',
-      unavailable: 'Terminals run only in the Agent Monitor desktop app',
+      unavailable: 'Terminals run only in the GolAIm desktop app',
     },
     error: {
       preset: 'Unknown launch preset',
@@ -67,7 +69,7 @@ export default {
     },
     empty: {
       title: 'No terminals yet',
-      body: 'Pick what to run and where. Terminals run inside Agent Monitor, so keystrokes never leave this machine.',
+      body: 'Pick what to run and where. Terminals run inside GolAIm, so keystrokes never leave this machine.',
     },
     wt: {
       title: 'Worktrees',
@@ -103,7 +105,7 @@ export default {
       dismiss: 'Forget previous workspace',
     },
     reopen: {
-      action: 'Open in Agent Monitor',
+      action: 'Open in GolAIm',
       show: 'Show in workspace',
       liveWarning: 'This session is still running in another terminal. Opening it here as well makes two instances write the same conversation.',
       confirm: 'Open anyway',
@@ -120,7 +122,6 @@ export default {
       waiting: 'Waiting for you',
       done: 'Finished',
       chip: '{n} needs you | {n} need you',
-      jump: 'Go to the next terminal that needs you ({keys})',
     },
     closeConfirm: {
       title: 'Close this terminal? | Close {n} terminals?',
@@ -633,7 +634,11 @@ export default {
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',
     close: 'Close settings',
-    section: { appearance: 'Appearance', notifications: 'Notifications', reminders: 'Reminders and budget', help: 'Help', launch: 'New sessions', access: 'File access' },
+    section: { appearance: 'Appearance', notifications: 'Notifications', reminders: 'Reminders and budget', help: 'Help', launch: 'New sessions', access: 'File access', startup: 'Startup' },
+    loginItem: 'Start with Windows',
+    loginItemMac: 'Open at login',
+    loginItemHint: 'Starts in the tray when you sign in, so sessions are tracked from the first terminal.',
+    loginItemHintMac: 'Opens when you log in, so sessions are tracked from the first terminal.',
     launchTerminal: 'Open sessions with',
     launchTerminalHint: 'Starred folders open in a new window of this app.',
     launchTerminalApp: { terminal: 'Terminal', iterm: 'iTerm2' },
@@ -644,6 +649,8 @@ export default {
     bridgeOff: 'Not set up',
     tourHint: 'A short walk through each part of the dashboard',
     diagHint: 'What the collector can see, for when something looks wrong',
+    fullAccess: 'Open files in every folder',
+    fullAccessHint: 'File tabs and Explorer read and edit any folder without asking, including ones with keys or .env files',
     forgetGrants: 'Forget allowed folders',
     forgetGrantsHint: 'Pages and files outside your terminal folders will ask again',
     forgetGrantsDone: 'Allowed folders forgotten',
@@ -696,7 +703,7 @@ export default {
     notifyWaiting: 'When a session waits for you',
     notifyDone: 'When Claude finishes replying',
     notifyHint: 'Shown only while this tab is in the background. The tab title also shows how many sessions are waiting.',
-    notifyBlocked: 'Notifications are blocked. Allow Agent Monitor to send notifications in system settings, then turn them on again.',
+    notifyBlocked: 'Notifications are blocked. Allow GolAIm to send notifications in system settings, then turn them on again.',
     notifyUnsupported: 'Notifications are not supported on this computer.',
     notifyOn: 'Turn on notifications',
     notifyOff: 'Turn off notifications',
@@ -881,7 +888,7 @@ export default {
     skip: 'Skip the guide',
     steps: {
       welcome: {
-        title: 'Welcome to Agent Monitor',
+        title: 'Welcome to GolAIm',
         body: 'This page watches every Claude Code session running on this machine, plus the Codex CLI runs they start, and tells you which one needs you. It only reads local files: it never types into an agent, never calls an API and costs no tokens. Take a one-minute tour?',
       },
       tabs: {

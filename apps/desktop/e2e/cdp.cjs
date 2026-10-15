@@ -19,6 +19,9 @@ const getJson = (url) =>
 async function launch(opts = {}) {
   if (!opts.keep) fs.rmSync(TMP, { recursive: true, force: true })
   fs.mkdirSync(TMP, { recursive: true })
+  // Decided "no" up front: the first-visit full-access confirm would otherwise sit modal over every run.
+  fs.mkdirSync(path.join(TMP, 'data'), { recursive: true })
+  if (!fs.existsSync(path.join(TMP, 'data', 'preview-full-access.json'))) fs.writeFileSync(path.join(TMP, 'data', 'preview-full-access.json'), '{"full":false}')
   const electron = opts.exe ?? path.join(REPO, 'node_modules/electron/dist/electron.exe')
   const child = spawn(electron, [`--user-data-dir=${path.join(TMP, 'ud')}`, `--remote-debugging-port=${DBG}`, "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", ...(opts.exe ? [] : [path.join(REPO, 'apps/desktop/stage')])], {
     env: { ...process.env, ...opts.env, CCM_PORT: String(PORT), CCM_DATA_DIR: path.join(TMP, 'data'), CCM_TOAST: '0' },

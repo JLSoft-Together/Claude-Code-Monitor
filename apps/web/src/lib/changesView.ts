@@ -76,13 +76,29 @@ export function fileStepKey(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey'
   return e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
 }
 
-/** Focus sits in a split side or another sideways scroller that overflows: ← / → scroll it instead of stepping files. */
-export function inSidewaysScroller(el: Element | null): boolean {
+/** Nearest split side or other sideways scroller around `el` that overflows. */
+export function sidewaysScroller(el: Element | null): HTMLElement | null {
   for (let n = el; n && n !== document.body; n = n.parentElement) {
-    if (n.scrollWidth <= n.clientWidth) continue
-    if (n.matches('[data-side]')) return true
+    if (n.scrollWidth <= n.clientWidth || !(n instanceof HTMLElement)) continue
+    if (n.matches('[data-side]')) return n
     const x = getComputedStyle(n).overflowX
-    if (x === 'auto' || x === 'scroll') return true
+    if (x === 'auto' || x === 'scroll') return n
   }
-  return false
+  return null
+}
+
+const SIDEWAYS_STEP = 40
+
+/**
+ * v34 ruling 4: ← / → step files even when the diff overflows sideways; Shift+← / → scroll it instead (the wheel and the
+ * scrollbar still work). A text selection keeps Shift+arrows for extending it. True when the key was used.
+ */
+export function scrollSideways(e: KeyboardEvent): boolean {
+  if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return false
+  const sel = window.getSelection()
+  if (sel && !sel.isCollapsed) return false
+  const box = sidewaysScroller(e.target instanceof Element ? e.target : null)
+  if (!box) return false
+  box.scrollLeft += e.key === 'ArrowRight' ? SIDEWAYS_STEP : -SIDEWAYS_STEP
+  return true
 }

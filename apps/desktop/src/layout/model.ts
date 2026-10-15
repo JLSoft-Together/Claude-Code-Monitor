@@ -57,6 +57,8 @@ interface Entry {
   /** Refreshed while another project was active: the daemon's cached copy holds old classes. */
   classesChanged: boolean
   diskChecked: boolean
+  /** When a watched .kt / .java changed after the model was built; 0 = none. */
+  codeChangedAt: number
 }
 
 type Resolved = { target: ModelTarget; name: string; library?: LibraryLink } | { reason: 'no-gradle' | 'no-app' }
@@ -70,6 +72,8 @@ const LOAD_TIMEOUT_MS = 120_000
 const RESOLVE_TTL_MS = 10_000
 const MAX_UP = 16
 const MAX_THEMES = 20
+const MAX_CODE_DIRS = 50
+const CODE_RE = /\.(kt|java)$/i
 const BLOCKING = new Set(['sdk-missing', 'jdk-missing', 'jdk-old', 'gradlew-missing', 'gradlew-not-executable'])
 
 const isApp = (m: AndroidModule): boolean => m.type === 'application' || m.guessed
@@ -215,6 +219,22 @@ function moduleDirOf(root: string, dir: string): string {
 
 const samePayload = (a: ParsedProjectModel, b: ParsedProjectModel): boolean => JSON.stringify(a.payload) === JSON.stringify(b.payload)
 
+/**
+ * Source roots whose .kt / .java feed the model's classes: modules with class output under the Gradle root
+ * (`<module>/build/...`) plus the modules owning the source res dirs (Flutter moves build/ out of android/).
+ */
+export function codeDirs(root: string, payload: { resDirs: string[]; classpath: string[] }, platform: NodeJS.Platform, exists: (p: string) => boolean): string[] {
+  const out = new Set<string>()
+  for (const p of payload.classpath) if (isGenerated(root, p)) out.add(path.join(moduleDirOf(root, p), 'src'))
+  for (const d of payload.resDirs) {
+    if (!isWithin(root, d, platform) || isGenerated(root, d)) continue
+    const parts = path.relative(root, d).split(/[\\/]/)
+    const i = parts.indexOf('src')
+    if (i >= 0) out.add(path.join(root, ...parts.slice(0, i + 1)))
+  }
+  return [...out].filter((d) => exists(d)).slice(0, MAX_CODE_DIRS)
+}
+
 function themesOf(model: ParsedProjectModel | null): string[] {
   if (!model) return []
   const out = new Set<string>()
@@ -323,7 +343,7 @@ export class LayoutModelService {
     if (e && name) e.name = name
     if (!e) {
       const hash = createHash('sha1').update(key).digest('hex').slice(0, 16)
-      e = { key, target, name: name ?? path.basename(target.root), hash, state: { state: 'none' }, model: null, at: 0, variant: 'debug', broken: false, classesChanged: false, diskChecked: false }
+      e = { key, target, name: name ?? path.basename(target.root), hash, state: { state: 'none' }, model: null, at: 0, variant: 'debug', broken: false, classesChanged: false, diskChecked: false, codeChangedAt: 0 }
       this.entries.set(key, e)
     }
     return e
@@ -374,7 +394,7 @@ export class LayoutModelService {
     if (!('target' in r)) return { target: null, reason: r.reason, state: { state: 'none' }, hasModel: false, themes: [] }
     const e = this.entry(r.target, r.name)
     await this.loadDisk(e)
-    return { target: { ...e.target, name: e.name }, ...(r.library ? { library: r.library } : {}), state: e.state, hasModel: !!e.model && !e.broken, themes: themesOf(e.model) }
+    return { target: { ...e.target, name: e.name }, ...(r.library ? { library: r.library } : {}), state: e.state, hasModel: !!e.model && !e.broken, themes: themesOf(e.model), codeChanged: !!e.model && e.codeChangedAt > 0 }
   }
 
   /** Before each render: pending res changes flushed, the right project (or none) loaded. `key` changes with the model. */
@@ -454,6 +474,8 @@ export class LayoutModelService {
         }),
       )
     }
+    const code = codeDirs(root, e.model!.payload, this.deps.platform, this.deps.exists ?? existsSync)
+    if (code.length) offs.push(this.deps.watchDirs(code, (files) => this.onCode(e.key, files)))
     if (!offs.length) return
     this.watchedKey = e.key
     this.unwatch = () => offs.forEach((off) => off())
@@ -499,10 +521,20 @@ export class LayoutModelService {
     if (fromTimer && e) this.deps.broadcast({ type: 'project-changed', root: e.target.root, module: e.target.module })
   }
 
+  /** Only while the project is loaded in the daemon, i.e. a preview rendered it in the last idle window. */
+  private onCode(key: string, files: string[]): void {
+    const e = this.entries.get(key)
+    if (!e || this.loadedKey !== key || e.codeChangedAt || !files.some((f) => CODE_RE.test(f))) return
+    e.codeChangedAt = this.now()
+    this.deps.broadcast({ type: 'code-changed', root: e.target.root, module: e.target.module })
+  }
+
   /** Daemon lifecycle: any (re)start drops the project; once ready, the wanted one is loaded again from the cache. */
   onDaemonState(state: string): void {
     if (state !== 'ready') {
       this.loadedKey = null
+      // Idle shutdown = no preview rendered for a while: stop watching until the next load.
+      this.stopWatch()
       return
     }
     const e = this.wanted
@@ -576,6 +608,7 @@ export class LayoutModelService {
       e.variant = parsed.variant
       e.at = this.now()
       e.broken = false
+      if (e.codeChangedAt < started) e.codeChangedAt = 0
       // New projectDeps may change which app a library layout borrows.
       this.resolved.clear()
       this.setState(e, this.ready(e))

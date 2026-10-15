@@ -1,4 +1,6 @@
 export const LAYOUTLIB_VERSION = '16.2.3'
+/** The bundled layoutlib renders exactly one API level (its runtime build.prop); there is no per-render switch. */
+export const LAYOUTLIB_API_LEVEL = 36
 
 export type BundleStatus =
   | { state: 'missing' }
@@ -16,6 +18,8 @@ export interface LayoutStatus {
   daemon: DaemonState
   /** Render daemon jar present (dev: `apps/layout-daemon` built). */
   jar: boolean
+  /** API level layoutlib renders with (from `initialize`, else the bundled default). */
+  apiLevel: number
 }
 
 export interface LayoutDevice {
@@ -49,6 +53,36 @@ export interface DaemonRenderResult {
   diagnostics: unknown
   renderMs: number
 }
+
+export interface DaemonDrawableResult {
+  requestId: string
+  png: string | null
+  width: number
+  height: number
+  swatches: unknown
+  diagnostics: unknown
+  renderMs: number
+}
+
+export interface DrawableSwatch {
+  state: string
+  /** `#AARRGGBB` */
+  color: string
+}
+
+export type DrawableRenderResult =
+  | {
+      ok: true
+      kind: 'drawable' | 'color'
+      pngUrl: string | null
+      width: number
+      height: number
+      swatches: DrawableSwatch[] | null
+      diagnostics: LayoutDiagnostic[]
+      renderMs: number
+      frameworkOnly: boolean
+    }
+  | { ok: false; code: string; detail?: string }
 
 export type LayoutRenderResult =
   | {
@@ -90,6 +124,8 @@ export interface LayoutModelInfo {
   hasModel: boolean
   /** Theme names from the merged manifest (app + activities), for the theme picker. */
   themes: string[]
+  /** `.kt` / `.java` of the model's modules changed after the model was built: custom views may be stale. */
+  codeChanged?: boolean
 }
 
 export type LayoutEvent =
@@ -97,3 +133,4 @@ export type LayoutEvent =
   | { type: 'daemon'; state: DaemonState; detail?: string }
   | { type: 'model'; root: string; module: string; state: ModelState }
   | { type: 'project-changed'; root: string; module: string }
+  | { type: 'code-changed'; root: string; module: string }

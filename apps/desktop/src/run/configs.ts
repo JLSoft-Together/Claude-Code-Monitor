@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { RUN_SHARED_DIR, type FlutterMode, type RunConfig, type RunProject } from '@ccm/shared'
+import { DEFAULT_RUN_TEMPLATES, RUN_SHARED_DIR, type FlutterMode, type RunConfig, type RunProject, type RunTemplates } from '@ccm/shared'
 import { projectKey } from '../layouts'
 import { isWithin } from '../preview/paths'
 
@@ -252,8 +252,31 @@ function pickMain(entrypoints: readonly string[]): string | undefined {
   return entrypoints.find((e) => e === 'lib/main.dart') ?? entrypoints[0]
 }
 
-/** One config per Flutter entrypoint (+ per flavor on the main one) and per runnable Android module. Ids are stable. */
-export function defaultConfigs(projects: readonly RunProject[], root: string): RunConfig[] {
+/** Strict like `cleanRunConfig`: a bad field falls back to the built-in default, never throws. */
+export function cleanTemplates(raw: unknown): RunTemplates {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, Record<string, unknown> | undefined>
+  const f = r.flutter ?? {}
+  const a = r.android ?? {}
+  const d = DEFAULT_RUN_TEMPLATES
+  const args = (v: unknown, def: string): string => (typeof v === 'string' && v.length <= MAX_ARGS ? v : def)
+  return {
+    flutter: {
+      mode: MODES.includes(f.mode as FlutterMode) ? (f.mode as FlutterMode) : d.flutter.mode,
+      flavor: typeof f.flavor === 'string' && FLAVOR_RE.test(f.flavor) ? f.flavor : d.flutter.flavor,
+      args: args(f.args, d.flutter.args),
+    },
+    android: {
+      variant: typeof a.variant === 'string' && VARIANT_RE.test(a.variant) ? a.variant : d.android.variant,
+      args: args(a.args, d.android.args),
+    },
+  }
+}
+
+/**
+ * One config per Flutter entrypoint (+ per flavor on the main one) and per runnable Android module. Ids are stable;
+ * mode / args / variant come from the templates, the template flavor only when the project declares it.
+ */
+export function defaultConfigs(projects: readonly RunProject[], root: string, templates: RunTemplates = DEFAULT_RUN_TEMPLATES): RunConfig[] {
   const flutter = projects.filter((p) => p.kind === 'flutter' && p.type === 'app')
   const android = projects.filter((p) => p.kind === 'android' && p.framework !== 'flutter')
   const out: RunConfig[] = []
@@ -265,8 +288,9 @@ export function defaultConfigs(projects: readonly RunProject[], root: string): R
       const extra = [tag, flavor].filter(Boolean).join(', ')
       return extra ? `${path.posix.basename(file)} (${extra})` : path.posix.basename(file)
     }
-    const base = { ...common, type: 'flutter', cwd: p.dir, device: 'selected', mode: 'debug', args: '', attachArgs: '' }
-    for (const e of p.entrypoints) out.push({ ...base, id: stableId(root, 'flutter', p.dir, e, ''), name: label(e), entrypoint: e, flavor: '' } as RunConfig)
+    const base = { ...common, type: 'flutter', cwd: p.dir, device: 'selected', mode: templates.flutter.mode, args: templates.flutter.args, attachArgs: '' }
+    const flavor = p.flavors.includes(templates.flutter.flavor) ? templates.flutter.flavor : ''
+    for (const e of p.entrypoints) out.push({ ...base, id: stableId(root, 'flutter', p.dir, e, ''), name: label(e), entrypoint: e, flavor } as RunConfig)
     const main = pickMain(p.entrypoints)
     if (main) for (const f of p.flavors) out.push({ ...base, id: stableId(root, 'flutter', p.dir, main, f), name: label(main, f), entrypoint: main, flavor: f } as RunConfig)
   }
@@ -283,9 +307,9 @@ export function defaultConfigs(projects: readonly RunProject[], root: string): R
         name: tag ? `${short} (${tag})` : short,
         cwd: p.dir,
         module: m.path,
-        variant: 'debug',
+        variant: templates.android.variant,
         device: 'selected',
-        args: '',
+        args: templates.android.args,
       })
     }
   }

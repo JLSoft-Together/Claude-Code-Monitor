@@ -94,6 +94,22 @@ async function run(app) {
   await waitFor(`!document.querySelector('[data-mission]')`, 5000, 'mission closed by Esc')
   check('Esc returns focus to the opener', await evaluate(`document.activeElement?.hasAttribute('data-strip-project')`))
 
+  // --- Exited pane that never printed: the host refuses a missing cwd, so its xterm stays empty ---
+  const GONE = path.join(BASE, 'gone')
+  const dead = JSON.stringify(await evaluate(`${W}.open('shell', ${JSON.stringify(GONE)}).key`))
+  await waitFor(`${W}.panes.find((p) => p.key === ${dead})?.state === 'error'`, 10000, 'spawn refused')
+  await evaluate(`${W}.update(${dead}, { state: 'exited', exitCode: 0, error: undefined })`)
+  await evaluate(`document.querySelector('[data-strip-project]').click()`)
+  await waitFor(`!!document.querySelector('[data-mission-window]')`, 5000, 'mission for exited pane')
+  check(
+    'exited pane window shows the empty text and its state',
+    await evaluate(`(() => { const w = document.querySelector('[data-mission-window=' + JSON.stringify(${dead}) + ']'); return !!w?.querySelector('[data-mission-empty]') && /Ended/.test(w.textContent) })()`),
+  )
+  await key('Escape', 'Escape', 27)
+  await waitFor(`!document.querySelector('[data-mission]')`, 5000, 'mission closed')
+  await evaluate(`${W}.remove(${dead}); ${W}.forget(${JSON.stringify(GONE)})`)
+  await sleep(300)
+
   // --- Needs-you list ---
   await evaluate(`${W}.update(${W}.panes[1].key, { attention: 'waiting' }); ${W}.update(${W}.panes[2].key, { attention: 'waiting' })`)
   await sleep(300)
@@ -107,12 +123,51 @@ async function run(app) {
   await sleep(300)
   check('↓ + Enter focuses the second entry', !!second && !(await evaluate(`!!document.querySelector('[data-attention-popover]')`)) && [await evaluate(`${W}.panes[1].key`), await evaluate(`${W}.panes[2].key`)].includes(await evaluate(`${W}.activeKey`)))
 
+  // --- Waiting sessions from the collector (agent rows), oldest first ---
+  const T = `${S}.get('terminals')`
+  await evaluate(`(() => {
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString()
+    for (const p of ${W}.panes) ${W}.update(p.key, { attention: undefined })
+    ${T}.upsert({ id: 'e2e-newer', title: 'e2e-newer', status: 'waiting', statusSince: ago(1) })
+    ${T}.upsert({ id: 'e2e-older', title: 'e2e-older', status: 'waiting', statusSince: ago(10) })
+    ${W}.update(${W}.panes[1].key, { preset: 'claude', terminalId: 'e2e-newer' })
+    ${W}.update(${W}.panes[2].key, { preset: 'claude', terminalId: 'e2e-older' })
+  })()`)
+  await sleep(400)
+  await evaluate(`document.querySelector('[data-attention-chip]').click()`)
+  await waitFor(`!!document.querySelector('[data-attention-popover] [role=listbox]')`, 5000, 'needs list (sessions)')
+  const order = await evaluate(`[...document.querySelectorAll('[data-attention-popover] [role=option]')].map((o) => o.textContent.match(/e2e-\\w+/)?.[0] ?? '')`)
+  check('waiting sessions are listed oldest first', JSON.stringify(order) === JSON.stringify(['e2e-older', 'e2e-newer']), JSON.stringify(order))
+  await key('Escape', 'Escape', 27)
+  await evaluate(`(() => {
+    for (const p of ${W}.panes.slice(1, 3)) ${W}.update(p.key, { preset: 'shell', terminalId: undefined })
+    ${T}.remove('e2e-newer')
+    ${T}.remove('e2e-older')
+  })()`)
+  await sleep(300)
+
   // --- Alt+↓ reorders projects from the header ---
   await evaluate(`${NAV}.querySelector('[data-side-head]').focus()`)
   await chord('ArrowDown', 'ArrowDown', 40, ALT)
   const reordered = await evaluate(`[...${NAV}.querySelectorAll('[data-rail-name]')].map((n) => n.textContent.trim())`)
   check('Alt+↓ on a header moves the project down', JSON.stringify(reordered) === JSON.stringify(['beta', 'alpha']), JSON.stringify(reordered))
   check('order is remembered', (await evaluate(`localStorage.getItem('ccm.workspace.railOrder')`))?.includes('beta'))
+
+  // --- Open Project (native folder picker, not driven here): pinned above the scrolling project list ---
+  check('Open Project is pinned at the top of the rail', await evaluate(`(() => { const b = ${NAV}.querySelector('[data-rail-open-project]'); return !!b && /Open Project/.test(b.textContent) && ${NAV}.firstElementChild === b && !b.closest('.overflow-y-auto') })()`))
+
+  // --- Mouse wheel scrolls the tab strip sideways ---
+  const wheel = await evaluate(`(() => {
+    const strip = document.querySelector('[role=tablist][aria-label="Tabs"]') ?? document.querySelector('[data-tab-row] [role=tablist]')
+    strip.style.maxWidth = '90px'
+    strip.scrollLeft = 0
+    strip.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }))
+    const moved = strip.scrollLeft
+    strip.style.maxWidth = ''
+    strip.scrollLeft = 0
+    return moved
+  })()`)
+  check('vertical wheel scrolls the tab strip', wheel > 0, String(wheel))
 
   // --- Collapsed rail column ---
   await evaluate(`document.querySelector('button[aria-label="Show or hide projects"]').click()`)
@@ -121,6 +176,7 @@ async function run(app) {
   await evaluate(`document.querySelector('[data-rail-avatar]').click()`)
   await waitFor(`!!document.querySelector('[data-rail-flyout] [data-side-row]')`, 5000, 'flyout')
   check('avatar opens that project in a flyout', true)
+  check('column has the Open project icon, the flyout does not', await evaluate(`!!document.querySelector('[data-rail-column] > [data-rail-open-project][aria-label]') && !document.querySelector('[data-rail-flyout] [data-rail-open-project]')`))
   await shot('rail-04-column')
   await evaluate(`document.querySelector('button[aria-label="Show or hide projects"]').click()`)
   await sleep(400)

@@ -30,7 +30,8 @@ export type ChangesDiff =
   | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean; partial?: boolean }
   | { ok: false; error: ChangesError }
 
-export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank'
+/** `imports`: git gets the `all-blank` flags; the page drops import-only changes from the parsed diff. */
+export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank' | 'imports'
 
 export interface DiffOptions {
   /** Lines of context; 'full' = the whole file in one hunk (Diff Viewer with Collapse unchanged). */
@@ -65,6 +66,7 @@ const WHITESPACE_ARGS: Record<DiffWhitespace, string[]> = {
   eol: ['--ignore-space-at-eol'],
   all: ['-w'],
   'all-blank': ['-w', '--ignore-blank-lines'],
+  imports: ['-w', '--ignore-blank-lines'],
 }
 
 /** Page-supplied options → known values only. */

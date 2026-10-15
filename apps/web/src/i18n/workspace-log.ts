@@ -1,4 +1,4 @@
-// Merged into `workspace` of en.ts / vi.ts in v30: read-only Git Log pane.
+// Merged into `workspace` of en.ts / vi.ts in v30: Git Log pane (v36 adds the Branches toolbar's write actions).
 const en = {
   log: {
     title: 'Log',

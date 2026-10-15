@@ -89,7 +89,7 @@ export class CollectorHost {
     const child = utilityProcess.fork(this.opts.script, [], {
       env: { ...this.opts.env, FORCE_COLOR: '0' },
       stdio: 'pipe',
-      serviceName: 'Agent Monitor collector',
+      serviceName: 'GolAIm collector',
     })
     const onData = (buf: Buffer): void => {
       for (const line of String(buf).split(/\r?\n/)) if (line.trim()) this.write(line)

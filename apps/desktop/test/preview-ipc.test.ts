@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { GrantStore } from '../src/preview/grants'
+import { FullAccess, GrantStore } from '../src/preview/grants'
 import { registerPreviewIpc } from '../src/preview/ipc'
 import { workspaceChord } from '../src/preview/keys'
 import type { PreviewServer } from '../src/preview/server'
@@ -158,5 +158,87 @@ describe.skipIf(!findGit())('ccm:log-*', () => {
     expect(((await call('ccm:log-commit', { root: refs.root, hash })) as { ok: boolean }).ok).toBe(true)
     expect(((await call('ccm:log-contains', { root: refs.root, hash })) as { branches: string[] }).branches).toEqual(['main'])
     expect(((await call('ccm:log-diff', { root: refs.root, hash, path: 'a.txt' })) as { text: string }).text).toContain('+a')
+  })
+})
+
+describe('ccm:full-access', () => {
+  const file = path.join(outside, 'report.txt')
+
+  function withFull(confirm: boolean, store = new FullAccess()) {
+    const handlers = new Map<string, Handler>()
+    let asked = 0
+    registerPreviewIpc({
+      ipcMain: { handle: (ch: string, fn: Handler) => handlers.set(ch, fn), removeHandler: (ch: string) => handlers.delete(ch) } as never,
+      isAppFrame: () => true,
+      server: { tokensUnder: () => [] } as unknown as PreviewServer,
+      watcher: { listen: () => undefined } as unknown as RootWatcher,
+      shell: {} as never,
+      dialog: {} as never,
+      getWindow: () => null,
+      getRoots: () => [project],
+      confirmAccess: async () => false,
+      fullAccess: store,
+      confirmFullAccess: async () => {
+        asked++
+        return confirm
+      },
+    })
+    const call = (ch: string, ...args: unknown[]) => Promise.resolve(handlers.get(ch)!({ sender: { id: 1 } }, ...args))
+    return { call, asked: () => asked }
+  }
+
+  it('is off by default and stays off when the confirm is declined', async () => {
+    const { call, asked } = withFull(false)
+    expect(await call('ccm:full-access')).toBe(false)
+    expect(await call('ccm:full-access', true)).toBe(false)
+    expect(asked()).toBe(1)
+    expect(((await call('ccm:read-file', file)) as { kind: string }).kind).toBe('denied')
+  })
+
+  it('opens every folder once confirmed, persists, and closes again when turned off', async () => {
+    const store = path.join(tmp, 'data', 'preview-full-access.json')
+    const { call } = withFull(true, new FullAccess(store))
+    expect(await call('ccm:full-access', true)).toBe(true)
+    expect(((await call('ccm:read-file', file)) as { kind: string }).kind).toBe('text')
+    const again = withFull(false, new FullAccess(store))
+    expect(await again.call('ccm:full-access')).toBe(true)
+    expect(await again.call('ccm:full-access', false)).toBe(false)
+    expect(((await again.call('ccm:read-file', file)) as { kind: string }).kind).toBe('denied')
+    expect(new FullAccess(store).get()).toBe(false)
+  })
+})
+
+describe('ccm:full-access first visit', () => {
+  it('asks once while undecided, remembers a no, and asks again after the data is reset', async () => {
+    const store = path.join(tmp, 'data-first', 'preview-full-access.json')
+    let asked = 0
+    const make = (answer: boolean) => {
+      const handlers = new Map<string, Handler>()
+      registerPreviewIpc({
+        ipcMain: { handle: (ch: string, fn: Handler) => handlers.set(ch, fn), removeHandler: (ch: string) => handlers.delete(ch) } as never,
+        isAppFrame: () => true,
+        server: { tokensUnder: () => [] } as unknown as PreviewServer,
+        watcher: { listen: () => undefined } as unknown as RootWatcher,
+        shell: {} as never,
+        dialog: {} as never,
+        getWindow: () => null,
+        getRoots: () => [project],
+        confirmAccess: async () => false,
+        fullAccess: new FullAccess(store),
+        confirmFullAccess: async () => {
+          asked++
+          return answer
+        },
+      })
+      return (...args: unknown[]) => Promise.resolve(handlers.get('ccm:full-access')!({ sender: { id: 1 } }, ...args))
+    }
+    const first = make(false)
+    expect(await Promise.all([first('first'), first('first')])).toEqual([false, false])
+    expect(asked).toBe(1)
+    expect(await make(true)('first')).toBe(false)
+    expect(asked).toBe(1)
+    rmSync(path.dirname(store), { recursive: true, force: true })
+    expect(await make(true)('first')).toBe(true)
+    expect(asked).toBe(2)
   })
 })

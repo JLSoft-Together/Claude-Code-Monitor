@@ -78,7 +78,7 @@ export type RenameEntryResult =
   | { ok: false; error: 'invalid'; reason: EntryNameProblem }
   | { ok: false; error: 'exists' | 'denied' | 'missing' | 'busy' | 'failed' }
 
-export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'exists' | 'failed' }
+export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'failed' }
 
 type FsFailure = 'busy' | 'denied' | 'missing' | 'exists' | 'failed'
 const FS_CODES: Record<string, FsFailure> = { EPERM: 'busy', EBUSY: 'busy', EACCES: 'denied', ENOENT: 'missing', EEXIST: 'exists', ENOTEMPTY: 'exists' }
@@ -138,6 +138,8 @@ export async function trashEntry(root: string, target: unknown, trash: (p: strin
     await trash(from)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: fsFailure(err) }
+    // EEXIST / ENOTEMPTY here come from the trash itself (name clash, partial move), not from an entry the user named.
+    const why = fsFailure(err)
+    return { ok: false, error: why === 'exists' ? 'failed' : why }
   }
 }

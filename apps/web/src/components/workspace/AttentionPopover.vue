@@ -22,10 +22,17 @@ watch(
   },
 )
 
+const MARGIN = 8
+const GAP = 6
+const height = ref(0)
+
 const style = computed(() => {
-  const left = Math.max(8, Math.min(props.anchor.right - WIDTH, window.innerWidth - WIDTH - 8))
-  const origin = `${Math.round(props.anchor.left + props.anchor.width / 2 - left)}px 0`
-  return { left: `${left}px`, top: `${props.anchor.bottom + 6}px`, width: `${WIDTH}px`, '--ccm-origin': origin }
+  const left = Math.max(MARGIN, Math.min(props.anchor.right - WIDTH, window.innerWidth - WIDTH - MARGIN))
+  const x = Math.round(props.anchor.left + props.anchor.width / 2 - left)
+  const below = props.anchor.bottom + GAP
+  const up = below + height.value > window.innerHeight - MARGIN && props.anchor.top - GAP - height.value >= MARGIN
+  const top = up ? props.anchor.top - GAP - height.value : below
+  return { left: `${left}px`, top: `${top}px`, width: `${WIDTH}px`, '--ccm-origin': `${x}px ${up ? '100%' : '0'}` }
 })
 
 const footer = computed(() =>
@@ -73,12 +80,24 @@ function onOutside(e: PointerEvent): void {
   if (!root.value?.contains(target) && !props.trigger?.contains(target)) emit('close', false)
 }
 
+// offsetHeight, not the bounding box: the enter transition scales the menu.
+const sizer = new ResizeObserver(() => {
+  height.value = root.value?.offsetHeight ?? 0
+})
+
 onMounted(async () => {
   document.addEventListener('pointerdown', onOutside, true)
+  if (root.value) {
+    height.value = root.value.offsetHeight
+    sizer.observe(root.value)
+  }
   await nextTick()
   root.value?.querySelector<HTMLElement>('[role=listbox]')?.focus()
 })
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, true))
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onOutside, true)
+  sizer.disconnect()
+})
 </script>
 
 <template>

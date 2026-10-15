@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowDownToLine, CircleX, Search, Send, Trash2, TriangleAlert } from 'lucide-vue-next'
 import type { BuildError, LogLevel, RunKind, RunLogLine, RunSession, RunStream } from '@ccm/shared'
 import { baseName } from '../../lib/preview'
+import { isErrorLine } from '../../lib/runUi'
 import { inRoot, useRunStore } from '../../stores/run'
 
 const props = defineProps<{ session: RunSession | null; kind: RunKind; root: string }>()
@@ -102,7 +103,10 @@ function clear(): void {
   if (props.session) run.clearLog(props.session.id, streams.value)
 }
 
+const errorLine = (l: RunLogLine): boolean => l.stream === 'build' && (l.level === 'E' || (!l.level && isErrorLine(l.text)))
+
 function lineClass(l: RunLogLine): string {
+  if (errorLine(l)) return 'text-(--ccm-ansi-9) font-semibold bg-st-error-soft -mx-3 px-3'
   return l.level ? LEVEL_CLASS[l.level] : 'text-well-ink'
 }
 </script>
@@ -163,8 +167,8 @@ function lineClass(l: RunLogLine): string {
     <div ref="scroller" class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-well px-3 py-2 font-mono text-2xs leading-relaxed" role="log" :aria-label="streams[0] === 'build' ? t('run.tab.build') : runLabel" @scroll.passive="onScroll">
       <p v-if="session && run.isRestored(session.id)" class="pb-1 text-(--ccm-ansi-8)" data-run-restored>{{ t('run.log.restored') }}</p>
       <p v-if="offset > 0" class="pb-1 text-(--ccm-ansi-8)">{{ t('run.log.capped', { n: shown.length, total: filtered.length }) }}</p>
-      <div v-for="(l, i) in shown" :key="offset + i" class="break-all whitespace-pre-wrap" :class="lineClass(l)">
-        <span v-if="l.tag" class="text-(--ccm-ansi-8)">{{ l.level }}/{{ l.tag }}: </span>{{ l.text }}
+      <div v-for="(l, i) in shown" :key="offset + i" class="break-all whitespace-pre-wrap" :class="lineClass(l)" :data-run-error-line="errorLine(l) ? '' : undefined">
+        <span v-if="errorLine(l)" class="sr-only">{{ t('run.log.errorLine') }} </span><span v-if="l.tag" class="text-(--ccm-ansi-8)">{{ l.level }}/{{ l.tag }}: </span>{{ l.text }}
       </div>
       <p v-if="!shown.length" class="text-(--ccm-ansi-8)">{{ all.length ? t('run.log.emptyFiltered') : t('run.log.empty') }}</p>
     </div>

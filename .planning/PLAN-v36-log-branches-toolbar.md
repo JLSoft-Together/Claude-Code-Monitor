@@ -18,6 +18,16 @@ Goal: dải công cụ dọc bên trái Log: Show/Hide Branches, New Branch, Upd
 7. Dải dọc ở mép trái Log, vẫn hiện khi ẩn cây nhánh; nút đầu là Show/Hide Branches (chuyển từ header).
 8. Dòng đang focus trong cây = mục tiêu của toolbar; click vẫn lọc log như v30.
 
+## Đổi so với plan chi tiết (lúc review)
+- Xóa nhánh remote: `push <remote> --delete refs/heads/<b>` (đủ tên, tag cùng tên trên remote không bị xóa nhầm).
+- Update lỗi không nhận ra → `failed` (bỏ fallback `non-ff`: chỉ báo non-ff khi git nói rõ `non-fast-forward` / `Not possible to fast-forward` / `rejected`).
+- Compare dùng `refs/heads/<nhánh hiện tại>` thay `HEAD` (sau Swap thanh lọc hiện đúng nhánh nó liệt kê); detached → `HEAD`.
+- Clear trên strip so sánh khôi phục filter nhánh trước Compare (`branchBeforeCompare`), không để log đứng ở nhánh vừa so.
+- Navigate (`reveal`): commit không có trong list và đang có filter → xóa filter, tải lại ngay rồi mới phân trang tìm; không thấy trong 10 trang → thông báo `notLoaded`.
+- `busy` gồm `delete` (toolbar khóa New / Update / Delete / Fetch khi đang xóa, nút Delete hiện spinner).
+- Thêm: `fetch --all --no-write-fetch-head`, git < 2.29 thử lại không cờ; `pull --ff-only --no-rebase`; `setFilters` với nhánh mới xóa `notRef`.
+- Audit 2026-10-15: `selectedRef` reset khi ẩn cây / đổi repo (`LogRefsTree` key theo root); nhánh hiện tại là favorite hiện cả icon current lẫn sao (sao nhỏ cuối dòng, có aria-label); cây ref có Home / End, → vào con đầu, ← về cha; E2E favorite kiểm thứ tự (nổi lên trên nhánh thường), Compare kiểm list chỉ còn commit không có ở nhánh hiện tại.
+
 ## Out of scope
 Force push, xóa tag, checkout nhánh có sẵn, diff file giữa hai nhánh. Lệnh xóa không chạy trong E2E (không bấm được native confirm qua CDP) — unit test IPC phủ.
 

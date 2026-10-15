@@ -5,9 +5,10 @@ import type { BuildError, FwpEntry, FwpError, FwpResult, FwpSnapshot } from '@cc
 import { lineSplitter, parseBuildError } from '../run/parse'
 import { killTree, type Spawner } from '../run/proc'
 import { BadArgError } from '../run/resolve'
-import { findFlutterSdk, flutterSpawn, nodeEnvDeps, sdkInsideProject, type FlutterEnvOpts, type FlutterSdkLookup } from '../run/flutter/env'
+import { findFlutterSdk, flutterSpawn, nodeEnvDeps, sdkInsideProject, sdkSettings, type FlutterEnvOpts, type FlutterSdkLookup } from '../run/flutter/env'
 import { createMachineClient, type MachineClient, type MachineReply } from '../run/flutter/machine'
-import { hostSource, readPackage, SHOW_EXTENSION, writeHost } from './host'
+import { maskLog } from '../log-mask'
+import { ERROR_MARKER, hostSource, readPackage, SHOW_EXTENSION, writeHost } from './host'
 import { scanProject } from './scan'
 
 export interface FlutterPreviewDeps {
@@ -15,10 +16,12 @@ export interface FlutterPreviewDeps {
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
   home: string
-  settings: () => { flutterSdk: string | null }
+  settings: () => { flutterSdk: string | null; flutterSdkProjects?: Record<string, string> }
   emit: (snapshot: FwpSnapshot) => void
   /** Recursive watch of `<root>/lib`, debounced; returns the unsubscribe. */
   watch: (dir: string, onChange: (changed: string[]) => void) => () => void
+  /** `<root>/pubspec.yaml` edits, debounced; returns the unsubscribe. */
+  watchPubspec?: (root: string, onChange: () => void) => () => void
   kill?: (child: ChildProcess, sync?: boolean) => void
   findSdk?: (projectDir: string, opts: FlutterEnvOpts) => FlutterSdkLookup
   sdkInside?: (sdk: string, root: string) => boolean
@@ -27,6 +30,7 @@ export interface FlutterPreviewDeps {
   writeHost?: (root: string, source: string) => Promise<{ file: string; changed: boolean }>
   stopTimeoutMs?: number
   logFlushMs?: number
+  pubGetTimeoutMs?: number
 }
 
 const LOG_CAP = 300
@@ -34,12 +38,17 @@ const STOP_TIMEOUT = 5_000
 const FLAVOR = /^[A-Za-z0-9_-]{1,64}$/
 const CANCELLED: FwpResult = { ok: false, error: { code: 'cancelled' } }
 const LOST = /Lost connection to device/i
+const PUB_GET_TIMEOUT = 120_000
+const MESSAGE_CAP = 300
 
 interface Live {
   child: ChildProcess
   machine: MachineClient
   root: string
   pkg: string
+  sdk: string
+  deviceId: string
+  flavor: string | null
   appId: string | null
   started: boolean
   stopRequested: boolean
@@ -48,7 +57,11 @@ interface Live {
   deviceLost: boolean
   reloading: boolean
   reloadQueued: boolean
+  syncing: boolean
+  syncQueued: boolean
+  pubChild: ChildProcess | null
   unwatch: (() => void) | null
+  unwatchPubspec: (() => void) | null
   exited: Promise<void>
 }
 
@@ -92,10 +105,10 @@ export class FlutterPreviewService {
     if (gen !== this.gen) return CANCELLED
     const pkg = pubspec === null ? null : readPackage(pubspec)
     if (!pkg?.flutter) return this.fail({ code: 'not-flutter' })
-    const found = (this.deps.findSdk ?? findFlutterSdk)(root, { setting: this.deps.settings().flutterSdk, env, platform, home })
+    const found = (this.deps.findSdk ?? findFlutterSdk)(root, { ...sdkSettings(this.deps.settings(), root, platform), env, platform, home })
     if (!found.sdk) return this.fail({ code: found.issues[0]?.code ?? 'flutter-missing' })
     const inside = this.deps.sdkInside ?? ((sdk: string, dir: string) => sdkInsideProject(sdk, dir, { env, platform, home }, nodeEnvDeps))
-    if (found.source !== 'setting' && inside(found.sdk, root)) return this.fail({ code: 'fvm-local-unverified', detail: found.sdk })
+    if (found.source !== 'setting' && found.source !== 'project' && inside(found.sdk, root)) return this.fail({ code: 'fvm-local-unverified', detail: found.sdk })
     let hostFile: string
     try {
       const entries = await (this.deps.scan ?? scanProject)(root)
@@ -124,6 +137,9 @@ export class FlutterPreviewService {
       machine,
       root,
       pkg: pkg.name,
+      sdk: found.sdk,
+      deviceId,
+      flavor: flavor || null,
       appId: null,
       started: false,
       stopRequested: false,
@@ -132,12 +148,22 @@ export class FlutterPreviewService {
       deviceLost: false,
       reloading: false,
       reloadQueued: false,
+      syncing: false,
+      syncQueued: false,
+      pubChild: null,
       unwatch: null,
+      unwatchPubspec: null,
       exited: new Promise<void>((resolve) => (onExit = resolve)),
     }
     this.live = live
     const text = (line: string): void => {
       if (!line.trim()) return
+      const widgetError = this.widgetError(line)
+      if (widgetError) {
+        this.log(`${ERROR_MARKER}${widgetError.entry}: ${widgetError.detail}`)
+        if (live.started && this.live === live && !live.stopRequested) this.patch({ error: widgetError })
+        return
+      }
       this.log(line)
       if (LOST.test(line)) live.deviceLost = true
       const err = parseBuildError(line, root)
@@ -155,8 +181,7 @@ export class FlutterPreviewService {
       live.machine.flush()
       err.flush()
       live.machine.dispose()
-      live.unwatch?.()
-      live.unwatch = null
+      this.unwatch(live)
       onExit()
       if (this.live !== live) return
       this.live = null
@@ -171,7 +196,7 @@ export class FlutterPreviewService {
   }
 
   async show(id: string): Promise<FwpResult> {
-    this.patch({ current: id })
+    this.patch(this.snap.error?.code === 'widget' ? { current: id, error: null } : { current: id })
     const live = this.live
     if (!live?.started || !live.appId || live.stopRequested) return { ok: true }
     return this.sendShow(live, id)
@@ -187,9 +212,9 @@ export class FlutterPreviewService {
     }
     if (!live.stopRequested) {
       live.stopRequested = true
-      live.unwatch?.()
-      live.unwatch = null
+      this.unwatch(live)
       this.patch({ state: 'stopped', progress: null, error: null })
+      this.killPubGet(live)
       if (live.appId) void live.machine.request('app.stop', { appId: live.appId })
       else this.kill(live.child)
     }
@@ -207,8 +232,8 @@ export class FlutterPreviewService {
     const live = this.live
     if (!live) return
     live.stopRequested = true
-    live.unwatch?.()
-    live.unwatch = null
+    this.unwatch(live)
+    this.killPubGet(live, true)
     this.kill(live.child, true)
   }
 
@@ -247,6 +272,7 @@ export class FlutterPreviewService {
         live.started = true
         this.patch({ state: 'running', progress: null, error: null })
         live.unwatch = this.deps.watch(path.join(live.root, 'lib'), (changed) => void this.onSave(live, changed))
+        live.unwatchPubspec = this.deps.watchPubspec?.(live.root, () => void this.onPubspec(live)) ?? null
         if (this.snap.current) void this.sendShow(live, this.snap.current)
         return
       case 'app.log': {
@@ -279,7 +305,7 @@ export class FlutterPreviewService {
   }
 
   private async onSave(live: Live, changed: string[]): Promise<void> {
-    if (!changed.some((f) => f.endsWith('.dart')) || this.live !== live || !live.started || live.stopRequested) return
+    if (!changed.some((f) => f.endsWith('.dart')) || this.live !== live || !live.started || live.stopRequested || live.syncing) return
     if (live.reloading) {
       live.reloadQueued = true
       return
@@ -304,12 +330,105 @@ export class FlutterPreviewService {
     } finally {
       live.reloading = false
     }
-    if (this.live !== live || live.stopRequested) return
+    if (this.live !== live || live.stopRequested || live.syncing) return
     this.patch({ state: 'running', error })
     if (live.reloadQueued) {
       live.reloadQueued = false
       await this.onSave(live, ['.dart'])
     }
+  }
+
+  /** pub get, then a fresh session: new packages (plugins with native code too) need a rebuild, not a hot reload. */
+  private async onPubspec(live: Live): Promise<void> {
+    if (this.live !== live || !live.started || live.stopRequested) return
+    if (live.syncing) {
+      live.syncQueued = true
+      return
+    }
+    live.syncing = true
+    this.patch({ state: 'syncing', progress: null, error: null })
+    let error: FwpError | null = null
+    do {
+      live.syncQueued = false
+      error = await this.pubGet(live)
+    } while (!error && live.syncQueued && this.live === live && !live.stopRequested)
+    live.syncing = false
+    if (this.live !== live || live.stopRequested) return
+    if (error) return this.patch({ state: 'running', error })
+    void this.start(live.root, live.deviceId, live.flavor)
+  }
+
+  private pubGet(live: Live): Promise<FwpError | null> {
+    const { platform, env } = this.deps
+    const args = ['pub', 'get']
+    this.log(`> flutter ${args.join(' ')}`)
+    let child: ChildProcess
+    try {
+      const spec = flutterSpawn(live.sdk, args, platform, env)
+      child = this.deps.spawn({ file: spec.file, args: spec.args, cwd: live.root, verbatim: spec.windowsVerbatimArguments === true, stdin: 'ignore' })
+    } catch (e) {
+      return Promise.resolve({ code: 'pub-get', detail: e instanceof Error ? e.message : String(e) })
+    }
+    live.pubChild = child
+    let firstError: string | null = null
+    const onLine = (line: string): void => {
+      if (!line.trim()) return
+      this.log(line)
+      if (firstError === null && /error/i.test(line)) firstError = maskLog(line, this.deps.home, platform).slice(0, MESSAGE_CAP)
+    }
+    const out = lineSplitter(onLine)
+    const err = lineSplitter(onLine)
+    child.stdout?.on('data', out.push)
+    child.stderr?.on('data', err.push)
+    return new Promise((resolve) => {
+      let settled = false
+      const done = (code: number | null, detail?: string): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        out.flush()
+        err.flush()
+        if (live.pubChild === child) live.pubChild = null
+        if (code === 0) return resolve(null)
+        resolve({ code: 'pub-get', detail: detail ?? firstError ?? `exit ${code ?? 'signal'}` })
+      }
+      const timer = setTimeout(() => {
+        this.killPubGet(live)
+        done(null, 'timeout')
+      }, this.deps.pubGetTimeoutMs ?? PUB_GET_TIMEOUT)
+      child.once('error', (e) => done(null, e.message))
+      child.once('close', (code) => done(code))
+    })
+  }
+
+  private killPubGet(live: Live, sync = false): void {
+    if (live.pubChild) this.kill(live.pubChild, sync)
+    live.pubChild = null
+  }
+
+  private unwatch(live: Live): void {
+    live.unwatch?.()
+    live.unwatchPubspec?.()
+    live.unwatch = null
+    live.unwatchPubspec = null
+  }
+
+  /** Host marker line → panel error; masked and capped since the message may quote app data. */
+  private widgetError(line: string): FwpError | null {
+    const at = line.indexOf(ERROR_MARKER)
+    if (at < 0) return null
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(line.slice(at + ERROR_MARKER.length))
+    } catch {
+      return null
+    }
+    const { id, message } = (parsed ?? {}) as { id?: unknown; message?: unknown }
+    if (typeof id !== 'string' || typeof message !== 'string') return null
+    const clean = maskLog(message, this.deps.home, this.deps.platform)
+      .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+      .slice(0, MESSAGE_CAP)
+    return { code: 'widget', entry: id.slice(0, 512), detail: clean }
   }
 
   private fail(error: FwpError): FwpResult {

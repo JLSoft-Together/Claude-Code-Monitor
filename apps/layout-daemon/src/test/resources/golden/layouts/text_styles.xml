@@ -1,0 +1,7 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp" android:background="#FFFFFF">
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Headline" android:textSize="28sp" android:textStyle="bold" android:textColor="#212121"/>
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Italic body text" android:textSize="16sp" android:textStyle="italic" android:textColor="#424242"/>
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="All caps" android:textAllCaps="true" android:textColor="#C62828" android:letterSpacing="0.1"/>
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Centered monospace" android:typeface="monospace" android:gravity="center" android:background="#E3F2FD"/>
+  <TextView android:layout_width="160dp" android:layout_height="wrap_content" android:text="A long line that gets ellipsized at the end" android:singleLine="true" android:ellipsize="end"/>
+</LinearLayout>

@@ -45,7 +45,7 @@ export class PtySupervisor {
     const child = utilityProcess.fork(this.opts.script, [], {
       env: { ...process.env, CCM_PTY_TOKEN: this.token, CCM_PTY_ORIGINS: this.opts.origins.join(','), CCM_NODE_PTY: this.opts.nodePty, ...(this.opts.shellInitDir ? { CCM_PTY_INIT_DIR: this.opts.shellInitDir } : {}) },
       stdio: 'pipe',
-      serviceName: 'Agent Monitor terminals',
+      serviceName: 'GolAIm terminals',
     })
     const write = (buf: Buffer): void => void this.log?.write(buf)
     child.stdout?.on('data', write)

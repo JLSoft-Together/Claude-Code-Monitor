@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="#FFFFFF" android:gravity="center_horizontal">
+  <ImageView android:layout_width="96dp" android:layout_height="96dp" android:src="@android:drawable/ic_menu_camera" android:scaleType="fitCenter" android:background="#EEEEEE"/>
+  <ImageView android:layout_width="160dp" android:layout_height="64dp" android:src="@android:drawable/ic_menu_gallery" android:scaleType="centerCrop" android:layout_marginTop="8dp" android:background="#E0E0E0"/>
+  <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@android:drawable/star_big_on" android:layout_marginTop="8dp"/>
+</LinearLayout>

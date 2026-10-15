@@ -5,7 +5,7 @@ import { Circle, CircleCheck, CircleStop, CircleX, Eye, LoaderCircle, Play, Refr
 import type { FwpEntry, FwpError, FwpScanResult, FwpSnapshot, FwpState } from '@ccm/shared'
 import AppSelect, { type SelectOption } from '../AppSelect.vue'
 import { desktop } from '../../lib/desktop'
-import { EMPTY_SNAPSHOT, flavorsFrom, groupEntries, isLive, mobileDevices, relativeTo } from '../../lib/flutterPreview'
+import { EMPTY_SNAPSHOT, failingEntries, flavorsFrom, groupEntries, isLive, mobileDevices, previewDevice, readDeviceOverrides, relativeTo, withDeviceOverride } from '../../lib/flutterPreview'
 import { baseName } from '../../lib/preview'
 import { useRunStore } from '../../stores/run'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -15,34 +15,19 @@ const props = withDefaults(defineProps<{ path: string; revision: number; active?
 const { t, te } = useI18n()
 const run = useRunStore()
 const workspace = useWorkspaceStore()
-const DEVICE_KEY = 'ccm.fwp.device'
 const LOG_TAIL = 60
 const GROUPS = ['here', 'other'] as const
 
 const scan = shallowRef<FwpScanResult | null>(null)
 const scanning = ref(true)
 const snap = shallowRef<FwpSnapshot>(EMPTY_SNAPSHOT)
-const deviceId = ref<string>(readDevice())
+const deviceOverrides = ref<Record<string, string>>(readDeviceOverrides())
 const flavor = ref<string>('')
 const flavors = ref<string[]>([])
 const busy = ref(false)
 const actionError = shallowRef<FwpError | null>(null)
 const logOpen = ref(false)
 
-function readDevice(): string {
-  try {
-    return localStorage.getItem(DEVICE_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-watch(deviceId, (id) => {
-  try {
-    if (id) localStorage.setItem(DEVICE_KEY, id)
-  } catch {
-    // storage off
-  }
-})
 
 const root = computed(() => scan.value?.root ?? null)
 /** Snapshot of the session for this project; another project's session reads as idle here. */
@@ -56,30 +41,50 @@ const current = computed(() => (mine.value || snap.value.root === null ? snap.va
 const error = computed<FwpError | null>(() => actionError.value ?? (mine.value ? snap.value.error : null))
 const logTail = computed(() => (mine.value ? snap.value.log.slice(-LOG_TAIL) : []))
 
-const devices = computed(() => mobileDevices(run.devices))
-const deviceOptions = computed<SelectOption<string>[]>(() => devices.value.map((d) => ({ value: d.id, label: d.name, hint: d.emulator ? `${d.platform} · emulator` : d.platform })))
-const flavorOptions = computed<SelectOption<string>[]>(() => [{ value: '', label: t('fwp.noFlavor') }, ...flavors.value.map((f) => ({ value: f, label: f }))])
-const emulators = computed(() => run.emulators.slice(0, 3))
-
+// Main stops the device trackers once nothing holds a project; the panel needs them as much as a Run pane does.
+let releaseHold: (() => void) | null = null
 watch(
-  devices,
-  (list) => {
-    if (!list.some((d) => d.id === deviceId.value) && list[0]) deviceId.value = list[0].id
+  [root, () => props.active],
+  ([r, active]) => {
+    releaseHold?.()
+    releaseHold = r && active ? run.hold(r) : null
   },
   { immediate: true },
 )
+onBeforeUnmount(() => releaseHold?.())
+
+const devices = computed(() => mobileDevices(run.devices))
+// Owner rule: the preview runs on the device picked in the Run pane; the panel picker is a per-project override.
+const runDeviceId = computed(() => (root.value ? (run.selectedDevice(root.value)?.id ?? null) : null))
+const deviceId = computed<string>({
+  get: () => previewDevice(devices.value, root.value ? deviceOverrides.value[root.value] : null, runDeviceId.value),
+  set: (id) => {
+    if (root.value) deviceOverrides.value = withDeviceOverride(deviceOverrides.value, root.value, id, runDeviceId.value)
+  },
+})
+const deviceOptions = computed<SelectOption<string>[]>(() =>
+  devices.value.map((d) => {
+    const kind = d.emulator ? `${d.platform} · emulator` : d.platform
+    return { value: d.id, label: d.name, hint: d.id === runDeviceId.value ? `${kind} · ${t('fwp.runDevice')}` : kind }
+  }),
+)
+const failing = computed(() => failingEntries(entries.value, error.value, root.value))
+const flavorOptions = computed<SelectOption<string>[]>(() => [{ value: '', label: t('fwp.noFlavor') }, ...flavors.value.map((f) => ({ value: f, label: f }))])
+const emulators = computed(() => run.emulators.slice(0, 3))
 
 const STATE: Record<FwpState, { icon: typeof Circle; cls: string; spin?: boolean }> = {
   idle: { icon: Circle, cls: 'text-st-idle' },
   starting: { icon: LoaderCircle, cls: 'text-st-working', spin: true },
   running: { icon: CircleCheck, cls: 'text-st-working' },
   reloading: { icon: LoaderCircle, cls: 'text-st-working', spin: true },
+  syncing: { icon: LoaderCircle, cls: 'text-st-working', spin: true },
   failed: { icon: CircleX, cls: 'text-st-error' },
   stopped: { icon: CircleStop, cls: 'text-st-stale' },
 }
 
 function errorText(e: FwpError): string {
   if (e.code === 'build' && e.build) return t('fwp.error.build', { file: baseName(e.build.file), line: e.build.line, message: e.build.message })
+  if (e.code === 'widget') return t('fwp.error.widget', { name: entries.value.find((x) => x.id === e.entry)?.label ?? e.entry ?? '', detail: e.detail ?? '' })
   const key = `fwp.error.${e.code}`
   return te(key) ? t(key, { detail: e.detail ?? '' }) : t('fwp.error.other', { code: e.code })
 }
@@ -222,7 +227,8 @@ watch(
                   :data-fwp-entry="e.id"
                   @click="show(e)"
                 >
-                  <Eye v-if="current === e.id" :size="14" class="mt-0.5 shrink-0 text-accent-ink" aria-hidden="true" />
+                  <CircleX v-if="failing.has(e.id)" :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />
+                  <Eye v-else-if="current === e.id" :size="14" class="mt-0.5 shrink-0 text-accent-ink" aria-hidden="true" />
                   <Circle v-else :size="14" class="mt-0.5 shrink-0" :class="e.skipped ? 'text-ink-disabled' : 'text-ink-faint'" aria-hidden="true" />
                   <span class="flex min-w-0 flex-1 flex-col">
                     <span class="truncate text-xs" :class="e.skipped ? 'text-ink-muted' : current === e.id ? 'font-semibold text-accent-ink' : 'text-ink'">{{ e.label }}</span>
@@ -230,6 +236,7 @@ watch(
                       {{ group === 'other' ? `${e.file} · ` : '' }}{{ e.symbol.startsWith('?') ? '' : `${e.symbol} · ` }}{{ t('fwp.line', { line: e.line }) }}
                     </span>
                     <span v-if="e.skipped" class="text-2xs text-ink-muted" data-fwp-skipped>{{ t(`fwp.skipped.${e.skipped}`) }}</span>
+                    <span v-else-if="failing.has(e.id)" class="text-2xs text-ink-muted" data-fwp-entry-error>{{ t('fwp.entryError') }}</span>
                   </span>
                 </button>
               </li>

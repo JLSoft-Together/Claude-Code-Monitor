@@ -13,15 +13,17 @@ import {
   Settings2,
   Smartphone,
   Square,
+  Stethoscope,
   TabletSmartphone,
   Zap,
 } from 'lucide-vue-next'
-import { isRunLive, type RunConfig, type RunDevice, type RunEmulator, type RunKind } from '@ccm/shared'
+import { isRunLive, type RunConfig, type RunDevice, type RunEmulator, type RunKind, type RunState } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
+import { projectMark } from '../../lib/runUi'
 import { RUN_BUSY_STATES, useRunStore } from '../../stores/run'
 
 const props = defineProps<{ root: string; blocked: boolean }>()
-const emit = defineEmits<{ editConfigs: [] }>()
+const emit = defineEmits<{ editConfigs: []; toolchain: [] }>()
 
 const { t } = useI18n()
 const run = useRunStore()
@@ -42,12 +44,37 @@ const grouped = computed(() =>
 )
 
 const pending = ref(false)
-const canRun = computed(
-  () => !pending.value && !props.blocked && !!config.value && (!needsDevice.value || device.value?.state === 'ready') && !(pair.value && RUN_BUSY_STATES.includes(pair.value.state)),
-)
+/** Android plan §6 table: config / device menus are locked while the picked pair builds, installs or launches. */
+const LOCKING: readonly RunState[] = ['before-launch', 'building', 'installing', 'launching']
+const locked = computed(() => !!pair.value && LOCKING.includes(pair.value.state))
+/** No ready device: Run opens the device menu (with emulators) instead of being a dead button. */
+const noDevice = computed(() => needsDevice.value && device.value?.state !== 'ready')
+const canRun = computed(() => !pending.value && !props.blocked && !!config.value && !(pair.value && RUN_BUSY_STATES.includes(pair.value.state)))
+const runTitle = computed(() => (noDevice.value ? t('run.action.runNoDevice') : pairLive.value ? t('run.action.rerun') : t('run.action.run')))
+
+const project = computed(() => (config.value && config.value.type !== 'custom' ? run.projectAt(config.value.cwd) : null))
+const configTitle = computed(() => {
+  const c = config.value
+  if (!c) return t('run.config.label')
+  const p = project.value
+  const parts = [`${t('run.config.label')}: ${c.name}`]
+  if (p) {
+    const m = projectMark(p)
+    const guessed = p.kind === 'android' && c.type === 'android' && !!p.modules.find((x) => x.path === c.module)?.guessed
+    parts.push(`${t(`run.project.${m.label}`)}${guessed ? ` (${t('run.config.guessed')})` : ''}`)
+    if (guessed) parts.push(t('run.project.reason.guessed'))
+  }
+  if (locked.value) parts.push(t('run.config.locked'))
+  return parts.join(' — ')
+})
+const hiddenDevices = computed(() => (config.value?.type === 'flutter' ? run.devices.filter((d) => d.source === 'flutter').length - devices.value.length : 0))
 const pairLive = computed(() => !!pair.value && isRunLive(pair.value.state))
 const canStop = computed(() => !!focused.value && isRunLive(focused.value.state) && focused.value.state !== 'stopping')
-const canReload = computed(() => focused.value?.type === 'flutter' && focused.value.mode === 'debug' && focused.value.state === 'running')
+// A custom `flutter run --machine` command reports an appId; main refuses reload outside debug.
+const canReload = computed(() => {
+  const s = focused.value
+  return !!s && s.state === 'running' && ((s.type === 'flutter' && s.mode === 'debug') || (s.type === 'custom' && !!s.appId))
+})
 const devtools = computed(() => (focused.value && isRunLive(focused.value.state) ? focused.value.devtoolsUri : null))
 
 async function act(fn: () => Promise<unknown>): Promise<void> {
@@ -59,7 +86,10 @@ async function act(fn: () => Promise<unknown>): Promise<void> {
   }
 }
 
-const startRun = (): Promise<void> => act(() => run.start(props.root))
+function startRun(): Promise<void> {
+  if (noDevice.value) return toggle('device')
+  return act(() => run.start(props.root))
+}
 const stopRun = (): void => void (focused.value && run.stop(focused.value.id, props.root))
 const reload = (full: boolean): void => void (focused.value && run.reload(focused.value.id, full, props.root))
 const openDevtools = (): void => void (devtools.value && desktop?.openExternal?.(devtools.value))
@@ -70,6 +100,7 @@ const bar = ref<HTMLElement | null>(null)
 const launching = ref<string | null>(null)
 
 async function toggle(id: MenuId): Promise<void> {
+  if (locked.value && menu.value !== id) return
   menu.value = menu.value === id ? null : id
   if (!menu.value) return
   if (id === 'device') void run.loadEmulators()
@@ -143,7 +174,8 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
         class="ccm-btn-plain max-w-56 min-w-0 text-xs text-ink"
         aria-haspopup="menu"
         :aria-expanded="menu === 'config'"
-        :title="config ? `${t('run.config.label')}: ${config.name}` : t('run.config.label')"
+        :disabled="locked"
+        :title="configTitle"
         data-run-menu-button="config"
         @click="toggle('config')"
       >
@@ -173,6 +205,10 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
             <Settings2 :size="14" class="shrink-0 text-ink-muted group-focus-visible:text-on-accent" aria-hidden="true" />
             <span class="truncate">{{ t('run.config.edit') }}</span>
           </button>
+          <button type="button" role="menuitem" :class="MENU_ROW" data-run-toolchain-open @click="(close(true), emit('toolchain'))">
+            <Stethoscope :size="14" class="shrink-0 text-ink-muted group-focus-visible:text-on-accent" aria-hidden="true" />
+            <span class="truncate">{{ t('run.config.toolchain') }}</span>
+          </button>
         </div>
       </Transition>
     </div>
@@ -183,8 +219,8 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
         class="ccm-btn-plain max-w-48 min-w-0 text-xs text-ink"
         aria-haspopup="menu"
         :aria-expanded="menu === 'device'"
-        :disabled="!config"
-        :title="device ? `${t('run.device.label')}: ${device.name}` : t('run.device.label')"
+        :disabled="!config || locked"
+        :title="locked ? `${t('run.device.label')} — ${t('run.config.locked')}` : device ? `${t('run.device.label')}: ${device.name}` : t('run.device.choose')"
         data-run-menu-button="device"
         @click="toggle('device')"
       >
@@ -224,6 +260,7 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
             <Check v-if="d.id === device?.id" :size="14" class="shrink-0" aria-hidden="true" />
           </button>
           <p v-if="!devices.length" class="px-2 py-1.5 text-xs text-ink-muted">{{ t('run.device.noDevices') }}</p>
+          <p v-if="hiddenDevices > 0" class="px-2 py-1 text-2xs text-ink-faint" data-run-devices-hidden>{{ t('run.device.hidden') }}</p>
           <div class="mx-2 my-1 h-px bg-line" role="separator" />
           <p class="px-2 pt-1 pb-1 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('run.device.launch') }}</p>
           <button v-for="e in run.emulators" :key="`${e.source}:${e.id}`" type="button" role="menuitem" :class="MENU_ROW" :title="e.id" data-run-emulator @click="launch(e)">
@@ -244,8 +281,9 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
       type="button"
       class="ccm-btn-plain shrink-0 enabled:text-accent-ink"
       :disabled="!canRun"
-      :title="pairLive ? t('run.action.rerun') : t('run.action.run')"
-      :aria-label="pairLive ? t('run.action.rerun') : t('run.action.run')"
+      :title="runTitle"
+      :aria-label="runTitle"
+      :data-run-no-device="noDevice ? '' : undefined"
       data-run-start
       @click="startRun"
     >

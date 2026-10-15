@@ -8,7 +8,6 @@ import { applyOrder } from './railOrder'
 import type { RepoFacts } from './repo'
 
 export type RailState = 'failed' | 'asked' | 'ended' | 'working' | 'done' | 'starting' | 'idle'
-export const STATE_RANK: Record<RailState, number> = { failed: 6, asked: 5, ended: 4, working: 3, done: 2, starting: 1, idle: 0 }
 export const needsUser = (s: RailState): boolean => s === 'asked' || s === 'failed'
 
 export interface RailSession {

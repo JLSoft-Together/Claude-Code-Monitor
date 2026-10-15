@@ -1,9 +1,10 @@
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { rootKey } from './paths'
 
 export const GRANTS_FILE = 'preview-grants.json'
 export const MAX_GRANTS = 100
+export const FULL_ACCESS_FILE = 'preview-full-access.json'
 
 const isDir = (p: string): boolean => {
   try {
@@ -69,4 +70,53 @@ export class GrantStore {
       // read-only data dir: grants just do not survive a restart
     }
   }
+}
+
+/** Settings switch: every folder readable without asking. Off unless the file says so; only the app turns it on, after a native confirm. */
+export class FullAccess {
+  private on = false
+  // No file yet (first run, or the data dir was reset): the workspace asks once.
+  private decided = false
+
+  constructor(private readonly file?: string) {
+    if (!file) return
+    try {
+      const full = (JSON.parse(readFileSync(file, 'utf8')) as { full?: unknown }).full
+      this.on = full === true
+      this.decided = typeof full === 'boolean'
+    } catch {
+      // missing or unreadable: off, not decided
+    }
+  }
+
+  get(): boolean {
+    return this.on
+  }
+
+  asked(): boolean {
+    return this.decided
+  }
+
+  set(on: boolean): void {
+    this.on = on
+    this.decided = true
+    if (!this.file) return
+    try {
+      mkdirSync(path.dirname(this.file), { recursive: true })
+      writeFileSync(this.file, JSON.stringify({ full: on }))
+    } catch {
+      // read-only data dir: the switch lasts until quit
+    }
+  }
+}
+
+let drives: { at: number; list: string[] } | null = null
+
+/** Drive roots (Windows letters that exist) or `/`: what full access adds to the allowed roots. Cached 30 s: an unreachable mapped drive is slow to probe. */
+export function filesystemRoots(platform: NodeJS.Platform = process.platform): string[] {
+  if (platform !== 'win32') return ['/']
+  if (!drives || Date.now() - drives.at > 30_000) {
+    drives = { at: Date.now(), list: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((l) => `${l}:\\`).filter((r) => existsSync(r)) }
+  }
+  return drives.list
 }

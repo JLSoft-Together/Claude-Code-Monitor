@@ -8,6 +8,8 @@ export type SplitRow =
   | { kind: 'note'; text: string }
   | { kind: 'fold'; key: string; count: number }
   | { kind: 'gap' }
+  /** Align changes: filler under the shorter side of a fragment. */
+  | { kind: 'pad'; block: number }
 
 /** One change block as row ranges `[start, end)` on each side (JetBrains `Fragment`); an empty side = Inserted / Deleted. */
 export interface Fragment {
@@ -30,13 +32,15 @@ export interface SplitOpts {
   context: number
   /** `${hunk}:${unitFrom}` of folds the user opened. */
   expanded: ReadonlySet<string>
+  /** Pad the shorter side of each fragment so both sides line up (IntelliJ "Align changes"). */
+  align?: boolean
 }
 
 type Unit = { kind: 'ctx'; line: DiffLine; notes: string[] } | { kind: 'block'; index: number }
 
 /**
- * Side-by-side rows without filler lines: each side holds only its own lines; unchanged runs, folds and hunk gaps
- * take one row per line on both sides, so the two sides differ only inside fragments.
+ * Side-by-side rows without filler lines (unless `align`): each side holds only its own lines; unchanged runs, folds and
+ * hunk gaps take one row per line on both sides, so the two sides differ only inside fragments.
  */
 export function splitModel(file: DiffFile, blocks: readonly Block[], opts: SplitOpts): SplitModel {
   const left: SplitRow[] = []
@@ -96,6 +100,10 @@ export function splitModel(file: DiffFile, blocks: readonly Block[], opts: Split
           else if (l.type === 'add') right.push({ kind: 'line', line: l, block: unit.index })
           else if (l.type === 'note' && prev) (prev.type === 'del' ? left : right).push({ kind: 'note', text: l.text })
           if (l.type !== 'note') prev = l
+        }
+        if (opts.align) {
+          const pad = left.length - l1Start - (right.length - l2Start)
+          for (let k = 0; k < Math.abs(pad); k++) (pad > 0 ? right : left).push({ kind: 'pad', block: unit.index })
         }
         frags.push({ block: unit.index, type: b.type, l1Start, l1End: left.length, l2Start, l2End: right.length })
       }

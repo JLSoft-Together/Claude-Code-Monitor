@@ -1,6 +1,8 @@
 package dev.ccm.layoutdaemon
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.BridgeInflater
 import android.view.LayoutInflater
@@ -157,26 +159,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
             diags += Diagnostic("info", "Rendered with API $apiLevel (layoutlib); requested API ${req.apiLevel}")
         }
         val wanted = req.toConfig(diags)
-        val p = project
-        val callback = p?.callback ?: frameworkCallback
-        try {
-            if (wanted != config) {
-                LogCapture.collect(diags) {
-                    swapper.swap(
-                        device = wanted.toDeviceConfig(),
-                        theme = wanted.theme,
-                        projectResources = p?.resources ?: swapper.emptyProjectResources,
-                        callback = callback,
-                        minSdk = p?.spec?.minSdk ?: 0,
-                        targetSdk = p?.spec?.targetSdk ?: apiLevel,
-                    )
-                }
-                config = wanted
-            }
-        } catch (t: Throwable) {
-            diags += Diagnostic("error", "Device/theme config failed: ${t.describe()}")
-            config = null
-        }
+        val callback = applyConfig(wanted, diags)
         val t1 = System.nanoTime()
 
         val parser = LayoutParser(req.xml)
@@ -229,14 +212,8 @@ class LayoutRenderer(private val layoutlibDir: File) {
         }
         val t3 = System.nanoTime()
 
-        var pngPath: String? = null
         val img = image
-        if (img != null && writePng) {
-            val file = File(pngDir, "${++seq}.png")
-            PngWriter.write(img, file)
-            pngPath = file.absolutePath
-            File(pngDir, "${seq - KEEP_PNGS}.png").delete()
-        }
+        val pngPath = if (img != null && writePng) writePng(img) else null
         val t4 = System.nanoTime()
         val ms = { a: Long, b: Long -> (b - a) / 1_000_000 }
         return RenderOutcome(
@@ -253,6 +230,99 @@ class LayoutRenderer(private val layoutlibDir: File) {
                 "pngMs" to ms(t3, t4),
             ),
         )
+    }
+
+    /**
+     * One drawable / color state list file, drawn by layoutlib itself (`Drawable.createFromXml` against the session's
+     * resources and theme), so `@color` / `?attr` resolve like in a layout and misses surface as diagnostics.
+     */
+    fun renderDrawable(req: DrawableRequest): DrawableOutcome {
+        check(initialized) { "not initialized" }
+        val t0 = System.nanoTime()
+        val diags = ArrayList<Diagnostic>()
+        val wanted = RenderRequest(req.requestId, req.path, "<View/>", req.device, null, req.night, null, null).toConfig(diags)
+        applyConfig(wanted, diags)
+        val parser = LayoutParser(req.xml)
+        var image: BufferedImage? = null
+        var swatches: List<Swatch>? = null
+        LogCapture.collect(diags) {
+            val ctx = sdk.context as BridgeContext
+            val prevLog = Bridge.getLog()
+            try {
+                setBridgeLog(CookieLog(diags) { parser.current })
+                val block = BridgeXmlBlockParser(parser, ctx, ResourceNamespace.RES_AUTO)
+                try {
+                    if (req.colorList) {
+                        swatches = Drawables.swatches(ColorStateList.createFromXml(ctx.resources, block, ctx.theme))
+                    } else {
+                        val drawable = Drawable.createFromXml(ctx.resources, block, ctx.theme)
+                        drawable.state = Drawables.stateSet(req.states)
+                        drawable.jumpToCurrentState()
+                        val root = FrameLayout(ctx)
+                        val host = DrawableView(ctx, drawable)
+                        root.addView(host, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                        frameHook = { image = it }
+                        try {
+                            sdk.snapshot(root, 1L)
+                        } finally {
+                            host.restore()
+                        }
+                    }
+                } finally {
+                    block.ensurePopped()
+                }
+            } catch (t: Throwable) {
+                val at = parser.current
+                diags += Diagnostic("error", "Drawable failed: ${t.describe()}", at?.line, at?.column)
+                config = null
+            } finally {
+                setBridgeLog(prevLog)
+                frameHook = null
+            }
+            clearViewKeys(ctx)
+            flushPaparazziErrors()
+        }
+        val img = image
+        return DrawableOutcome(
+            png = img?.let(::writePng),
+            width = img?.width ?: wanted.width,
+            height = img?.height ?: wanted.height,
+            swatches = swatches,
+            diagnostics = diags,
+            renderMs = (System.nanoTime() - t0) / 1_000_000,
+        )
+    }
+
+    private fun writePng(img: BufferedImage): String {
+        val file = File(pngDir, "${++seq}.png")
+        PngWriter.write(img, file)
+        File(pngDir, "${seq - KEEP_PNGS}.png").delete()
+        return file.absolutePath
+    }
+
+    /** Swaps the session when device / theme / project changed; returns the callback views load through. */
+    private fun applyConfig(wanted: Config, diags: MutableList<Diagnostic>): ProjectCallback {
+        val p = project
+        val callback = p?.callback ?: frameworkCallback
+        try {
+            if (wanted != config) {
+                LogCapture.collect(diags) {
+                    swapper.swap(
+                        device = wanted.toDeviceConfig(),
+                        theme = wanted.theme,
+                        projectResources = p?.resources ?: swapper.emptyProjectResources,
+                        callback = callback,
+                        minSdk = p?.spec?.minSdk ?: 0,
+                        targetSdk = p?.spec?.targetSdk ?: apiLevel,
+                    )
+                }
+                config = wanted
+            }
+        } catch (t: Throwable) {
+            diags += Diagnostic("error", "Device/theme config failed: ${t.describe()}")
+            config = null
+        }
+        return callback
     }
 
     /**
@@ -535,7 +605,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
         private const val KEEP_PNGS = 8
         private val SPECIAL_TAGS = setOf("fragment", "include", "merge", "requestFocus", "tag", "blink")
         private const val WARMUP_XML = """<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="warmup"/></FrameLayout>"""
+    android:layout_width="match_parent" android:layout_height="match_parent"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="warmup"/><Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OK"/><EditText android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="x"/><ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_search"/></LinearLayout></FrameLayout>"""
 
         fun normalizeTheme(theme: String?): String {
             val t = theme?.trim().orEmpty()

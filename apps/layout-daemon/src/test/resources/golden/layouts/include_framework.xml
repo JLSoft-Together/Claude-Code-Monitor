@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="#FFFFFF">
+  <include layout="@android:layout/simple_list_item_1"/>
+  <include layout="@android:layout/simple_list_item_2"/>
+  <View android:layout_width="match_parent" android:layout_height="2dp" android:background="#9E9E9E"/>
+</LinearLayout>

@@ -111,6 +111,7 @@ class RpcServer(
             when (method) {
                 "initialize" -> onWorker(id) { initialize(params) }
                 "render" -> render(id, params)
+                "drawable/render" -> drawableRender(id, params)
                 "cancel", "\$/cancelRequest" -> {
                     val requestId = params.str("requestId") ?: params.str("id")
                     val hit = requestId != null && queued.contains(requestId) && cancelled.add(requestId)
@@ -238,12 +239,47 @@ class RpcServer(
             locale = params.str("locale"),
             apiLevel = params.int("apiLevel"),
         )
+        cancellable(id, requestId) { toJson(requestId, renderer.render(req)) }
+    }
+
+    private fun drawableRender(id: JsonElement?, params: JsonObject) {
+        val requestId = params.str("requestId") ?: id?.let { if (it.isJsonPrimitive) it.asString else null }
+            ?: throw RpcError(ErrorCodes.INVALID_PARAMS, "requestId required")
+        val xml = params.str("xmlContent") ?: throw RpcError(ErrorCodes.INVALID_PARAMS, "xmlContent required")
+        val device = params.get("device")?.takeIf { it.isJsonObject }?.asJsonObject
+        val req = DrawableRequest(
+            requestId = requestId,
+            path = params.str("path"),
+            xml = xml,
+            device = Device(device?.int("width") ?: 144, device?.int("height") ?: 144, device?.int("density") ?: 480),
+            night = params.get("night")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false,
+            states = params.get("states")?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { e -> e.takeIf { it.isJsonPrimitive }?.asString }.orEmpty(),
+            colorList = params.get("colorList")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false,
+        )
+        cancellable(id, requestId) {
+            val r = renderer.renderDrawable(req)
+            JsonObject().apply {
+                addProperty("requestId", requestId)
+                addProperty("png", r.png)
+                addProperty("width", r.width)
+                addProperty("height", r.height)
+                add("swatches", r.swatches?.let { list ->
+                    JsonArray().also { a -> list.forEach { s -> a.add(JsonObject().apply { addProperty("state", s.state); addProperty("color", s.color) }) } }
+                } ?: JsonNull.INSTANCE)
+                add("diagnostics", diagnosticsJson(r.diagnostics))
+                addProperty("renderMs", r.renderMs)
+            }
+        }
+    }
+
+    /** Serialized on the worker; `cancel` drops it while still queued. */
+    private fun cancellable(id: JsonElement?, requestId: String, block: () -> JsonElement) {
         queued += requestId
         onWorker(id) {
             try {
                 if (cancelled.remove(requestId)) throw RpcError(ErrorCodes.REQUEST_CANCELLED, "Request $requestId cancelled")
                 if (!renderer.initialized) throw RpcError(ErrorCodes.NOT_INITIALIZED, "initialize first")
-                toJson(requestId, renderer.render(req))
+                block()
             } finally {
                 queued.remove(requestId)
                 cancelled.remove(requestId)
@@ -270,18 +306,20 @@ class RpcServer(
         addProperty("width", r.width)
         addProperty("height", r.height)
         add("viewTree", r.viewTree?.let(::nodeJson) ?: JsonNull.INSTANCE)
-        add("diagnostics", JsonArray().also { arr ->
-            r.diagnostics.forEach { d ->
-                arr.add(JsonObject().apply {
-                    addProperty("severity", d.severity)
-                    addProperty("message", d.message)
-                    if (d.line != null) addProperty("line", d.line)
-                    if (d.column != null) addProperty("column", d.column)
-                })
-            }
-        })
+        add("diagnostics", diagnosticsJson(r.diagnostics))
         addProperty("renderMs", r.renderMs)
         add("timings", JsonObject().also { t -> r.timings.forEach { (k, v) -> t.addProperty(k, v) } })
+    }
+
+    private fun diagnosticsJson(list: List<Diagnostic>): JsonArray = JsonArray().also { arr ->
+        list.forEach { d ->
+            arr.add(JsonObject().apply {
+                addProperty("severity", d.severity)
+                addProperty("message", d.message)
+                if (d.line != null) addProperty("line", d.line)
+                if (d.column != null) addProperty("column", d.column)
+            })
+        }
     }
 
     private fun nodeJson(n: ViewNode): JsonObject = JsonObject().apply {

@@ -4,11 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { BellRing } from 'lucide-vue-next'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useRail } from '../../composables/useRail'
+import { hasRun } from '../../lib/desktop'
 import { motionMs } from '../../lib/motion'
-import { snapshotOf } from '../../lib/paneSnapshots'
+import { lastRows, snapshotOf } from '../../lib/paneSnapshots'
 import { flipTransform, missionShelf, type MissionSpace, type MissionWindow } from '../../lib/rail/mission'
 import type { RailState } from '../../lib/rail/railModel'
 import { folderName, shellTitle } from '../../lib/sidebarRows'
+import { useRunStore } from '../../stores/run'
 import { isTerm, tabProject, useWorkspaceStore, type Pane } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import PaneIcon from './PaneIcon.vue'
@@ -18,6 +20,7 @@ const emit = defineEmits<{ close: [focusOpener: boolean] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
+const run = useRunStore()
 const { clusters } = useRail()
 const { labelOf, sessionOf } = usePaneInfo()
 
@@ -50,14 +53,28 @@ const spaces = computed(() => shelf.value.flatMap((g) => g.spaces))
 const previewKey = ref<string | null>(null)
 const previewed = computed<MissionSpace | null>(() => spaces.value.find((s) => s.tabKey === previewKey.value) ?? spaces.value.find((s) => s.current) ?? spaces.value[0] ?? null)
 
-// Taken once per previewed space, never live: the text stays in this component's memory only.
+/** Run panes have no xterm: their window shows the tail of the focused run's log. */
+function runTail(paneKey: string): string {
+  const pane = paneOf(paneKey)
+  if (!hasRun || pane?.kind !== 'run' || !pane.cwd) return ''
+  const session = run.focusedSession(pane.cwd)
+  return session ? lastRows(run.linesFor(session.id).slice(-ROWS * 4).map((l) => l.text), ROWS) : ''
+}
+
+// Taken once per space per opening, never live: hovering back and forth must not re-read buffers; memory only.
 const snaps = ref<Record<string, string>>({})
+const taken = new Map<string, Record<string, string>>()
 watch(
   () => [props.open, previewed.value?.tabKey] as const,
-  ([open]) => {
-    if (!open || !previewed.value) return
-    const next: Record<string, string> = {}
-    for (const w of previewed.value.windows) next[w.paneKey] = snapshotOf(w.paneKey, ROWS)
+  ([open, tabKey]) => {
+    if (!open) taken.clear()
+    if (!open || !previewed.value || !tabKey) return
+    let next = taken.get(tabKey)
+    if (!next) {
+      next = {}
+      for (const w of previewed.value.windows) next[w.paneKey] = snapshotOf(w.paneKey, ROWS) || runTail(w.paneKey)
+      taken.set(tabKey, next)
+    }
     snaps.value = next
   },
   { immediate: true },

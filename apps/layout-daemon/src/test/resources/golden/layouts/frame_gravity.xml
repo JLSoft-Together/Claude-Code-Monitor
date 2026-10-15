@@ -1,0 +1,5 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#ECEFF1">
+  <View android:layout_width="64dp" android:layout_height="64dp" android:layout_gravity="top|start" android:background="#F4511E"/>
+  <View android:layout_width="64dp" android:layout_height="64dp" android:layout_gravity="center" android:background="#3949AB"/>
+  <View android:layout_width="64dp" android:layout_height="64dp" android:layout_gravity="bottom|end" android:background="#7CB342"/>
+</FrameLayout>

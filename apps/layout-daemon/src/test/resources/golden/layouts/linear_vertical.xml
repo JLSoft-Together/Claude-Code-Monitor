@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp" android:background="#FFFFFF">
+  <View android:layout_width="match_parent" android:layout_height="48dp" android:background="#E53935"/>
+  <View android:layout_width="120dp" android:layout_height="48dp" android:layout_marginTop="8dp" android:background="#1E88E5"/>
+  <View android:layout_width="80dp" android:layout_height="80dp" android:layout_gravity="end" android:layout_marginTop="8dp" android:background="#43A047"/>
+</LinearLayout>

@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, LayoutTemplate, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, type EditBlock } from '../../lib/fileEditor'
+import { isTyping } from '../../lib/shortcuts'
+import { useWorkspaceStore, type SaveOutcome } from '../../stores/workspace'
 import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
 import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
@@ -16,14 +19,28 @@ import CodeMinimap from './CodeMinimap.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import HunkPopup from './HunkPopup.vue'
 import LayoutPreview from './LayoutPreview.vue'
+import DrawablePreview from './DrawablePreview.vue'
 import FlutterPreviewPanel from './FlutterPreviewPanel.vue'
 import { hasFlutterPreview, inFlutterProject, isDartFile } from '../../lib/flutterPreview'
+import { nextStacked } from '../../lib/sideWidth'
 import { desktop } from '../../lib/desktop'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
-import { hasLayoutPreview, isLayoutXml, type LayoutMode } from '../../lib/layoutPreview'
-import { baseName, changesDiscard, dirOf, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
+import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
+import { baseName, changesDiscard, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
-const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean }>(), { active: true })
+// CodeMirror stays out of the main chunk until a file is edited.
+const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
+interface EditorApi {
+  text: () => string
+  markSaved: (saved?: string) => void
+  setText: (text: string) => void
+  revealLine: (line: number, select?: boolean) => void
+  focus: () => void
+  openFind: () => void
+}
+
+const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean; paneKey?: string }>(), { active: true, paneKey: undefined })
 const emit = defineEmits<{
   open: [path: string]
   /** Repo root + absolute file path: open the Changes pane on this file. */
@@ -57,6 +74,27 @@ const root = ref<HTMLElement | null>(null)
 const codeEl = ref<HTMLElement | null>(null)
 const paneWidth = ref(0)
 
+// v42 editor. `pending` = unsaved text kept after Done (the view shows it, ● stays); `baseText` = disk text it started from.
+const workspace = useWorkspaceStore()
+const editing = ref(false)
+const editor = ref<EditorApi | null>(null)
+const dirty = ref(false)
+const pending = shallowRef<string | null>(null)
+const baseText = shallowRef('')
+const editorDoc = shallowRef('')
+let knownMtime: number | null = null
+let focusEditor = false
+const saving = ref(false)
+const savedFlash = ref(false)
+const editNotice = ref<{ kind: 'error' | 'info'; text: string } | null>(null)
+const conflict = shallowRef<{ text: string | null; mtimeMs: number } | null>(null)
+const compareText = shallowRef<string | null>(null)
+/** Unsaved text the layout / drawable preview renders instead of the file (null = the file). */
+const liveText = shallowRef<string | null>(null)
+let liveTimer: ReturnType<typeof setTimeout> | null = null
+let savedTimer: ReturnType<typeof setTimeout> | null = null
+const saveKey = isMac ? '⌘S' : 'Ctrl+S'
+
 // Change markers vs HEAD (IntelliJ gutter): bars beside the line numbers, popup with the old text.
 const changes = useFileChanges(
   () => props.path,
@@ -72,6 +110,8 @@ const GUTTER_OF = { added: 'add', modified: 'mod', deleted: 'del' } as const
 /** 0-based line → marker; a deletion marks the line now below it (or the last line at the end of the file). */
 const gutter = computed(() => {
   const map = new Map<number, { kind: GutterKind; block: number }>()
+  // Markers compare the disk text with HEAD; on unsaved text they would point at the wrong lines.
+  if (pending.value !== null) return map
   const n = lines.value.length
   changes.blocks.value.forEach((b, i) => {
     if (b.type === 'deleted') {
@@ -91,7 +131,7 @@ const showSource = computed(() => view.value?.kind === 'text' && !(markdown.valu
 const matches = computed<Match[]>(() => (findOpen.value && showSource.value ? findMatches(lines.value, query.value) : []))
 // XML layout preview (v32): Code | Split | Design for res/layout*/ files, per-user mode.
 const LAYOUT_MODE_KEY = 'ccm.layout.mode'
-const LAYOUT_STACK_WIDTH = 720
+const STACK_SETTLE_MS = 180
 function readLayoutMode(): LayoutMode {
   try {
     const v = localStorage.getItem(LAYOUT_MODE_KEY)
@@ -108,10 +148,26 @@ watch(layoutMode, (m) => {
     // storage off
   }
 })
-const isLayout = computed(() => hasLayoutPreview && view.value?.kind === 'text' && isLayoutXml(view.value.path || props.path))
-const showDesign = computed(() => isLayout.value && layoutMode.value !== 'code')
-const showCode = computed(() => !isLayout.value || layoutMode.value !== 'design')
-const layoutStacked = computed(() => paneWidth.value > 0 && paneWidth.value < LAYOUT_STACK_WIDTH)
+// v42: a loose layout XML anywhere (root element sniffed) previews too.
+const isLayout = computed(() => hasLayoutPreview && view.value?.kind === 'text' && isLayoutXml(view.value.path || props.path, view.value.text ?? null))
+// v41: res/drawable* / mipmap* / color*, or a loose XML whose root element is a drawable.
+const isDrawable = computed(() => hasDrawablePreview && view.value?.kind === 'text' && !isLayout.value && !!isDrawableXml(view.value.path || props.path, view.value.text ?? null))
+const isXmlPreview = computed(() => isLayout.value || isDrawable.value)
+const showDesign = computed(() => isXmlPreview.value && layoutMode.value !== 'code')
+// Code mode too: start the render daemon so switching to Design is fast (no Gradle).
+watch(isXmlPreview, (on) => on && void layoutWarmup(view.value?.path || props.path), { immediate: true })
+const showCode = computed(() => !isXmlPreview.value || layoutMode.value !== 'design')
+// Hysteresis + settle delay: dragging the sidebar across one threshold flipped the split every frame.
+const layoutStacked = ref(false)
+let stackTimer: ReturnType<typeof setTimeout> | null = null
+watch(paneWidth, (width, old) => {
+  if (stackTimer) clearTimeout(stackTimer)
+  stackTimer = null
+  const next = nextStacked(layoutStacked.value, width)
+  if (next === layoutStacked.value) return
+  if (!old) layoutStacked.value = next
+  else stackTimer = setTimeout(() => (layoutStacked.value = nextStacked(layoutStacked.value, paneWidth.value)), STACK_SETTLE_MS)
+})
 const layoutRevision = ref(0)
 const layoutLine = ref<number | null>(null)
 const layoutModes = computed<Segment<LayoutMode>[]>(() => [
@@ -153,10 +209,10 @@ watch(
 const sidePanel = computed(() => showDesign.value || showFwp.value)
 
 const codeWidth = computed(() => (sidePanel.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
-const minimap = computed(() => settings.minimap && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
+const minimap = computed(() => settings.minimap && !editing.value && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
 
 const html = computed(() => {
-  if (!showSource.value) return ''
+  if (!showSource.value || editing.value) return ''
   const byLine = new Map<number, Array<{ start: number; end: number; current?: boolean }>>()
   matches.value.forEach((m, i) => {
     const list = byLine.get(m.line) ?? []
@@ -190,9 +246,7 @@ let loadSeq = 0
 
 async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
   const seq = ++loadSeq
-  const prevLines = lines.value
   const prevView = view.value
-  const scrollTop = scroller.value?.scrollTop ?? 0
   if (!opts.keepScroll) loading.value = true
   const next = hasPreview ? await readFile(props.path) : null
   if (seq !== loadSeq) return
@@ -204,28 +258,184 @@ async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
     tokens.value = null
     return
   }
-  const text = next.text ?? ''
-  const nextLines = splitLines(text)
-  lines.value = nextLines
+  // Unsaved edits keep the mtime they were based on, so a later save still detects the newer disk file.
+  if (!dirty.value) {
+    knownMtime = next.mtimeMs
+    baseText.value = next.text ?? ''
+  }
   if (opts.keepScroll) {
     changes.reload()
     layoutRevision.value++
   }
-  if (opts.keepScroll && prevView?.kind === 'text') {
+  await paintText(pending.value ?? next.text ?? '', seq, !!opts.keepScroll && prevView?.kind === 'text')
+}
+
+/** Lines + shiki tokens of the view mode; `keepScroll` flashes changed lines and keeps the scroll position. */
+async function paintText(text: string, seq: number, keepScroll: boolean): Promise<void> {
+  const prevLines = lines.value
+  const scrollTop = scroller.value?.scrollTop ?? 0
+  const nextLines = splitLines(text)
+  lines.value = nextLines
+  if (keepScroll) {
     flashLines(changedLines(prevLines, nextLines))
     await nextTick()
     if (scroller.value) scroller.value.scrollTop = scrollTop
   }
-  const lang = grammarFor(next.lang, next.path)
-  if (!opts.keepScroll) tokens.value = null
+  const lang = grammarFor(view.value?.lang, view.value?.path ?? props.path)
+  if (!keepScroll) tokens.value = null
   const tok = await tokenize(text, lang)
   if (seq !== loadSeq) return
   tokens.value = tok
   plainBecauseLarge.value = !!lang && !tok && text.length > 400_000
-  if (opts.keepScroll) {
+  if (keepScroll) {
     await nextTick()
     if (scroller.value) scroller.value.scrollTop = scrollTop
   }
+}
+
+const grammar = computed(() => grammarFor(view.value?.lang, view.value?.path ?? props.path))
+const block = computed<EditBlock | null>(() => editBlock(view.value, lines.value.length, hasFileWrite))
+const canEdit = computed(() => hasFileWrite && view.value?.kind === 'text')
+
+async function startEdit(): Promise<void> {
+  if (editing.value) return editor.value?.focus()
+  if (block.value) {
+    editNotice.value = { kind: 'info', text: t(`editor.readOnly.${block.value}`) }
+    return
+  }
+  findOpen.value = false
+  closePopup()
+  if (markdown.value) mdPreview.value = false
+  editorDoc.value = pending.value ?? baseText.value
+  focusEditor = true
+  editing.value = true
+}
+
+/** Done: back to the view; unsaved text stays as `pending` (shown in the view, ● kept). */
+function finishEdit(): void {
+  const text = editor.value?.text() ?? pending.value
+  pending.value = dirty.value ? (text ?? null) : null
+  editing.value = false
+  compareText.value = null
+  void paintText(pending.value ?? baseText.value, loadSeq, true).then(() => jumpTo(editorLine ?? undefined))
+  void nextTick(() => root.value?.focus({ preventScroll: true }))
+}
+
+let editorLine: number | null = null
+function onCursorLine(line: number): void {
+  editorLine = line
+  if (showDesign.value) layoutLine.value = line
+}
+
+watch(editor, (api) => {
+  if (api && focusEditor) {
+    focusEditor = false
+    api.focus()
+  }
+})
+
+function onEditorChange(): void {
+  if (!isXmlPreview.value) return
+  if (liveTimer) clearTimeout(liveTimer)
+  liveTimer = setTimeout(() => {
+    liveTimer = null
+    liveText.value = dirty.value ? (editor.value?.text() ?? null) : null
+    layoutRevision.value++
+  }, 150)
+}
+
+watch(dirty, (d) => {
+  if (props.paneKey) workspace.setDirty(props.paneKey, d)
+  if (!d && liveText.value !== null) {
+    liveText.value = null
+    layoutRevision.value++
+  }
+})
+
+async function save(): Promise<SaveOutcome> {
+  const text = editing.value && editor.value ? editor.value.text() : pending.value
+  if (text === null || !dirty.value) return { ok: true }
+  if (saving.value) return { ok: false, error: t('editor.saving') }
+  saving.value = true
+  const res = await fileWrite(view.value?.path ?? props.path, text, knownMtime ?? undefined)
+  saving.value = false
+  if (!res.ok) {
+    const message = t(`editor.error.${res.error}`)
+    editNotice.value = { kind: 'error', text: message }
+    if (res.error === 'conflict' && !conflict.value) void checkDisk()
+    return { ok: false, error: message }
+  }
+  knownMtime = res.mtimeMs
+  baseText.value = text
+  if (view.value?.kind === 'text') view.value = { ...view.value, text, mtimeMs: res.mtimeMs, size: res.size }
+  if (editing.value) editor.value?.markSaved(text)
+  else {
+    pending.value = null
+    dirty.value = false
+  }
+  conflict.value = null
+  compareText.value = null
+  editNotice.value = null
+  savedFlash.value = true
+  if (savedTimer) clearTimeout(savedTimer)
+  savedTimer = setTimeout(() => (savedFlash.value = false), 1500)
+  changes.reload()
+  return { ok: true }
+}
+
+/** Watcher event for this file: follow the disk when clean, else raise the conflict bar (never overwrite edits). */
+async function checkDisk(): Promise<void> {
+  if (!editing.value && !dirty.value) return load({ keepScroll: true })
+  const next = await readFile(view.value?.path ?? props.path)
+  const action = diskChangeAction(next, knownMtime, dirty.value)
+  if (action === 'ignore') return
+  if (action === 'conflict') {
+    conflict.value = { text: next?.kind === 'text' ? (next.text ?? '') : null, mtimeMs: next?.mtimeMs ?? 0 }
+    return
+  }
+  if (next?.kind !== 'text') {
+    editing.value = false
+    return load()
+  }
+  knownMtime = next.mtimeMs
+  baseText.value = next.text ?? ''
+  view.value = next
+  editor.value?.setText(next.text ?? '')
+  changes.reload()
+  layoutRevision.value++
+}
+
+function reloadFromDisk(): void {
+  const c = conflict.value
+  conflict.value = null
+  compareText.value = null
+  pending.value = null
+  if (editing.value && c?.text != null) {
+    knownMtime = c.mtimeMs
+    baseText.value = c.text
+    editor.value?.setText(c.text)
+    if (view.value?.kind === 'text') view.value = { ...view.value, text: c.text, mtimeMs: c.mtimeMs }
+    changes.reload()
+    layoutRevision.value++
+    return
+  }
+  if (editing.value) editing.value = false
+  dirty.value = false
+  void load({ keepScroll: true })
+}
+
+/** Overwriting the newer disk file becomes the user's call: the next save goes through. */
+function keepMine(): void {
+  if (conflict.value) knownMtime = conflict.value.mtimeMs
+  conflict.value = null
+  compareText.value = null
+}
+
+async function compareWithDisk(): Promise<void> {
+  const text = conflict.value?.text
+  if (text == null) return
+  if (!editing.value) await startEdit()
+  compareText.value = text
 }
 
 function flashLines(changed: number[]): void {
@@ -236,6 +446,7 @@ function flashLines(changed: number[]): void {
 }
 
 async function jumpTo(line: number | undefined): Promise<void> {
+  if (line && editing.value) return editor.value?.revealLine(line)
   if (!line || !showSource.value) return
   targetLine.value = line
   await nextTick()
@@ -245,6 +456,7 @@ async function jumpTo(line: number | undefined): Promise<void> {
 /** A view (or a diagnostic) picked in the design half: scroll the code to its start tag, optionally selecting the line. */
 async function revealLayoutLine(line: number, select: boolean): Promise<void> {
   layoutLine.value = line
+  if (editing.value) return editor.value?.revealLine(line, select)
   await jumpTo(line)
   if (!select || !showCode.value) return
   const cell = scroller.value?.querySelector<HTMLElement>(`[data-line="${line}"] .c`)
@@ -270,7 +482,7 @@ const samePath = (a: string, b: string): boolean => {
 
 const offChange = onPreviewChanged((change) => {
   const file = view.value?.path ?? props.path
-  if (change.paths.some((p) => samePath(p, file) || samePath(p, props.path))) void load({ keepScroll: true })
+  if (change.paths.some((p) => samePath(p, file) || samePath(p, props.path))) void checkDisk()
 })
 
 async function openFind(): Promise<void> {
@@ -314,6 +526,28 @@ function onFindKey(e: KeyboardEvent): void {
 
 function onWindowKey(e: KeyboardEvent): void {
   if (!props.active || view.value?.kind !== 'text') return
+  const focused = document.activeElement
+  const inPane = !!focused && focused !== document.body && !!root.value?.contains(focused)
+  if (inPane && isSaveKey(e, isMac)) {
+    e.preventDefault()
+    e.stopPropagation()
+    void save()
+    return
+  }
+  if (editing.value) {
+    // Find / replace / F7 inside the editor belong to CodeMirror.
+    if (inEditor(e.target)) return
+    if (inPane && (isMac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault()
+      editor.value?.openFind()
+    }
+    return
+  }
+  if (inPane && canEdit.value && isEditKey(e) && !isTyping(e.target)) {
+    e.preventDefault()
+    void startEdit()
+    return
+  }
   if (e.key === 'F7' && !e.ctrlKey && !e.metaKey && !e.altKey && showSource.value && changes.blocks.value.length) {
     const focus = document.activeElement
     if (focus && focus !== document.body && !root.value?.contains(focus)) return
@@ -459,6 +693,18 @@ function onMarkdownClick(e: MouseEvent): void {
 watch(
   () => props.path,
   async () => {
+    // Only a rename moves a dirty pane (the preview slot skips dirty panes): keep the buffer, follow the new path.
+    if (dirty.value) {
+      const next = await readFile(props.path)
+      if (next?.kind === 'text') view.value = { ...next, text: view.value?.text ?? next.text }
+      void setWatch(next && next.kind !== 'denied' ? dirOf(next.path) : null)
+      return
+    }
+    editing.value = false
+    pending.value = null
+    conflict.value = null
+    compareText.value = null
+    editNotice.value = null
     findOpen.value = false
     targetLine.value = null
     layoutLine.value = null
@@ -479,6 +725,7 @@ watch(showSource, (src) => {
 const resize = new ResizeObserver(([entry]) => (paneWidth.value = entry?.contentRect.width ?? 0))
 
 onMounted(async () => {
+  if (props.paneKey) workspace.registerSaver(props.paneKey, save)
   window.addEventListener('keydown', onWindowKey, true)
   if (root.value) resize.observe(root.value)
   await load()
@@ -488,8 +735,15 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (props.paneKey) {
+    workspace.registerSaver(props.paneKey, null)
+    workspace.setDirty(props.paneKey, false)
+  }
+  if (liveTimer) clearTimeout(liveTimer)
+  if (savedTimer) clearTimeout(savedTimer)
   window.removeEventListener('keydown', onWindowKey, true)
   resize.disconnect()
+  if (stackTimer) clearTimeout(stackTimer)
   offChange()
   if (flashTimer) clearTimeout(flashTimer)
   void setWatch(null)
@@ -503,6 +757,9 @@ const lineCount = computed(() => lines.value.length)
     <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-2" role="toolbar" :aria-label="t('workspace.viewer.toolbar')">
       <FileText :size="15" class="mr-1 shrink-0 text-agent-file" aria-hidden="true" />
       <span class="shrink-0 truncate text-xs font-semibold text-ink" :title="view?.path ?? path">{{ name }}</span>
+      <span v-if="dirty" class="ml-1 shrink-0 text-xs leading-none text-warning" :title="t('editor.unsaved')" data-file-dirty>
+        <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>
+      </span>
       <span class="ml-1.5 min-w-0 flex-1 truncate text-2xs text-ink-faint" dir="rtl" :title="view?.path ?? path">
         <bdi>{{ dirOf(view?.path ?? path) }}</bdi>
       </span>
@@ -521,7 +778,7 @@ const lineCount = computed(() => lines.value.length)
         <span v-if="changeTotals.added" class="text-diff-add">+{{ changeTotals.added }}</span>
         <span v-if="changeTotals.removed" class="text-diff-del">−{{ changeTotals.removed }}</span>
       </button>
-      <SegmentedControl v-if="isLayout" v-model="layoutMode" class="mx-1 shrink-0" :options="layoutModes" :label="t('layout.mode.label')" icon-only data-layout-mode />
+      <SegmentedControl v-if="isXmlPreview" v-model="layoutMode" class="mx-1 shrink-0" :options="layoutModes" :label="t('layout.mode.label')" icon-only data-layout-mode />
       <button
         v-if="isDart && fwpProject"
         type="button"
@@ -539,6 +796,7 @@ const lineCount = computed(() => lines.value.length)
           type="button"
           class="ccm-btn-plain shrink-0"
           :aria-pressed="mdPreview"
+          :disabled="editing"
           :title="mdPreview ? t('workspace.viewer.source') : t('workspace.viewer.preview')"
           :aria-label="t('workspace.viewer.mdMode')"
           @click="mdPreview = !mdPreview"
@@ -566,10 +824,45 @@ const lineCount = computed(() => lines.value.length)
         :aria-pressed="findOpen"
         :title="`${t('workspace.viewer.find')} (${isMac ? '⌘F' : 'Ctrl+F'})`"
         :aria-label="t('workspace.viewer.find')"
-        @click="findOpen ? closeFind() : openFind()"
+        @click="editing ? editor?.openFind() : findOpen ? closeFind() : openFind()"
       >
         <Search :size="14" aria-hidden="true" />
       </button>
+      <template v-if="canEdit">
+        <span class="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+        <span v-if="saving" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-ink-muted" role="status">
+          <LoaderCircle :size="13" class="animate-spin" aria-hidden="true" />{{ t('editor.saving') }}
+        </span>
+        <span v-else-if="savedFlash" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-success" role="status" data-file-saved>
+          <Check :size="13" aria-hidden="true" />{{ t('editor.saved') }}
+        </span>
+        <button
+          v-if="dirty || editing"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :disabled="!dirty || saving"
+          :title="t('editor.saveHint', { key: saveKey })"
+          :aria-label="t('editor.save')"
+          data-file-save
+          @click="save()"
+        >
+          <Save :size="14" aria-hidden="true" />
+        </button>
+        <button v-if="editing" type="button" class="ccm-btn-plain shrink-0 gap-1 text-2xs" :title="t('editor.doneHint')" data-file-done @click="finishEdit">
+          <Check :size="14" aria-hidden="true" />{{ t('editor.done') }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="ccm-btn-plain shrink-0 gap-1 text-2xs"
+          :aria-disabled="!!block"
+          :title="block ? t(`editor.readOnly.${block}`) : t('editor.editHint')"
+          data-file-edit
+          @click="startEdit"
+        >
+          <Pencil :size="14" aria-hidden="true" />{{ t('editor.edit') }}
+        </button>
+      </template>
       <span class="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
       <button type="button" class="ccm-btn-plain shrink-0" :title="copied ? t('workspace.viewer.copied') : t('workspace.viewer.copyPath')" :aria-label="t('workspace.viewer.copyPath')" @click="copyPath">
         <Check v-if="copied" :size="14" class="text-success" aria-hidden="true" />
@@ -617,11 +910,54 @@ const lineCount = computed(() => lines.value.length)
     </Transition>
 
     <p v-if="notice" class="shrink-0 border-b border-line bg-st-waiting-soft px-3 py-1.5 text-xs text-ink" role="status">{{ notice }}</p>
-    <p v-if="plainBecauseLarge" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.viewer.plain') }}</p>
+    <p v-if="plainBecauseLarge && !editing" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.viewer.plain') }}</p>
+    <div
+      v-if="editNotice"
+      class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-ink"
+      :class="editNotice.kind === 'error' ? 'bg-st-error-soft' : 'bg-fill'"
+      :role="editNotice.kind === 'error' ? 'alert' : 'status'"
+      data-file-edit-notice
+    >
+      <CircleAlert v-if="editNotice.kind === 'error'" :size="14" class="shrink-0 text-st-error" aria-hidden="true" />
+      <Info v-else :size="14" class="shrink-0 text-ink-muted" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ editNotice.text }}</span>
+      <button type="button" class="ccm-btn-plain shrink-0" :aria-label="t('workspace.viewer.findClose')" @click="editNotice = null"><X :size="13" aria-hidden="true" /></button>
+    </div>
+    <div v-if="conflict" class="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-warning-soft px-3 py-1.5 text-xs text-ink" role="alert" data-file-conflict>
+      <CircleAlert :size="14" class="shrink-0 text-warning" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ conflict.text === null ? t('editor.disk.deleted') : t('editor.disk.changed') }}</span>
+      <button type="button" class="ccm-btn shrink-0" :title="t('editor.disk.reloadHint')" data-conflict-reload @click="reloadFromDisk">{{ t('editor.disk.reload') }}</button>
+      <button type="button" class="ccm-btn shrink-0" :title="t('editor.disk.keepHint')" data-conflict-keep @click="keepMine">{{ t('editor.disk.keep') }}</button>
+      <button v-if="conflict.text !== null" type="button" class="ccm-btn shrink-0" :aria-pressed="compareText !== null" :title="t('editor.disk.compareHint')" data-conflict-compare @click="compareWithDisk">
+        {{ t('editor.disk.compare') }}
+      </button>
+    </div>
+    <div v-if="compareText !== null && editing" class="flex shrink-0 items-center gap-2 border-b border-line bg-fill px-3 py-1 text-2xs text-ink-muted" role="status" data-file-compare>
+      <GitCompare :size="13" class="shrink-0 text-diff-mod" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ t('editor.disk.comparing') }}</span>
+      <button type="button" class="ccm-btn-plain shrink-0 text-2xs" @click="compareText = null">{{ t('editor.disk.closeCompare') }}</button>
+    </div>
+    <p v-if="liveText !== null && showDesign" class="flex shrink-0 items-center gap-1.5 border-b border-line px-3 py-1 text-2xs text-ink-muted" data-file-live>
+      <Eye :size="12" aria-hidden="true" />{{ t('editor.live') }}
+    </p>
 
     <div class="flex min-h-0 flex-1" :class="sidePanel && layoutStacked ? 'flex-col' : ''">
       <div v-show="showCode" class="flex min-h-0 min-w-0 flex-1">
-      <div ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
+      <CodeEditor
+        v-if="editing"
+        ref="editor"
+        :doc="editorDoc"
+        :base="baseText"
+        :grammar="grammar"
+        :wrap="wrap"
+        :compare="compareText"
+        :line="targetLine ?? line ?? null"
+        @dirty="(d: boolean) => (dirty = d)"
+        @change="onEditorChange"
+        @save="save()"
+        @cursor-line="onCursorLine"
+      />
+      <div v-else ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
         <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
         <div v-else-if="!hasPreview || !view || (view.kind !== 'text' && view.kind !== 'image')" class="grid size-full place-items-center p-6">
           <div class="flex max-w-sm flex-col items-center gap-2 text-center">
@@ -650,13 +986,21 @@ const lineCount = computed(() => lines.value.length)
         :target-line="targetLine"
         :changes="changes.blocks.value"
       />
-      <ChangeRuler v-else-if="showSource && !loading && changes.blocks.value.length" :blocks="changes.blocks.value" :line-count="lineCount" @jump="(i) => openChange(i, true)" />
+      <ChangeRuler v-else-if="!editing && pending === null && showSource && !loading && changes.blocks.value.length":blocks="changes.blocks.value" :line-count="lineCount" @jump="(i) => openChange(i, true)" />
       </div>
-      <LayoutPreview
-        v-if="showDesign"
+      <DrawablePreview
+        v-if="showDesign && isDrawable"
         :class="showCode ? (layoutStacked ? 'border-t border-line' : 'border-l border-line') : ''"
         :path="view?.path ?? path"
         :revision="layoutRevision"
+        :text="liveText"
+      />
+      <LayoutPreview
+        v-else-if="showDesign"
+        :class="showCode ? (layoutStacked ? 'border-t border-line' : 'border-l border-line') : ''"
+        :path="view?.path ?? path"
+        :revision="layoutRevision"
+        :text="liveText"
         :line="layoutLine"
         :active="active"
         @reveal="revealLayoutLine"

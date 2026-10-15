@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Bot, CircleAlert, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
 import { isRunLive, type EnvIssue, type RunSession, type RunState } from '@ccm/shared'
 import { desktop, type RunSettings } from '../../lib/desktop'
 import { baseName } from '../../lib/preview'
-import { issueKey, tidyIssueText } from '../../lib/runUi'
+import { issueKey, projectMark, runStep, tidyIssueText } from '../../lib/runUi'
 import { dirKey } from '../../stores/favorites'
 import { useRunStore } from '../../stores/run'
 import RunBar from './RunBar.vue'
 import RunConfigsDialog from './RunConfigsDialog.vue'
 import RunLog from './RunLog.vue'
+import RunProjectMark from './RunProjectMark.vue'
+import RunToolchainDialog from './RunToolchainDialog.vue'
 
 const props = withDefaults(defineProps<{ root: string; active?: boolean }>(), { active: true })
 const emit = defineEmits<{
@@ -32,9 +34,34 @@ watch(
     await run.ensure(true)
     await Promise.all([run.detected(props.root) ? null : run.detect(props.root), run.loadConfigs(props.root)])
     loaded.value = true
+    void run.autoImport(props.root)
   },
   { immediate: true },
 )
+
+// While shown, main watches the project files (re-detect, pub get banner) and keeps device trackers up.
+let release: (() => void) | null = null
+watch(
+  () => [props.active, props.root] as const,
+  ([active, root]) => {
+    release?.()
+    release = active ? run.hold(root) : null
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => release?.())
+
+const detectedProjects = computed(() => run.projectsFor(props.root))
+function markText(p: (typeof detectedProjects.value)[number]): string {
+  const m = projectMark(p)
+  return `${t(`run.project.${m.label}`)} · ${p.name}`
+}
+const reasonOf = (p: (typeof detectedProjects.value)[number]): string | null => {
+  const r = projectMark(p).reason
+  return r ? t(`run.project.reason.${r}`) : null
+}
+const step = computed(() => runStep(session.value))
+const toolchainOpen = ref(false)
 
 const config = computed(() => run.selectedConfig(props.root))
 const project = computed(() => {
@@ -94,7 +121,7 @@ function issueText(issue: EnvIssue, groups: string[]): string {
   return tidyIssueText(t(key, params))
 }
 
-type SdkTarget = keyof RunSettings
+type SdkTarget = Exclude<keyof RunSettings, 'flutterSdkProjects'>
 const SDK_TARGET: Record<string, SdkTarget> = {
   'flutter-missing': 'flutterSdk',
   'flutter-setting-invalid': 'flutterSdk',
@@ -152,7 +179,7 @@ function sessionLabel(s: RunSession): string {
     <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2">
       <CirclePlay :size="15" class="mr-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
       <span class="hidden shrink-0 text-xs font-semibold text-ink @md:inline">{{ t('run.title') }}</span>
-      <RunBar v-if="runnable" :root="root" :blocked="envIssues.length > 0" @edit-configs="configsOpen = true" />
+      <RunBar v-if="runnable" :root="root" :blocked="envIssues.length > 0" @edit-configs="configsOpen = true" @toolchain="toolchainOpen = true" />
       <span v-else class="min-w-0 flex-1 truncate text-2xs text-ink-faint" :title="root">{{ baseName(root) }}</span>
       <span v-if="env?.kind === 'flutter' && env.version" class="hidden shrink-0 items-center gap-1 text-2xs text-ink-faint @lg:inline-flex" :title="env.sdk ?? undefined">
         {{ t('run.flutter', { version: env.version }) }}
@@ -169,6 +196,16 @@ function sessionLabel(s: RunSession): string {
       <CircleSlash :size="22" class="text-ink-faint" aria-hidden="true" />
       <p class="text-sm font-medium text-ink">{{ t('run.empty.notRunnable') }}</p>
       <p class="max-w-sm text-xs text-ink-muted">{{ t('run.empty.notRunnableHint') }}</p>
+      <div v-if="detectedProjects.length" class="mt-2 flex w-full max-w-sm min-w-0 flex-col gap-1 text-left" data-run-found>
+        <p class="text-2xs font-semibold text-ink-faint">{{ t('run.empty.found') }}</p>
+        <div v-for="p in detectedProjects" :key="p.dir" class="flex min-w-0 items-start gap-2 rounded-inner bg-fill px-2 py-1.5 text-xs" :title="p.dir" data-run-found-project>
+          <RunProjectMark :project="p" class="mt-px" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-ink">{{ markText(p) }}</span>
+            <span v-if="reasonOf(p)" class="block text-2xs text-ink-muted">{{ reasonOf(p) }}</span>
+          </span>
+        </div>
+      </div>
     </div>
 
     <template v-else>
@@ -181,7 +218,7 @@ function sessionLabel(s: RunSession): string {
           {{ t(`run.state.${session?.state ?? 'idle'}`) }}
         </span>
         <span v-if="session?.progress" class="min-w-0 truncate text-ink-muted" :title="session.progress">{{ session.progress }}</span>
-        <span v-else-if="session?.state === 'failed' && session.failure" class="min-w-0 truncate text-ink-muted" :title="issueText(session.failure, ['fail', 'env'])">
+        <span v-else-if="session && !isRunLive(session.state) && session.failure" class="min-w-0 truncate text-ink-muted" :title="issueText(session.failure, ['fail', 'env'])" data-run-failure>
           {{ issueText(session.failure, ['fail', 'env']) }}
         </span>
         <span class="min-w-0 flex-1" />
@@ -197,6 +234,21 @@ function sessionLabel(s: RunSession): string {
           <option v-for="s in switchable" :key="s.id" :value="s.id">{{ sessionLabel(s) }} · {{ t(`run.state.${s.state}`) }}</option>
         </select>
         <span v-else-if="session" class="hidden min-w-0 truncate text-2xs text-ink-faint @md:inline" :title="session.cwd">{{ sessionLabel(session) }}</span>
+      </div>
+
+      <div
+        v-if="tone === 'busy'"
+        class="h-0.5 shrink-0 overflow-hidden bg-fill"
+        role="progressbar"
+        :aria-label="t('run.progress.label')"
+        :aria-valuemin="step ? 0 : undefined"
+        :aria-valuemax="step?.total"
+        :aria-valuenow="step?.n"
+        :aria-valuetext="step ? t('run.progress.step', step) : (session?.progress ?? undefined)"
+        data-run-progress
+      >
+        <div v-if="step" class="h-full bg-st-working transition-[width] duration-(--ccm-dur-base)" :style="{ width: `${(step.n / step.total) * 100}%` }" />
+        <div v-else class="ccm-shimmer h-full w-full bg-st-working" />
       </div>
 
       <div v-if="envIssues.length" class="flex shrink-0 items-start gap-2 border-b border-line bg-warning-soft px-3 py-2 text-xs" role="alert" data-run-env>
@@ -238,5 +290,6 @@ function sessionLabel(s: RunSession): string {
       <RunLog :session="session" :kind="session?.type ?? config?.type ?? 'custom'" :root="root" @open="(path, line) => emit('open', path, line)" @no-agent="noAgent = true" />
     </template>
     <RunConfigsDialog :open="configsOpen" :root="root" @close="configsOpen = false" />
+    <RunToolchainDialog :open="toolchainOpen" :root="root" :config="config" @close="toolchainOpen = false" />
   </section>
 </template>

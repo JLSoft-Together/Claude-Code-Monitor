@@ -37,12 +37,23 @@ describe('hostSource', () => {
     expect(src).not.toContain('_x')
     expect(src).toContain("registerExtension('ext.ccm.show'")
     expect(src).toContain('debugShowCheckedModeBanner: false')
-    expect(src).toContain('Select a widget in Agent Monitor')
+    expect(src).toContain('Select a widget in GolAIm')
+  })
+
+  it('turns widget errors into an error card and a marker line', () => {
+    expect(src).toContain('ErrorWidget.builder = (details) => _ErrorCard(details.exceptionAsString());')
+    expect(src).toContain("print('ccm.error ' + jsonEncode(")
+    expect(src).toContain('message.substring(0, 400)')
+    expect(src).toContain('void reassemble()')
   })
 
   it('is stable for the same input', () => {
     expect(hostSource('demo_app', entries)).toBe(src)
     expect(hostSource('demo_app', [])).toMatchSnapshot()
+  })
+
+  it('matches the snapshot with entries', () => {
+    expect(src).toMatchSnapshot()
   })
 })
 

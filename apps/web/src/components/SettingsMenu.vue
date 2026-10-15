@@ -7,7 +7,7 @@ import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
-import { forgetGrants, hasGrants } from '../lib/preview'
+import { forgetGrants, fullAccess, hasGrants } from '../lib/preview'
 import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
@@ -37,6 +37,17 @@ const grantsForgotten = ref(false)
 async function onForgetGrants(): Promise<void> {
   grantsForgotten.value = await forgetGrants()
   if (grantsForgotten.value) setTimeout(() => (grantsForgotten.value = false), 4000)
+}
+const fullAccessOn = ref<boolean | null>(null)
+async function setFullAccess(on: boolean): Promise<void> {
+  const now = await fullAccess(on)
+  fullAccessOn.value = typeof now === 'boolean' ? now : null
+}
+const loginItem = ref<boolean | null>(null)
+async function setLoginItem(on: boolean): Promise<void> {
+  loginItem.value = on
+  const now = await desktop?.loginItem?.(on)
+  loginItem.value = typeof now === 'boolean' ? now : null
 }
 // App zoom lives in the main process (Chromium level); read once per open, then follow the HUD.
 const appZoom = ref<number | null>(null)
@@ -209,6 +220,8 @@ watch(
   async (open) => {
     if (open) {
       void desktop?.zoomApp?.('get').then((pct) => (appZoom.value = typeof pct === 'number' ? pct : null))
+      void desktop?.loginItem?.().then((on) => (loginItem.value = typeof on === 'boolean' ? on : null))
+      void fullAccess().then((on) => (fullAccessOn.value = on))
       restoreFocus = document.activeElement as HTMLElement | null
       await nextTick()
       closeButton.value?.focus()
@@ -339,6 +352,19 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 </div>
               </div>
               <FontPicker kind="ui" />
+            </div>
+          </section>
+
+          <section v-if="loginItem !== null" aria-labelledby="set-startup" class="mt-6">
+            <h3 id="set-startup" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.startup') }}</h3>
+            <div class="ccm-group">
+              <ToggleSwitch
+                :model-value="loginItem"
+                :label="t(isMac ? 'settings.loginItemMac' : 'settings.loginItem')"
+                :hint="t(isMac ? 'settings.loginItemHintMac' : 'settings.loginItemHint')"
+                class="px-3"
+                @update:model-value="setLoginItem"
+              />
             </div>
           </section>
 
@@ -516,6 +542,15 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           <section v-if="hasGrants" aria-labelledby="set-access" class="mt-6">
             <h3 id="set-access" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.access') }}</h3>
             <div class="ccm-group overflow-hidden">
+              <ToggleSwitch
+                v-if="fullAccessOn !== null"
+                :model-value="fullAccessOn"
+                :label="t('settings.fullAccess')"
+                :hint="t('settings.fullAccessHint')"
+                class="px-3"
+                data-full-access
+                @update:model-value="setFullAccess"
+              />
               <button
                 type="button"
                 class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill disabled:cursor-default"

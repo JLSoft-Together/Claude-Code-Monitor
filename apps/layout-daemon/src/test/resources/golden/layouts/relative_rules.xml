@@ -1,0 +1,6 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#FFFFFF">
+  <View android:id="@+id/a" android:layout_width="100dp" android:layout_height="60dp" android:layout_centerInParent="true" android:background="#D81B60"/>
+  <View android:id="@+id/b" android:layout_width="60dp" android:layout_height="60dp" android:layout_toEndOf="@id/a" android:layout_alignTop="@id/a" android:background="#00897B"/>
+  <View android:layout_width="match_parent" android:layout_height="40dp" android:layout_below="@id/a" android:layout_marginTop="12dp" android:background="#5E35B1"/>
+  <View android:layout_width="40dp" android:layout_height="40dp" android:layout_alignParentBottom="true" android:layout_alignParentEnd="true" android:background="#FB8C00"/>
+</RelativeLayout>

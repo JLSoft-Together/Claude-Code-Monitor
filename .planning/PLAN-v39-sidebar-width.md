@@ -14,3 +14,6 @@ Goal: drag the width of the Workspace sidebar (Projects | Explorer), keyboard nu
 3. Same interaction as the Monitor `PanelSplitter`.
 
 Tests: `lib/sideWidth.test.ts`; E2E `apps/desktop/e2e/sidebar.cjs` (in `run.cjs`).
+
+## Follow-up (2026-10-15, plan-gaps)
+- Kéo sidebar làm Split của XML layout / widget preview (FilePane) lật stacked ↔ side-by-side liên tục quanh 720 px. Sửa: hysteresis `lib/sideWidth.ts` `nextStacked` (stacked khi < 700, side-by-side lại khi > 760) + chỉ áp sau khi bề rộng đứng yên 180 ms (đo lần đầu áp ngay). Không cần cờ "đang kéo" từ `WorkspaceView`: trong lúc kéo width đổi liên tục nên timer luôn bị huỷ. Test `sideWidth.test.ts`.

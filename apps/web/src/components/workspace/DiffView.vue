@@ -17,8 +17,11 @@ const props = defineProps<{
   /** Fold unchanged runs farther than `context` lines from a change. */
   collapse: boolean
   context: number
-  /** IntelliJ "Highlight": lines / words / characters inside Modified blocks. */
+  /** IntelliJ "Highlight": lines / words / split changes / characters / none. */
   highlight: DiffHighlight
+  /** Split view: line changed blocks up with filler rows; scroll both sides together. */
+  align?: boolean
+  sync?: boolean
   /** Revert buttons shown; `revertBlocked` (a reason) keeps them visible but inert. */
   canRevert: boolean
   revertBlocked?: string | null
@@ -134,6 +137,9 @@ function onClick(e: MouseEvent): void {
 
 async function scrollToBlock(i: number): Promise<void> {
   if (props.layout === 'split') return split.value?.scrollToBlock(i)
+  // A stale caret would win over the change F7 just moved to (sourceLine).
+  const sel = window.getSelection()
+  if (sel?.rangeCount && root.value?.contains(sel.focusNode)) sel.removeAllRanges()
   await nextTick()
   markCurrent()
   root.value?.querySelector<HTMLElement>(`[data-block="${i}"]`)?.scrollIntoView({ block: 'center' })
@@ -145,7 +151,55 @@ function lineOf(i: number): number | undefined {
   return b ? Math.max(1, b.line1 + 1) : undefined
 }
 
-defineExpose({ scrollToBlock, lineOf })
+/** New-side line of an inline row, the change it belongs to, or the next numbered row. */
+function rowLine(row: Element | null | undefined): number | undefined {
+  for (let r = row, k = 0; r && k < 500; r = r.nextElementSibling, k++) {
+    const h = r as HTMLElement
+    if (h.dataset.new) return Number(h.dataset.new)
+    if (h.dataset.block) return lineOf(Number(h.dataset.block))
+  }
+  return undefined
+}
+
+/** First row (binary search on the rendered rows) whose bottom is below `y`. */
+function rowAt(y: number): Element | undefined {
+  const rows = root.value?.children
+  if (!rows?.length) return undefined
+  let lo = 0
+  let hi = rows.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (rows[mid]!.getBoundingClientRect().bottom <= y) lo = mid + 1
+    else hi = mid
+  }
+  return rows[lo]
+}
+
+/**
+ * F4 target (IntelliJ keeps the caret): the caret / selection inside the diff, else the current change while it is on
+ * screen, else the first line at the top of the visible area.
+ */
+function sourceLine(): number | undefined {
+  if (props.layout === 'split') return split.value?.sourceLine()
+  const el = root.value
+  if (!el) return undefined
+  const sel = window.getSelection()
+  const node = sel?.rangeCount ? sel.focusNode : null
+  if (node && el.contains(node)) {
+    const row = (node instanceof Element ? node : node.parentElement)?.closest('.r, .fold, .gap')
+    if (row) return rowLine(row)
+  }
+  const view = (el.parentElement ?? el).getBoundingClientRect()
+  const cur = el.querySelectorAll(`[data-block="${props.current}"]`)
+  if (cur.length) {
+    const a = cur[0]!.getBoundingClientRect()
+    const b = cur[cur.length - 1]!.getBoundingClientRect()
+    if (b.bottom > view.top && a.top < view.bottom) return lineOf(props.current)
+  }
+  return rowLine(rowAt(view.top + 1))
+}
+
+defineExpose({ scrollToBlock, lineOf, sourceLine, switchSide: () => split.value?.switchSide() })
 </script>
 
 <template>
@@ -162,6 +216,8 @@ defineExpose({ scrollToBlock, lineOf })
     :revert-blocked="revertBlocked"
     :current="current"
     :sides="sides ?? { left: 'HEAD', right: t('workspace.diff.side.working') }"
+    :align="align ?? false"
+    :sync="sync ?? true"
     @revert="(i) => emit('revert', i)"
     @focus-block="(i) => emit('focusBlock', i)"
   />
@@ -169,6 +225,7 @@ defineExpose({ scrollToBlock, lineOf })
     v-else
     ref="root"
     class="diff ccm-code w-max min-w-full py-1"
+    :class="{ 'hl-none': highlight === 'none' }"
     role="document"
     data-code-zoom
     :aria-label="blocks.length ? t('workspace.diff.change', { n: current + 1, total: blocks.length }) : undefined"
@@ -234,6 +291,17 @@ defineExpose({ scrollToBlock, lineOf })
 .diff :deep(.r.note .c) {
   font-style: italic;
   color: var(--ccm-syn-comment, #7f8c98);
+}
+/* Highlight "None": no row tint; the sign and number columns still show the change. */
+.diff.hl-none :deep(.r.add),
+.diff.hl-none :deep(.r.del) {
+  background: transparent;
+}
+.diff.hl-none :deep(.r.add > .n) {
+  background: var(--add-bg);
+}
+.diff.hl-none :deep(.r.del > .n) {
+  background: var(--del-bg);
 }
 .diff :deep(mark.w-add) {
   color: inherit;

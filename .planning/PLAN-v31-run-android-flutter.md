@@ -30,3 +30,11 @@ Source: `Plan run android project.md` + `Plan run flutter proejct.md` (repo root
 
 ## Out of scope
 As listed in both source plans (debug adapters, attach, flavors/ABI splits for Android, multi-device for one config, test runner, release builds, in-app DevTools), plus reload-on-save.
+
+## Deviations recorded (plan-gaps pass, 2026-10-15)
+- Flutter daemon / adb tracker: one per SDK as planned; they now stop when no Run pane holds a project root (`ccm:run-hold`) and no session is live, and restart on the next device request. The Flutter Widget Preview panel asks for devices without a hold, so it can restart them; they stop again at the next idle point.
+- Device lost during a Flutter run: per plan §6 → state `stopped` (idle) with a `device-lost` notice in `RunSession.failure`, not `failed`.
+- Flavor configs: auto-created per detected flavor on the main entrypoint (plan said "suggest"); the template flavor applies to the entrypoint configs only when the project declares it.
+- Gradle args: per configuration (Android `args`, default from "Edit configuration templates…"), not a global Settings field as in the Android plan §6.
+- `flutter doctor --machine` is tried first; SDKs without it fall back to parsing `flutter doctor -v`.
+- Run output masking uses `createLogMasker` (same home / token rules as `maskLog`, minus the bare 32+ alphanumeric rule, which mangled Gradle task names); build-error file paths stay absolute so they can open.

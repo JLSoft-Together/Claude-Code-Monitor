@@ -9,7 +9,9 @@ import { parseFvmConfig } from './detect'
 export type FlutterSdkSource = FlutterEnv['source']
 
 export interface FlutterEnvOpts {
-  /** User-configured SDK root (SettingsMenu), tried first. */
+  /** Per-project SDK root (Run pane › Project SDK), tried first. */
+  projectSetting?: string | null
+  /** User-configured SDK root (SettingsMenu), tried next. */
   setting?: string | null
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
@@ -172,11 +174,31 @@ export function projectFvmVersion(projectDir: string, platform: NodeJS.Platform,
   return null
 }
 
-/** Lookup order: setting → FVM pin → FLUTTER_ROOT → PATH → OS defaults. */
+/** Key of `RunSettings.flutterSdkProjects`: resolved dir, case-folded on Windows. */
+export const projectSdkKey = (dir: string, platform: NodeJS.Platform): string => {
+  const resolved = pathFor(platform).resolve(dir)
+  return platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+/** `setting` + `projectSetting` for a project dir from the Run settings. */
+export function sdkSettings(
+  settings: { flutterSdk: string | null; flutterSdkProjects?: Record<string, string> },
+  dir: string,
+  platform: NodeJS.Platform,
+): Pick<FlutterEnvOpts, 'setting' | 'projectSetting'> {
+  return { setting: settings.flutterSdk, projectSetting: settings.flutterSdkProjects?.[projectSdkKey(dir, platform)] ?? null }
+}
+
+/** Lookup order: project setting → setting → FVM pin → FLUTTER_ROOT → PATH → OS defaults. */
 export function findFlutterSdk(projectDir: string, opts: FlutterEnvOpts, deps: EnvDeps = nodeEnvDeps): FlutterSdkLookup {
   const issues: EnvIssue[] = []
   const fvm = projectFvmVersion(projectDir, opts.platform, deps)
   const hit = (sdk: string, source: FlutterSdkSource): FlutterSdkLookup => ({ sdk, source, fvm, issues })
+  if (opts.projectSetting?.trim()) {
+    const dir = normalizeSetting(opts.projectSetting, opts.platform, deps)
+    if (isSdk(dir, opts.platform, deps)) return hit(dir, 'project')
+    issues.push({ code: 'flutter-project-invalid', detail: dir })
+  }
   if (opts.setting?.trim()) {
     const dir = normalizeSetting(opts.setting, opts.platform, deps)
     if (isSdk(dir, opts.platform, deps)) return hit(dir, 'setting')
@@ -238,7 +260,7 @@ export async function flutterEnv(projectDir: string, opts: FlutterEnvOpts, deps:
     issues: [...found.issues],
   }
   if (!found.sdk) return env
-  if (!opts.trusted && found.source !== 'setting' && sdkInsideProject(found.sdk, projectDir, opts, deps)) {
+  if (!opts.trusted && found.source !== 'setting' && found.source !== 'project' && sdkInsideProject(found.sdk, projectDir, opts, deps)) {
     env.issues.push({ code: 'fvm-local-unverified', detail: found.sdk })
     return env
   }

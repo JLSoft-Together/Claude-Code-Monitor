@@ -172,7 +172,8 @@ async function flavors(dir: string, deps: DetectDeps): Promise<string[]> {
   return [...out].slice(0, MAX_FLAVORS)
 }
 
-async function needsPubGet(dir: string, deps: DetectDeps): Promise<boolean> {
+/** No `.dart_tool/package_config.json`, no lock, or `pubspec.yaml` newer than the lock. */
+export async function needsPubGet(dir: string, deps: DetectDeps = nodeDetectDeps): Promise<boolean> {
   if (!(await deps.stat(path.join(dir, '.dart_tool', 'package_config.json')))?.isFile) return true
   const [yaml, lock] = await Promise.all([deps.stat(path.join(dir, 'pubspec.yaml')), deps.stat(path.join(dir, 'pubspec.lock'))])
   if (!lock?.isFile) return true

@@ -90,6 +90,11 @@ async function run(app) {
   check('no horizontal overflow', await evaluate(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`))
   await shot('fwp-01-panel')
 
+  await evaluate(`${S}.get('run').devices = [{ id: 'emu-a', name: 'Emu A', platform: 'android-x64', emulator: true, state: 'ready', source: 'flutter' }, { id: 'emu-b', name: 'Emu B', platform: 'android-x64', emulator: true, state: 'ready', source: 'flutter' }]`)
+  await waitFor(`!!document.querySelector('[data-fwp-device]')`, 3000, 'device picker').catch(() => {})
+  check('device picker lists the mobile devices', await evaluate(`!!document.querySelector('[data-fwp-device]')`))
+  check('device choice is per project, no global key', await evaluate(`localStorage.getItem('ccm.fwp.device') === null`))
+
   fs.appendFileSync(A, "@Preview(name: 'Added')\nWidget added() => const Text('new');\n")
   await waitFor(`${entries}.includes('lib/a.dart#added')`, 8000, 'rescan on save').catch(() => {})
   check('saving the file rescans the list', await evaluate(`${entries}.includes('lib/a.dart#added')`))

@@ -118,7 +118,7 @@ describe('RunManager', () => {
     await manager.setSettings({ flutterSdk: path.join(tmp, 'flutter'), jdk: 'relative/jdk' })
     const again = setup().manager
     await again.loadSettings()
-    expect(again.getSettings()).toEqual({ flutterSdk: path.join(tmp, 'flutter'), androidSdk: null, jdk: null })
+    expect(again.getSettings()).toEqual({ flutterSdk: path.join(tmp, 'flutter'), androidSdk: null, jdk: null, flutterSdkProjects: {} })
   })
 })
 

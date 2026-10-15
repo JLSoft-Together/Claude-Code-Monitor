@@ -50,10 +50,17 @@ function onKey(e: KeyboardEvent): void {
     document.getElementById(`ref-${r.id}`)?.focus()
   }
   const cur = list[at]
+  const node = cur && cur.kind !== 'ref' && !(cur.kind === 'section' && cur.section === 'head') ? cur : null
+  let parent = at - 1
+  while (cur && parent >= 0 && list[parent]!.depth >= cur.depth) parent--
   if (e.key === 'ArrowDown') go(at + 1)
   else if (e.key === 'ArrowUp') go(at - 1)
-  else if (e.key === 'ArrowRight' && cur && cur.kind !== 'ref' && !cur.expanded) toggle(cur.id)
-  else if (e.key === 'ArrowLeft' && cur && cur.kind !== 'ref' && cur.expanded) toggle(cur.id)
+  else if (e.key === 'Home') go(0)
+  else if (e.key === 'End') go(list.length - 1)
+  else if (e.key === 'ArrowRight' && node && !node.expanded) toggle(node.id)
+  else if (e.key === 'ArrowRight' && node && (list[at + 1]?.depth ?? 0) > node.depth) go(at + 1)
+  else if (e.key === 'ArrowLeft' && node && node.expanded) toggle(node.id)
+  else if (e.key === 'ArrowLeft' && cur && cur.depth > 0 && parent >= 0) go(parent)
   else if ((e.key === 'Enter' || e.key === ' ') && cur) activate(cur)
   else return
   e.preventDefault()
@@ -101,6 +108,7 @@ defineExpose({
           <GitBranch v-else :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
         </template>
         <span class="min-w-0 flex-1 truncate">{{ label(r) }}</span>
+        <Star v-if="r.kind === 'ref' && r.current && r.favorite" :size="11" class="shrink-0 fill-current text-favorite" :aria-label="t('workspace.log.branches.favoriteMark')" data-ref-favorite />
         <span v-if="r.kind === 'ref' && (r.ahead || r.behind)" class="shrink-0 text-2xs text-ink-faint tabular" :title="[r.ahead ? t('workspace.log.refs.ahead', { n: r.ahead }) : '', r.behind ? t('workspace.log.refs.behind', { n: r.behind }) : ''].filter(Boolean).join(', ')">
           {{ r.ahead ? `↑${r.ahead}` : '' }}{{ r.behind ? `↓${r.behind}` : '' }}
         </span>

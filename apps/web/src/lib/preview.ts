@@ -11,7 +11,16 @@ export interface FileView {
   mtimeMs: number
   text?: string
   lang?: string
+  /** v42: UTF-8 BOM on disk (kept on save). */
+  bom?: boolean
+  /** v42: line breaks on disk; saves write the same style back. */
+  eol?: 'lf' | 'crlf' | 'cr'
+  /** v42: not valid UTF-8 (lossy text); the editor stays view only. */
+  invalidUtf8?: boolean
 }
+
+export type FileWriteError = 'denied' | 'missing' | 'conflict' | 'too-large' | 'encoding' | 'busy' | 'failed' | 'unavailable'
+export type FileWriteResult = { ok: true; path: string; mtimeMs: number; size: number } | { ok: false; error: FileWriteError }
 
 export interface PreviewTarget {
   url: string
@@ -52,7 +61,8 @@ export type ChangesDiff =
   | { ok: true; path: string; text: string; binary: boolean; tooLarge: boolean; untracked: boolean; partial?: boolean }
   | { ok: false; error: ChangesError }
 
-export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank'
+/** `imports` = `all-blank` in git; the viewer then hides import-only changes itself (`lib/diffImports.ts`). */
+export type DiffWhitespace = 'none' | 'eol' | 'all' | 'all-blank' | 'imports'
 
 export interface ChangesDiffOpts {
   context?: 3 | 'full'
@@ -82,12 +92,13 @@ export type RenameEntryResult =
   | { ok: true; path: string }
   | { ok: false; error: 'invalid'; reason: EntryNameProblem }
   | { ok: false; error: 'exists' | 'denied' | 'missing' | 'busy' | 'failed' | 'unavailable' }
-export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'exists' | 'failed' | 'unavailable' }
+export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'failed' | 'unavailable' }
 
 /** Preview methods added to `window.ccmDesktop` by the v21 preload (see .planning/PLAN-v21-integration.md). */
 interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>
+  fileWrite?: (req: { path: string; text: string; expectedMtime?: number }) => Promise<FileWriteResult>
   watch?: (root: string) => Promise<boolean>
   unwatch?: (root: string) => Promise<boolean>
   onPreviewChanged?: (handler: (change: PreviewChange) => void) => () => void
@@ -97,6 +108,7 @@ interface PreviewBridge {
   openPath?: (path: string) => Promise<string>
   requestAccess?: (path: string) => Promise<boolean>
   forgetGrants?: () => Promise<boolean>
+  fullAccess?: (on?: boolean | 'first') => Promise<boolean | null>
   changesStatus?: (dir: string) => Promise<ChangesStatus>
   changesDiff?: (root: string, path: string, opts?: ChangesDiffOpts) => Promise<ChangesDiff>
   changesFile?: (path: string) => Promise<ChangesFile>
@@ -131,6 +143,10 @@ export const hasPreview = typeof bridge?.previewUrl === 'function'
 
 export const previewUrl = (path: string): Promise<PreviewTarget | null> => bridge?.previewUrl?.(path) ?? Promise.resolve(null)
 export const readFile = (path: string): Promise<FileView | null> => bridge?.readFile?.(path) ?? Promise.resolve(null)
+export const hasFileWrite = typeof bridge?.fileWrite === 'function'
+/** Saves an edited text file; expectedMtime = mtime when it was read (else conflict). */
+export const fileWrite = (path: string, text: string, expectedMtime?: number): Promise<FileWriteResult> =>
+  bridge?.fileWrite?.({ path, text, expectedMtime }) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const watchRoot = (root: string): Promise<boolean> => bridge?.watch?.(root) ?? Promise.resolve(false)
 export const unwatchRoot = (root: string): Promise<boolean> => bridge?.unwatch?.(root) ?? Promise.resolve(false)
 /** `near`: folder the dialog opens in (the focused terminal's). */
@@ -142,6 +158,9 @@ export const openPath = (path: string): Promise<string> => bridge?.openPath?.(pa
 export const requestAccess = (path: string): Promise<boolean> => bridge?.requestAccess?.(path) ?? Promise.resolve(false)
 export const hasGrants = typeof bridge?.forgetGrants === 'function'
 export const forgetGrants = (): Promise<boolean> => bridge?.forgetGrants?.() ?? Promise.resolve(false)
+/** Every folder readable: no argument reads, true asks natively first, 'first' asks only if never decided. Null outside the app. */
+export const fullAccess = (on?: boolean | 'first'): Promise<boolean | null> => bridge?.fullAccess?.(on) ?? Promise.resolve(null)
+export const hasFullAccess = typeof bridge?.fullAccess === 'function'
 
 const unavailable = { ok: false as const, error: 'unavailable' as const }
 export const hasChanges = typeof bridge?.changesStatus === 'function'

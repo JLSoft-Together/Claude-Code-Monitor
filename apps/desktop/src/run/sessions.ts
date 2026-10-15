@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import {
+  DEFAULT_RUN_TEMPLATES,
   isRunLive,
   type RunCommandPreview,
   type RunConfig,
@@ -17,25 +18,33 @@ import {
   type RunResult,
   type RunSession,
   type RunStartRequest,
+  type RunTemplates,
+  type ToolchainReport,
 } from '@ccm/shared'
+import { createLogMasker } from '../log-mask'
 import { isWithin, realOrNull } from '../preview/paths'
 import { detectAndroid } from './android/detect'
 import { androidEnv, gradlewFile } from './android/env'
 import { clearJdkCache } from './android/jdkPick'
 import { runStep } from './before'
 import { previewCommand } from './command'
-import { RunConfigStore, cleanRunConfig, defaultConfigs, dropBlockedEnv, needsTrust } from './configs'
+import { RunConfigStore, cleanRunConfig, cleanTemplates, defaultConfigs, dropBlockedEnv, needsTrust } from './configs'
 import { detectFlutter } from './flutter/detect'
-import { findFlutterSdk, flutterEnv, flutterExecutable, flutterSpawn } from './flutter/env'
+import { findFlutterSdk, flutterEnv, flutterExecutable, flutterSpawn, projectSdkKey, sdkSettings } from './flutter/env'
 import { importIntellij, importVscode } from './importers'
 import { killTree, type Spawner } from './proc'
+import { androidToolchain, defaultToolchainExec, flutterToolchain, type ToolchainExec } from './toolchain'
 import { configHash, TrustStore } from './trust'
 import type { DeviceService, RunContext, RunnerFactory, RunSettings, Runner } from './types'
+import { ProjectWatchers, watchDirs, type WatchFn } from './watch'
 
 const DETECT_TTL_MS = 5_000
 const LOG_FLUSH_MS = 100
 const MAX_ENDED = 20
 const SETTINGS_FILE = 'run-settings.json'
+const TEMPLATES_FILE = 'run-templates.json'
+const IMPORTED_FILE = 'run-imported.json'
+const MAX_PROJECT_SDKS = 200
 const RESTART_STOP_MS = 8_000
 const PUB_GET_TIMEOUT_MS = 5 * 60_000
 
@@ -53,6 +62,12 @@ export interface RunManagerDeps {
   /** Bound on the graceful stop before a same-pair restart (tests shorten it). */
   restartStopMs?: number
   pubGetTimeoutMs?: number
+  /** Run / build output, progress, failure details and toolchain text before they leave main (default: `createLogMasker`). */
+  mask?: (text: string) => string
+  /** Toolchain check commands (`flutter doctor`, `java -version`, `adb version`). */
+  exec?: ToolchainExec
+  watch?: WatchFn
+  watchDebounceMs?: number
 }
 
 interface Live {
@@ -70,7 +85,12 @@ const pairKey = (configId: string, deviceId: string | null): string => `${config
 export class RunManager {
   private readonly store: RunConfigStore
   private readonly trust: TrustStore
-  private settings: RunSettings = { flutterSdk: null, androidSdk: null, jdk: null }
+  private settings: RunSettings = { flutterSdk: null, androidSdk: null, jdk: null, flutterSdkProjects: {} }
+  private templates: RunTemplates = DEFAULT_RUN_TEMPLATES
+  /** Owners (window + pane) holding each project root: watchers and device trackers live while held. */
+  private readonly holds = new Map<string, Set<string>>()
+  private readonly watchers: ProjectWatchers
+  private readonly mask: (text: string) => string
   private readonly detected = new Map<string, RunDetectResult>()
   private readonly sessions = new Map<string, Live>()
   private readonly pending = new Map<string, RunLogLine[]>()
@@ -89,32 +109,78 @@ export class RunManager {
   constructor(private readonly deps: RunManagerDeps) {
     this.store = new RunConfigStore(deps.dataDir)
     this.trust = new TrustStore(deps.dataDir)
+    this.mask = deps.mask ?? createLogMasker(deps.home, deps.platform)
+    this.watchers = new ProjectWatchers({ onChange: (root) => void this.projectChanged(root), watch: deps.watch, debounceMs: deps.watchDebounceMs })
+  }
+
+  private readJson(file: string): Promise<unknown> {
+    return fs.readFile(path.join(this.deps.dataDir, file), 'utf8').then(
+      (t) => JSON.parse(t) as unknown,
+      () => undefined,
+    )
+  }
+
+  private async writeJson(file: string, data: unknown): Promise<void> {
+    const full = path.join(this.deps.dataDir, file)
+    await fs.mkdir(this.deps.dataDir, { recursive: true })
+    await fs.writeFile(full + '.tmp', JSON.stringify(data, null, 2))
+    await fs.rename(full + '.tmp', full)
   }
 
   async loadSettings(): Promise<void> {
     try {
-      const raw = JSON.parse(await fs.readFile(path.join(this.deps.dataDir, SETTINGS_FILE), 'utf8')) as Partial<RunSettings>
+      const raw = ((await this.readJson(SETTINGS_FILE)) ?? {}) as Partial<RunSettings>
       const abs = (v: unknown): string | null => (typeof v === 'string' && path.isAbsolute(v) ? v : null)
-      this.settings = { flutterSdk: abs(raw.flutterSdk), androidSdk: abs(raw.androidSdk), jdk: abs(raw.jdk) }
+      const projects: Record<string, string> = {}
+      const rawProjects = raw.flutterSdkProjects && typeof raw.flutterSdkProjects === 'object' ? raw.flutterSdkProjects : {}
+      for (const [k, v] of Object.entries(rawProjects).slice(0, MAX_PROJECT_SDKS)) if (path.isAbsolute(k) && abs(v)) projects[k] = v
+      this.settings = { flutterSdk: abs(raw.flutterSdk), androidSdk: abs(raw.androidSdk), jdk: abs(raw.jdk), flutterSdkProjects: projects }
+      this.templates = cleanTemplates(await this.readJson(TEMPLATES_FILE))
     } catch {
-      // first run / unreadable: defaults
+      // unreadable: defaults
     }
   }
 
   getSettings(): RunSettings {
-    return { ...this.settings }
+    return { ...this.settings, flutterSdkProjects: { ...this.settings.flutterSdkProjects } }
   }
 
   async setSettings(next: Partial<RunSettings>): Promise<RunSettings> {
     const abs = (v: unknown, prev: string | null): string | null => (v === undefined ? prev : typeof v === 'string' && path.isAbsolute(v) ? v : null)
-    this.settings = { flutterSdk: abs(next.flutterSdk, this.settings.flutterSdk), androidSdk: abs(next.androidSdk, this.settings.androidSdk), jdk: abs(next.jdk, this.settings.jdk) }
-    const file = path.join(this.deps.dataDir, SETTINGS_FILE)
-    await fs.mkdir(this.deps.dataDir, { recursive: true })
-    await fs.writeFile(file + '.tmp', JSON.stringify(this.settings, null, 2))
-    await fs.rename(file + '.tmp', file)
+    this.settings = {
+      flutterSdk: abs(next.flutterSdk, this.settings.flutterSdk),
+      androidSdk: abs(next.androidSdk, this.settings.androidSdk),
+      jdk: abs(next.jdk, this.settings.jdk),
+      flutterSdkProjects: this.settings.flutterSdkProjects,
+    }
+    await this.writeJson(SETTINGS_FILE, this.settings)
     clearJdkCache()
     this.restartDevices()
     return this.getSettings()
+  }
+
+  /** Flutter SDK for one project dir (Run pane › Project settings); null clears it. Picked by the user, stored in app data only. */
+  async setProjectFlutterSdk(dir: string, sdk: string | null): Promise<RunSettings> {
+    const key = projectSdkKey(dir, this.deps.platform)
+    const projects = { ...this.settings.flutterSdkProjects }
+    if (sdk && path.isAbsolute(sdk)) projects[key] = sdk
+    else delete projects[key]
+    if (Object.keys(projects).length > MAX_PROJECT_SDKS) return this.getSettings()
+    this.settings = { ...this.settings, flutterSdkProjects: projects }
+    await this.writeJson(SETTINGS_FILE, this.settings)
+    return this.getSettings()
+  }
+
+  getTemplates(): RunTemplates {
+    return structuredClone(this.templates)
+  }
+
+  /** Auto-created configs are rebuilt from the templates, so every held root gets fresh configs. */
+  async setTemplates(raw: unknown): Promise<RunTemplates> {
+    this.templates = cleanTemplates(raw)
+    await this.writeJson(TEMPLATES_FILE, this.templates)
+    for (const root of this.holds.keys()) this.deps.broadcast({ type: 'configs', root, configs: await this.configs(root) })
+    return this.getTemplates()
   }
 
   async detect(root: string, fresh = false): Promise<RunDetectResult> {
@@ -139,7 +205,7 @@ export class RunManager {
   async env(dir: string, kind: 'flutter' | 'android'): Promise<RunEnv> {
     const { env, platform, home } = this.deps
     const repoRoot = this.repoRootOf(dir)
-    if (kind === 'flutter') return flutterEnv(dir, { setting: this.settings.flutterSdk, env, platform, home, repoRoot })
+    if (kind === 'flutter') return flutterEnv(dir, { ...sdkSettings(this.settings, dir, platform), env, platform, home, repoRoot })
     return androidEnv(dir, { sdkSetting: this.settings.androidSdk, jdkSetting: this.settings.jdk, env, platform, home, repoRoot })
   }
 
@@ -202,7 +268,7 @@ export class RunManager {
   async configs(root: string): Promise<RunConfig[]> {
     const stored = this.store.list(root)
     const ids = new Set(stored.map((c) => c.id))
-    const defaults = defaultConfigs((await this.detect(root)).projects, root).filter((c) => !ids.has(c.id))
+    const defaults = defaultConfigs((await this.detect(root)).projects, root, this.templates).filter((c) => !ids.has(c.id))
     return [...stored, ...defaults]
   }
 
@@ -238,7 +304,7 @@ export class RunManager {
     const { env, platform, home } = this.deps
     let executable = ''
     if (cfg.type === 'flutter') {
-      const sdk = findFlutterSdk(cfg.cwd, { setting: this.settings.flutterSdk, env, platform, home }).sdk
+      const sdk = findFlutterSdk(cfg.cwd, { ...sdkSettings(this.settings, cfg.cwd, platform), env, platform, home }).sdk
       executable = sdk ? flutterExecutable(sdk, platform) : 'flutter'
     } else if (cfg.type === 'android') executable = gradlewFile(cfg.cwd, platform)
     return previewCommand(cfg, { executable, deviceId, workspaceDir: root, env, project: this.projectAt(root, cfg.cwd) })
@@ -354,7 +420,8 @@ export class RunManager {
         state: (state, patch) => this.update(session.id, { state, ...patch, ...(isRunLive(state) ? {} : { endedAt: Date.now(), progress: null }) }),
         fail: (failure) => this.update(session.id, { state: 'failed', failure, endedAt: Date.now(), progress: null }),
         log: (line) => this.queueLog(session.id, { ...line, at: Date.now() }),
-        error: (error) => this.deps.broadcast({ type: 'error', sessionId: session.id, error }),
+        // `file` stays absolute (the pane opens it); the message is what reaches the agent.
+        error: (error) => this.deps.broadcast({ type: 'error', sessionId: session.id, error: { ...error, message: this.mask(error.message) } }),
         confirm: this.deps.confirm,
       },
     }
@@ -370,6 +437,8 @@ export class RunManager {
     const live = this.sessions.get(id)
     // Ended (stopped / failed / cancelled) is final: late runner reports must not revive or relabel it.
     if (!live || !isRunLive(live.session.state)) return
+    if (patch.progress) patch = { ...patch, progress: this.mask(patch.progress) }
+    if (patch.failure?.detail) patch = { ...patch, failure: { ...patch.failure, detail: this.mask(patch.failure.detail) } }
     const progressOnly = Object.keys(patch).every((k) => k === 'progress' || k === 'state') && (patch.state === undefined || patch.state === live.session.state)
     const prevState = live.session.state
     live.session = { ...live.session, ...patch }
@@ -382,6 +451,7 @@ export class RunManager {
     this.flushLogs()
     this.deps.broadcast({ type: 'session', session: live.session })
     if (live.session.state !== prevState) {
+      if (!isRunLive(live.session.state)) this.releaseDevicesIfIdle()
       for (const cb of this.stateListeners) {
         try {
           cb(live.session, live.config, live.device)
@@ -398,7 +468,8 @@ export class RunManager {
     return () => this.stateListeners.delete(cb)
   }
 
-  private queueLog(id: string, line: RunLogLine): void {
+  private queueLog(id: string, raw: RunLogLine): void {
+    const line = { ...raw, text: this.mask(raw.text) }
     const list = this.pending.get(id)
     if (list) list.push(line)
     else this.pending.set(id, [line])
@@ -447,7 +518,7 @@ export class RunManager {
 
   private async runPubGet(dir: string): Promise<RunResult> {
     const { env, platform, home } = this.deps
-    const sdk = findFlutterSdk(dir, { setting: this.settings.flutterSdk, env, platform, home }).sdk
+    const sdk = findFlutterSdk(dir, { ...sdkSettings(this.settings, dir, platform), env, platform, home }).sdk
     if (!sdk) return { ok: false, error: { code: 'flutter-missing' } }
     let spec: ReturnType<typeof flutterSpawn>
     try {
@@ -461,7 +532,7 @@ export class RunManager {
       spawn: this.deps.spawn,
       hooks: {
         log: (l: { text: string }) => {
-          if (firstError === null && /error/i.test(l.text)) firstError = l.text.slice(0, 300)
+          if (firstError === null && /error/i.test(l.text)) firstError = this.mask(l.text).slice(0, 300)
         },
       },
     } as unknown as RunContext
@@ -484,10 +555,80 @@ export class RunManager {
     return { ok: false, error: detail ? { code: 'pub-get', detail } : { code: 'pub-get' } }
   }
 
+  /** First Run pane on a project: import `.run/` + `.vscode/launch.json` once, remembered per project in app data. */
+  async autoImport(root: string): Promise<RunConfig[]> {
+    const key = path.basename(this.store.personalFile(root))
+    const raw = await this.readJson(IMPORTED_FILE)
+    const done = new Set(Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : [])
+    if (done.has(key)) return []
+    done.add(key)
+    await this.writeJson(IMPORTED_FILE, [...done].slice(-2000))
+    return this.importConfigs(root)
+  }
+
+  /** A Run pane shows `root` (`on`) or stopped showing it. Held roots are watched; no hold and no live run → device trackers stop. */
+  async hold(root: string, owner: string, on: boolean): Promise<void> {
+    const set = this.holds.get(root)
+    if (on) {
+      if (set) return void set.add(owner)
+      this.holds.set(root, new Set([owner]))
+      const result = await this.detect(root).catch(() => null)
+      if (result && this.holds.has(root)) this.watchers.sync(root, watchDirs(result))
+      return
+    }
+    if (!set?.delete(owner) || set.size) return
+    this.holds.delete(root)
+    this.watchers.close(root)
+    this.releaseDevicesIfIdle()
+  }
+
+  /** Window closed / reloaded: every hold of that owner prefix goes. */
+  releaseOwner(prefix: string): void {
+    for (const [root, set] of [...this.holds]) {
+      for (const o of [...set]) if (o === prefix || o.startsWith(`${prefix}:`)) set.delete(o)
+      if (set.size) continue
+      this.holds.delete(root)
+      this.watchers.close(root)
+    }
+    this.releaseDevicesIfIdle()
+  }
+
+  held(root: string): boolean {
+    return this.holds.has(root)
+  }
+
+  /** Plan: the flutter daemon / adb tracker stop once no Run pane is open and nothing runs; `devices()` restarts them. */
+  private releaseDevicesIfIdle(): void {
+    if (this.holds.size || this.live().length || (!this.flutterDevices && !this.adbDevices)) return
+    this.restartDevices()
+  }
+
+  private async projectChanged(root: string): Promise<void> {
+    if (!this.holds.has(root)) return
+    const before = JSON.stringify(this.detected.get(root)?.projects)
+    const result = await this.detect(root, true).catch(() => null)
+    if (!result || !this.holds.has(root)) return
+    this.watchers.sync(root, watchDirs(result))
+    if (JSON.stringify(result.projects) !== before) this.deps.broadcast({ type: 'configs', root, configs: await this.configs(root) })
+  }
+
+  /** "Check toolchain": explicit, so a project-local SDK / JDK may run (like Run / pub get). */
+  async toolchain(dir: string, kind: 'flutter' | 'android'): Promise<ToolchainReport> {
+    const { env, platform, home } = this.deps
+    const exec = this.deps.exec ?? defaultToolchainExec
+    if (kind === 'flutter') {
+      const sdk = findFlutterSdk(dir, { ...sdkSettings(this.settings, dir, platform), env, platform, home }).sdk
+      return flutterToolchain({ sdk, platform, env, exec, mask: this.mask })
+    }
+    const resolved = await androidEnv(dir, { sdkSetting: this.settings.androidSdk, jdkSetting: this.settings.jdk, env, platform, home, trusted: true })
+    return androidToolchain({ env: resolved, platform, exec, mask: this.mask })
+  }
+
   /** App quit: graceful stops in parallel, bounded by the caller's deadline. */
   async stopAll(): Promise<void> {
     await Promise.allSettled(this.live().map((s) => this.sessions.get(s.id)?.runner.stop()))
     this.restartDevices()
+    this.watchers.closeAll()
   }
 
   /** Sync: safe to call from `before-quit` / session end. */
@@ -496,5 +637,6 @@ export class RunManager {
     for (const c of this.pubChildren) killTree(c, true)
     this.pubChildren.clear()
     this.restartDevices(true)
+    this.watchers.closeAll()
   }
 }

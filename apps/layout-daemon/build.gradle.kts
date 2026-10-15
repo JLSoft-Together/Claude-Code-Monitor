@@ -89,6 +89,9 @@ tasks.test {
     forkEvery = 1
     environment("CCM_PROJECT_MODEL", System.getenv("CCM_PROJECT_MODEL") ?: "")
     environment("CCM_PROJECT_LAYOUTS", System.getenv("CCM_PROJECT_LAYOUTS") ?: "")
+    environment("CCM_GOLDEN_RECORD", System.getenv("CCM_GOLDEN_RECORD") ?: "")
+    systemProperty("golden.dir", file("src/test/resources/golden").path)
+    systemProperty("golden.out", layout.buildDirectory.dir("golden-out").get().asFile.path)
     jvmArgs("-XX:+EnableDynamicAgentLoading", "-Djdk.attach.allowAttachSelf=true")
     systemProperty("layoutlib.dir", layoutlibDist.get().asFile.path)
     testLogging { events("passed", "failed", "skipped"); showStandardStreams = false; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }

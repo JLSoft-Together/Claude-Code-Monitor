@@ -430,7 +430,7 @@ Native notifications: an Electron `Notification` from the dev binary (`com.githu
 4. Session restore uses the session id the monitor already knows for the pane (registry `sessionId`, follows `/clear`); nothing is guessed from folders. Restoring is always a user action ("Restore previous workspace"), never automatic. Reopening an external session that is still live asks first: two instances on one session would both append to the same transcript.
 5. Git worktrees are created and removed by the PTY host (token channel), never by the collector's dashboard socket: `git -C <dir> worktree add -- <repo>-wt/<branch> [<branch>|-b <branch>]`, `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0`; removal refuses the main checkout, a dirty tree or a folder a live terminal runs in, and never uses `--force`. `git` is resolved by walking PATH ourselves because Windows process creation would try the project folder first.
 
-## 11p. Attachments tray — image paste key and reading the input box (v25, desktop only, verified 2026-10-14, Claude Code 2.1.299, Windows 11)
+## 11p. Attachments tray — image paste key and reading the input box (v25, desktop only, verified 2026-10-14, Claude Code 2.1.299, Windows 11; v37 removal and image paste re-verified 2026-10-15 on 2.1.294, the `claude` on PATH then)
 
 Probe: `claude` in a node-pty (110×36) rendered by `@xterm/headless`; image put on the clipboard with `System.Windows.Forms.Clipboard.SetImage`; Enter never pressed.
 
@@ -466,9 +466,9 @@ A user request (not monitoring): a tab listing popular MCP servers (Figma, Meshy
 - Godot: `Coding-Solo/godot-mcp` (`npx -y @coding-solo/godot-mcp`, optional `GODOT_PATH` env, needs Godot 4 installed; no editor plugin). Godot Editor (`tomyud1/godot-mcp`) is a guide card: AssetLib plugin "Godot AI Assistant tools MCP" + `claude mcp add godot-editor -- npx -y godot-mcp-server` (README names it `godot`, renamed so it does not collide with the Godot card), WebSocket 6505. Funplay MCP for Godot (`FunplayAI/funplay-godot-mcp`) is a guide card too: its editor dock writes server `funplay` (`npx -y funplay-godot-mcp`, env `FUNPLAY_GODOT_MCP_URL` / `_TOKEN`), HTTP 127.0.0.1:8765.
 - Tested against the real CLI with `CLAUDE_CONFIG_DIR` pointed at a temp folder: `add-json` in all three scopes, `mcp list` states (connected / pending / 401 failure), `marketplace add` + project `plugin install` + `uninstall`.
 
-## 11s. Git Log pane reads history with plain git (v30, desktop only, read-only, 2026-10-15)
+## 11s. Git Log pane reads history with plain git (v30, desktop only, 2026-10-15; branch writes since v36)
 
-Not monitoring: an IntelliJ-style log of a project's repo. Every command is read-only and runs through `execGit` (`GIT_LITERAL_PATHSPECS=1`, no colour, no pager, `-c log.showSignature=false`: a user `log.showSignature=true` would print the signature check before each signed commit's record and corrupt parsing).
+Not monitoring: an IntelliJ-style log of a project's repo. The v30 history commands below are read-only (the v36 branch actions are listed after them) and every command runs through `execGit` (`GIT_LITERAL_PATHSPECS=1`, no colour, no pager, `-c log.showSignature=false`: a user `log.showSignature=true` would print the signature check before each signed commit's record and corrupt parsing).
 
 - Refs: `for-each-ref --format=%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:short)%1f%(upstream:track,nobracket) refs/heads refs/remotes refs/tags`, `remote`, `symbolic-ref -q --short HEAD`, `rev-parse -q --verify HEAD`, `config user.name`.
 - Log: `log --topo-order -z --format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s --skip=N -n 501` (`LOG_PAGE + 1`, the extra row tells whether more follow) + `--branches --remotes --tags HEAD` (no stash) or one ref; filters `--since=/--until=` (ISO) and `-- <paths>`; text and user use `--grep=` and `--author=` (regex-escaped when the regex toggle is on). Matching is `--fixed-strings`, or `--extended-regexp` with the regex toggle, plus `--regexp-ignore-case` unless match case is on. A 4–40 hex text is also resolved with `rev-parse --verify -q <text>^{commit}` and shown first; the result then carries `injected: 1` so the next page's `--skip` counts only git's own rows.
@@ -477,6 +477,18 @@ Not monitoring: an IntelliJ-style log of a project's repo. Every command is read
 - File diff: `diff <first parent or empty tree> <hash> -M --no-ext-diff --no-textconv -U1000000 -- [orig] <path>`, 3 MB cap then 3-line context (same as §11o Changes).
 - Refresh: the git-dir watcher also reacts to `packed-refs`, `FETCH_HEAD`, `ORIG_HEAD` and `refs/` (recursive). The page reloads the list only when HEAD or a ref hash changed.
 
+**v36 Branches toolbar — the Log is no longer read-only** (user request; `.planning/PLAN-v36-log-branches-toolbar.md`, `apps/desktop/src/preview/branches.ts`). Only these git writes exist, each started by a click on the toolbar, argv built in main (the page sends a ref, never a command), `GIT_TERMINAL_PROMPT=0`, stderr passed through `sanitizeGitError` (first line, `user:token@` stripped):
+
+| Action | Command | Confirm | Timeout |
+|---|---|---|---|
+| New Branch | `check-ref-format --branch <name>`, `rev-parse --verify -q <base>^{commit}`, then `branch -- <name> <hash>` or `switch -c <name> <hash>` | in-app dialog (name + "switch to it") | 20 s |
+| Delete (local) | `branch -d -- <name>`; not merged → `branch -D -- <name>` | **native confirm in main showing the exact command**; `-D` needs a second native confirm | 20 s |
+| Delete (remote) | `push <remote> --delete refs/heads/<branch>` | native confirm showing the exact command | 120 s |
+| Update Selected | current branch `pull --ff-only --no-rebase`; other tracked branch `fetch <remote> <remoteRef>:refs/heads/<b>` (git refuses a non-fast-forward) | none: fast-forward only, nothing local is lost | 120 s |
+| Fetch | `fetch --all --no-write-fetch-head` (git < 2.29: without the flag), no prune | none | 120 s |
+
+Network commands (120 s) kill the whole process tree on timeout (`execGit` `killTree`, so `git-remote-https` does not linger on Windows); a spawn error is reported as `failed`, not `timeout`. Never: force push, non-fast-forward update, reset, deleting the current branch or a tag, checking out an existing branch. Delete is not driven by E2E (the native confirm cannot be clicked through CDP); `test/branches.test.ts` covers it against real repos.
+
 ## 11t. Multi-project Workspace: rail, Spaces, Mission Control (v38, desktop only, 2026-10-15)
 
 Not monitoring: how the Workspace groups its own panes. Plan `.planning/PLAN-v38-multi-project.md`.
@@ -484,8 +496,21 @@ Not monitoring: how the Workspace groups its own panes. Plan `.planning/PLAN-v38
 - Worktrees fold by git's common dir: `ccm:project-root` also returns `common` from `git rev-parse --path-format=absolute --git-common-dir` (fallback without `--path-format` for git < 2.31, resolved against the toplevel, realpath). Main checkout = parent of `<common>/.git`; a bare repo has none. Until git answers, a tab sits in a provisional `plain:<folder>` cluster folded by the `<repo>-wt/<branch>` name; stored rail order matches that alias too.
 - A tab's project (`Tab.project`) is fixed when the tab opens; a `cd` never moves it. Header actions (new tab, scripts, Run…, layouts) use the checkout's own path, never the main checkout of a worktree (that folder may not be allowed).
 - Rows show the session name (alias, else Claude's own name) and `Agent · <state>` only — no prompt, no assistant text (the collector stores none). Run panes show their run state (Building / Running / Run failed); a failed run counts as "needs you".
-- Mission Control snapshots are the last 14 rows read from the mounted xterm buffer when a space is shown: memory only, never stored, never sent over IPC, rebuilt on every open.
+- Remembered projects (`workspace.recentDirs`, no pane open) still group by repo: the page calls `ccm:project-root` with `remembered = true`, and for a folder outside every allowed root the host answers only `{ root, repo, common }` from `git rev-parse` (absolute existing directory, realpath). That answer grants nothing: the toplevel is not registered as a known repo, so Changes / Log / scripts / file reads there stay refused until a pane opens in it. Why this is acceptable: the page can already open a terminal in any folder, so knowing whether a folder is a git checkout adds no reach; `rev-parse` reads no file contents and runs no hooks. Pane lookups never send the flag, so their retry-until-the-PTY-is-up path (which registers the repo) is unchanged.
+- Mission Control snapshots are the last 14 rows read from the mounted xterm buffer when a space is first shown, memoised per tab while Mission Control stays open; a Run pane shows the tail of its focused run's log from the run store. Memory only, never stored, never sent over IPC, rebuilt on every open.
 - Close project with a live run asks first, then stops the runs (`runStop`) before closing the panes.
+
+## 11u. File editor writes files (v42, desktop only, 2026-10-15)
+
+Not monitoring: the file viewer can edit a text file and save it. Plan `.planning/PLAN-v42-file-editor.md`. The only write path is `ccm:file-write {path, text, expectedMtime?}` (`apps/desktop/src/preview/fileWrite.ts`).
+
+- Only on an explicit save (Ctrl/⌘+S, the Save button, Save in the close sheet or in the quit dialog); never auto-save. Only existing files: no create, rename or delete through this channel.
+- Gate: top-level app frame (`isAppFrame`); the file's realpath (symlinks resolved) must sit inside an allowed root (live pane cwds, granted folders) or a repo toplevel registered from one, the same folders the viewer / Explorer reach. A symlink that points outside is refused (`denied`), never followed for writing.
+- Refused: text > 4 MB, a file on disk that is binary (NUL in the first 8 KB) or not valid UTF-8 (`encoding`), and a stale `expectedMtime` (`conflict`: the file changed after the page read it; the page shows Reload / Keep mine / Compare, and only Keep mine adopts the new mtime so the next save overwrites). The page itself keeps files > 2 MB, > 50k lines, binary or non-UTF-8 view only.
+- Written as the file was: original line-break style (dominant one when mixed; LF when the file has none) and UTF-8 BOM kept. Atomic: temp file `.name.<random>.ccm-tmp` in the same folder (`wx`, original mode), then rename over the real path; on Windows a busy rename (EPERM / EACCES / EBUSY from an indexer, antivirus or watcher) is retried 5 times with backoff, then `busy` and the temp file is removed.
+- Nothing logs the text; results carry only `{ok, path, mtimeMs, size}` or an error code.
+- Quit: the page reports its unsaved editors (`ccm:editor-dirty`, names + paths only); `confirmQuit` asks Save / Don't save / Cancel first, Save sends `ccm:editor-save-all` and quits only if every save succeeded (15 s timeout counts as failure).
+- Live layout / drawable preview: `ccm:layout-render` / `ccm:drawable-render` take an optional `text` (≤ 1 MB) rendered instead of the file; the file path still has to pass the gate and resolves resources / the project model. Nothing is written for a preview.
 
 ## 12. Open items
 

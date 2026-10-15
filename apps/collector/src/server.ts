@@ -204,7 +204,7 @@ export function startServer(options: {
       return
     }
     if (!hasAppKey(req, appKey)) {
-      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end('Agent Monitor only opens in its desktop app.')
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end('GolAIm only opens in its desktop app.')
       return
     }
     if (req.url?.startsWith('/snooze?') && req.method === 'GET') {

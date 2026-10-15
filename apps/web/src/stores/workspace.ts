@@ -33,6 +33,8 @@ export interface Pane {
   line?: number
   /** File viewer opened by a single click in the Explorer: the next single click replaces it. Runtime only. */
   preview?: boolean
+  /** File viewer (v42): editor buffer differs from the file on disk. Runtime only, never persisted. */
+  dirty?: boolean
   /** Changes / Log: git toplevel once known; Changes: number of changed files. */
   root?: string
   count?: number
@@ -100,6 +102,8 @@ interface LastPane extends ViewFields {
 }
 
 export const isTerm = (p: Pick<Pane, 'kind'>): boolean => !p.kind || p.kind === 'term'
+
+export type SaveOutcome = { ok: true } | { ok: false; error: string }
 
 /** Folder the pane works in now: links, quick open and the branch chip follow the shell's `cd`. */
 export const workCwd = (p: Pick<Pane, 'cwd' | 'liveCwd'>): string | undefined => p.liveCwd ?? p.cwd
@@ -374,7 +378,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return same
     }
     // One preview slot per project: previewing in project B must not take over project A's tab.
-    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview && (!opts.cwd || sameDir(p.cwd, opts.cwd))) : undefined
+    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview && !p.dirty && (!opts.cwd || sameDir(p.cwd, opts.cwd))) : undefined
     if (slot) {
       slot.path = path
       slot.line = line
@@ -638,6 +642,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingClose.value = null
   }
 
+  /** v42: an edited file pane stops being the Explorer preview slot (a single click must not replace it). */
+  function setDirty(key: string, dirty: boolean): void {
+    const pane = panes.value.find((p) => p.key === key)
+    if (!pane || !!pane.dirty === dirty) return
+    pane.dirty = dirty || undefined
+    if (dirty) pane.preview = undefined
+  }
+
+  /** Each mounted editor registers how to save its buffer; the close sheet and quit call them. Not reactive. */
+  const savers = new Map<string, () => Promise<SaveOutcome>>()
+  function registerSaver(key: string, save: (() => Promise<SaveOutcome>) | null): void {
+    if (save) savers.set(key, save)
+    else savers.delete(key)
+  }
+  const dirtyPanes = computed(() => panes.value.filter((p) => p.kind === 'file' && p.dirty))
+
+  /** Saves the dirty panes among `keys` one by one; failures name the pane and the error key. */
+  async function saveFiles(keys: readonly string[]): Promise<Array<{ key: string; error: string }>> {
+    const failed: Array<{ key: string; error: string }> = []
+    for (const key of keys) {
+      const pane = panes.value.find((p) => p.key === key)
+      if (!pane?.dirty) continue
+      const save = savers.get(key)
+      const res = save ? await save().catch((): SaveOutcome => ({ ok: false, error: 'failed' })) : { ok: false as const, error: 'unavailable' }
+      if (!res.ok) failed.push({ key, error: res.error })
+    }
+    return failed
+  }
+
   function activateTab(tabKey: string): void {
     const tab = tabs.value.find((t) => t.key === tabKey)
     if (tab) activeKey.value = tab.focus
@@ -703,6 +736,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     requestClose,
     confirmClose,
     cancelClose,
+    setDirty,
+    registerSaver,
+    dirtyPanes,
+    saveFiles,
     resumeSession,
     restoreLast,
     dismissLast,

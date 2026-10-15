@@ -17,9 +17,11 @@ import {
   type RunSession,
   type RunState,
   type RunStream,
+  type RunTemplates,
+  type ToolchainReport,
 } from '@ccm/shared'
 import { desktop, type RunSettings } from '../lib/desktop'
-import { agentPaneFor, errorPrompt, inRoot } from '../lib/runUi'
+import { agentPaneFor, errorPrompt, fitsPlatforms, inRoot } from '../lib/runUi'
 import { dirKey } from './favorites'
 import { useWorkspaceStore } from './workspace'
 
@@ -164,6 +166,54 @@ export const useRunStore = defineStore('run', () => {
 
   let subscribed = false
   let devicesAsked = false
+  let holders = 0
+  let holdSeq = 0
+
+  /**
+   * A Run pane shows `root`: main watches its project files (re-detect, pub get banner) and keeps device trackers
+   * up. Returns the release; after the last release main may stop the trackers, so the next hold re-lists devices.
+   */
+  function hold(root: string): () => void {
+    const key = `run-${++holdSeq}`
+    holders++
+    void desktop?.runHold?.(root, key, true).catch(() => false)
+    if (holders === 1 && devicesAsked) void refreshDevices()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      holders--
+      void desktop?.runHold?.(root, key, false).catch(() => false)
+    }
+  }
+
+  const autoImported = new Set<string>()
+
+  /** First Run pane on a project in this window: main imports `.run/` / launch.json once per project, ever. */
+  async function autoImport(root: string): Promise<void> {
+    const key = dirKey(root)
+    if (autoImported.has(key)) return
+    autoImported.add(key)
+    const found = await desktop?.runConfigAutoImport?.(root).catch(() => []) ?? []
+    if (found.length) await loadConfigs(root)
+  }
+
+  const templates = ref<RunTemplates | null>(null)
+
+  async function loadTemplates(): Promise<RunTemplates | null> {
+    templates.value = await desktop?.runTemplates?.().catch(() => null) ?? templates.value
+    return templates.value
+  }
+
+  async function saveTemplates(next: RunTemplates): Promise<RunTemplates | null> {
+    const saved = await desktop?.runTemplatesSet?.(JSON.parse(JSON.stringify(next)) as RunTemplates).catch(() => null) ?? null
+    if (saved) templates.value = saved
+    return saved
+  }
+
+  async function toolchain(dir: string, kind: 'flutter' | 'android'): Promise<ToolchainReport | null> {
+    return await desktop?.runToolchain?.(dir, kind).catch(() => null) ?? null
+  }
 
   /** Subscribes once and loads live sessions; devices start only when a run pane asks (trackers are lazy). */
   async function ensure(withDevices = false): Promise<void> {
@@ -236,6 +286,15 @@ export const useRunStore = defineStore('run', () => {
     return settings.value
   }
 
+  /** Per-project Flutter SDK (null = back to Settings / FVM / PATH); the project's env is re-read. */
+  async function setProjectSdk(dir: string, sdk: string | null): Promise<RunSettings | null> {
+    const next = await desktop?.runProjectSdkSet?.(dir, sdk).catch(() => null) ?? null
+    if (!next) return null
+    settings.value = next
+    await loadEnv(dir, 'flutter', true)
+    return next
+  }
+
   /** Saves, then re-checks every env already shown so banners clear (or appear) right away. */
   async function updateSettings(patch: Partial<RunSettings>): Promise<RunSettings | null> {
     const next = await desktop?.runSettingsSet?.(patch).catch(() => null) ?? null
@@ -288,7 +347,14 @@ export const useRunStore = defineStore('run', () => {
     return list.find((c) => c.id === id) ?? list[0] ?? null
   }
 
-  /** Devices a config can target: adb for Android, the Flutter daemon's list for Flutter. */
+  /** Detected project at a config's cwd, in any loaded root. */
+  function projectAt(dir: string): RunProject | null {
+    const key = dirKey(dir)
+    for (const r of Object.values(projects.value)) for (const p of r.projects) if (dirKey(p.dir) === key) return p
+    return null
+  }
+
+  /** Devices a config can target: adb for Android, the Flutter daemon's list (only the project's platforms) for Flutter. */
   function devicesFor(cfg: RunConfig | null): RunDevice[] {
     if (!cfg || cfg.type === 'custom') return []
     if (cfg.type === 'android') {
@@ -297,7 +363,9 @@ export const useRunStore = defineStore('run', () => {
       return list.filter((d) => d.source === 'adb' || !adb.has(d.id))
     }
     const flutter = devices.value.filter((d) => d.source === 'flutter')
-    return flutter.length ? flutter : devices.value
+    const list = flutter.length ? flutter : devices.value
+    const p = cfg.type === 'flutter' ? projectAt(cfg.cwd) : null
+    return p?.kind === 'flutter' ? list.filter((d) => fitsPlatforms(d, p.platforms)) : list
   }
 
   function selectedDevice(root: string, cfg: RunConfig | null = selectedConfig(root)): RunDevice | null {
@@ -394,6 +462,14 @@ export const useRunStore = defineStore('run', () => {
     devices,
     devicesLoaded,
     emulators,
+    templates,
+    hold,
+    autoImport,
+    loadTemplates,
+    saveTemplates,
+    toolchain,
+    setProjectSdk,
+    projectAt,
     sessions,
     selected,
     logVersion,

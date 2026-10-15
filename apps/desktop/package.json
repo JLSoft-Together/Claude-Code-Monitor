@@ -2,7 +2,7 @@
   "name": "@ccm/desktop",
   "version": "2.6.0",
   "private": true,
-  "description": "Agent Monitor desktop app (Windows, macOS)",
+  "description": "GolAIm desktop app (Windows, macOS)",
   "scripts": {
     "build": "node build.mjs",
     "start": "node build.mjs && electron stage",

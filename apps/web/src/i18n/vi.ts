@@ -11,6 +11,7 @@ import v28 from './extensions-v28'
 import run from './run-v31'
 import layout from './layout-v32'
 import fwp from './flutter-preview-v40'
+import fileEditor from './file-editor-v42'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -19,8 +20,9 @@ const vi: typeof en = {
   ...run.vi,
   ...layout.vi,
   ...fwp.vi,
+  ...fileEditor.vi,
   app: {
-    title: 'Agent Monitor',
+    title: 'GolAIm',
     skipToContent: 'Tới nội dung chính',
   },
   nav: {
@@ -58,7 +60,7 @@ const vi: typeof en = {
       error: 'Lỗi',
       gone: 'Phiên đã kết thúc',
       disconnected: 'Mất kết nối',
-      unavailable: 'Terminal chỉ chạy trong app Agent Monitor',
+      unavailable: 'Terminal chỉ chạy trong app GolAIm',
     },
     error: {
       preset: 'Preset khởi chạy không hợp lệ',
@@ -68,7 +70,7 @@ const vi: typeof en = {
     },
     empty: {
       title: 'Chưa có terminal nào',
-      body: 'Chọn chạy gì và ở đâu. Terminal chạy bên trong Agent Monitor, phím gõ không rời khỏi máy này.',
+      body: 'Chọn chạy gì và ở đâu. Terminal chạy bên trong GolAIm, phím gõ không rời khỏi máy này.',
     },
     wt: {
       title: 'Worktree',
@@ -104,7 +106,7 @@ const vi: typeof en = {
       dismiss: 'Bỏ workspace trước',
     },
     reopen: {
-      action: 'Mở lại trong Agent Monitor',
+      action: 'Mở lại trong GolAIm',
       show: 'Xem trong workspace',
       liveWarning: 'Session này vẫn đang chạy ở terminal khác. Mở thêm ở đây sẽ có hai bản cùng ghi một cuộc trò chuyện.',
       confirm: 'Vẫn mở',
@@ -121,7 +123,6 @@ const vi: typeof en = {
       waiting: 'Đang chờ bạn',
       done: 'Đã xong',
       chip: '{n} cần bạn',
-      jump: 'Tới terminal tiếp theo cần bạn ({keys})',
     },
     closeConfirm: {
       title: 'Đóng terminal này? | Đóng {n} terminal?',
@@ -634,7 +635,11 @@ const vi: typeof en = {
     breakHintAt: 'Cứ {n} phút một lần, tính từ {since} (lần bật collector đầu tiên hôm nay). Lần tới: {next}.',
     subtitle: 'Lưu trên máy này.',
     close: 'Đóng cài đặt',
-    section: { appearance: 'Giao diện', notifications: 'Thông báo', reminders: 'Nhắc nhở và ngân sách', help: 'Trợ giúp', launch: 'Session mới', access: 'Quyền truy cập tệp' },
+    section: { appearance: 'Giao diện', notifications: 'Thông báo', reminders: 'Nhắc nhở và ngân sách', help: 'Trợ giúp', launch: 'Session mới', access: 'Quyền truy cập tệp', startup: 'Khởi động' },
+    loginItem: 'Chạy cùng Windows',
+    loginItemMac: 'Mở khi đăng nhập',
+    loginItemHint: 'Tự chạy ẩn dưới khay hệ thống khi đăng nhập, theo dõi session ngay từ terminal đầu tiên.',
+    loginItemHintMac: 'Tự mở khi đăng nhập, theo dõi session ngay từ terminal đầu tiên.',
     launchTerminal: 'Mở session bằng',
     launchTerminalHint: 'Thư mục đã đánh dấu sao sẽ mở trong một cửa sổ mới của app này.',
     launchTerminalApp: { terminal: 'Terminal', iterm: 'iTerm2' },
@@ -645,6 +650,8 @@ const vi: typeof en = {
     bridgeOff: 'Chưa cài',
     tourHint: 'Đi qua từng phần của dashboard trong một phút',
     diagHint: 'Collector đang thấy gì, dùng khi có gì đó không ổn',
+    fullAccess: 'Mở tệp ở mọi thư mục',
+    fullAccessHint: 'Tab file và Explorer đọc và sửa mọi thư mục mà không hỏi, kể cả nơi chứa key hay file .env',
     forgetGrants: 'Quên các thư mục đã cho phép',
     forgetGrantsHint: 'Trang và tệp ngoài thư mục terminal sẽ hỏi lại',
     forgetGrantsDone: 'Đã quên các thư mục đã cho phép',
@@ -697,7 +704,7 @@ const vi: typeof en = {
     notifyWaiting: 'Khi session chờ chủ nhân',
     notifyDone: 'Khi Claude trả lời xong',
     notifyHint: 'Chỉ hiện khi tab này không được mở trước mặt. Tiêu đề tab cũng hiện số session đang chờ.',
-    notifyBlocked: 'Thông báo đang bị chặn. Cho phép Agent Monitor gửi thông báo trong cài đặt hệ thống rồi bật lại.',
+    notifyBlocked: 'Thông báo đang bị chặn. Cho phép GolAIm gửi thông báo trong cài đặt hệ thống rồi bật lại.',
     notifyUnsupported: 'Máy này không hỗ trợ thông báo.',
     notifyOn: 'Bật thông báo',
     notifyOff: 'Tắt thông báo',
@@ -882,7 +889,7 @@ const vi: typeof en = {
     skip: 'Bỏ qua hướng dẫn',
     steps: {
       welcome: {
-        title: 'Chào mừng tới Agent Monitor',
+        title: 'Chào mừng tới GolAIm',
         body: 'Trang này theo dõi mọi session Claude Code đang chạy trên máy, cả các lần Codex CLI do chúng gọi, và cho biết session nào đang cần chủ nhân. Nó chỉ đọc file trên máy: không gõ gì vào agent, không gọi API, không tốn token. Xem nhanh một phút nhé?',
       },
       tabs: {

@@ -33,6 +33,15 @@ Deck's slide animation between spaces (conflicts with per-pane view transitions)
 - Checkout lines show only for several checkouts, a branch, a worktree or a remembered project (a lone plain folder had a line that only repeated its name).
 - Old sidebar row ages are gone (rows are two lines: name + `Agent · state`).
 - Tour step for Mission Control (optional in the task plan) not added.
+- Strip and Spaces keys follow tab-open order inside the project (`projectTabKeys` from `cluster.tabKeys`); `railTabOrder` (tabs in rail order across projects) was dropped, nothing needed it.
+- Collapsed column avatars are 36 px (`size-9`), not 28 px: same hit target as the other aside buttons.
+- Mission spread grid is `repeat(auto-fill, minmax(220px, 1fr))` (plan: `auto-fit, minmax(200px, 300px)`), so windows fill the stage width instead of leaving a gutter.
+- i18n keys differ from the plan text: `closeProject` = "Close project"; `needsList.footer` became per-state `needsList.working|done|idle|ended`; added `openProject*`, `runConfirm`, `mission.*`, `needsList.chipTip` (the chip tooltip; the old `attention.jump` key is gone).
+- Remembered projects (no pane) ask the host with a `remembered` flag: read-only toplevel / common dir, no grant, no repo registration (docs §11t).
+
+## Added after review (2026-10-15)
+- Rail "Open Project" button pinned at the top (outside the scrolling list, visible with many projects; FolderPlus icon pinned atop the collapsed column): native folder picker → new tab there with the current preset. The plan only had the per-project `+`; opening another folder needed the tab strip `+` → LaunchPicker → Browse.
+- Mouse wheel over the tab strip scrolls it sideways.
 
 ## Deliberately not ported
 Session sentence / first prompt (ruling 2); Deck's slide animation between spaces (fights per-pane view transitions); Deck's launch page (LaunchPicker / SplitMenu cover it; a checkout line opens a tab there); model pill on rows.

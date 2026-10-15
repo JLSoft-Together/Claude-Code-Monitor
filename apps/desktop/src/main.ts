@@ -6,16 +6,17 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, scre
 import { defaultDataDir } from '../../collector/src/datadir'
 import { HEX_COLOR, isZoomAction, nextZoom, parseLook, readAppearance, writeAppearance, zoomPercent, type Appearance } from './appearance'
 import { createAttention, type Attention } from './attention'
+import { createEditorTracker, type EditorTracker } from './editors'
 import { installBridge, type BridgeInstall } from './bridge'
 import { maskLog } from './log-mask'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
-import { errorPage, loadingPage, RETRY_URL } from './pages'
+import { errorPage, INTRO_MS, LEAVE_MS, LEAVE_SCRIPT, loadingPage, RETRY_URL } from './pages'
 import { pickStartDir } from './pick-start'
 import { hardenWebviews, PREVIEW_PARTITION, registerPreviewIpc, type PreviewIpc } from './preview/ipc'
 import { PreviewServer } from './preview/server'
 import { RootWatcher } from './preview/watch'
-import { GrantStore, GRANTS_FILE } from './preview/grants'
+import { FULL_ACCESS_FILE, FullAccess, GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { registerExtensionsIpc } from './extensions/ipc'
 import { createAndroidRunner } from './run/android/runner'
@@ -35,7 +36,8 @@ import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine 
 import { stringsFor, type Strings } from './strings'
 
 const APP_ID = 'dev.ccm.monitor'
-const LEGACY_EXE = 'Claude Code Monitor.exe'
+const LEGACY_EXES = ['Claude Code Monitor.exe', 'Agent Monitor.exe']
+const USER_DATA_DIR = 'Agent Monitor'
 const IS_MAC = process.platform === 'darwin'
 const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
 const ORIGIN = `http://127.0.0.1:${PORT}`
@@ -77,6 +79,7 @@ let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
+let editors: EditorTracker | null = null
 let bridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
@@ -332,12 +335,23 @@ function openAppWindow(url: string): void {
 // macOS registers the bundle itself (no path/args), so a login start there shows the window.
 const loginOptions = (): Electron.Settings => (IS_MAC ? {} : { path: PORTABLE_EXE ?? process.execPath, args: ['--hidden'] })
 
-// The exe name follows productName: a login entry made before the rename to Agent Monitor (same registry value
-// name = APP_ID, same install folder on update) still points at the removed old exe.
+// The exe name follows productName: a login entry made before a rename (same registry value name = APP_ID, same
+// install folder on update) still points at the removed old exe.
 function repairLoginItem(): void {
   if (IS_MAC || !app.isPackaged || PORTABLE_EXE) return
-  const legacy = { path: path.join(path.dirname(process.execPath), LEGACY_EXE), args: ['--hidden'] }
-  if (app.getLoginItemSettings(legacy).openAtLogin) app.setLoginItemSettings({ ...loginOptions(), openAtLogin: true })
+  const stale = LEGACY_EXES.some(
+    (exe) => app.getLoginItemSettings({ path: path.join(path.dirname(process.execPath), exe), args: ['--hidden'] }).openAtLogin,
+  )
+  if (stale) app.setLoginItemSettings({ ...loginOptions(), openAtLogin: true })
+}
+
+const openAtLogin = (): boolean => app.isPackaged && app.getLoginItemSettings(loginOptions()).openAtLogin
+
+function setOpenAtLogin(on: boolean): boolean {
+  if (!app.isPackaged) return false
+  app.setLoginItemSettings({ ...loginOptions(), openAtLogin: on })
+  tray?.setContextMenu(buildTrayMenu())
+  return openAtLogin()
 }
 
 function buildTrayMenu(): Menu {
@@ -349,8 +363,8 @@ function buildTrayMenu(): Menu {
       label: IS_MAC ? t.trayLoginMac : t.trayLogin,
       type: 'checkbox',
       enabled: app.isPackaged,
-      checked: app.isPackaged && app.getLoginItemSettings(loginOptions()).openAtLogin,
-      click: (item) => app.setLoginItemSettings({ ...loginOptions(), openAtLogin: item.checked }),
+      checked: openAtLogin(),
+      click: (item) => setOpenAtLogin(item.checked),
     },
     { label: t.trayLogs, click: () => void shell.openPath(app.getPath('logs')) },
     { type: 'separator' },
@@ -379,8 +393,39 @@ function showError(reason: FatalReason): void {
   showMain()
 }
 
+/** Native confirm; the first button is the action. */
+async function confirmBox(win: BrowserWindow | null | undefined, opts: Electron.MessageBoxOptions): Promise<boolean> {
+  const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+  return response === 0
+}
+
+/** Unsaved file editors (v42): Save / Don't save / Cancel; a failed save cancels the quit. */
+async function confirmUnsaved(): Promise<boolean> {
+  const files = editors?.files() ?? []
+  if (!files.length) return true
+  if (mainWindow && !mainWindow.isVisible()) showMain()
+  const opts: Electron.MessageBoxOptions = {
+    type: 'warning',
+    message: t.quitUnsavedTitle(files.length),
+    detail: `${t.quitUnsavedDetail}\n${files.map((f) => `• ${f.name} — ${f.path}`).join('\n')}`,
+    buttons: [t.quitUnsavedSave, t.quitUnsavedDiscard, t.quitCancel],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  }
+  const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+  if (response === 1) return true
+  if (response !== 0) return false
+  if (await editors!.saveAll()) return true
+  const fail: Electron.MessageBoxOptions = { type: 'error', message: t.quitUnsavedFailed, buttons: [t.quitCancel], noLink: true }
+  if (mainWindow) await dialog.showMessageBox(mainWindow, fail)
+  else await dialog.showMessageBox(fail)
+  return false
+}
+
 /** Quitting kills every embedded terminal (and the agents in them), so name them before asking. */
 async function confirmQuit(): Promise<boolean> {
+  if (!(await confirmUnsaved())) return false
   const census = ptys ? await ptys.census() : []
   const runs = runManager?.live() ?? []
   if (census?.length === 0 && runs.length === 0) return true
@@ -406,11 +451,11 @@ async function confirmQuit(): Promise<boolean> {
     cancelId: 1,
     noLink: true,
   }
-  const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
-  return response === 0
+  return confirmBox(mainWindow, opts)
 }
 
 let booting: Promise<void> | null = null
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 
 /** Vite starts alongside the app; give it time before the first load (a miss is a blank page, Ctrl+R retries). */
 async function waitForDevServer(url: URL): Promise<void> {
@@ -428,8 +473,16 @@ function boot(): Promise<void> {
     showingError = false
     try {
       await mainWindow.loadURL(loadingPage(t, saved().look, app.getVersion())).catch(() => undefined)
+      const shownAt = Date.now()
       await host.start()
       if (DEV_URL) await waitForDevServer(DEV_URL)
+      if (showingError) return
+      // A login start stays in the tray: nobody watches the intro, so the dashboard loads at once.
+      if (mainWindow.isVisible()) {
+        await delay(INTRO_MS - (Date.now() - shownAt))
+        await mainWindow.webContents.executeJavaScript(LEAVE_SCRIPT).catch(() => undefined)
+        await delay(LEAVE_MS)
+      }
       if (!showingError) await mainWindow.loadURL(`${PAGE_ORIGIN}/`)
     } catch (err) {
       showError(err instanceof FatalError ? err.reason : { kind: 'exited', code: null })
@@ -606,6 +659,11 @@ async function ready(): Promise<void> {
     if (action === 'get') return zoomPercent(saved().zoom ?? 0)
     return isZoomAction(action) ? zoom(event.sender, action) : null
   })
+  // null = dev build (no login entry for an unpacked electron.exe).
+  ipcMain.handle('ccm:login-item', (event, on: unknown) => {
+    if (!isAppFrame(event) || !app.isPackaged) return null
+    return typeof on === 'boolean' ? setOpenAtLogin(on) : openAtLogin()
+  })
   ipcMain.handle('ccm:statusline-state', (event) => (isAppFrame(event) ? readStatusLine(claudeSettings()).state : null))
   // The page only asks; the native confirm shows the exact change and is the consent.
   ipcMain.handle('ccm:statusline-enable', async (event) => {
@@ -624,8 +682,7 @@ async function ready(): Promise<void> {
       cancelId: 1,
       noLink: true,
     }
-    const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
-    if (response !== 0) return 'cancelled'
+    if (!(await confirmBox(win, opts))) return 'cancelled'
     // Re-read: the file may have changed while the dialog was open.
     return writeStatusLine(file, readStatusLine(file), command)
   })
@@ -663,6 +720,19 @@ async function ready(): Promise<void> {
     getWindow: () => mainWindow,
     getRoots: paneRoots,
     grants: new GrantStore(path.join(DATA_DIR, GRANTS_FILE)),
+    fullAccess: new FullAccess(path.join(DATA_DIR, FULL_ACCESS_FILE)),
+    confirmFullAccess: async () => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: t.fullAccessTitle,
+        detail: t.fullAccessDetail,
+        buttons: [t.fullAccessConfirm, t.accessDeny],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(mainWindow, opts)
+    },
     confirmAccess: async (folder) => {
       const opts: Electron.MessageBoxOptions = {
         type: 'question',
@@ -673,8 +743,7 @@ async function ready(): Promise<void> {
         cancelId: 1,
         noLink: true,
       }
-      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
-      return response === 0
+      return confirmBox(mainWindow, opts)
     },
     confirmGit: async (req) => {
       const opts: Electron.MessageBoxOptions = {
@@ -686,8 +755,7 @@ async function ready(): Promise<void> {
         cancelId: 1,
         noLink: true,
       }
-      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
-      return response === 0
+      return confirmBox(mainWindow, opts)
     },
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
@@ -730,8 +798,7 @@ async function ready(): Promise<void> {
           noLink: true,
         }
       } else return false
-      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
-      return response === 0
+      return confirmBox(mainWindow, opts)
     },
   })
   await runManager.loadSettings()
@@ -756,7 +823,7 @@ async function ready(): Promise<void> {
     ipcMain,
     isAppFrame,
     resolveDir: (p) => previewGate.resolveDir(p),
-    getSettings: () => ({ flutterSdk: runManager?.getSettings().flutterSdk ?? null }),
+    getSettings: () => runManager?.getSettings() ?? { flutterSdk: null },
   })
   // Owner decision: the Gradle project-model task runs after a successful Android build, never on project open.
   // Flutter goes reloading → running on every hot reload; the native build only happened before the first one.
@@ -774,6 +841,7 @@ async function ready(): Promise<void> {
     offModel()
     disposeRunIpc?.()
   }
+  editors ??= createEditorTracker({ ipcMain, isAppSender: (event) => isAppFrame(event as unknown as Electron.IpcMainInvokeEvent) })
   // Extensions tab: the page picks a catalog entry; the native confirm shows the exact claude command and is the consent.
   disposeExtensions = registerExtensionsIpc({
     ipcMain,
@@ -790,8 +858,7 @@ async function ready(): Promise<void> {
         cancelId: 1,
         noLink: true,
       }
-      const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
-      return response === 0
+      return confirmBox(win, opts)
     },
   })
   ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {
@@ -825,6 +892,10 @@ async function ready(): Promise<void> {
   const first = linkIn(process.argv)
   if (first) void openLink(first)
 }
+
+// userData follows productName; pinned to the pre-GolAIm folder so the Chromium profile (ccm.* localStorage), window
+// bounds, appearance and the single-instance lock survive the rename. An explicit --user-data-dir (E2E) still wins.
+if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', path.join(app.getPath('appData'), USER_DATA_DIR))
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -883,7 +954,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(ready)
     .catch((err: unknown) => {
-      dialog.showErrorBox('Agent Monitor', err instanceof Error ? err.message : String(err))
+      dialog.showErrorBox('GolAIm', err instanceof Error ? err.message : String(err))
       app.exit(1)
     })
 }

@@ -3,10 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, X } from 'lucide-vue-next'
 import type { BranchOpResult, CommitFile } from '@ccm/shared'
-import { absoluteIn, fileStepKey, inSidewaysScroller } from '../../../lib/changesView'
+import { absoluteIn, fileStepKey, scrollSideways } from '../../../lib/changesView'
 import { grammarFor } from '../../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../../lib/diff'
-import { changeBlocks } from '../../../lib/diffBlocks'
+import { viewBlocks } from '../../../lib/diffBlocks'
+import { hideImportChanges } from '../../../lib/diffImports'
 import { readDiffOpts } from '../../../lib/diffOpts'
 import { expandableIds, type RefRow } from '../../../lib/gitRefs'
 import { hasFilters } from '../../../lib/logQuery'
@@ -124,7 +125,7 @@ const diffState = ref<'idle' | 'loading' | 'binary' | 'too-large' | 'empty' | 'e
 const opts = ref(readDiffOpts())
 const currentBlock = ref(0)
 const diffView = ref<InstanceType<typeof DiffView> | null>(null)
-const blocks = computed(() => (diffFile.value ? changeBlocks(diffFile.value) : []))
+const blocks = computed(() => (diffFile.value ? viewBlocks(diffFile.value, opts.value.highlight) : []))
 const commitFiles = computed(() => (log.detail.value?.ok ? log.detail.value.files : []))
 let diffSeq = 0
 
@@ -151,7 +152,8 @@ async function openDiff(file: CommitFile): Promise<void> {
     diffFile.value = null
     return
   }
-  diffFile.value = parseUnifiedDiff(res.text)[0] ?? null
+  const parsed = parseUnifiedDiff(res.text)[0] ?? null
+  diffFile.value = parsed && opts.value.whitespace === 'imports' ? hideImportChanges(parsed).file : parsed
   diffState.value = diffFile.value?.hunks.length ? 'idle' : 'empty'
   await nextTick()
   if (run === diffSeq && blocks.value.length) void diffView.value?.scrollToBlock(0)
@@ -204,7 +206,8 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key === 'F7') stepBlock(e.shiftKey ? -1 : 1)
   else if (e.key === ']' && !e.ctrlKey && !e.metaKey) stepFile(1)
   else if (e.key === '[' && !e.ctrlKey && !e.metaKey) stepFile(-1)
-  else if (fileStepKey(e) && !(e.target as HTMLElement | null)?.closest('[role=tree],[role=toolbar],[role=menu],[role=dialog]') && !inSidewaysScroller(e.target as Element | null)) stepFile(fileStepKey(e) as 1 | -1)
+  else if (scrollSideways(e)) return e.preventDefault()
+  else if (fileStepKey(e) && !(e.target as HTMLElement | null)?.closest('[role=tree],[role=toolbar],[role=menu],[role=dialog]')) stepFile(fileStepKey(e) as 1 | -1)
   else return
   e.preventDefault()
 }
@@ -232,6 +235,8 @@ watch(log.selected, (h) => {
 // Branches toolbar: the focused refs-tree row is its target; clicking a ref still filters the log.
 const refsTree = ref<InstanceType<typeof LogRefsTree> | null>(null)
 const selectedRef = ref<RefRow | null>(null)
+// An unmounted tree cannot emit `select` any more, so the toolbar would keep targeting its last row.
+watch([() => cols.value.refsOpen, log.root], () => (selectedRef.value = null))
 const refsCollapsed = ref<Set<string>>(new Set())
 const refsView = ref(readRefsView())
 watch(refsView, writeRefsView, { deep: true })
@@ -426,6 +431,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
       />
       <template v-if="cols.refsOpen">
         <LogRefsTree
+          :key="log.root.value ?? ''"
           ref="refsTree"
           v-model:collapsed="refsCollapsed"
           class="shrink-0"
@@ -465,7 +471,9 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
             :collapse="opts.collapse"
             :context="opts.context"
             :highlight="opts.highlight"
-            :sides="{ left: `${shortHash}^`, right: shortHash }"
+            :sides="{ left: log.detail.value?.ok && !log.detail.value.parents.length ? t('workspace.diff.side.none') : `${shortHash}^`, right: shortHash }"
+            :align="opts.align"
+            :sync="opts.sync"
             :can-revert="false"
             :current="currentBlock"
             @focus-block="(i) => (currentBlock = i)"

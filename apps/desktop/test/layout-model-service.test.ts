@@ -308,7 +308,7 @@ describe('daemon loading', () => {
     const s = setup()
     await s.service.refresh({ root: p.root, module: ':app' })
     const before = await s.service.prepare(p.appLayout)
-    expect(s.watchers).toHaveLength(2)
+    expect(s.watchers).toHaveLength(3)
     expect(s.watchers[0]!.dirs).toEqual([path.join(p.root, 'app', 'src', 'main', 'res')])
     const fire = s.watchers[0]!.onChange
     fire(['a.xml'])
@@ -378,7 +378,7 @@ describe('generated res + warm projects', () => {
     const s = setup()
     await s.service.refresh({ root, module: ':app' })
     await s.service.prepare(path.join(root, 'app', 'src', 'main', 'res', 'layout', 'main.xml'))
-    expect(s.watchers.map((w) => w.dirs)).toEqual([[path.join(root, 'app', 'src', 'main', 'res')], [path.join(root, 'app')]])
+    expect(s.watchers.map((w) => w.dirs)).toEqual([[path.join(root, 'app', 'src', 'main', 'res')], [path.join(root, 'app')], [path.join(root, 'app', 'src')]])
   })
 
   it('re-watches when a refresh changes the res dirs of the loaded project', async () => {
@@ -392,8 +392,8 @@ describe('generated res + warm projects', () => {
     await s.service.refresh({ root: p.root, module: ':app' })
     await s.service.prepare(p.appLayout)
     await s.service.refresh({ root: p.root, module: ':app' })
-    expect(s.watchers.map((w) => w.closed)).toEqual([true, true, false, false])
-    expect(s.watchers[2]!.dirs).toHaveLength(2)
+    expect(s.watchers.map((w) => w.closed)).toEqual([true, true, true, false, false, false])
+    expect(s.watchers[3]!.dirs).toHaveLength(2)
   })
 
   it('stops both watchers when another project loads', async () => {
@@ -404,7 +404,7 @@ describe('generated res + warm projects', () => {
     await s.service.refresh({ root: b.root, module: ':app' })
     await s.service.prepare(a.appLayout)
     await s.service.prepare(b.appLayout)
-    expect(s.watchers.map((w) => w.closed)).toEqual([true, true, false, false])
+    expect(s.watchers.map((w) => w.closed)).toEqual([true, true, true, false, false, false])
   })
 
   it('sends projectId and flags classes refreshed while another project was active', async () => {
@@ -424,6 +424,38 @@ describe('generated res + warm projects', () => {
     expect(loads[0]!.projectId).toMatch(/^[0-9a-f]{16}$/)
     expect(loads[0]!.projectId).toBe(loads[2]!.projectId)
     expect(loads[1]!.projectId).not.toBe(loads[0]!.projectId)
+  })
+})
+
+describe('code change hint', () => {
+  it('flags .kt / .java edits of the loaded model until the next refresh, ignores other files', async () => {
+    const p = project()
+    const s = setup({ model: (root) => ({ ...modelJson(root), classDirs: [path.join(root, 'lib', 'build', 'tmp', 'kotlin-classes', 'debug')] }) })
+    const target = { root: p.root, module: ':app' }
+    await s.service.refresh(target)
+    await s.service.prepare(p.appLayout)
+    const code = s.watchers[2]!
+    expect(code.dirs).toEqual([path.join(p.root, 'lib', 'src'), path.join(p.root, 'app', 'src')])
+    code.onChange([path.join(p.root, 'app', 'src', 'main', 'res', 'layout', 'main.xml')])
+    expect((await s.service.info(p.appLayout)).codeChanged).toBe(false)
+    code.onChange([path.join(p.root, 'lib', 'src', 'main', 'java', 'V.kt')])
+    code.onChange([path.join(p.root, 'app', 'src', 'main', 'java', 'A.java')])
+    expect(s.events.filter((e) => e.type === 'code-changed')).toEqual([{ type: 'code-changed', root: p.root, module: ':app' }])
+    expect((await s.service.info(p.appLayout)).codeChanged).toBe(true)
+    await wait(2)
+    await s.service.refresh(target)
+    expect((await s.service.info(p.appLayout)).codeChanged).toBe(false)
+  })
+
+  it('stops watching when the daemon stops (idle shutdown)', async () => {
+    const p = project()
+    const s = setup()
+    await s.service.refresh({ root: p.root, module: ':app' })
+    await s.service.prepare(p.appLayout)
+    s.service.onDaemonState('stopped')
+    expect(s.watchers.every((w) => w.closed)).toBe(true)
+    s.watchers[2]!.onChange([path.join(p.root, 'app', 'src', 'A.kt')])
+    expect(s.events.some((e) => e.type === 'code-changed')).toBe(false)
   })
 })
 

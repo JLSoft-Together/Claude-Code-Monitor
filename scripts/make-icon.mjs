@@ -10,42 +10,23 @@ const BG = [22, 24, 29]
 const ACCENT = [232, 145, 90]
 const INK = [232, 230, 227]
 
-function quad([ax, ay], [cx, cy], [bx, by], steps = 8) {
-  const pts = []
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps
-    const u = 1 - t
-    pts.push([u * u * ax + 2 * u * t * cx + t * t * bx, u * u * ay + 2 * u * t * cy + t * t * by])
-  }
-  return pts
-}
-
 // Same geometry as scripts/assets/logo.svg (viewBox 1024). w = stroke width multiplier for the tray glyph.
 function shapes(w = 1) {
   return [
-    { kind: 'ring', color: INK, rect: [218, 218, 588, 588, 72], width: 34 * w },
-    { kind: 'line', color: INK, width: 34 * w, cap: 'round', lines: [[[294, 427], [375, 508], [294, 589]]] },
-    { kind: 'fill', color: ACCENT, rect: [423, 437, 50, 138, 10] },
-    { kind: 'line', color: INK, width: 24 * w, cap: 'butt', lines: [[[487, 506], [590, 506]]] },
-    {
-      kind: 'line',
-      color: INK,
-      width: 24 * w,
-      cap: 'square',
-      lines: [
-        [[590, 506], [590, 376], ...quad([590, 376], [590, 364], [602, 364]), [670, 364]],
-        [[590, 506], [670, 506]],
-        [[590, 506], [590, 636], ...quad([590, 636], [590, 648], [602, 648]), [670, 648]],
-      ],
-    },
-    { kind: 'fill', color: ACCENT, rect: [670, 326, 78, 78, 16] },
-    { kind: 'fill', color: INK, rect: [670, 467, 78, 78, 16] },
-    { kind: 'fill', color: INK, rect: [670, 609, 78, 78, 16] },
+    { kind: 'fill', color: INK, rect: [412, 176, 200, 168, 44] },
+    { kind: 'fill', color: ACCENT, cut: true, rect: [448, 240, 128, 36, 14] },
+    { kind: 'fill', color: INK, rect: [348, 368, 328, 288, 52] },
+    { kind: 'fill', color: INK, rect: [228, 384, 96, 236, 44] },
+    { kind: 'fill', color: INK, rect: [700, 384, 96, 236, 44] },
+    { kind: 'fill', color: INK, rect: [388, 680, 108, 168, 40] },
+    { kind: 'fill', color: INK, rect: [528, 680, 108, 168, 40] },
+    { kind: 'line', color: BG, cut: true, width: 32 * w, cap: 'round', lines: [[[430, 462], [492, 512], [430, 562]]] },
+    { kind: 'fill', color: BG, cut: true, rect: [520, 540, 92, 30, 10] },
   ]
 }
 const LOGO = shapes()
-// Menu bar glyph for macOS: black on transparent, thicker strokes so it survives 16 px.
-const GLYPH = shapes(1.6).map((s) => ({ ...s, color: [0, 0, 0] }))
+// Menu bar glyph for macOS: black silhouette on transparent, eye and chest prompt cut out, thicker prompt for 16 px.
+const GLYPH = shapes(1.4).map((s) => ({ ...s, color: s.cut ? null : [0, 0, 0] }))
 
 function sdRoundRect(x, y, [rx, ry, w, h, r]) {
   const qx = Math.abs(x - rx - w / 2) - (w / 2 - r)
@@ -81,7 +62,7 @@ function hit(s, x, y) {
 // inset: transparent margin per side; radius: tile corner (logo units); glyph: GLYPH cropped to the frame, no tile.
 function render(size, { inset = 0, radius = 0, glyph = false } = {}) {
   const ss = size <= 32 ? 6 : size <= 256 ? 4 : 2
-  const [x0, span] = glyph ? [180, 664] : [0, 1024]
+  const [x0, span] = glyph ? [160, 704] : [0, 1024]
   const scale = span / (size - 2 * inset)
   const strokes = glyph ? GLYPH : LOGO
   const rgba = Buffer.alloc(size * size * 4)
@@ -95,7 +76,7 @@ function render(size, { inset = 0, radius = 0, glyph = false } = {}) {
           if (x < 0 || y < 0 || x > 1024 || y > 1024) continue
           if (radius && sdRoundRect(x, y, [0, 0, 1024, 1024, radius]) > 0) continue
           let c = glyph ? null : BG
-          for (const s of strokes) if (hit(s, x, y)) c = s.color
+          for (const s of strokes) if (hit(s, x, y)) c = s.color ?? null
           if (!c) continue
           r += c[0]; g += c[1]; b += c[2]; a += 255
         }

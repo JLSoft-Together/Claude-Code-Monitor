@@ -1,0 +1,7 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#FFFFFF">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <View android:layout_width="match_parent" android:layout_height="200dp" android:background="#26A69A"/>
+    <View android:layout_width="match_parent" android:layout_height="200dp" android:background="#AB47BC"/>
+    <View android:layout_width="match_parent" android:layout_height="200dp" android:background="#FFA726"/>
+  </LinearLayout>
+</ScrollView>

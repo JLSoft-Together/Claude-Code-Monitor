@@ -14,7 +14,8 @@ export interface RunIpcDeps {
 const CHANNELS = [
   'ccm:run-detect', 'ccm:run-env', 'ccm:run-devices', 'ccm:run-emulators', 'ccm:run-launch-emulator', 'ccm:run-configs', 'ccm:run-config-save',
   'ccm:run-config-delete', 'ccm:run-config-import', 'ccm:run-preview', 'ccm:run-start', 'ccm:run-stop', 'ccm:run-reload', 'ccm:run-pub-get',
-  'ccm:run-sessions', 'ccm:run-settings', 'ccm:run-settings-set',
+  'ccm:run-sessions', 'ccm:run-settings', 'ccm:run-settings-set', 'ccm:run-hold', 'ccm:run-config-auto-import', 'ccm:run-toolchain',
+  'ccm:run-templates', 'ccm:run-templates-set', 'ccm:run-project-sdk-set',
 ]
 
 const DENIED: RunResult = { ok: false, error: { code: 'denied' } }
@@ -29,6 +30,44 @@ export function registerRunIpc(deps: RunIpcDeps): () => void {
     return root(event, dir)
   }
 
+  const tracked = new Set<number>()
+  // A window that reloads / closes drops its holds, so watchers and device trackers can stop.
+  const ownerOf = (event: IpcMainInvokeEvent, key: string): string => {
+    const id = event.sender.id
+    if (!tracked.has(id)) {
+      tracked.add(id)
+      event.sender.once('destroyed', () => {
+        tracked.delete(id)
+        manager.releaseOwner(String(id))
+      })
+      event.sender.on('did-start-navigation', (_e, _url, inPlace, isMainFrame) => {
+        if (isMainFrame && !inPlace) manager.releaseOwner(String(id))
+      })
+    }
+    return `${id}:${key}`
+  }
+
+  ipcMain.handle('ccm:run-hold', async (event, dir: unknown, key: unknown, on: unknown) => {
+    const r = await root(event, dir)
+    if (!r || !isId(key)) return false
+    await manager.hold(r, ownerOf(event, key), on === true)
+    return true
+  })
+  ipcMain.handle('ccm:run-config-auto-import', async (event, dir: unknown) => {
+    const r = await root(event, dir)
+    return r ? manager.autoImport(r).catch(() => []) : []
+  })
+  ipcMain.handle('ccm:run-toolchain', async (event, dir: unknown, kind: unknown) => {
+    const d = await inside(event, dir)
+    return d && (kind === 'flutter' || kind === 'android') ? manager.toolchain(d, kind).catch(() => null) : null
+  })
+  ipcMain.handle('ccm:run-templates', (event) => (isAppFrame(event) ? manager.getTemplates() : null))
+  ipcMain.handle('ccm:run-templates-set', (event, next: unknown) => (isAppFrame(event) && next && typeof next === 'object' ? manager.setTemplates(next).catch(() => null) : null))
+  ipcMain.handle('ccm:run-project-sdk-set', async (event, dir: unknown, sdk: unknown) => {
+    const d = await inside(event, dir)
+    if (!d || (sdk !== null && (typeof sdk !== 'string' || !path.isAbsolute(sdk)))) return null
+    return manager.setProjectFlutterSdk(d, sdk).catch(() => null)
+  })
   ipcMain.handle('ccm:run-detect', async (event, dir: unknown) => {
     const r = await root(event, dir)
     return r ? manager.detect(r, true).catch(() => null) : null

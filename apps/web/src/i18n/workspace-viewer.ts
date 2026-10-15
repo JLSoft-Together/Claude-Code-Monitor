@@ -2,7 +2,9 @@
 const en = {
   access: {
     allow: 'Allow access to {folder}',
-    denied: 'Agent Monitor can only open files inside the folders of your open terminals, or folders you allowed.',
+    allowAll: 'Allow access to every folder',
+    onlyFolder: 'Only {folder}',
+    denied: 'GolAIm can only open files inside the folders of your open terminals, or folders you allowed.',
     refused: 'Access was not allowed.',
   },
   browser: {
@@ -196,7 +198,9 @@ const en = {
 const vi: typeof en = {
   access: {
     allow: 'Cho phép truy cập {folder}',
-    denied: 'Agent Monitor chỉ mở được tệp trong thư mục của các terminal đang mở, hoặc thư mục bạn đã cho phép.',
+    allowAll: 'Cho phép truy cập mọi thư mục',
+    onlyFolder: 'Chỉ thư mục {folder}',
+    denied: 'GolAIm chỉ mở được tệp trong thư mục của các terminal đang mở, hoặc thư mục bạn đã cho phép.',
     refused: 'Chưa được cho phép truy cập.',
   },
   browser: {

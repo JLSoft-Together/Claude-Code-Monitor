@@ -159,6 +159,12 @@ describe('trashEntry', () => {
     expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), async () => { throw new Error('EPERM: operation not permitted') })).toEqual({ ok: false, error: 'busy' })
   })
 
+  it('reports a trash name clash as a failed trash, not as an existing entry', async () => {
+    const clash = (code: string) => async () => { throw Object.assign(new Error(code), { code }) }
+    expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), clash('ENOTEMPTY'))).toEqual({ ok: false, error: 'failed' })
+    expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), clash('EEXIST'))).toEqual({ ok: false, error: 'failed' })
+  })
+
   it('names each fs failure by its code or message', () => {
     const coded = (code: string) => Object.assign(new Error(code), { code })
     expect(fsFailure(coded('EPERM'))).toBe('busy')

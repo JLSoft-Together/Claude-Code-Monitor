@@ -1,4 +1,4 @@
-import { isRunLive, type BuildError, type EnvIssue, type RunConfig, type RunKind, type RunProject, type RunSession, type RunState } from '@ccm/shared'
+import { isRunLive, type BuildError, type EnvIssue, type FlutterPlatform, type RunConfig, type RunDevice, type RunKind, type RunProject, type RunSession, type RunState, type RunTemplates } from '@ccm/shared'
 import { dirKey } from '../stores/favorites'
 import { isTerm, type Pane } from '../stores/workspace'
 import { fileMention } from './promptAttachments'
@@ -93,17 +93,19 @@ export function configIssues(cfg: RunConfig, rows: readonly EnvRow[]): { code: s
 
 export const appModules = (p: RunProject): string[] => (p.kind === 'android' ? p.modules.filter((m) => m.type === 'application' || m.guessed || m.launcher).map((m) => m.path) : [])
 
-/** Blank config of `kind` pointed at the first matching project (the root for custom). */
-export function newConfig(kind: RunKind, id: string, name: string, projects: readonly RunProject[], root: string): RunConfig {
+/** Blank config of `kind` pointed at the first matching project (the root for custom), template defaults applied. */
+export function newConfig(kind: RunKind, id: string, name: string, projects: readonly RunProject[], root: string, templates?: RunTemplates | null): RunConfig {
   const base = { id, name, shared: false, env: {}, beforeLaunch: [] as string[] }
   if (kind === 'flutter') {
     const p = projects.find((x) => x.kind === 'flutter' && x.type === 'app') ?? projects.find((x) => x.kind === 'flutter')
     const entry = p?.kind === 'flutter' ? (p.entrypoints.find((e) => e === 'lib/main.dart') ?? p.entrypoints[0]) : undefined
-    return { ...base, type: 'flutter', cwd: p?.dir ?? root, entrypoint: entry ?? 'lib/main.dart', device: 'selected', mode: 'debug', flavor: '', args: '', attachArgs: '' }
+    const t = templates?.flutter
+    const flavor = t?.flavor && p?.kind === 'flutter' && p.flavors.includes(t.flavor) ? t.flavor : ''
+    return { ...base, type: 'flutter', cwd: p?.dir ?? root, entrypoint: entry ?? 'lib/main.dart', device: 'selected', mode: t?.mode ?? 'debug', flavor, args: t?.args ?? '', attachArgs: '' }
   }
   if (kind === 'android') {
     const p = projects.find((x) => x.kind === 'android' && appModules(x).length) ?? projects.find((x) => x.kind === 'android')
-    return { ...base, type: 'android', cwd: p?.dir ?? root, module: (p && appModules(p)[0]) ?? ':app', variant: 'debug', device: 'selected', args: '' }
+    return { ...base, type: 'android', cwd: p?.dir ?? root, module: (p && appModules(p)[0]) ?? ':app', variant: templates?.android.variant ?? 'debug', device: 'selected', args: templates?.android.args ?? '' }
   }
   return { ...base, type: 'custom', cwd: root, command: '' }
 }
@@ -139,4 +141,56 @@ export function configChanges(original: readonly RunConfig[], working: readonly 
   const defaults = original.length > 0 && original.every((c) => c.id.startsWith('auto-'))
   if (defaults) return { save: [...working], remove: [] }
   return { save: changed, remove: removed }
+}
+
+const PLATFORM_OF: [RegExp, FlutterPlatform][] = [
+  [/^android/, 'android'],
+  [/^ios/, 'ios'],
+  [/^web/, 'web'],
+  [/^windows/, 'windows'],
+  [/^(darwin|macos)/, 'macos'],
+  [/^linux/, 'linux'],
+]
+
+/** Flutter plan §4: only devices of a platform folder the project has (no `web/` → no Chrome). Unknown platforms stay. */
+export function fitsPlatforms(device: RunDevice, platforms: readonly FlutterPlatform[]): boolean {
+  if (!platforms.length) return true
+  const hit = PLATFORM_OF.find(([re]) => re.test(device.platform))
+  return !hit || platforms.includes(hit[1])
+}
+
+/** Raw build / Gradle / Xcode output lines worth highlighting in the Build tab (plan §6 "highlight dòng lỗi"). */
+const ERROR_LINE = /(^|\s)(e: |error:|Error:|ERROR:|FAILURE:|BUILD FAILED|FAILED$|\* What went wrong|Exception\b|Execution failed|Unhandled exception|AAPT: error|Could not resolve)/
+
+export const isErrorLine = (text: string): boolean => ERROR_LINE.test(text)
+
+export interface ProjectMark {
+  kind: 'flutter' | 'android'
+  /** i18n key under `run.project.*` naming the framework / project type. */
+  label: string
+  /** Not runnable / module types unknown: shown with a "?" mark. */
+  unsure: boolean
+  /** i18n key under `run.project.reason.*`, null when it simply runs. */
+  reason: string | null
+  runnable: boolean
+}
+
+/** Framework, guessed / unknown state and why a project can't run (Explorer badge, empty state, Run bar tooltip). */
+export function projectMark(p: RunProject): ProjectMark {
+  if (p.kind === 'flutter') {
+    const runnable = p.type === 'app' || !!p.example
+    const reason = p.type === 'app' ? null : p.type === 'plugin' ? (p.example ? 'pluginExample' : 'plugin') : p.type
+    return { kind: 'flutter', label: `type.${p.type}`, unsure: !runnable, reason, runnable }
+  }
+  const guessed = p.modules.some((m) => m.guessed)
+  const runnable = p.status === 'runnable' || p.modules.some((m) => m.launcher)
+  const reason = p.status === 'no-app' ? 'no-app' : p.status === 'unknown' ? 'unknown' : guessed ? 'guessed' : null
+  return { kind: 'android', label: `framework.${p.framework}`, unsure: p.status !== 'runnable' || guessed, reason, runnable }
+}
+
+/** Determinate step of the Android pipeline (build → install → launch); null = indeterminate / idle. */
+export function runStep(session: RunSession | null): { n: number; total: number } | null {
+  if (!session || session.type !== 'android') return null
+  const at = (['building', 'installing', 'launching'] as const).indexOf(session.state as 'building')
+  return at < 0 ? null : { n: at + 1, total: 3 }
 }

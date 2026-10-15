@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FwpEntry, RunConfig, RunDevice } from '@ccm/shared'
-import { flavorsFrom, groupEntries, inFlutterProject, isDartFile, mobileDevices, relativeTo } from './flutterPreview'
+import { failingEntries, flavorsFrom, groupEntries, inFlutterProject, isDartFile, isLive, mobileDevices, previewDevice, readDeviceOverrides, relativeTo, withDeviceOverride } from './flutterPreview'
 
 const dev = (id: string, platform: string, state: RunDevice['state'] = 'ready'): RunDevice => ({ id, name: id, platform, emulator: false, state, source: 'flutter' })
 const entry = (file: string, symbol: string): FwpEntry => ({ id: `${file}#${symbol}`, file, line: 1, symbol, label: symbol, call: `${symbol}()` })
@@ -49,5 +49,38 @@ describe('inFlutterProject', () => {
     expect(await inFlutterProject('/fail/x.dart', probe)).toBe(false)
     expect(await inFlutterProject('/fail/y.dart', probe)).toBe(false)
     expect(calls).toEqual(['/app/lib/a.dart', '/other/x.dart', '/fail/x.dart', '/fail/y.dart'])
+  })
+
+  it('device: panel override, else the Run pane pick, else the first phone', () => {
+    const mobile = [dev('a', 'android-arm64'), dev('i', 'ios')]
+    expect(previewDevice(mobile, 'i', 'a')).toBe('i')
+    expect(previewDevice(mobile, 'gone', 'a')).toBe('a')
+    expect(previewDevice(mobile, null, 'chrome')).toBe('a')
+    expect(previewDevice(mobile, null, 'i')).toBe('i')
+    expect(previewDevice([], 'i', 'a')).toBe('')
+  })
+
+  it('device overrides are per project; picking the Run device clears it', () => {
+    localStorage.clear()
+    let all = withDeviceOverride({}, '/p1', 'i', 'a')
+    all = withDeviceOverride(all, '/p2', 'a', 'i')
+    expect(readDeviceOverrides()).toEqual({ '/p1': 'i', '/p2': 'a' })
+    all = withDeviceOverride(all, '/p1', 'a', 'a')
+    expect(all).toEqual({ '/p2': 'a' })
+    localStorage.setItem('ccm.fwp.devices', '[1]')
+    expect(readDeviceOverrides()).toEqual({})
+  })
+
+  it('failingEntries: widget error entry, or every entry in the file that failed to compile', () => {
+    const list = [entry('lib/a.dart', 'x'), entry('lib/a.dart', 'y'), entry('lib/b.dart', 'z')]
+    expect([...failingEntries(list, { code: 'widget', entry: 'lib/b.dart#z' }, '/p')]).toEqual(['lib/b.dart#z'])
+    const build = { file: '/p/lib/a.dart', line: 3, col: 1, message: 'x', severity: 'error' as const }
+    expect([...failingEntries(list, { code: 'build', build }, '/p')]).toEqual(['lib/a.dart#x', 'lib/a.dart#y'])
+    expect(failingEntries(list, { code: 'exited' }, '/p').size).toBe(0)
+  })
+
+  it('syncing counts as live', () => {
+    expect(isLive('syncing')).toBe(true)
+    expect(isLive('failed')).toBe(false)
   })
 })

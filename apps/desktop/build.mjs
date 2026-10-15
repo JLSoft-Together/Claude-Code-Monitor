@@ -70,10 +70,10 @@ writeFileSync(
   JSON.stringify(
     {
       name: 'agent-monitor',
-      productName: 'Agent Monitor',
+      productName: 'GolAIm',
       version: pkg.version,
       description: pkg.description,
-      author: 'Agent Monitor',
+      author: 'GolAIm',
       main: 'main.cjs',
     },
     null,

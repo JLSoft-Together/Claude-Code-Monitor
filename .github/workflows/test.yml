@@ -1,0 +1,46 @@
+name: test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      # Daemon first: `assemble` builds the jar + layoutlib-dist that apps/desktop/test/layout-daemon.int.test.ts spawns.
+      # Golden PNGs exist for Windows only (host-OS fonts); GoldenTest skips its image comparisons elsewhere.
+      - name: layout daemon (assemble + test)
+        working-directory: apps/layout-daemon
+        shell: bash
+        run: bash ./gradlew --no-daemon assemble test
+      - run: npm run typecheck
+      - run: npm test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-test-report-${{ runner.os }}
+          path: |
+            apps/layout-daemon/build/reports/tests
+            apps/layout-daemon/build/golden-out
+          if-no-files-found: ignore

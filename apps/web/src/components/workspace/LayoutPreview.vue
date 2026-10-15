@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, CircleCheck, CircleX, Coffee, Columns3, Download, Frame, Info, LoaderCircle, Moon, Palette, RefreshCw, RotateCcw, Smartphone, Sun, TriangleAlert, ZoomIn } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck, CircleX, Coffee, Columns3, Download, Frame, Hammer, Info, LoaderCircle, Moon, Palette, RefreshCw, RotateCcw, Smartphone, Sun, TriangleAlert, ZoomIn } from 'lucide-vue-next'
 import AppSelect, { type SelectOption } from '../AppSelect.vue'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import LayoutBoxes from './LayoutBoxes.vue'
 import { desktop } from '../../lib/desktop'
 import {
+  DENSITIES,
   DEVICE_PRESETS,
+  DPI_MAX,
+  DPI_MIN,
   LOCALES,
   THEME_AUTO,
   THEME_DAYNIGHT,
@@ -22,6 +25,7 @@ import {
   hitTest,
   layoutDownload,
   layoutRender,
+  layoutWarmup,
   layoutModelPick,
   layoutModelRefresh,
   layoutModelStatus,
@@ -33,6 +37,8 @@ import {
   onLayoutEvent,
   shortClass,
   stepView,
+  validDpi,
+  withDensity,
   type CompareConfig,
   type LayoutDiagnostic,
   type LayoutModelInfo,
@@ -41,7 +47,7 @@ import {
   type LayoutViewNode,
 } from '../../lib/layoutPreview'
 
-const props = withDefaults(defineProps<{ path: string; revision: number; line?: number | null; active?: boolean }>(), { line: null, active: true })
+const props = withDefaults(defineProps<{ path: string; revision: number; line?: number | null; active?: boolean; text?: string | null }>(), { line: null, active: true, text: null })
 const emit = defineEmits<{ reveal: [line: number, select: boolean] }>()
 const { t, te, locale: uiLocale } = useI18n()
 
@@ -58,10 +64,12 @@ interface Options {
   /** '' = project theme (daemon resolves tools:context → app theme). */
   theme: string
   compare: boolean
+  /** dpi override; 0 = the device preset's own density. */
+  density: number
 }
 
 function loadOptions(): Options {
-  const base: Options = { device: 'pixel5', landscape: false, night: false, locale: '', zoom: 'fit', blueprint: false, theme: THEME_AUTO, compare: false }
+  const base: Options = { device: 'pixel5', landscape: false, night: false, locale: '', zoom: 'fit', blueprint: false, theme: THEME_AUTO, compare: false, density: 0 }
   try {
     const raw = JSON.parse(localStorage.getItem(OPTIONS_KEY) ?? 'null') as Partial<Options> | null
     if (!raw) return base
@@ -74,6 +82,7 @@ function loadOptions(): Options {
       blueprint: raw.blueprint === true,
       theme: typeof raw.theme === 'string' && /^[@A-Za-z0-9_.:/]{0,128}$/.test(raw.theme) ? raw.theme : THEME_AUTO,
       compare: raw.compare === true,
+      density: validDpi(raw.density) ? raw.density : 0,
     }
   } catch {
     return base
@@ -118,7 +127,7 @@ const canvas = ref<HTMLElement | null>(null)
 const box = ref({ width: 0, height: 0 })
 
 const ready = computed(() => !!status.value && status.value.jar && status.value.jdk.ok && status.value.bundle.state === 'ready')
-const device = computed(() => deviceFor(opts.value.device, opts.value.landscape))
+const device = computed(() => withDensity(deviceFor(opts.value.device, opts.value.landscape), opts.value.density))
 const scale = computed(() => {
   const w = size.value.width || device.value.width
   const h = size.value.height || device.value.height
@@ -140,6 +149,23 @@ const zoomValue = computed({
   get: () => String(opts.value.zoom),
   set: (v: string) => (opts.value.zoom = v === 'fit' ? 'fit' : Number(v)),
 })
+const presetDpi = computed(() => deviceFor(opts.value.device, false).density)
+const isPresetDensity = (n: number): boolean => n === 0 || DENSITIES.some((d) => d.dpi === n)
+const customDpi = ref(isPresetDensity(opts.value.density) ? '' : String(opts.value.density))
+const densityChoice = ref(isPresetDensity(opts.value.density) ? String(opts.value.density) : CUSTOM)
+const densityOptions = computed<SelectOption<string>[]>(() => [
+  { value: '0', label: t('layout.density.device', { dpi: presetDpi.value }) },
+  ...DENSITIES.map((d) => ({ value: String(d.dpi), label: t('layout.density.preset', { name: d.id, dpi: d.dpi }) })),
+  { value: CUSTOM, label: customDpi.value ? t('layout.density.customValue', { dpi: customDpi.value }) : t('layout.density.custom') },
+])
+watch(densityChoice, (v) => {
+  if (v !== CUSTOM) opts.value.density = Number(v)
+})
+function applyCustomDpi(): void {
+  const n = Number(customDpi.value.trim())
+  if (validDpi(n)) opts.value.density = n
+}
+
 const themeOptions = computed<Segment<'light' | 'dark'>[]>(() => [
   { value: 'light', label: t('layout.theme.light'), icon: Sun },
   { value: 'dark', label: t('layout.theme.dark'), icon: Moon },
@@ -204,7 +230,7 @@ const showNotice = computed(() => !opts.value.compare && needsModelNotice(framew
 const compareFlat = computed(() => new Map<string, LayoutViewNode[]>(shots.value.map((s) => [s.cfg.id, s.res.ok ? flattenTree(s.res.viewTree) : []])))
 const compareLayout = computed(() => {
   // Final cell count, not shots.length: cells arrive one by one and must not resize as they do.
-  const n = compareConfigs(opts.value.device, opts.value.landscape).length
+  const n = compareConfigs(opts.value.device, opts.value.landscape, opts.value.density).length
   return shots.value.map((s) => {
     const w = s.res.ok ? s.res.width : s.cfg.device.width
     const h = s.res.ok ? s.res.height : s.cfg.device.height
@@ -274,6 +300,9 @@ const errorText = computed(() => {
 let timer: ReturnType<typeof setTimeout> | null = null
 let seq = 0
 
+/** v42: unsaved editor text (FilePane edit mode) instead of the file on disk. */
+const liveText = (): { text?: string } => (props.text === null ? {} : { text: props.text })
+
 function schedule(ms = 300): void {
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => {
@@ -293,8 +322,8 @@ async function render(): Promise<void> {
   if (opts.value.compare) {
     const out: { cfg: CompareConfig; res: LayoutRenderResult }[] = []
     // Sequential: the daemon renders one at a time anyway, and each cell shows up as soon as it is ready.
-    for (const [i, cfg] of compareConfigs(opts.value.device, opts.value.landscape).entries()) {
-      const r = await layoutRender({ file: props.path, device: cfg.device, theme, night: cfg.night, locale, slot: i + 1 })
+    for (const [i, cfg] of compareConfigs(opts.value.device, opts.value.landscape, opts.value.density).entries()) {
+      const r = await layoutRender({ file: props.path, device: cfg.device, theme, night: cfg.night, locale, slot: i + 1, ...liveText() })
       if (my !== seq) return
       out.push({ cfg, res: r })
       shots.value = [...out]
@@ -302,7 +331,7 @@ async function render(): Promise<void> {
     res = out[0]!.res
   } else {
     shots.value = []
-    res = await layoutRender({ file: props.path, device: device.value, theme, night: opts.value.night, locale, slot: 0 })
+    res = await layoutRender({ file: props.path, device: device.value, theme, night: opts.value.night, locale, slot: 0, ...liveText() })
     if (my !== seq) return
   }
   rendering.value = false
@@ -360,7 +389,8 @@ const offEvent = onLayoutEvent((e) => {
   } else {
     const target = model.value?.target
     if (!target || target.root !== e.root || target.module !== e.module) return
-    if (e.type === 'project-changed') schedule(300)
+    if (e.type === 'code-changed') model.value = { ...model.value!, codeChanged: true }
+    else if (e.type === 'project-changed') schedule(300)
     else if (e.state.state === 'ready') void loadModel()
     else if (model.value) model.value = { ...model.value, state: e.state }
   }
@@ -456,6 +486,8 @@ const resize = new ResizeObserver(([entry]) => {
 
 onMounted(() => {
   if (canvas.value) resize.observe(canvas.value)
+  // Parallel to the status check: the JVM start is the slow part of the first render.
+  void layoutWarmup(props.path)
   void loadModel()
   void refreshStatus()
 })
@@ -495,6 +527,21 @@ onBeforeUnmount(() => {
         @blur="applyCustomLocale"
       />
       <AppSelect v-model="opts.theme" :options="appThemeOptions" :label="t('layout.themePick.label')" :icon="Palette" size="sm" />
+      <AppSelect v-model="densityChoice" :options="densityOptions" :label="t('layout.density.label')" size="sm" data-layout-density />
+      <input
+        v-if="densityChoice === CUSTOM"
+        v-model="customDpi"
+        type="number"
+        :min="DPI_MIN"
+        :max="DPI_MAX"
+        class="ccm-field h-6 w-16 shrink-0 text-2xs tabular"
+        :placeholder="t('layout.density.customLabel')"
+        :aria-label="t('layout.density.customLabel')"
+        :title="t('layout.density.customLabel')"
+        @keydown.enter="applyCustomDpi"
+        @blur="applyCustomDpi"
+      />
+      <span v-if="status?.apiLevel" class="shrink-0 text-2xs tabular" :title="t('layout.api.hint', { level: status.apiLevel })" data-layout-api>{{ t('layout.api.label', { level: status.apiLevel }) }}</span>
       <span class="flex-1" />
       <AppSelect v-if="appOptions.length" v-model="appPick" :options="appOptions" :label="t('layout.model.pickApp')" size="sm" data-layout-model-app />
       <span class="flex min-w-0 shrink items-center gap-1 text-2xs" :title="chipTitle" role="status" data-layout-model>
@@ -543,6 +590,11 @@ onBeforeUnmount(() => {
       <button v-if="model?.target && chip.kind !== 'running'" type="button" class="ccm-btn shrink-0" :disabled="modelBusy" :title="t('layout.model.refreshHint')" @click="refreshModel">
         {{ t('layout.model.refresh') }}
       </button>
+    </p>
+
+    <p v-if="ready && model?.codeChanged" class="flex shrink-0 items-start gap-2 border-b border-well-line px-3 py-1.5 text-xs" role="note" :title="t('layout.codeChangedHint')" data-layout-code-changed>
+      <Hammer :size="14" class="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ t('layout.codeChanged') }}</span>
     </p>
 
     <div ref="canvas" class="ccm-scroll relative min-h-0 flex-1 overflow-auto">

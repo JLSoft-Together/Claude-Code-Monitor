@@ -1,3 +1,4 @@
+import { watch as fsWatch } from 'node:fs'
 import os from 'node:os'
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from 'electron'
 import { RootWatcher } from '../preview/watch'
@@ -9,7 +10,7 @@ export interface WireFlutterPreviewDeps {
   ipcMain: IpcMain
   isAppFrame: (event: IpcMainInvokeEvent) => boolean
   resolveDir: (p: unknown) => Promise<string | null>
-  getSettings: () => { flutterSdk: string | null }
+  getSettings: () => { flutterSdk: string | null; flutterSdkProjects?: Record<string, string> }
 }
 
 export interface FlutterPreviewWire {
@@ -18,6 +19,26 @@ export interface FlutterPreviewWire {
 }
 
 const SAVE_DEBOUNCE_MS = 400
+
+/** Non-recursive: the project root also holds build/ and .dart_tool/, which churn during a run. */
+function watchPubspec(root: string, onChange: () => void): () => void {
+  let timer: NodeJS.Timeout | null = null
+  let watcher: ReturnType<typeof fsWatch>
+  try {
+    watcher = fsWatch(root, { recursive: false }, (_event, file) => {
+      if (file?.toString() !== 'pubspec.yaml') return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(onChange, SAVE_DEBOUNCE_MS)
+    })
+  } catch {
+    return () => undefined
+  }
+  watcher.on('error', () => watcher.close())
+  return () => {
+    if (timer) clearTimeout(timer)
+    watcher.close()
+  }
+}
 
 export function wireFlutterPreview(deps: WireFlutterPreviewDeps): FlutterPreviewWire {
   const service = new FlutterPreviewService({
@@ -34,6 +55,7 @@ export function wireFlutterPreview(deps: WireFlutterPreviewDeps): FlutterPreview
       watcher.add(dir)
       return () => watcher.closeAll()
     },
+    watchPubspec: (root, onChange) => watchPubspec(root, onChange),
   })
   const disposeIpc = registerFlutterPreviewIpc({ ipcMain: deps.ipcMain, isAppFrame: deps.isAppFrame, resolveDir: deps.resolveDir, service })
   return {

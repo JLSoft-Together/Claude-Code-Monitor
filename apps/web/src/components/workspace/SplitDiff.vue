@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 import { ChevronsRight } from 'lucide-vue-next'
 import { escapeHtml } from '../../lib/codeView'
+import { isMac } from '../../lib/platform'
 import type { DiffFile } from '../../lib/diff'
 import type { Block } from '../../lib/diffBlocks'
 import type { DiffHighlight } from '../../lib/diffOpts'
@@ -20,6 +21,8 @@ const props = defineProps<{
   revertBlocked?: string | null
   current: number
   sides: { left: string; right: string }
+  align: boolean
+  sync: boolean
 }>()
 const emit = defineEmits<{ revert: [index: number]; focusBlock: [index: number] }>()
 
@@ -38,8 +41,10 @@ const viewH = ref(0)
 const top = reactive({ left: 0, right: 0 })
 /** `${hunk}:${unit}` of folds the user opened; reset per file. */
 const expanded = ref<Set<string>>(new Set())
+/** Side the caret was last in: F4 reads its top line, Ctrl+Shift+Tab leaves it. */
+let lastSide: Side = 'right'
 
-const model = computed(() => splitModel(props.file, props.blocks, { collapse: props.collapse, context: props.context, expanded: expanded.value }))
+const model = computed(() => splitModel(props.file, props.blocks, { collapse: props.collapse, context: props.context, expanded: expanded.value, align: props.align }))
 const shown = computed(() => visibleFragments(model.value.frags, lh.value, top.left, top.right, viewH.value))
 const el = (side: Side): HTMLElement | null => (side === 'left' ? leftEl.value : rightEl.value)
 const other = (side: Side): Side => (side === 'left' ? 'right' : 'left')
@@ -53,13 +58,16 @@ function rowHtml(r: SplitRow, side: Side): string {
     return `<div class="sd-row fold"><span class="n"></span><button type="button" class="c" data-fold="${r.key}">⋯ ${label}</button></div>`
   }
   if (r.kind === 'note') return `<div class="sd-row note"><span class="n"></span><span class="c">${escapeHtml(r.text)}</span></div>`
+  if (r.kind === 'pad') return `<div class="sd-row pad ${props.blocks[r.block]!.type}" data-block="${r.block}" aria-hidden="true"><span class="n"></span><span class="c"></span></div>`
   const l = r.line
   const n = num(side === 'left' ? l.old : l.new)
-  const newAttr = side === 'right' && l.new ? ` data-new="${l.new}"` : ''
+  // Unchanged rows carry the new-side number on both sides (F4 from the left side).
+  const newAttr = l.new ? ` data-new="${l.new}"` : ''
   if (r.block === null) return `<div class="sd-row"${newAttr}><span class="n">${n}</span><span class="c">${code(l, 'w-mod')}\n</span></div>`
   const type = props.blocks[r.block]!.type
   const kind = escapeHtml(t(`workspace.gutter.kind.${type}`))
-  return `<div class="sd-row ${type}" data-block="${r.block}"${newAttr}><span class="n" title="${kind}">${n}</span><span class="c">${code(l, 'w-mod')}\n</span></div>`
+  const words = type === 'deleted' ? 'w-del' : type === 'added' ? 'w-add' : 'w-mod'
+  return `<div class="sd-row ${type}" data-block="${r.block}"${newAttr}><span class="n" title="${kind}">${n}</span><span class="c">${code(l, words)}\n</span></div>`
 }
 
 /** Rows, then a thin line where a fragment has no rows on this side (Inserted on the left, Deleted on the right). */
@@ -94,7 +102,7 @@ let syncing: Side | null = null
 
 function onScroll(side: Side): void {
   schedule()
-  if (syncing === side) return
+  if (!props.sync || syncing === side) return
   const src = el(side)
   const dst = el(other(side))
   if (!src || !dst) return
@@ -167,7 +175,13 @@ function revert(i: number): void {
 /** `»` sits at the top of the left rows of its fragment, kept inside the gutter. */
 const revertTop = (f: Fragment): number => Math.max(0, Math.min(viewH.value - BUTTON, f.l1Start * lh.value - top.left + (lh.value - BUTTON) / 2))
 
+function clearSelectionInside(): void {
+  const sel = window.getSelection()
+  if (sel?.rangeCount && root.value?.contains(sel.focusNode)) sel.removeAllRanges()
+}
+
 async function scrollToBlock(i: number): Promise<void> {
+  clearSelectionInside()
   await nextTick()
   markCurrent()
   const f = model.value.frags.find((x) => x.block === i)
@@ -177,27 +191,83 @@ async function scrollToBlock(i: number): Promise<void> {
   if (!pane) return
   pane.scrollTop = scrollTopFor(side === 'right' ? f.l2Start : f.l1Start, lh.value, pane.clientHeight)
   onScroll(side)
+  if (!props.sync) {
+    const o = el(other(side))
+    if (o) o.scrollTop = scrollTopFor(side === 'right' ? f.l1Start : f.l2Start, lh.value, o.clientHeight)
+  }
 }
 
-defineExpose({ scrollToBlock })
+/** New-side line (1-based) of a row: its own number, the change it belongs to, or the next numbered row. */
+function rowLine(row: Element | null | undefined): number | undefined {
+  for (let r = row, k = 0; r && k < 500; r = r.nextElementSibling, k++) {
+    const h = r as HTMLElement
+    if (h.dataset.new) return Number(h.dataset.new)
+    if (h.dataset.block) {
+      const b = props.blocks[Number(h.dataset.block)]
+      if (b) return Math.max(1, b.line1 + 1)
+    }
+  }
+  return undefined
+}
+
+/**
+ * F4 target (IntelliJ keeps the caret): the caret / selection inside the diff, else the current change while it is on
+ * screen, else the top line of the side the caret was last in.
+ */
+function sourceLine(): number | undefined {
+  const sel = window.getSelection()
+  const node = sel?.rangeCount ? sel.focusNode : null
+  if (node && root.value?.contains(node)) {
+    const row = (node instanceof Element ? node : node.parentElement)?.closest('.sd-row')
+    if (row) return rowLine(row)
+  }
+  const f = model.value.frags.find((x) => x.block === props.current)
+  const l = leftEl.value
+  const r = rightEl.value
+  if (!l || !r) return undefined
+  if (f && visibleFragments([f], lh.value, l.scrollTop, r.scrollTop, l.clientHeight).length) {
+    return rowLine(r.querySelector(`.sd-row[data-block="${f.block}"]`) ?? l.querySelector(`.sd-row[data-block="${f.block}"]`))
+  }
+  const pane = el(lastSide)!
+  const rows = pane.querySelector('.sd-body')?.children
+  return rowLine(rows?.[Math.floor(pane.scrollTop / lh.value + 0.5)])
+}
+
+/** Ctrl+Shift+Tab (IntelliJ): caret to the other side. */
+function switchSide(): void {
+  const to = other(lastSide)
+  lastSide = to
+  el(to)?.focus()
+}
+
+function onPaneKey(e: KeyboardEvent): void {
+  // Windows / Linux: Ctrl+Shift+Tab is the previous workspace tab (v18), taken in the capture phase before this pane.
+  if (isMac && e.key === 'Tab' && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+    e.preventDefault()
+    switchSide()
+  }
+}
+
+defineExpose({ scrollToBlock, sourceLine, switchSide })
 </script>
 
 <template>
   <div
     ref="root"
-    class="is-split flex h-full min-h-0 min-w-0 flex-col"
+    class="is-split ccm-code flex h-full min-h-0 min-w-0 flex-col"
+    :class="{ 'hl-none': highlight === 'none' }"
     data-code-zoom
     data-split-diff
     :aria-label="blocks.length ? t('workspace.diff.change', { n: current + 1, total: blocks.length }) : undefined"
   >
     <div class="sd-heads flex shrink-0 border-b border-well-line">
-      <span class="min-w-0 flex-1 truncate px-2" :title="sides.left">{{ sides.left }}</span>
+      <span class="min-w-0 flex-1 truncate px-2" :title="sides.left" data-split-head="left">{{ sides.left }}</span>
       <span class="shrink-0" :style="{ width: `${GUTTER_W}px` }" aria-hidden="true" />
-      <span class="min-w-0 flex-1 truncate px-2" :title="sides.right">{{ sides.right }}</span>
+      <span class="min-w-0 flex-1 truncate px-2" :title="sides.right" data-split-head="right">{{ sides.right }}</span>
     </div>
     <div class="relative flex min-h-0 flex-1">
       <div ref="probe" class="sd-row sd-probe" aria-hidden="true"><span class="n">0</span><span class="c">0</span></div>
-      <div ref="leftEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="left" :aria-label="sides.left" @scroll.passive="onScroll('left')" @click="onClick">
+      <div ref="leftEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="left" :aria-label="sides.left" @scroll.passive="onScroll('left')" @click="onClick" @focusin="lastSide = 'left'" @keydown="onPaneKey">
         <div class="sd-body" v-html="leftHtml" />
       </div>
       <div class="sd-gutter relative shrink-0 overflow-hidden" :style="{ width: `${GUTTER_W}px` }">
@@ -221,7 +291,7 @@ defineExpose({ scrollToBlock })
           </button>
         </template>
       </div>
-      <div ref="rightEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="right" :aria-label="sides.right" @scroll.passive="onScroll('right')" @click="onClick">
+      <div ref="rightEl" class="sd-pane ccm-scroll" tabindex="0" role="document" data-side="right" :aria-label="sides.right" @scroll.passive="onScroll('right')" @click="onClick" @focusin="lastSide = 'right'" @keydown="onPaneKey">
         <div class="sd-body" v-html="rightHtml" />
       </div>
     </div>
@@ -300,10 +370,44 @@ defineExpose({ scrollToBlock })
 .is-split :deep(.sd-row.deleted) {
   background: var(--del-bg);
 }
+.is-split :deep(.sd-row.pad.modified) {
+  background: color-mix(in srgb, var(--mod-ink) 7%, transparent);
+}
+.is-split :deep(.sd-row.pad.added) {
+  background: color-mix(in srgb, var(--add-ink) 6%, transparent);
+}
+.is-split :deep(.sd-row.pad.deleted) {
+  background: color-mix(in srgb, var(--del-ink) 8%, transparent);
+}
+/* Highlight "None": rows keep the code colours; only the number column and the gutter show the change. */
+.is-split.hl-none :deep(.sd-row.modified),
+.is-split.hl-none :deep(.sd-row.added),
+.is-split.hl-none :deep(.sd-row.deleted) {
+  background: transparent;
+}
+.is-split.hl-none :deep(.sd-row.modified > .n) {
+  background: var(--mod-bg);
+}
+.is-split.hl-none :deep(.sd-row.added > .n) {
+  background: var(--add-bg);
+}
+.is-split.hl-none :deep(.sd-row.deleted > .n) {
+  background: var(--del-bg);
+}
 .is-split :deep(mark.w-mod) {
   color: inherit;
   border-radius: 2px;
   background: var(--mod-word);
+}
+.is-split :deep(mark.w-add) {
+  color: inherit;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--add-ink) 34%, transparent);
+}
+.is-split :deep(mark.w-del) {
+  color: inherit;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--del-ink) 36%, transparent);
 }
 .is-split :deep(.sd-mark) {
   position: absolute;

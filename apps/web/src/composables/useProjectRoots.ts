@@ -10,22 +10,27 @@ const roots = reactive(new Map<string, string>())
 const repoRoots = reactive(new Map<string, string>())
 /** dirKey(dir) -> repo facts, set together with `roots`. */
 const facts = reactive(new Map<string, RepoFacts>())
-const inflight = new Map<string, { run: Promise<string | null>; retry: boolean }>()
-/** dirKey -> when a pane lookup may run again; Infinity = a one-shot (history) miss, which pane lookups ignore. */
+/**
+ * Remembered folders (no pane): read-only facts the host answers without registering the repo. Kept apart so a pane
+ * opening there still runs its own lookup, which is what lets the host serve Changes / scripts for it.
+ */
+const recalled = reactive(new Map<string, RepoFacts>())
+const inflight = new Map<string, Promise<string | null>>()
+const recalling = new Set<string>()
+/** dirKey -> when a pane lookup may run again. */
 const failed = new Map<string, number>()
+/** Remembered folders the host could not answer (gone, unreadable): tried once per window. */
+const missed = new Set<string>()
 // A pane's folder is refused until its PTY is up; the host re-reads its census on a miss, so short steps suffice.
 const RETRY_MS = [150, 300, 600, 1200, 2500, 5000]
 const FAILED_TTL_MS = 5000
 
-/** `retry` false: one try, for remembered folders the host refuses until a pane opens there. */
-function lookup(dir: string, retry: boolean): Promise<string | null> {
+function lookup(dir: string): Promise<string | null> {
   const key = dirKey(dir)
   const known = roots.get(key)
   if (known) return Promise.resolve(known)
   const pending = inflight.get(key)
-  if (pending && (pending.retry || !retry)) return pending.run
-  if (pending) return pending.run.then((root) => root ?? lookup(dir, true))
-  const steps = retry ? RETRY_MS : []
+  if (pending) return pending
   const run = (async (): Promise<string | null> => {
     for (let i = 0; ; i++) {
       const info = await projectRootInfo(dir)
@@ -35,24 +40,31 @@ function lookup(dir: string, retry: boolean): Promise<string | null> {
         if (info.repo) repoRoots.set(dirKey(info.root), info.root)
         return info.root
       }
-      if (i >= steps.length) return null
-      await new Promise((r) => setTimeout(r, steps[i]))
+      if (i >= RETRY_MS.length) return null
+      await new Promise((r) => setTimeout(r, RETRY_MS[i]))
     }
   })()
-  inflight.set(key, { run, retry })
+  inflight.set(key, run)
   void run.then((root) => {
     inflight.delete(key)
     if (root) failed.delete(key)
-    else failed.set(key, retry ? Date.now() + FAILED_TTL_MS : Infinity)
+    else failed.set(key, Date.now() + FAILED_TTL_MS)
   })
   return run
 }
 
-function blocked(key: string, retry: boolean): boolean {
-  const until = failed.get(key)
-  if (until === undefined) return false
-  return retry ? until !== Infinity && Date.now() < until : true
+function recall(dir: string): void {
+  const key = dirKey(dir)
+  if (recalling.has(key) || missed.has(key)) return
+  recalling.add(key)
+  void projectRootInfo(dir, true).then((info) => {
+    recalling.delete(key)
+    if (info) recalled.set(key, repoFacts(info.root, info.repo, info.common))
+    else missed.add(key)
+  })
 }
+
+const blocked = (key: string): boolean => Date.now() < (failed.get(key) ?? 0)
 
 /** Git toplevel of a pane folder via the desktop bridge; until it answers, the deepest known repo holding it. */
 export function useProjectRoots() {
@@ -60,21 +72,26 @@ export function useProjectRoots() {
     const key = dirKey(dir)
     const known = roots.get(key)
     if (known) return known
-    if (!blocked(key, true)) void lookup(dir, true)
+    if (!blocked(key)) void lookup(dir)
     return containingRoot(dir, repoRoots.values())
   }
 
   /** Resolved now; callers that act on the root (scripts, layouts) await it. */
   async function resolve(dir: string): Promise<string> {
-    return (await lookup(dir, true)) ?? containingRoot(dir, repoRoots.values()) ?? dir
+    return (await lookup(dir)) ?? containingRoot(dir, repoRoots.values()) ?? dir
   }
 
   /** Repo facts of a folder once git answered; undefined while the lookup runs. `history`: a remembered folder, tried once. */
   function factsOf(dir: string, history = false): RepoFacts | undefined {
     const key = dirKey(dir)
     const known = facts.get(key)
-    if (!known && !blocked(key, !history)) void lookup(dir, !history)
-    return known
+    if (known || !history) {
+      if (!known && !blocked(key)) void lookup(dir)
+      return known
+    }
+    const old = recalled.get(key)
+    if (!old) recall(dir)
+    return old
   }
 
   return { rootOf, resolve, factsOf }

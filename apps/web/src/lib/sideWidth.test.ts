@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clampSideWidth, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, SIDE_WIDTH_KEY, STAGE_MIN, writeSideWidth } from './sideWidth'
+import { clampSideWidth, nextStacked, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, SIDE_WIDTH_KEY, STAGE_MIN, writeSideWidth } from './sideWidth'
 
 describe('sidebar width', () => {
   beforeEach(() => localStorage.clear())
@@ -30,5 +30,16 @@ describe('sidebar width', () => {
     expect(readSideWidth()).toBe(333)
     localStorage.setItem(SIDE_WIDTH_KEY, '9999')
     expect(readSideWidth()).toBe(SIDE_MAX)
+  })
+})
+
+describe('split stacking hysteresis', () => {
+  it('stacks below 700, unstacks above 760, holds in between', () => {
+    expect(nextStacked(false, 720)).toBe(false)
+    expect(nextStacked(false, 699)).toBe(true)
+    expect(nextStacked(true, 720)).toBe(true)
+    expect(nextStacked(true, 760)).toBe(true)
+    expect(nextStacked(true, 761)).toBe(false)
+    expect(nextStacked(true, 0)).toBe(true)
   })
 })

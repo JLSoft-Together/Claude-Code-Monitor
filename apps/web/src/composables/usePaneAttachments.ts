@@ -40,7 +40,7 @@ interface Options {
 }
 
 /**
- * Key that makes the agent read an image from the system clipboard. Verified on Claude Code 2.1.299 (§11p):
+ * Key that makes the agent read an image from the system clipboard. Verified on Claude Code 2.1.299 and 2.1.294 (§11p):
  * Windows = Alt+V (ESC v), ^V does nothing there; macOS / Linux = Ctrl+V. Codex: unverified, its own ^V is
  * left alone and the tray adds no images to Codex panes.
  */

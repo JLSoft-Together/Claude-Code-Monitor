@@ -126,13 +126,24 @@ async function run(app) {
 
   // v36 Branches toolbar (delete is not driven here: the native confirm cannot be clicked through CDP; test/branches.test.ts covers it).
   check('vertical branches toolbar is shown', await evaluate(`!!document.querySelector('[data-refs-toolbar] [data-refs-action=newBranch]')`))
-  await evaluate(`document.querySelector('[data-log-refs] [data-ref="refs/heads/feature/x"]').focus()`)
+  // cmp-e2e: one commit main lacks (Compare target); zz-fav sorts last until it is a favorite.
+  git('branch', 'cmp-e2e', git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'cmp only'))
+  git('branch', 'zz-fav')
+  await waitFor(`!!document.querySelector('[data-log-refs] [data-ref="refs/heads/zz-fav"]') && !!document.querySelector('[data-log-refs] [data-ref="refs/heads/cmp-e2e"]')`, 10000, 'new refs').catch(() => {})
+  const localOrder = `[...document.querySelectorAll('[data-log-refs] [data-ref^="refs/heads/"]')].map((r) => r.dataset.ref)`
+  const before = await evaluate(localOrder)
+  await evaluate(`document.querySelector('[data-log-refs] [data-ref="refs/heads/zz-fav"]').focus()`)
   await evaluate(`document.querySelector('[data-refs-action=favorite]').click()`)
   await sleep(200)
-  check('star marks the branch favorite (icon + stored per repo)', await evaluate(`(() => { const row = document.querySelector('[data-log-refs] [data-ref="refs/heads/feature/x"]'); return !!row?.querySelector('svg[aria-label]') && JSON.stringify(Object.values(JSON.parse(localStorage.getItem('ccm.workspace.logFavorites') ?? '{}'))).includes('feature/x') })()`))
+  const after = await evaluate(localOrder)
+  const at = (list, b) => (list ?? []).indexOf(`refs/heads/${b}`)
+  check('Favorite floats the branch above non-favorites', at(before, 'zz-fav') > at(before, 'cmp-e2e') && at(after, 'zz-fav') >= 0 && at(after, 'zz-fav') < at(after, 'cmp-e2e'), JSON.stringify({ before, after }))
+  check('star marks the branch favorite (icon + stored per repo)', await evaluate(`(() => { const row = document.querySelector('[data-log-refs] [data-ref="refs/heads/zz-fav"]'); return !!row?.querySelector('svg[aria-label]') && JSON.stringify(Object.values(JSON.parse(localStorage.getItem('ccm.workspace.logFavorites') ?? '{}'))).includes('zz-fav') })()`))
+  check('current branch shows both the current mark and its default-favorite star', await evaluate(`(document.querySelector('[data-log-refs] [data-ref="refs/heads/main"]')?.querySelectorAll('svg[aria-label]').length ?? 0) >= 2`))
+  await evaluate(`document.querySelector('[data-log-refs] [data-ref="refs/heads/cmp-e2e"]').focus()`)
   await evaluate(`document.querySelector('[data-refs-action=compare]').click()`)
-  await waitFor(`!!document.querySelector('[data-log-compare]')`, 4000, 'compare').catch(() => {})
-  check('Compare with Current shows the compare strip', await evaluate(`!!document.querySelector('[data-log-compare]')`))
+  await waitFor(`!!document.querySelector('[data-log-compare]') && document.querySelectorAll('[data-log-table] [data-commit]').length === 1`, 6000, 'compare').catch(() => {})
+  check('Compare with Current lists only commits missing from the current branch', await evaluate(`(() => { const rows = [...document.querySelectorAll('[data-log-table] [data-commit]')]; return !!document.querySelector('[data-log-compare]') && rows.length === 1 && rows[0].textContent.includes('cmp only') })()`))
   await evaluate(`document.querySelector('[data-log-compare-clear]').click()`)
   await evaluate(`document.querySelector('[data-refs-action=newBranch]').click()`)
   await waitFor(`!!document.querySelector('[data-new-branch-name]')`, 3000, 'new branch').catch(() => {})

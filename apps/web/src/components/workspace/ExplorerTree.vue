@@ -36,6 +36,9 @@ import { isMac } from '../../lib/platform'
 import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
 import { useExplorerStore } from '../../stores/explorer'
+import { useRunMarks } from '../../composables/useRunMarks'
+import { dirKey } from '../../stores/favorites'
+import RunProjectMark from './RunProjectMark.vue'
 
 const props = defineProps<{
   /** File shown by the focused viewer: marked, and revealed when it is inside the root. */
@@ -56,6 +59,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const explorer = useExplorerStore()
+const runMarks = useRunMarks(() => explorer.root)
+const runMark = (row: TreeRow) => (row.directory && !row.outOfRoot ? runMarks.value.get(dirKey(row.depth === 0 ? (explorer.root ?? row.path) : row.path)) : undefined)
 
 /** Fixed row height and overscan: the window is index arithmetic over `explorer.rows`. */
 const ROW = 22
@@ -335,6 +340,7 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
             data-row-name
             >{{ row.name }}</span
           >
+          <RunProjectMark v-if="runMark(row)" :project="runMark(row)!.project" :module="runMark(row)!.module" />
           <span v-if="gitKind(row)" class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="isActive(row) ? 'text-accent-ink' : KIND_CLASS[gitKind(row)!]" aria-hidden="true">{{
             KIND_LETTER[gitKind(row)!]
           }}</span>

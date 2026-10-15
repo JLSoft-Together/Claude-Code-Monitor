@@ -1,4 +1,5 @@
 import type { DiffFile, DiffLine } from './diff'
+import type { DiffHighlight } from './diffOpts'
 
 export type BlockType = 'added' | 'deleted' | 'modified'
 
@@ -60,6 +61,32 @@ export function changeBlocks(file: DiffFile): Block[] {
   })
   return out
 }
+
+/**
+ * Highlight "Split changes": each Modified block becomes its Deleted part then its Inserted part, so each is a change of
+ * its own (F7, revert). A run git did not print as "all `-` then all `+`" stays Modified.
+ */
+export function splitModified(file: DiffFile, blocks: readonly Block[]): Block[] {
+  const out: Block[] = []
+  for (const b of blocks) {
+    if (b.type !== 'modified') {
+      out.push(b)
+      continue
+    }
+    const lines = file.hunks[b.hunk]!.lines
+    const firstAdd = lines.findIndex((l, i) => i >= b.from && i < b.to && l.type === 'add')
+    if (lines.slice(firstAdd, b.to).some((l) => l.type === 'del')) {
+      out.push(b)
+      continue
+    }
+    out.push({ ...b, to: firstAdd, line2: b.line1, type: 'deleted', adds: [] })
+    out.push({ ...b, from: firstAdd, vcsLine1: b.vcsLine2, type: 'added', dels: [] })
+  }
+  return out
+}
+
+/** Blocks the viewer navigates for a highlight level. */
+export const viewBlocks = (file: DiffFile, highlight: DiffHighlight): Block[] => (highlight === 'split' ? splitModified(file, changeBlocks(file)) : changeBlocks(file))
 
 /** Block covering current-side line `line` (0-based); a Deleted block answers for the line right after the removal. */
 export function blockAt(blocks: readonly Block[], line: number): number {

@@ -68,7 +68,8 @@ export interface FlutterEnv {
   kind: 'flutter'
   /** Absolute SDK root, null when not found. */
   sdk: string | null
-  source: 'setting' | 'fvm' | 'FLUTTER_ROOT' | 'path' | 'default' | null
+  /** `project` = per-project SDK picked in the Run pane (app data), `setting` = the global one. */
+  source: 'project' | 'setting' | 'fvm' | 'FLUTTER_ROOT' | 'path' | 'default' | null
   version: string | null
   dart: string | null
   channel: string | null
@@ -193,7 +194,7 @@ export interface RunSession {
   appId: string | null
   vmServiceUri: string | null
   devtoolsUri: string | null
-  /** i18n `run.fail.<code>` when failed. */
+  /** i18n `run.fail.<code>`: why it failed, or a notice on a `stopped` session (device lost). */
   failure: EnvIssue | null
   /** `app.progress` / phase text, null when idle. */
   progress: string | null
@@ -238,3 +239,32 @@ export interface RunStartRequest {
 export type RunResult = { ok: true; sessionId?: string } | { ok: false; error: EnvIssue }
 
 export const RUN_SHARED_DIR = '.agent-monitor/run'
+
+/** Defaults for auto-created and newly added configs ("Edit configuration templates…"), stored in app data. */
+export interface RunTemplates {
+  flutter: { mode: FlutterMode; flavor: string; args: string }
+  android: { variant: string; args: string }
+}
+
+export const DEFAULT_RUN_TEMPLATES: RunTemplates = { flutter: { mode: 'debug', flavor: '', args: '' }, android: { variant: 'debug', args: '' } }
+
+export type ToolchainStatus = 'ok' | 'warning' | 'error'
+
+export interface ToolchainCheck {
+  /** Doctor validator name, or an Android check id (`jdk`, `sdk`, `adb`, `emulator`, `gradlew`). */
+  name: string
+  status: ToolchainStatus
+  /** Validator status line / tool version; masked (home → ~). */
+  summary: string
+  /** `issue` (Android) is shown via i18n `run.env.<code>`; `text` is tool output. */
+  messages: { status: ToolchainStatus; text: string; issue?: EnvIssue }[]
+}
+
+/** "Check toolchain": `flutter doctor` or the Android tool checks, only on request. */
+export interface ToolchainReport {
+  kind: 'flutter' | 'android'
+  checks: ToolchainCheck[]
+  /** The check itself could not run (no SDK, timeout). */
+  error: EnvIssue | null
+  at: number
+}

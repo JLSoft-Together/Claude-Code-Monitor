@@ -12,6 +12,8 @@ const en = {
     moveHint: 'Drag to reorder, or Alt+↑ / Alt+↓',
     moved: '{name} moved to position {n}',
     newIn: 'New tab in {name}',
+    openProject: 'Open Project',
+    openProjectHint: 'Pick a folder and open a new tab there',
     column: 'Projects (collapsed)',
     rowLabel: '{first}, {second}',
     runConfirm: {
@@ -32,6 +34,7 @@ const en = {
     needsList: {
       title: 'Needs you',
       empty: 'Nobody needs you right now',
+      chipTip: 'Show everything that needs you. {keys} jumps straight to the next one',
       working: '{n} working',
       done: '{n} finished',
       idle: '{n} ready',
@@ -53,6 +56,8 @@ const vi: typeof en = {
     moveHint: 'Kéo để sắp xếp, hoặc Alt+↑ / Alt+↓',
     moved: 'Đã chuyển {name} tới vị trí {n}',
     newIn: 'Tab mới trong {name}',
+    openProject: 'Mở Project',
+    openProjectHint: 'Chọn thư mục và mở tab mới ở đó',
     column: 'Dự án (thu gọn)',
     rowLabel: '{first}, {second}',
     runConfirm: {
@@ -73,6 +78,7 @@ const vi: typeof en = {
     needsList: {
       title: 'Cần bạn',
       empty: 'Hiện không có gì cần bạn',
+      chipTip: 'Xem mọi thứ đang cần bạn. {keys} để tới thẳng mục tiếp theo',
       working: '{n} đang chạy',
       done: '{n} đã xong',
       idle: '{n} sẵn sàng',

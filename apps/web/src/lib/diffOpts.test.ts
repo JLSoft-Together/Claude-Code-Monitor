@@ -14,4 +14,11 @@ describe('readDiffOpts highlight', () => {
     localStorage.setItem(DIFF_OPTS_KEY, JSON.stringify({ highlight: 'bytes' }))
     expect(readDiffOpts().highlight).toBe('words')
   })
+  it('keeps the split / none levels, Ignore imports and the split view toggles', () => {
+    expect(readDiffOpts()).toMatchObject({ align: false, sync: true })
+    localStorage.setItem(DIFF_OPTS_KEY, JSON.stringify({ highlight: 'none', whitespace: 'imports', align: true, sync: false }))
+    expect(readDiffOpts()).toMatchObject({ highlight: 'none', whitespace: 'imports', align: true, sync: false })
+    localStorage.setItem(DIFF_OPTS_KEY, JSON.stringify({ highlight: 'split', align: 'yes' }))
+    expect(readDiffOpts()).toMatchObject({ highlight: 'split', align: false })
+  })
 })

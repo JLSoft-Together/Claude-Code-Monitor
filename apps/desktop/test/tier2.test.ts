@@ -131,5 +131,10 @@ describe('scripts ipc', () => {
     expect(await call('ccm:scripts', other)).toBeNull()
     expect(await call('ccm:project-root', other)).toBeNull()
     expect(await call('ccm:project-root', allowed)).toMatchObject({ repo: expect.any(Boolean) })
+    // A remembered rail folder gets read-only facts, and that grants nothing.
+    expect(await call('ccm:project-root', other, true)).toMatchObject({ root: expect.any(String), repo: expect.any(Boolean) })
+    expect(await call('ccm:project-root', path.join(tmp, 'missing'), true)).toBeNull()
+    expect(await call('ccm:project-root', 'relative', true)).toBeNull()
+    expect(await call('ccm:scripts', other)).toBeNull()
   })
 })

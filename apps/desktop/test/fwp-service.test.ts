@@ -36,16 +36,24 @@ const PUBSPEC = 'name: demo\ndependencies:\n  flutter:\n    sdk: flutter\n'
 const ENTRY: FwpEntry = { id: 'lib/a.dart#a', file: 'lib/a.dart', line: 1, symbol: 'a', label: 'a', call: 'a()' }
 
 function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside?: boolean } = {}) {
-  const child = fakeChild()
+  const runs: FakeChild[] = [fakeChild()]
+  const pubs: FakeChild[] = []
+  let spawnedRuns = 0
   const specs: SpawnSpec[] = []
   const killed: boolean[] = []
   const hosts: string[] = []
   let onSave: ((changed: string[]) => void) | null = null
+  let onPubspec: (() => void) | null = null
   let entries: FwpEntry[] = [ENTRY]
   const deps: FlutterPreviewDeps = {
     spawn: (spec) => {
       specs.push(spec)
-      return child
+      if (spec.args[0] === 'pub') {
+        pubs.push(fakeChild())
+        return pubs.at(-1)!
+      }
+      if (spawnedRuns++ > 0) runs.push(fakeChild())
+      return runs.at(-1)!
     },
     env: { PATH: '' },
     platform: 'linux',
@@ -55,6 +63,10 @@ function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside
     watch: (_dir, cb) => {
       onSave = cb
       return () => (onSave = null)
+    },
+    watchPubspec: (_root, cb) => {
+      onPubspec = cb
+      return () => (onPubspec = null)
     },
     kill: (_c, sync) => killed.push(sync === true),
     findSdk: () => (opts.sdk === null ? { sdk: null, source: null, fvm: null, issues: [{ code: 'flutter-missing' }] } : { sdk: opts.sdk ?? '/sdk', source: 'path', fvm: null, issues: [] }),
@@ -72,12 +84,18 @@ function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside
   return {
     service,
     deps,
-    child,
+    get child() {
+      return runs.at(-1)!
+    },
+    runs,
+    pubs,
     specs,
     killed,
     hosts,
     save: (changed: string[]) => onSave?.(changed),
     watching: () => onSave !== null,
+    pubspecChanged: () => onPubspec?.(),
+    watchingPubspec: () => onPubspec !== null,
     setEntries: (e: FwpEntry[]) => (entries = e),
   }
 }
@@ -251,5 +269,74 @@ describe('FlutterPreviewService', () => {
     await h.service.start('/proj', 'emulator-5554')
     h.service.killNow()
     expect(h.killed).toEqual([true])
+  })
+
+  it('a widget error marker from the host becomes a masked panel error, cleared by the next show', async () => {
+    const h = harness()
+    await h.service.start('/proj', 'emulator-5554')
+    h.child.msg({ event: 'app.log', params: { log: 'flutter: ccm.error {"id":"lib/a.dart#a","message":"early"}' } })
+    await tick()
+    expect(h.service.get().error).toBeNull()
+    await started(h)
+    const token = 'sk-' + 'a'.repeat(20)
+    h.child.msg({ event: 'app.log', params: { log: `I/flutter ( 4242): ccm.error {"id":"lib/a.dart#a","message":"Bad state: ${token} at /home/u/app\\nnext"}` } })
+    await tick()
+    const err = h.service.get().error
+    expect(err).toMatchObject({ code: 'widget', entry: 'lib/a.dart#a' })
+    expect(err?.detail).toBe('Bad state: [masked] at ~/app next')
+    expect(h.service.get().log.join('\n')).not.toContain(token)
+    expect(h.service.get().state).toBe('running')
+    void h.service.show('lib/a.dart#b')
+    expect(h.service.get().error).toBeNull()
+  })
+
+  it('a pubspec.yaml change runs pub get, then restarts the session on the same device', async () => {
+    const h = harness()
+    await h.service.start('/proj', 'emulator-5554', 'dev')
+    expect(h.watchingPubspec()).toBe(false)
+    await started(h)
+    expect(h.watchingPubspec()).toBe(true)
+    h.pubspecChanged()
+    await tick()
+    expect(h.service.get().state).toBe('syncing')
+    expect(h.specs.at(-1)).toMatchObject({ args: ['pub', 'get'], cwd: '/proj', stdin: 'ignore' })
+    h.save(['/proj/lib/a.dart'])
+    await tick()
+    expect(h.runs[0]!.sent.some((m) => m.method === 'app.restart')).toBe(false)
+    const first = h.runs[0]!
+    await h.pubs[0]!.exit(0)
+    await tick()
+    expect(first.sent.at(-1)?.method).toBe('app.stop')
+    await first.exit(0)
+    await tick()
+    await tick()
+    expect(h.runs).toHaveLength(2)
+    expect(h.specs.at(-1)!.args).toEqual(['run', '--machine', '-t', '/proj/.dart_tool/ccm_preview/main.dart', '-d', 'emulator-5554', '--debug', '--flavor', 'dev'])
+    expect(h.service.get().state).toBe('starting')
+  })
+
+  it('a failed pub get keeps the old session running with a pub-get error', async () => {
+    const h = harness()
+    await h.service.start('/proj', 'emulator-5554')
+    await started(h)
+    h.pubspecChanged()
+    await tick()
+    h.pubs[0]!.out('Error: version solving failed.')
+    await h.pubs[0]!.exit(1)
+    await tick()
+    expect(h.service.get()).toMatchObject({ state: 'running', error: { code: 'pub-get' } })
+    expect(h.runs).toHaveLength(1)
+  })
+
+  it('stop during pub get kills it', async () => {
+    const h = harness()
+    await h.service.start('/proj', 'emulator-5554')
+    await started(h)
+    h.pubspecChanged()
+    await tick()
+    void h.service.stop()
+    expect(h.killed).toEqual([false])
+    expect(h.service.get().state).toBe('stopped')
+    expect(h.watchingPubspec()).toBe(false)
   })
 })

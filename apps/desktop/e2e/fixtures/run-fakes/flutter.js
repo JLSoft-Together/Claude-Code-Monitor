@@ -86,6 +86,8 @@ async function run() {
   send({ event: 'app.debugPort', params: { appId, port: 50123, wsUri: 'ws://127.0.0.1:50123/fakeToken=/ws' } })
   send({ event: 'app.started', params: { appId } })
   send({ event: 'app.log', params: { appId, log: 'flutter: Hello from the fake app' } })
+  // Masking: the home folder and a token-looking value must not reach the page.
+  send({ event: 'app.log', params: { appId, log: `flutter: secret at ${require('node:os').homedir()} ghp_abcdefghijklmnopqrstuvwxyz123456` } })
 }
 
 if (args[0] === '--version') {
@@ -100,6 +102,15 @@ if (args[0] === '--version') {
   void run()
 } else if (args[0] === 'pub') {
   process.stdout.write('Got dependencies!\n')
+  fs.writeFileSync(path.join(process.cwd(), 'pubspec.lock'), 'packages: {}\n')
+} else if (args[0] === 'doctor' && args.includes('--machine')) {
+  const doctor = [
+    { name: 'Flutter', type: 'installed', statusInfo: 'Channel stable, 3.35.0', messages: [{ message: 'Flutter version 3.35.0', type: 'information' }] },
+    { name: 'Android toolchain', type: 'partial', statusInfo: 'Android SDK version 35', messages: [{ message: 'Some Android licenses not accepted.', type: 'hint' }] },
+    { name: 'Chrome - develop for the web', type: 'missing', statusInfo: '', messages: [{ message: 'Cannot find Chrome executable', type: 'error' }] },
+  ]
+  process.stdout.write(JSON.stringify(doctor) + '\n')
+  process.exitCode = 1
 } else {
   process.stderr.write(`fake flutter: unsupported ${args.join(' ')}\n`)
   process.exitCode = 64

@@ -39,7 +39,7 @@ function fakeChild(): FakeChild {
   return c
 }
 
-function harness(cfg: Partial<FlutterRunConfig> = {}, opts: { sdk?: string | null; children?: FakeChild[] } = {}) {
+function harness(cfg: Partial<FlutterRunConfig> = {}, opts: { sdk?: string | null; children?: FakeChild[]; pubGet?: boolean } = {}) {
   const states: { state: RunState; patch?: Record<string, unknown> }[] = []
   const logs: Omit<RunLogLine, 'at'>[] = []
   const errors: BuildError[] = []
@@ -74,7 +74,7 @@ function harness(cfg: Partial<FlutterRunConfig> = {}, opts: { sdk?: string | nul
     root: '/proj',
     config,
     device: { id: 'emulator-5554', name: 'Pixel', platform: 'android-x64', emulator: true, state: 'ready', source: 'flutter' },
-    settings: { flutterSdk: null, androidSdk: null, jdk: null },
+    settings: { flutterSdk: null, androidSdk: null, jdk: null, flutterSdkProjects: {} },
     env: { PATH: '' },
     platform: 'linux',
     home: '/home/u',
@@ -92,6 +92,7 @@ function harness(cfg: Partial<FlutterRunConfig> = {}, opts: { sdk?: string | nul
     findSdk: () => ({ sdk, source: sdk ? 'setting' : null, fvm: null, issues: sdk ? [] : [{ code: 'flutter-missing' }] }),
     kill,
     stopTimeoutMs: 20,
+    needsPubGet: async () => opts.pubGet === true,
   })
   return { runner, states, logs, errors, fails, specs, children, kill, child: children[0]! }
 }
@@ -259,14 +260,37 @@ describe('flutter runner', () => {
     await boot(h)
     h.child.err('Lost connection to device.')
     await h.child.exit(1)
-    expect(h.fails).toEqual([{ code: 'device-lost' }])
-    expect(h.states.at(-1)!.state).toBe('stopped')
+    expect(h.fails).toEqual([])
+    expect(h.states.at(-1)).toMatchObject({ state: 'stopped', patch: { failure: { code: 'device-lost' } } })
 
     const h2 = harness()
     await boot(h2)
     await h2.child.exit(0)
     expect(h2.fails).toEqual([])
     expect(h2.states.at(-1)!.state).toBe('stopped')
+  })
+
+  it('runs flutter pub get first when the project needs it; a failed pub get fails the run', async () => {
+    const pub = fakeChild()
+    const h = harness({}, { pubGet: true, children: [pub, fakeChild()] })
+    const started = h.runner.start()
+    await tick()
+    expect(h.specs[0]).toMatchObject({ file: '/sdk/bin/flutter', args: ['pub', 'get'] })
+    expect(h.states[0]).toMatchObject({ state: 'before-launch', patch: { progress: 'flutter pub get' } })
+    expect(h.logs.some((l) => l.text === '> flutter pub get')).toBe(true)
+    await pub.exit(0)
+    await tick()
+    expect(h.specs[1]?.args).toContain('--machine')
+
+    const bad = fakeChild()
+    const h2 = harness({}, { pubGet: true, children: [bad] })
+    const started2 = h2.runner.start()
+    await tick()
+    await bad.exit(1)
+    await started2
+    expect(h2.fails).toEqual([{ code: 'pub-get' }])
+    expect(h2.specs).toHaveLength(1)
+    void started
   })
 
   it('beforeLaunch runs flutter from the SDK, failure stops the run', async () => {

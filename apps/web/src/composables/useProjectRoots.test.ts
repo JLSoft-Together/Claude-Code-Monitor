@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const projectRootInfo = vi.fn<(dir: string) => Promise<{ root: string; repo: boolean } | null>>()
-vi.mock('../lib/projects', () => ({ projectRootInfo: (dir: string) => projectRootInfo(dir) }))
+const projectRootInfo = vi.fn<(dir: string, remembered?: boolean) => Promise<{ root: string; repo: boolean } | null>>()
+vi.mock('../lib/projects', () => ({ projectRootInfo: (dir: string, remembered?: boolean) => projectRootInfo(dir, remembered) }))
 
 async function fresh() {
   vi.resetModules()
@@ -31,6 +31,21 @@ describe('useProjectRoots', () => {
     roots.factsOf('C:/app')
     await flush()
     expect(roots.factsOf('C:/app')?.top).toBe('C:/app')
+  })
+
+  it('keeps read-only facts of a remembered folder apart from pane lookups', async () => {
+    const roots = await fresh()
+    projectRootInfo.mockResolvedValue({ root: 'C:/app', repo: true })
+    roots.factsOf('C:/app/sub', true)
+    await flush()
+    expect(projectRootInfo).toHaveBeenLastCalledWith('C:/app/sub', true)
+    expect(roots.factsOf('C:/app/sub', true)?.top).toBe('C:/app')
+    expect(projectRootInfo).toHaveBeenCalledTimes(1)
+
+    expect(roots.factsOf('C:/app/sub')).toBeUndefined()
+    await flush()
+    expect(projectRootInfo).toHaveBeenLastCalledWith('C:/app/sub', undefined)
+    expect(roots.rootOf('C:/app/sub')).toBe('C:/app')
   })
 
   it('retries a pane folder after a miss once the failure expires', async () => {

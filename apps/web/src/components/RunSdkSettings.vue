@@ -10,7 +10,8 @@ const props = defineProps<{ open: boolean }>()
 const { t } = useI18n()
 const run = useRunStore()
 const failed = ref(false)
-const KINDS: (keyof RunSettings)[] = ['flutterSdk', 'androidSdk', 'jdk']
+type SdkKind = Exclude<keyof RunSettings, 'flutterSdkProjects'>
+const KINDS: SdkKind[] = ['flutterSdk', 'androidSdk', 'jdk']
 
 watch(
   () => props.open,
@@ -20,12 +21,12 @@ watch(
   { immediate: true },
 )
 
-async function choose(kind: keyof RunSettings): Promise<void> {
+async function choose(kind: SdkKind): Promise<void> {
   const dir = await desktop?.pickFolder(run.settings?.[kind] ?? undefined)
   if (dir) await set(kind, dir)
 }
 
-async function set(kind: keyof RunSettings, value: string | null): Promise<void> {
+async function set(kind: SdkKind, value: string | null): Promise<void> {
   failed.value = !(await run.updateSettings({ [kind]: value }))
 }
 </script>

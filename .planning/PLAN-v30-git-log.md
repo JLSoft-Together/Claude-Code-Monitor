@@ -1,4 +1,4 @@
-# PLAN v30 — read-only Git Log pane (2026-10-15, app 2.5.0)
+# PLAN v30 — Git Log pane, read-only in v30 (2026-10-15, app 2.5.0)
 
 Goal: an IntelliJ / Android Studio style history of the project's repo inside the workspace, next to the v29 Changes pane. **Read-only**: no checkout, branch, reset, cherry-pick, revert, fetch, pull, push or stash; copy actions only. Desktop only, no WebSocket events.
 
@@ -22,7 +22,7 @@ Seeing what an agent committed (and on which branch) without leaving the app. Pl
 - v36 (2026-10-15): the Branches toolbar adds create / fast-forward update / fetch / delete (native confirm); see PLAN-v36-log-branches-toolbar.md.
 
 ## Out of scope
-Any write operation, stash list, remote fetch, blame, compare two commits, graph of other repos, editing.
+Any write operation and remote fetch in v30 (v36 later added branch create / fast-forward / fetch / delete, PLAN-v36), stash list, blame, compare two commits, graph of other repos, editing.
 
 ## Tests
 `lib/commitGraph.test.ts`, `lib/gitRefs.test.ts`, `lib/logQuery.test.ts`, `composables/useGitLog.test.ts`, `stores/workspace.test.ts` (openLog), desktop log parser / args / real-repo tests, E2E `apps/desktop/e2e/log.cjs` (19 checks, incl. a bad-regex recovery case, narrow-pane widths 300 / 460 / 640 px; also in `run.cjs`).

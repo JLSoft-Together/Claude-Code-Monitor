@@ -21,6 +21,8 @@ import type {
   RunResult,
   RunSession,
   RunStartRequest,
+  RunTemplates,
+  ToolchainReport,
 } from '@ccm/shared'
 import type { FileView, PreviewChange, PreviewTarget } from './preview'
 import type { BundleStatus, LayoutEvent, LayoutModelInfo, LayoutRenderRequest, LayoutRenderResult, LayoutStatus } from './layoutPreview'
@@ -50,6 +52,8 @@ export interface RunSettings {
   flutterSdk: string | null
   androidSdk: string | null
   jdk: string | null
+  /** Per-project Flutter SDK keyed by the resolved project dir (lower-cased on Windows). */
+  flutterSdkProjects?: Record<string, string>
 }
 
 export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
@@ -65,6 +69,8 @@ interface DesktopBridge {
   setAppearance?: (look: DesktopLook) => Promise<boolean>
   /** App zoom (Chromium level, saved by the app); resolves to the new percent. */
   zoomApp?: (action: 'in' | 'out' | 'reset' | 'get') => Promise<number | null>
+  /** Start with Windows / open at login: no argument reads, a boolean sets; null in a dev build. */
+  loginItem?: (on?: boolean) => Promise<boolean | null>
   /** Claude Code's settings.json statusLine vs the bridge (quick setup). */
   statusLineState?: () => Promise<StatusLineState | null>
   /** Native confirm, then writes the bridge into settings.json. */
@@ -112,6 +118,14 @@ interface DesktopBridge {
   onRunEvent?: (handler: (event: RunEvent) => void) => () => void
   runSettings?: () => Promise<RunSettings | null>
   runSettingsSet?: (patch: Partial<RunSettings>) => Promise<RunSettings | null>
+  /** A Run pane shows `root`: main watches its project files and keeps device trackers up while held. */
+  runHold?: (root: string, key: string, on: boolean) => Promise<boolean>
+  /** Imports IntelliJ / VS Code configs the first time a project's Run pane opens (once per project). */
+  runConfigAutoImport?: (root: string) => Promise<RunConfig[]>
+  runToolchain?: (dir: string, kind: Exclude<RunKind, 'custom'>) => Promise<ToolchainReport | null>
+  runTemplates?: () => Promise<RunTemplates | null>
+  runTemplatesSet?: (next: RunTemplates) => Promise<RunTemplates | null>
+  runProjectSdkSet?: (dir: string, sdk: string | null) => Promise<RunSettings | null>
   /** XML layout preview (v32): layoutlib bundle / JDK / render daemon state. */
   layoutStatus?: () => Promise<LayoutStatus | null>
   /** Native consent first; resolves when the bundle is ready / failed, progress via onLayoutEvent. */
@@ -123,6 +137,10 @@ interface DesktopBridge {
   layoutModelRefresh?: (req: { file: string }) => Promise<LayoutModelInfo | null>
   /** Library layout: borrow the model of `module` (one of `library.candidates`). */
   layoutModelPick?: (req: { file: string; module: string }) => Promise<LayoutModelInfo | null>
+  /** Layout opened: start the render daemon early (no Gradle). */
+  layoutWarmup?: (req: { file: string }) => Promise<{ ok: boolean; code?: string } | null>
+  /** v41: drawable / color state list XML (res/drawable*, mipmap*, color* or a loose file by root element). */
+  drawableRender?: (req: import('./drawablePreview').DrawableRenderRequest) => Promise<import('./drawablePreview').DrawableRenderResult>
   onLayoutEvent?: (handler: (event: LayoutEvent) => void) => () => void
   /** Flutter widget preview (v40): `@Preview` list + one `flutter run` host session on a mobile device. */
   /** `withEntries: false` only finds the pubspec folder (toolbar button), no `lib/` walk. */

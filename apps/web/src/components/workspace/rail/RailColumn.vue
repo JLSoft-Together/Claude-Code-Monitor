@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing } from 'lucide-vue-next'
+import { BellRing, FolderPlus, LoaderCircle } from 'lucide-vue-next'
+import { useOpenProject } from '../../../composables/useOpenProject'
 import { useRail } from '../../../composables/useRail'
 import { retireOverlay } from '../../../lib/motion'
 import { avatarInitials } from '../../../lib/rail/avatars'
@@ -16,6 +17,7 @@ const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const { clusters } = useRail()
 const live = computed(() => clusters.value.filter((c) => c.live))
+const { available: openable, picking, openProject } = useOpenProject()
 
 const nameOf = (c: RailCluster): string => (c.key === 'home' ? t('workspace.side.home') : c.name)
 
@@ -63,7 +65,21 @@ function label(c: RailCluster): string {
 </script>
 
 <template>
-  <nav class="ccm-material ccm-scroll flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto rounded-card py-2" :aria-label="t('workspace.rail.column')" data-rail-column>
+  <nav class="ccm-material flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 rounded-card py-2" :aria-label="t('workspace.rail.column')" data-rail-column>
+    <button
+      v-if="openable"
+      type="button"
+      class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-control border border-dashed border-line text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink disabled:cursor-default disabled:text-ink-faint"
+      :title="t('workspace.rail.openProjectHint')"
+      :aria-label="t('workspace.rail.openProject')"
+      :disabled="picking"
+      data-rail-open-project
+      @click="openProject"
+    >
+      <LoaderCircle v-if="picking" :size="16" class="ccm-spin" aria-hidden="true" />
+      <FolderPlus v-else :size="16" aria-hidden="true" />
+    </button>
+    <div class="ccm-scroll flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto pt-1">
     <button
       v-for="c in live"
       :key="c.key"
@@ -87,6 +103,7 @@ function label(c: RailCluster): string {
         </span>
       </span>
     </button>
+    </div>
 
     <Teleport to="body">
       <Transition name="ccm-menu" @before-leave="retireOverlay">

@@ -46,7 +46,7 @@ export type LayoutDraft = Omit<SavedLayout, 'id' | 'updatedAt'> & { id?: string 
 export type SaveLayoutResult = { ok: true; layout: SavedLayout } | { ok: false; error: 'invalid' | 'limit' | 'unavailable' }
 
 interface ProjectBridge {
-  projectRoot?: (dir: string) => Promise<unknown>
+  projectRoot?: (dir: string, remembered?: boolean) => Promise<unknown>
   scripts?: (dir: string) => Promise<ScriptsResult | null>
   layoutsList?: (project: string) => Promise<SavedLayout[]>
   layoutsSave?: (layout: LayoutDraft) => Promise<SaveLayoutResult>
@@ -67,8 +67,9 @@ export interface ProjectRootInfo {
   common?: string
 }
 
-export async function projectRootInfo(dir: string): Promise<ProjectRootInfo | null> {
-  const v = await (bridge?.projectRoot?.(dir) ?? Promise.resolve(null)).catch(() => null)
+/** `remembered`: a rail folder with no pane; the host answers read-only facts instead of refusing it. */
+export async function projectRootInfo(dir: string, remembered = false): Promise<ProjectRootInfo | null> {
+  const v = await (bridge?.projectRoot?.(dir, remembered) ?? Promise.resolve(null)).catch(() => null)
   if (typeof v === 'string') return { root: v, repo: true }
   if (!v || typeof v !== 'object') return null
   const { root, repo, common } = v as Partial<ProjectRootInfo>

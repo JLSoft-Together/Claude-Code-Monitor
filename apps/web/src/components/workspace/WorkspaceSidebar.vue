@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { FolderPlus, LoaderCircle } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
+import { useOpenProject } from '../../composables/useOpenProject'
 import { useRail } from '../../composables/useRail'
 import { pinLeaving, retireOverlay } from '../../lib/motion'
 import type { SavedLayout } from '../../lib/projects'
@@ -27,6 +29,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const rail = useRail()
+const { available: openable, picking, openProject: pickProject } = useOpenProject()
 const clusters = computed(() => (props.only ? rail.clusters.value.filter((c) => c.key === props.only) : rail.clusters.value))
 
 const COLLAPSED_KEY = 'ccm.workspace.sideCollapsed'
@@ -154,14 +157,27 @@ function pickNew(choice: SplitChoice): void {
 
 <template>
   <nav
-    ref="list"
-    class="ccm-scroll flex h-full w-full flex-col gap-1.5 overflow-y-auto p-1.5"
+    class="flex h-full w-full flex-col gap-1.5 p-1.5"
     :class="flat ? '' : 'ccm-material rounded-card'"
     :aria-label="t('workspace.rail.title')"
     data-rail
     @keydown="onKey"
     @pointerdown="drag.onDown"
   >
+    <button
+      v-if="!only && openable"
+      type="button"
+      class="inline-flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-inner border border-dashed border-line px-2 text-left text-xs text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink disabled:cursor-default disabled:text-ink-faint"
+      :title="t('workspace.rail.openProjectHint')"
+      :disabled="picking"
+      data-rail-open-project
+      @click="pickProject"
+    >
+      <LoaderCircle v-if="picking" :size="14" class="ccm-spin shrink-0" aria-hidden="true" />
+      <FolderPlus v-else :size="14" class="shrink-0" aria-hidden="true" />
+      <span class="min-w-0 truncate">{{ t('workspace.rail.openProject') }}</span>
+    </button>
+    <div ref="list" class="ccm-scroll min-h-0 flex-1 overflow-y-auto">
     <TransitionGroup tag="div" name="ccm-list" class="relative flex flex-col gap-1.5" @before-leave="pinLeaving">
       <RailClusterView
         v-for="(c, ci) in clusters"
@@ -181,6 +197,7 @@ function pickNew(choice: SplitChoice): void {
         @checkout="openCheckout"
       />
     </TransitionGroup>
+    </div>
     <span class="sr-only" aria-live="polite">{{ announce }}</span>
 
     <Teleport to="body">

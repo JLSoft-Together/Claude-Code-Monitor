@@ -26,7 +26,7 @@ function git(cwd: string, args: string[]): Promise<string | null> {
 
 /** Uncommitted tracked changes vs HEAD plus untracked entries (folders count once); null outside a repo. */
 export async function readDiffStat(cwd: string, now: number = Date.now()): Promise<GitDiffStat | null> {
-  const shortstat = await git(cwd, ['diff', '--shortstat', 'HEAD'])
+  const shortstat = await git(cwd, ['diff', '--shortstat', '--histogram', 'HEAD'])
   if (shortstat === null) return null
   const others = await git(cwd, ['ls-files', '--others', '--exclude-standard', '--directory', '--no-empty-directory'])
   const untracked = others === null ? 0 : others.split('\n').filter((l) => l.trim()).length

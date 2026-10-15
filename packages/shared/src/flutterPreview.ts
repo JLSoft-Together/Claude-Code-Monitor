@@ -23,12 +23,15 @@ export interface FwpScanResult {
   entries: FwpEntry[]
 }
 
-export type FwpState = 'idle' | 'starting' | 'running' | 'reloading' | 'failed' | 'stopped'
+/** `syncing`: `pubspec.yaml` changed while running → `flutter pub get`, then the session restarts. */
+export type FwpState = 'idle' | 'starting' | 'running' | 'reloading' | 'syncing' | 'failed' | 'stopped'
 
 export interface FwpError {
   code: string
   detail?: string
   build?: BuildError
+  /** Entry a runtime widget error (`code: 'widget'`) came from. */
+  entry?: string
 }
 
 export interface FwpSnapshot {

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),
   setAppearance: (look: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:appearance', look),
   zoomApp: (action: 'in' | 'out' | 'reset' | 'get'): Promise<unknown> => ipcRenderer.invoke('ccm:zoom', action),
+  loginItem: (on?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:login-item', on),
   statusLineState: (): Promise<unknown> => ipcRenderer.invoke('ccm:statusline-state'),
   enableStatusLine: (): Promise<unknown> => ipcRenderer.invoke('ccm:statusline-enable'),
   grantFolder: (): Promise<unknown> => ipcRenderer.invoke('ccm:grant-folder'),
@@ -31,6 +32,17 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   },
   previewUrl: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:preview-url', path),
   readFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:read-file', path),
+  fileWrite: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:file-write', req),
+  editorDirty: (files: unknown): void => ipcRenderer.send('ccm:editor-dirty', files),
+  /** Quit → "Save": the page saves every unsaved editor and answers whether all of them made it. */
+  onEditorSaveAll: (handler: () => Promise<boolean>): void => {
+    ipcRenderer.on('ccm:editor-save-all', (_event, id: unknown) => {
+      void handler().then(
+        (ok) => ipcRenderer.send('ccm:editor-save-reply', id, ok === true),
+        () => ipcRenderer.send('ccm:editor-save-reply', id, false),
+      )
+    })
+  },
   watch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:watch', root),
   unwatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:unwatch', root),
   pickFile: (kind: 'html' | 'any', near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-file', kind, near),
@@ -39,6 +51,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   openPath: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:open-path', path),
   requestAccess: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:request-access', path),
   forgetGrants: (): Promise<unknown> => ipcRenderer.invoke('ccm:forget-grants'),
+  fullAccess: (on?: boolean | 'first'): Promise<unknown> => ipcRenderer.invoke('ccm:full-access', on),
   onPreviewChanged: (handler: (change: unknown) => void): (() => void) => subscribe('ccm:preview-changed', handler),
   changesStatus: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-status', dir),
   changesDiff: (root: string, path: string, opts?: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:changes-diff', { root, path, opts }),
@@ -76,7 +89,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
     }
   },
   captureGuest: (webContentsId: number): Promise<unknown> => ipcRenderer.invoke('ccm:capture-guest', webContentsId),
-  projectRoot: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir),
+  projectRoot: (dir: string, remembered?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir, remembered === true),
   scripts: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:scripts', dir),
   layoutsList: (project: string): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-list', project),
   layoutsSave: (layout: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-save', layout),
@@ -105,6 +118,12 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   runSessions: (): Promise<unknown> => ipcRenderer.invoke('ccm:run-sessions'),
   runSettings: (): Promise<unknown> => ipcRenderer.invoke('ccm:run-settings'),
   runSettingsSet: (next: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:run-settings-set', next),
+  runHold: (root: string, key: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:run-hold', root, key, on),
+  runConfigAutoImport: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:run-config-auto-import', root),
+  runToolchain: (dir: string, kind: 'flutter' | 'android'): Promise<unknown> => ipcRenderer.invoke('ccm:run-toolchain', dir, kind),
+  runTemplates: (): Promise<unknown> => ipcRenderer.invoke('ccm:run-templates'),
+  runTemplatesSet: (next: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:run-templates-set', next),
+  runProjectSdkSet: (dir: string, sdk: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:run-project-sdk-set', dir, sdk),
   onRunEvent: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:run-event', handler),
   layoutStatus: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-status'),
   layoutDownload: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-download'),
@@ -112,6 +131,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   layoutModelStatus: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-status', req),
   layoutModelRefresh: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-refresh', req),
   layoutModelPick: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-pick', req),
+  layoutWarmup: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-warmup', req),
+  drawableRender: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:drawable-render', req),
   onLayoutEvent: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:layout-event', handler),
   fwpScan: (path: string, withEntries?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-scan', path, withEntries !== false),
   fwpStart: (root: string, deviceId: string, flavor?: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-start', root, deviceId, flavor ?? null),
