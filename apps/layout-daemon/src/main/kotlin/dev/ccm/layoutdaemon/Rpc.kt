@@ -214,6 +214,7 @@ class RpcServer(
             activityThemes = themes,
             minSdk = params.int("minSdk"),
             targetSdk = params.int("targetSdk"),
+            sampleDataDirs = params.paths("sampleDataDirs"),
         )
     }
 

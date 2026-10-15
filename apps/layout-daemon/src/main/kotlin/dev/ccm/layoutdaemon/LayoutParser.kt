@@ -14,9 +14,15 @@ data class TagStart(val name: String, val line: Int, val column: Int)
 /**
  * KXml's lineNumber at START_TAG is the line of the closing `>`, so tag starts are pre-scanned
  * from the source text and matched to START_TAG events by document order.
- * `tools:X` design-time attributes (text, visibility, src…) shadow `android:X` like in Android Studio.
+ * `tools:X` design-time attributes (text, visibility, src…) shadow `android:X` like in Android Studio; with [samples],
+ * `@tools:sample/…` / `@sample/…` values are replaced once per start tag. [cookies] false for layouts inflated inside the
+ * previewed one (list items, includes): their tags must not map to lines of the previewed file.
  */
-class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
+class LayoutParser(
+    xml: String,
+    private val samples: SampleData.Resolver? = null,
+    private val cookies: Boolean = true,
+) : KXmlParser(), ILayoutPullParser {
     val starts: List<TagStart> = scanStartTags(xml)
     private var startIndex = -1
     var current: TagInfo? = null
@@ -54,6 +60,7 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
         var shadows = false
         for (i in 0 until n) {
             if (super.getAttributeNamespace(i) == TOOLS_NS && super.getAttributeName(i) !in TOOLS_ONLY) shadows = true
+            if (samples != null && SampleData.isReference(super.getAttributeValue(i))) shadows = true
         }
         if (!shadows) return null
         val attrs = ArrayList<Attr>(n + 2)
@@ -64,7 +71,8 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
             attrs.removeAll { it.ns == ANDROID_NS && it.name == tool.name }
             attrs += Attr(ANDROID_NS, tool.name, "android", tool.value)
         }
-        return attrs
+        if (samples == null) return attrs
+        return attrs.map { a -> if (SampleData.isReference(a.value)) samples.resolve(a.value)?.let { Attr(a.ns, a.name, a.prefix, it) } ?: a else a }
     }
 
     override fun getAttributeCount(): Int = overlay?.size ?: super.getAttributeCount()
@@ -85,7 +93,7 @@ class LayoutParser(xml: String) : KXmlParser(), ILayoutPullParser {
     private fun declared(value: String): String =
         if (value.startsWith("@id/") && value.substring(4) in declaredIds) "@+id/" + value.substring(4) else value
 
-    override fun getViewCookie(): Any? = if (eventType == XmlPullParser.START_TAG) current else null
+    override fun getViewCookie(): Any? = if (cookies && eventType == XmlPullParser.START_TAG) current else null
 
     override fun getLayoutNamespace(): ResourceNamespace = ResourceNamespace.RES_AUTO
 

@@ -68,6 +68,8 @@ data class ProjectSpec(
     val activityThemes: Map<String, String>,
     val minSdk: Int?,
     val targetSdk: Int?,
+    /** Modules' `sampledata/` folders for `@sample/<name>`. */
+    val sampleDataDirs: List<File> = emptyList(),
 )
 
 /**
@@ -125,6 +127,9 @@ class ProjectCallback(
 
     /** Set per render: turns a view whose constructor threw into a placeholder instead of failing the whole inflate. */
     @Volatile var onViewFailure: ((name: String, error: Throwable, args: Array<Any?>) -> Any?)? = null
+
+    /** Set per render: sample data for layouts inflated inside the previewed one (list items, includes). */
+    @Volatile var samples: SampleData.Resolver? = null
 
     override fun loadView(name: String, constructorSignature: Array<Class<*>>, constructorArgs: Array<Any?>): Any? {
         val cls = try {
@@ -188,7 +193,14 @@ class ProjectCallback(
             return aaptDeclared[path]?.let { PaparazziInternals.parserFromAapt(it, aaptDeclared) }
         }
         return try {
-            PaparazziInternals.parserFromFile(File(path), aaptDeclared)
+            val file = File(path)
+            // Inner layouts get tools:X and sample data like the previewed one (Paparazzi's parser ignores both);
+            // inline <aapt:attr> still needs Paparazzi's.
+            if (layoutResource.resourceType == ResourceType.LAYOUT && file.length() < MAX_TOOLS_LAYOUT) {
+                val text = file.readText()
+                if (LayoutParser.TOOLS_NS in text && "aapt:attr" !in text) return LayoutParser(text, samples ?: SampleData.Resolver(), cookies = false)
+            }
+            PaparazziInternals.parserFromFile(file, aaptDeclared)
         } catch (_: FileNotFoundException) {
             null
         }
@@ -218,6 +230,7 @@ class ProjectCallback(
     companion object {
         // Every parse mints fresh aapt ids (Paparazzi's global counter); the bound keeps a long session from growing.
         private const val MAX_AAPT_TAGS = 4096
+        private const val MAX_TOOLS_LAYOUT = 1_000_000L
         private val RECYCLER_ADAPTERS = setOf(
             "androidx.recyclerview.widget.RecyclerView\$Adapter",
             "android.support.v7.widget.RecyclerView\$Adapter",
@@ -239,6 +252,9 @@ class LoadedProject(val spec: ProjectSpec, private val parentLoader: ClassLoader
     var generation = 0
         private set
     var rIdCount = 0
+        private set
+    /** `@sample/<name>` items of the project's `sampledata/` folders. */
+    var sampleItems: Map<String, List<String>> = emptyMap()
         private set
 
     val loadTimings = LinkedHashMap<String, Long>()
@@ -304,7 +320,11 @@ class LoadedProject(val spec: ProjectSpec, private val parentLoader: ClassLoader
     }
 
     private fun loadLocalResources() {
-        resources = PaparazziInternals.appRepository(spec.resDirs.filter { it.isDirectory }, aarRepos)
+        val (items, sampleRes) = if (spec.sampleDataDirs.isEmpty()) emptyMap<String, List<String>>() to null else SampleData.loadProject(spec.sampleDataDirs)
+        sampleItems = items
+        // Sample images first: lowest priority, a project resource of the same name wins.
+        val dirs = listOfNotNull(SampleData.resDir, sampleRes) + spec.resDirs
+        resources = PaparazziInternals.appRepository(dirs.filter { it.isDirectory }, aarRepos)
         generation++
     }
 

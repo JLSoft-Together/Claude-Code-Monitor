@@ -113,6 +113,26 @@ class ProjectTest {
 
     @Test
     @Order(3)
+    fun `tools sample data fills images and text`() {
+        val xml = """<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
+            android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+            <ImageView android:id="@+id/pic" android:layout_width="200dp" android:layout_height="120dp" android:scaleType="centerCrop" tools:src="@tools:sample/backgrounds/scenic" />
+            <TextView android:id="@+id/a" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="@tools:sample/full_names" />
+            <TextView android:id="@+id/b" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="@tools:sample/us_phones[3]" />
+        </LinearLayout>"""
+        val res = rpc.render(xml)
+        val msgs = messages(res)
+        assertFalse(msgs.any { "sample" in it }, "$msgs")
+        val pic = bounds(node(res, "@+id/pic"))
+        assertEquals(200 * 440 / 160, pic[2] - pic[0])
+        val sky = pixel(res, (pic[0] + pic[2]) / 2, pic[1] + 4)
+        assertTrue(sky != pixel(res, 1070, pic[1] + 4), "scenic image drawn: #%06X".format(sky))
+        assertTrue(bounds(node(res, "@+id/a")).let { it[2] - it[0] } > 60, "full name text measured")
+        assertTrue(bounds(node(res, "@+id/b")).let { it[2] - it[0] } > 60, "phone text measured")
+    }
+
+    @Test
+    @Order(4)
     fun `theme falls back to the app theme and an explicit theme wins`() {
         val noContext = mainXml.replace("tools:context=\".DetailActivity\"", "")
         assertColor(0x336699, pixel(rpc.render(noContext), 1070, 2330))
@@ -120,7 +140,7 @@ class ProjectTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     fun `res change refreshes resources without reloading classes`() {
         val before = bounds(node(rpc.render(mainXml), "@+id/greeting"))
         val values = File(app, "res/values/values.xml")
@@ -136,7 +156,7 @@ class ProjectTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     fun `class reloads keep rendering and eventually suggest a restart`() {
         var suggested = false
         repeat(LayoutRenderer.MAX_PROJECT_LOADERS) {
@@ -149,7 +169,7 @@ class ProjectTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     fun `empty project load goes back to framework-only`() {
         val res = rpc.result("project/load", JsonObject())
         assertTrue(res.get("frameworkOnly").asBoolean)

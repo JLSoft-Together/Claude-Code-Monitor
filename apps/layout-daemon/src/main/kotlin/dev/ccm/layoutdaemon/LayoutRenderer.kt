@@ -130,6 +130,7 @@ class LayoutRenderer(private val layoutlibDir: File) {
 
         pngDir = File(cacheDir, "render").apply { mkdirs() }
         pngDir.listFiles { f -> f.name.endsWith(".png") }?.forEach { it.delete() }
+        SampleData.init(cacheDir)
 
         val initial = Config(1080, 2340, 440, DEFAULT_THEME, false, null, 0)
         sdk = PaparazziSdk(
@@ -186,7 +187,8 @@ class LayoutRenderer(private val layoutlibDir: File) {
         val callback = applyConfig(wanted, diags)
         val t1 = System.nanoTime()
 
-        val parser = LayoutParser(req.xml)
+        val samples = SampleData.Resolver(project?.sampleItems ?: emptyMap())
+        val parser = LayoutParser(req.xml, samples)
         var image: BufferedImage? = null
         var tree: ViewNode? = null
         var t2 = t1
@@ -197,6 +199,8 @@ class LayoutRenderer(private val layoutlibDir: File) {
             var view: View? = null
             val prevLog = Bridge.getLog()
             callback.onViewFailure = { name, error, args -> brokenView(name, error, args, diags, mocks, ctx) { parser.current } }
+            // Kept after inflate: RecyclerView items inflate while the frame is laid out.
+            callback.samples = samples
             try {
                 setBridgeLog(CookieLog(diags) { parser.current })
                 val inflater = sdk.layoutInflater.cloneInContext(ctx)
