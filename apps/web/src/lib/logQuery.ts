@@ -9,6 +9,8 @@ export interface LogFilters {
   matchCase: boolean
   /** Full refname or null (all). */
   branch: string | null
+  /** Compare with Current: commits in `branch` not in this ref. */
+  notRef: string | null
   author: string | null
   date: DatePreset
   /** `YYYY-MM-DD`, local time, for `custom`. */
@@ -18,7 +20,7 @@ export interface LogFilters {
   paths: string[]
 }
 
-export const emptyFilters = (): LogFilters => ({ text: '', regex: false, matchCase: false, branch: null, author: null, date: 'any', from: '', to: '', paths: [] })
+export const emptyFilters = (): LogFilters => ({ text: '', regex: false, matchCase: false, branch: null, notRef: null, author: null, date: 'any', from: '', to: '', paths: [] })
 
 const DAY = 86400
 const SPAN: Record<'24h' | '7d' | '30d', number> = { '24h': DAY, '7d': 7 * DAY, '30d': 30 * DAY }
@@ -40,10 +42,10 @@ export function toQuery(f: LogFilters, now: number, skip = 0): LogQuery {
     until = next === null ? null : next - 1
   } else if (f.date !== 'any') since = Math.floor(now / 1000) - SPAN[f.date]
   const text = f.text.trim()
-  return { branch: f.branch, author: f.author, since, until, text: text || null, regex: f.regex, matchCase: f.matchCase, paths: [...f.paths], skip }
+  return { branch: f.branch, notRef: f.branch ? f.notRef : null, author: f.author, since, until, text: text || null, regex: f.regex, matchCase: f.matchCase, paths: [...f.paths], skip }
 }
 
 /** IntelliJ keeps the graph only while the history stays connected (no filter, or a branch). */
-export const graphMode = (f: LogFilters): 'graph' | 'flat' => (f.author || f.text.trim() || f.paths.length || f.date !== 'any' ? 'flat' : 'graph')
+export const graphMode = (f: LogFilters): 'graph' | 'flat' => (f.author || f.notRef || f.text.trim() || f.paths.length || f.date !== 'any' ? 'flat' : 'graph')
 
-export const hasFilters = (f: LogFilters): boolean => !!(f.branch || f.author || f.text.trim() || f.paths.length || f.date !== 'any')
+export const hasFilters = (f: LogFilters): boolean => !!(f.branch || f.notRef || f.author || f.text.trim() || f.paths.length || f.date !== 'any')

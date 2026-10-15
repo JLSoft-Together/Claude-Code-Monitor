@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { escapeHtml, renderLine, type CodeToken } from '../../lib/codeView'
-import { sideBySide, type DiffFile, type DiffLine } from '../../lib/diff'
-import { foldRows, wordDiff, type Block, type WordMark } from '../../lib/diffBlocks'
-import { tokenize } from '../../lib/highlight'
+import { escapeHtml } from '../../lib/codeView'
+import type { DiffFile, DiffLine } from '../../lib/diff'
+import { foldRows, type Block } from '../../lib/diffBlocks'
+import type { DiffHighlight } from '../../lib/diffOpts'
+import { useDiffDecor } from '../../composables/useDiffDecor'
+import SplitDiff from './SplitDiff.vue'
 
 const props = defineProps<{
   file: DiffFile
@@ -15,82 +17,40 @@ const props = defineProps<{
   /** Fold unchanged runs farther than `context` lines from a change. */
   collapse: boolean
   context: number
-  /** Word-level marks inside Modified blocks (IntelliJ "Highlight words"). */
-  words: boolean
+  /** IntelliJ "Highlight": lines / words / characters inside Modified blocks. */
+  highlight: DiffHighlight
   /** Revert buttons shown; `revertBlocked` (a reason) keeps them visible but inert. */
   canRevert: boolean
   revertBlocked?: string | null
   current: number
+  /** Split view column headers (default HEAD / working tree). */
+  sides?: { left: string; right: string }
 }>()
 const emit = defineEmits<{ revert: [index: number]; focusBlock: [index: number] }>()
 
 const { t } = useI18n()
-const tokens = shallowRef<Map<DiffLine, CodeToken[]>>(new Map())
 const root = ref<HTMLElement | null>(null)
+const split = ref<InstanceType<typeof SplitDiff> | null>(null)
 /** `${hunk}:${from}` of folds the user opened; reset per file. */
 const expanded = ref<Set<string>>(new Set())
-let seq = 0
-
-/** Old and new sides are tokenized as two continuous texts so multi-line constructs keep their colours. */
-async function highlight(): Promise<void> {
-  const run = ++seq
-  tokens.value = new Map()
-  if (!props.lang) return
-  const olds: DiffLine[] = []
-  const news: DiffLine[] = []
-  for (const h of props.file.hunks) {
-    for (const l of h.lines) {
-      if (l.type === 'del' || l.type === 'ctx') olds.push(l)
-      if (l.type === 'add' || l.type === 'ctx') news.push(l)
-    }
-  }
-  const [oldTok, newTok] = await Promise.all([
-    tokenize(olds.map((l) => l.text).join('\n'), props.lang),
-    tokenize(news.map((l) => l.text).join('\n'), props.lang),
-  ])
-  if (run !== seq) return
-  const map = new Map<DiffLine, CodeToken[]>()
-  olds.forEach((l, i) => oldTok?.[i] && map.set(l, oldTok[i]!))
-  news.forEach((l, i) => newTok?.[i] && map.set(l, newTok[i]!))
-  tokens.value = map
-}
-
-watch(() => [props.file, props.lang] as const, () => void highlight(), { immediate: true })
 watch(
   () => props.file,
   () => (expanded.value = new Set()),
 )
 
-/** Line → its block index, and word marks per line of Modified blocks. */
-const lineInfo = computed(() => {
-  const block = new Map<DiffLine, number>()
-  const marks = new Map<DiffLine, WordMark[]>()
-  props.blocks.forEach((b, i) => {
-    for (const l of b.dels) block.set(l, i)
-    for (const l of b.adds) block.set(l, i)
-    if (!props.words || b.type !== 'modified') return
-    const res = wordDiff(
-      b.dels.map((l) => l.text),
-      b.adds.map((l) => l.text),
-    )
-    if (!res) return
-    b.dels.forEach((l, k) => res.old[k]!.length && marks.set(l, res.old[k]!))
-    b.adds.forEach((l, k) => res.new[k]!.length && marks.set(l, res.new[k]!))
-  })
-  return { block, marks }
+const { lineInfo, code: decorCode } = useDiffDecor({
+  file: () => props.file,
+  blocks: () => props.blocks,
+  // SplitDiff tokenizes for itself; skip the work here while it is shown.
+  lang: () => (props.layout === 'split' ? null : props.lang),
+  highlight: () => props.highlight,
 })
+const code = (l: DiffLine | undefined): string => decorCode(l, l?.type === 'add' ? 'w-add' : 'w-del')
 
 const SVG = (paths: string) =>
   `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
 const UNDO = SVG('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>')
-const CHEVRONS = SVG('<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>')
 
-function code(l: DiffLine | undefined): string {
-  if (!l) return ''
-  const words = lineInfo.value.marks.get(l)
-  const cls = l.type === 'add' ? 'w-add' : 'w-del'
-  return renderLine(tokens.value.get(l) ?? [{ content: l.text }], words?.map((m) => ({ ...m, cls })))
-}
 const num = (n: number | undefined): string => (n === undefined ? '' : String(n))
 const SIGN = { add: '+', del: '−', ctx: ' ', note: '' } as const
 
@@ -125,39 +85,18 @@ function inlineRows(lines: readonly DiffLine[]): { changed: boolean[]; render: (
   }
 }
 
-function splitRows(lines: readonly DiffLine[]): { changed: boolean[]; render: (i: number) => string } {
-  const { block } = lineInfo.value
-  const rows = sideBySide({ header: '', oldStart: 0, oldCount: 0, newStart: 0, newCount: 0, section: '', lines: [...lines] })
-  return {
-    changed: rows.map((r) => r.left?.type === 'del' || r.right?.type === 'add'),
-    render: (i) => {
-      const { left: l, right: r } = rows[i]!
-      const lc = l ? (l.type === 'ctx' ? 'ctx' : 'del') : 'empty'
-      const rc = r ? (r.type === 'ctx' ? 'ctx' : 'add') : 'empty'
-      const b = (l && block.get(l)) ?? (r && block.get(r))
-      const first = b !== undefined && ((l && firstOf.value.has(l)) || (r && firstOf.value.has(r)))
-      return (
-        `<div class="r2"${b !== undefined ? ` data-block="${b}"` : ''}${r?.new ? ` data-new="${r.new}"` : ''}>` +
-        `<span class="n ${lc}">${num(l?.old)}</span><span class="c ${lc}"><span class="s">${l && l.type !== 'ctx' ? SIGN.del : ''}</span>${code(l)}\n</span>` +
-        `<span class="a">${first ? revertButton(b!, CHEVRONS) : ''}</span>` +
-        `<span class="n ${rc}">${num(r?.new)}</span><span class="c ${rc}"><span class="s">${r && r.type !== 'ctx' ? SIGN.add : ''}</span>${code(r)}\n</span></div>`
-      )
-    },
-  }
-}
-
 const html = computed(() => {
-  const split = props.layout === 'split'
+  if (props.layout === 'split') return ''
   let out = ''
   props.file.hunks.forEach((h, hi) => {
     if (hi > 0) out += `<div class="gap" aria-hidden="true">⋯</div>`
-    const { changed, render } = split ? splitRows(h.lines) : inlineRows(h.lines)
+    const { changed, render } = inlineRows(h.lines)
     const segments = props.collapse
       ? foldRows(changed, props.context, new Set([...expanded.value].filter((k) => k.startsWith(`${hi}:`)).map((k) => Number(k.slice(k.indexOf(':') + 1)))))
       : [{ kind: 'rows' as const, from: 0, to: changed.length }]
     for (const seg of segments) {
       if (seg.kind === 'fold') {
-        out += foldHtml(`${hi}:${seg.from}`, seg.to - seg.from, split ? 'r2' : 'r')
+        out += foldHtml(`${hi}:${seg.from}`, seg.to - seg.from, 'r')
         continue
       }
       for (let i = seg.from; i < seg.to; i++) out += render(i)
@@ -194,6 +133,7 @@ function onClick(e: MouseEvent): void {
 }
 
 async function scrollToBlock(i: number): Promise<void> {
+  if (props.layout === 'split') return split.value?.scrollToBlock(i)
   await nextTick()
   markCurrent()
   root.value?.querySelector<HTMLElement>(`[data-block="${i}"]`)?.scrollIntoView({ block: 'center' })
@@ -209,10 +149,26 @@ defineExpose({ scrollToBlock, lineOf })
 </script>
 
 <template>
+  <SplitDiff
+    v-if="layout === 'split'"
+    ref="split"
+    :file="file"
+    :blocks="blocks"
+    :lang="lang"
+    :collapse="collapse"
+    :context="context"
+    :highlight="highlight"
+    :can-revert="canRevert"
+    :revert-blocked="revertBlocked"
+    :current="current"
+    :sides="sides ?? { left: 'HEAD', right: t('workspace.diff.side.working') }"
+    @revert="(i) => emit('revert', i)"
+    @focus-block="(i) => emit('focusBlock', i)"
+  />
   <div
+    v-else
     ref="root"
-    class="diff ccm-code min-w-full py-1"
-    :class="layout === 'split' ? 'is-split' : 'w-max'"
+    class="diff ccm-code w-max min-w-full py-1"
     role="document"
     data-code-zoom
     :aria-label="blocks.length ? t('workspace.diff.change', { n: current + 1, total: blocks.length }) : undefined"
@@ -337,41 +293,6 @@ defineExpose({ scrollToBlock, lineOf })
   color: var(--ccm-syn-comment, #7f8c98);
   border-block: 1px solid var(--ccm-well-line);
   user-select: none;
-}
-.is-split :deep(.r2) {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) 1.75em max-content minmax(0, 1fr);
-}
-.is-split :deep(.fold.r2) {
-  display: block;
-}
-.is-split :deep(.c) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.is-split :deep(.c .s) {
-  display: inline-block;
-  width: 1.25em;
-}
-.is-split :deep(.add) {
-  background: var(--add-bg);
-}
-.is-split :deep(.del) {
-  background: var(--del-bg);
-}
-.is-split :deep(.add .s) {
-  color: var(--add-ink);
-}
-.is-split :deep(.del .s) {
-  color: var(--del-ink);
-}
-.is-split :deep(.empty) {
-  background: color-mix(in srgb, var(--ccm-well-ink) 4%, transparent);
-}
-.is-split :deep(.a) {
-  border-inline: 1px solid var(--ccm-well-line);
 }
 .diff ::selection,
 .diff :deep(*)::selection {

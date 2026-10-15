@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, ChevronLeft, ChevronRight, PanelLeft } from 'lucide-vue-next'
-import type { CommitFile } from '@ccm/shared'
-import { absoluteIn } from '../../../lib/changesView'
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, X } from 'lucide-vue-next'
+import type { BranchOpResult, CommitFile } from '@ccm/shared'
+import { absoluteIn, fileStepKey, inSidewaysScroller } from '../../../lib/changesView'
 import { grammarFor } from '../../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../../lib/diff'
 import { changeBlocks } from '../../../lib/diffBlocks'
 import { readDiffOpts } from '../../../lib/diffOpts'
+import { expandableIds, type RefRow } from '../../../lib/gitRefs'
 import { hasFilters } from '../../../lib/logQuery'
-import { logDiff } from '../../../lib/preview'
+import { gitBranchCreate, gitBranchDelete, gitBranchUpdate, gitFetch, hasBranchOps, logDiff } from '../../../lib/preview'
+import { readFavorites, readRefsView, writeFavorites, writeRefsView } from '../../../lib/refPrefs'
 import { useGitLog } from '../../../composables/useGitLog'
 import DiffView from '../DiffView.vue'
 import LogCommitDetails from './LogCommitDetails.vue'
 import LogCommitFiles from './LogCommitFiles.vue'
 import LogFilterBar from './LogFilterBar.vue'
+import LogRefsToolbar from './LogRefsToolbar.vue'
 import LogRefsTree from './LogRefsTree.vue'
 import LogTable from './LogTable.vue'
+import NewBranchDialog from './NewBranchDialog.vue'
 import AccessPrompt from '../AccessPrompt.vue'
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
@@ -200,6 +204,7 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key === 'F7') stepBlock(e.shiftKey ? -1 : 1)
   else if (e.key === ']' && !e.ctrlKey && !e.metaKey) stepFile(1)
   else if (e.key === '[' && !e.ctrlKey && !e.metaKey) stepFile(-1)
+  else if (fileStepKey(e) && !(e.target as HTMLElement | null)?.closest('[role=tree],[role=toolbar],[role=menu],[role=dialog]') && !inSidewaysScroller(e.target as Element | null)) stepFile(fileStepKey(e) as 1 | -1)
   else return
   e.preventDefault()
 }
@@ -223,6 +228,113 @@ watch(log.detail, tryPendingOpen)
 watch(log.selected, (h) => {
   if (h !== pendingOpen) pendingOpen = null
 })
+
+// Branches toolbar: the focused refs-tree row is its target; clicking a ref still filters the log.
+const refsTree = ref<InstanceType<typeof LogRefsTree> | null>(null)
+const selectedRef = ref<RefRow | null>(null)
+const refsCollapsed = ref<Set<string>>(new Set())
+const refsView = ref(readRefsView())
+watch(refsView, writeRefsView, { deep: true })
+const favorites = ref<Set<string>>(new Set())
+watch(
+  log.refs,
+  (r) => {
+    if (r && log.root.value) favorites.value = readFavorites(log.root.value, r)
+  },
+  { immediate: true },
+)
+const branchBusy = ref<'fetch' | 'update' | 'delete' | null>(null)
+const branchNotice = ref<{ text: string; failed: boolean } | null>(null)
+const newBranch = ref<{ base: string; baseLabel: string } | null>(null)
+const shortRef = (ref: string): string => ref.replace(/^refs\/(heads|remotes|tags)\//, '')
+
+function report(res: BranchOpResult, okKey: string, name = ''): void {
+  if (res.ok) branchNotice.value = { text: t(`workspace.log.branches.done.${okKey}`, { name }), failed: false }
+  else if (res.error !== 'cancelled') branchNotice.value = { text: [t(`workspace.log.branches.error.${res.error}`, { name }), res.detail].filter(Boolean).join(' — '), failed: true }
+  void log.reload()
+}
+
+function selRef(): Extract<RefRow, { kind: 'ref' }> | null {
+  return selectedRef.value?.kind === 'ref' ? selectedRef.value : null
+}
+
+function askNewBranch(): void {
+  const r = selRef()
+  const commit = log.selected.value
+  newBranch.value = r ? { base: r.ref, baseLabel: r.name } : commit ? { base: commit, baseLabel: commit.slice(0, 8) } : { base: 'HEAD', baseLabel: 'HEAD' }
+}
+async function createBranch(name: string, checkout: boolean): Promise<void> {
+  const req = newBranch.value
+  newBranch.value = null
+  if (req && log.root.value) report(await gitBranchCreate(log.root.value, name, req.base, checkout), checkout ? 'createdSwitched' : 'created', name)
+}
+async function updateSelected(): Promise<void> {
+  const r = selRef()
+  if (!r || !log.root.value || branchBusy.value) return
+  branchBusy.value = 'update'
+  try {
+    report(await gitBranchUpdate(log.root.value, r.ref), 'updated', r.name)
+  } finally {
+    branchBusy.value = null
+  }
+}
+async function deleteSelected(): Promise<void> {
+  const r = selRef()
+  if (!r || !log.root.value || branchBusy.value) return
+  branchBusy.value = 'delete'
+  try {
+    report(await gitBranchDelete(log.root.value, r.ref), 'deleted', r.name)
+  } finally {
+    branchBusy.value = null
+  }
+}
+async function fetchRemotes(): Promise<void> {
+  if (!log.root.value || branchBusy.value) return
+  branchBusy.value = 'fetch'
+  try {
+    report(await gitFetch(log.root.value), 'fetched')
+  } finally {
+    branchBusy.value = null
+  }
+}
+/** Branch filter before Compare set its own; Clear goes back to it so the log is not left on the compared branch. */
+let branchBeforeCompare: string | null = null
+function clearCompare(): void {
+  log.setFilters({ branch: branchBeforeCompare, notRef: null })
+  branchBeforeCompare = null
+}
+function compareSelected(): void {
+  const r = selRef()
+  if (!r) return
+  if (!log.filters.value.notRef) branchBeforeCompare = log.filters.value.branch
+  // The named current branch, not `HEAD`: after Swap the filter bar then shows a branch it lists.
+  const head = log.refs.value?.head.branch
+  log.setFilters({ branch: r.ref, notRef: head ? `refs/heads/${head}` : 'HEAD' })
+}
+function toggleFavorite(): void {
+  const r = selRef()
+  if (!r || !log.root.value) return
+  const next = new Set(favorites.value)
+  if (next.has(r.ref)) next.delete(r.ref)
+  else next.add(r.ref)
+  favorites.value = next
+  writeFavorites(log.root.value, next)
+}
+async function navigateTo(): Promise<void> {
+  const r = selRef()
+  const refs = log.refs.value
+  if (!r || !refs) return
+  const hash = [...refs.local, ...refs.remotes.flatMap((g) => g.refs), ...refs.tags].find((x) => x.ref === r.ref)?.hash
+  if (hash && (await log.reveal(hash))) {
+    await nextTick()
+    if (table.value?.scrollToHash(hash)) return
+  }
+  branchNotice.value = { text: t('workspace.log.branches.notLoaded', { name: r.name }), failed: true }
+}
+function collapseAllRefs(): void {
+  const refs = log.refs.value
+  if (refs) refsCollapsed.value = new Set(expandableIds(refs, { favorites: favorites.value, ...refsView.value }))
+}
 
 // Context menus (read-only copy / open actions).
 const MENU_W = 208
@@ -279,9 +391,6 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
 <template>
   <section ref="rootEl" class="flex min-h-0 min-w-0 flex-col bg-surface" :aria-label="t('workspace.log.title')" data-log-pane>
     <div class="flex h-9 shrink-0 items-center gap-1 border-b border-line px-2">
-      <button type="button" class="ccm-btn-plain size-6 p-0" :aria-pressed="cols.refsOpen" :title="t(cols.refsOpen ? 'workspace.log.refs.hide' : 'workspace.log.refs.show')" :aria-label="t(cols.refsOpen ? 'workspace.log.refs.hide' : 'workspace.log.refs.show')" @click="cols.refsOpen = !cols.refsOpen">
-        <PanelLeft :size="14" aria-hidden="true" />
-      </button>
       <span class="min-w-0 truncate text-xs font-semibold text-ink" :title="log.root.value ?? cwd">{{ t('workspace.log.title') }}</span>
       <span class="flex-1" />
       <slot name="end" />
@@ -296,8 +405,38 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
     </div>
 
     <div v-else class="flex min-h-0 min-w-0 flex-1">
+      <LogRefsToolbar
+        :open="cols.refsOpen"
+        :selected="selectedRef"
+        :busy="branchBusy"
+        :view="refsView"
+        :can-write="hasBranchOps && !!log.root.value"
+        @toggle="cols.refsOpen = !cols.refsOpen"
+        @new-branch="askNewBranch"
+        @update="updateSelected"
+        @remove="deleteSelected"
+        @compare="compareSelected"
+        @search="refsTree?.focusSearch()"
+        @fetch="fetchRemotes"
+        @favorite="toggleFavorite"
+        @navigate="navigateTo"
+        @view="(v) => (refsView = v)"
+        @expand-all="refsCollapsed = new Set()"
+        @collapse-all="collapseAllRefs"
+      />
       <template v-if="cols.refsOpen">
-        <LogRefsTree class="shrink-0" :style="{ width: `${refsW}px` }" :refs="log.refs.value" :branch="log.filters.value.branch" @pick="(name) => log.setFilters({ branch: name })" />
+        <LogRefsTree
+          ref="refsTree"
+          v-model:collapsed="refsCollapsed"
+          class="shrink-0"
+          :style="{ width: `${refsW}px` }"
+          :refs="log.refs.value"
+          :branch="log.filters.value.branch"
+          :favorites="favorites"
+          :view="refsView"
+          @pick="(name) => log.setFilters({ branch: name, notRef: null })"
+          @select="(row) => (selectedRef = row)"
+        />
         <div class="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-fill" role="separator" aria-orientation="vertical" @pointerdown.prevent="drag($event, 'refs')" />
       </template>
 
@@ -307,11 +446,11 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
             <ArrowLeft :size="13" aria-hidden="true" />{{ t('workspace.log.diff.back') }}
           </button>
           <span class="min-w-0 flex-1 truncate font-mono text-ink" :title="diffFileRef.path">{{ t('workspace.log.diff.title', { path: diffFileRef.path, hash: shortHash }) }}</span>
-          <button type="button" class="ccm-btn-plain size-6 p-0" :title="`${t('workspace.log.diff.prevFile')} ([)`" :aria-label="t('workspace.log.diff.prevFile')" @click="stepFile(-1)"><ChevronLeft :size="14" aria-hidden="true" /></button>
-          <button type="button" class="ccm-btn-plain size-6 p-0" :title="`${t('workspace.log.diff.nextFile')} (])`" :aria-label="t('workspace.log.diff.nextFile')" @click="stepFile(1)"><ChevronRight :size="14" aria-hidden="true" /></button>
+          <button type="button" class="ccm-btn-plain size-6 p-0" :title="`${t('workspace.log.diff.prevFile')} (←)`" :aria-label="t('workspace.log.diff.prevFile')" @click="stepFile(-1)"><ChevronLeft :size="14" aria-hidden="true" /></button>
+          <button type="button" class="ccm-btn-plain size-6 p-0" :title="`${t('workspace.log.diff.nextFile')} (→)`" :aria-label="t('workspace.log.diff.nextFile')" @click="stepFile(1)"><ChevronRight :size="14" aria-hidden="true" /></button>
           <span class="hidden truncate text-2xs text-ink-faint md:inline">{{ t('workspace.log.diff.keys') }}</span>
         </div>
-        <div class="ccm-scroll min-h-0 flex-1 overflow-auto bg-well">
+        <div class="ccm-scroll min-h-0 flex-1 bg-well" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
           <p v-if="diffState === 'loading'" class="p-4 text-xs text-well-ink" role="status">{{ t('workspace.log.diff.loading') }}</p>
           <p v-else-if="diffState === 'binary' || diffState === 'too-large' || diffState === 'empty' || diffState === 'error'" class="p-4 text-xs text-well-ink">
             {{ t(diffState === 'binary' ? 'workspace.log.diff.binary' : diffState === 'too-large' ? 'workspace.log.diff.tooLarge' : diffState === 'empty' ? 'workspace.log.diff.empty' : 'workspace.log.error.failed') }}
@@ -325,7 +464,8 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
             :lang="lang"
             :collapse="opts.collapse"
             :context="opts.context"
-            :words="opts.words"
+            :highlight="opts.highlight"
+            :sides="{ left: `${shortHash}^`, right: shortHash }"
             :can-revert="false"
             :current="currentBlock"
             @focus-block="(i) => (currentBlock = i)"
@@ -335,6 +475,16 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
 
       <template v-else>
         <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+          <p v-if="log.filters.value.notRef && log.filters.value.branch" class="flex shrink-0 items-center gap-2 border-b border-line bg-accent-soft px-3 py-1 text-xs text-ink" role="status" data-log-compare>
+            <span class="min-w-0 flex-1 truncate">{{ t('workspace.log.branches.comparing', { a: shortRef(log.filters.value.branch), b: shortRef(log.filters.value.notRef) }) }}</span>
+            <button type="button" class="ccm-btn-plain h-6 shrink-0 px-2 text-xs" data-log-compare-swap @click="log.setFilters({ branch: log.filters.value.notRef, notRef: log.filters.value.branch })">{{ t('workspace.log.branches.swap') }}</button>
+            <button type="button" class="ccm-btn-plain h-6 shrink-0 px-2 text-xs" data-log-compare-clear @click="clearCompare">{{ t('workspace.log.branches.clear') }}</button>
+          </p>
+          <p v-if="branchNotice" class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1 text-xs text-ink" :class="branchNotice.failed ? 'bg-st-error-soft' : 'bg-fill'" role="status" data-log-branch-notice>
+            <component :is="branchNotice.failed ? CircleAlert : CircleCheck" :size="13" class="shrink-0" :class="branchNotice.failed ? 'text-st-error' : 'text-success'" aria-hidden="true" />
+            <span class="min-w-0 flex-1 truncate" :title="branchNotice.text">{{ branchNotice.text }}</span>
+            <button type="button" class="shrink-0 cursor-pointer rounded-inner text-ink-faint hover:text-ink" :title="t('workspace.log.branches.dismiss')" :aria-label="t('workspace.log.branches.dismiss')" @click="branchNotice = null"><X :size="12" aria-hidden="true" /></button>
+          </p>
           <LogFilterBar :filters="log.filters.value" :refs="log.refs.value" :authors="log.authors.value" :root="log.root.value ?? cwd" :flat="log.mode.value === 'flat'" @change="log.setFilters" @refresh="log.reload()" />
           <LogTable
             ref="table"
@@ -353,7 +503,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
             @open="openCommit"
             @load-more="log.loadMore()"
             @menu="commitMenu"
-            @clear="log.setFilters({ text: '', branch: null, author: null, date: 'any', from: '', to: '', paths: [] })"
+            @clear="log.setFilters({ text: '', branch: null, notRef: null, author: null, date: 'any', from: '', to: '', paths: [] })"
             @retry="log.reload()"
           />
         </div>
@@ -371,5 +521,6 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
         {{ m.label }}
       </button>
     </div>
+    <NewBranchDialog :request="newBranch" @create="createBranch" @close="newBranch = null" />
   </section>
 </template>

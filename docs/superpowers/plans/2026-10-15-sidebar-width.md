@@ -13,7 +13,7 @@
 ## Rulings
 
 1. Width range 200–560px, default 240px (today's `w-60`); the stage keeps at least 480px of the window (padding and gap included).
-2. The width applies to the `<aside>` itself, so it covers both views (Projects and Explorer) and survives v31's Agent rail rewrite (`docs/superpowers/plans/2026-10-15-multi-project-workspace.md`), which replaces only the aside's content. Whichever plan lands second keeps `:style="{ width }"` on the aside; v31's collapsed avatar column overrides the width while collapsed.
+2. The width applies to the `<aside>` itself, so it covers both views (Projects and Explorer) and survives v38's Agent rail rewrite (`docs/superpowers/plans/2026-10-15-multi-project-workspace.md`), which replaces only the aside's content. Whichever plan lands second keeps `:style="{ width }"` on the aside; v38's collapsed avatar column overrides the width while collapsed.
 3. Same interaction as the Monitor `PanelSplitter`: drag, ←/→ by 16px, Home/End to min/max, double-click resets; reuses its i18n strings `panel.resize` / `panel.resizeHint`.
 
 ## Global Constraints
@@ -339,17 +339,17 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ### Task 2: Index, plan note, version
 
 **Files:**
-- Create: `.planning/PLAN-v32-sidebar-width.md`
+- Create: `.planning/PLAN-v39-sidebar-width.md`
 - Modify: `.code_index/web.md`, `.code_index/_meta.md`, `apps/desktop/package.json`
 
-- [ ] **Step 1:** `.planning/PLAN-v32-sidebar-width.md` — 8–12 lines in the v29/v30 style: Goal, pieces (`lib/sideWidth.ts`, `SideResizer.vue`, aside width), the 3 Rulings above, test files (`sideWidth.test.ts`, `e2e/sidebar.cjs`), link to this plan.
-- [ ] **Step 2:** `.code_index/web.md` — under the Workspace section: `- v32 sidebar width: lib/sideWidth.ts (clamp 200–560, stage ≥ 480, ccm.workspace.sideWidth) + SideResizer.vue (separator in the aside's right gap: drag, ←/→ 16px, Home/End, dbl-click reset); WorkspaceView aside :style width, stage pointer-events-none while dragging.` `_meta.md`: one line with the paths.
+- [ ] **Step 1:** `.planning/PLAN-v39-sidebar-width.md` — 8–12 lines in the v29/v30 style: Goal, pieces (`lib/sideWidth.ts`, `SideResizer.vue`, aside width), the 3 Rulings above, test files (`sideWidth.test.ts`, `e2e/sidebar.cjs`), link to this plan.
+- [ ] **Step 2:** `.code_index/web.md` — under the Workspace section: `- v39 sidebar width: lib/sideWidth.ts (clamp 200–560, stage ≥ 480, ccm.workspace.sideWidth) + SideResizer.vue (separator in the aside's right gap: drag, ←/→ 16px, Home/End, dbl-click reset); WorkspaceView aside :style width, stage pointer-events-none while dragging.` `_meta.md`: one line with the paths.
 - [ ] **Step 3:** bump `apps/desktop/package.json` `version` one minor above `master`'s at merge time.
 - [ ] **Step 4: Verify** — `npm run typecheck && npm test` — Expected: clean; PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .planning/PLAN-v32-sidebar-width.md .code_index apps/desktop/package.json
+git add .planning/PLAN-v39-sidebar-width.md .code_index apps/desktop/package.json
 git commit -m "📝 Sidebar width plan note, code index and version
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"

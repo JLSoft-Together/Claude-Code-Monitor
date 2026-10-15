@@ -58,4 +58,16 @@ describe('attachments store', () => {
     s.reconcile(P, scan([], ['@readme.md']), false, null)
     expect(s.list(P)[0]!.seen).toBe(true)
   })
+
+  it('a mention being erased at the cursor leaves no ghost rows', () => {
+    const s = useAttachmentsStore()
+    s.reconcile(P, scan([], ['@package.json']), false, null)
+    expect(s.list(P)).toHaveLength(1)
+    s.reconcile(P, scan([], ['@package.jso']), false, null, '@package.jso')
+    s.reconcile(P, scan([], ['@package.js']), false, null, '@package.js')
+    expect(s.list(P)).toEqual([])
+    // Finished (a space typed after it): the mention gets its row.
+    s.reconcile(P, scan([], ['@src/b.ts']), false, null, null)
+    expect(s.list(P).map((a) => a.token)).toEqual(['@src/b.ts'])
+  })
 })

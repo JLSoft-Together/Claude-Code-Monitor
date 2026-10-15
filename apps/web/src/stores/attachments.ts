@@ -120,9 +120,10 @@ export const useAttachmentsStore = defineStore('attachments', () => {
 
   /**
    * Fold one screen read into the tray. `submitted` = Enter was pressed since the previous read: tokens that left
-   * the prompt were sent, not removed. Tokens nobody put there (typed / pasted in the terminal) get a row too.
+   * the prompt were sent, not removed. Tokens nobody put there (typed / pasted in the terminal) get a row too,
+   * except `editing`: the mention ending at the cursor, still being typed or erased one Backspace at a time.
    */
-  function reconcile(pane: string, scan: PromptScan, submitted: boolean, pendingPaste: NewAttachment | null): { boundPaste: boolean } {
+  function reconcile(pane: string, scan: PromptScan, submitted: boolean, pendingPaste: NewAttachment | null, editing: string | null = null): { boundPaste: boolean } {
     if (!scan.found) return { boundPaste: false }
     const present = new Set([...scan.images.map(imageToken), ...scan.files])
     let items = list(pane)
@@ -149,7 +150,7 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     }
     const tokens = new Set(items.filter((a) => a.state !== 'sent').map((a) => a.token))
     for (const f of scan.files) {
-      if (!tokens.has(f)) items.push({ id: `att-${++seq}`, kind: 'file', name: baseName(f.slice(1).replace(/^"|"$/g, '')), source: 'terminal', token: f, state: 'inserted', seen: true, at: Date.now() })
+      if (!tokens.has(f) && f !== editing) items.push({ id: `att-${++seq}`, kind: 'file', name: baseName(f.slice(1).replace(/^"|"$/g, '')), source: 'terminal', token: f, state: 'inserted', seen: true, at: Date.now() })
     }
     set(pane, items)
     return { boundPaste }

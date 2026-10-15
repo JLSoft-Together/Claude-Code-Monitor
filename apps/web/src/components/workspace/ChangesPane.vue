@@ -2,12 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, groupChanges, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
+import { absoluteIn, dirOfRel, fileStepKey, groupChanges, inSidewaysScroller, KIND_CLASS, KIND_LETTER, samePath } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
 import { blockPatch, changeBlocks } from '../../lib/diffBlocks'
-import { CONTEXTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
+import { CONTEXTS, HIGHLIGHTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
 import { isMac } from '../../lib/platform'
 import {
   baseName,
@@ -244,7 +244,7 @@ function revealInTree(rel: string): void {
   if (next.size !== collapsedDirs.value.size) collapsedDirs.value = next
 }
 
-function stepFile(dir: 1 | -1, land: 'first' | 'last' = 'first'): boolean {
+function stepFile(dir: 1 | -1, land: 'first' | 'last' = 'first', focus = true): boolean {
   const list = ordered.value
   if (!list.length) return false
   const at = list.findIndex((e) => e.path === selected.value)
@@ -252,7 +252,7 @@ function stepFile(dir: 1 | -1, land: 'first' | 'last' = 'first'): boolean {
   if (!next) return false
   landAt = land
   revealInTree(next.path)
-  select(next.path, true)
+  select(next.path, focus)
   return true
 }
 
@@ -362,6 +362,18 @@ function onKey(e: KeyboardEvent): void {
   const inList = !!listEl.value?.contains(target)
   if (treeMode.value && inList && onTreeKey(e)) {
     e.preventDefault()
+    return
+  }
+  const step = fileStepKey(e)
+  if (step) {
+    // Tree rows keep ← / → for folders; toolbar / radiogroup keep them for their own focus.
+    if ((treeMode.value && inList) || target?.closest('[role=toolbar],[role=radiogroup]') || (!inList && inSidewaysScroller(target))) return
+    e.preventDefault()
+    armed = 0
+    notice.value = null
+    stepFile(step, 'first', inList)
+    // The diff unmounts while the next file loads: keep focus in this pane so the next arrow still lands here.
+    if (!inList) rootEl.value?.focus()
     return
   }
   if (key === 'ArrowDown' || key === 'ArrowUp') {
@@ -622,16 +634,17 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
             <p class="px-2 pt-2 pb-0.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ t('workspace.diff.highlight') }}</p>
             <div role="group" :aria-label="t('workspace.diff.highlight')">
               <button
-                v-for="w in [true, false]"
-                :key="String(w)"
+                v-for="h in HIGHLIGHTS"
+                :key="h"
                 type="button"
                 role="menuitemradio"
-                :aria-checked="opts.words === w"
+                :aria-checked="opts.highlight === h"
                 :class="MENU_ROW"
-                @click="setOpt('words', w)"
+                :data-hl="h"
+                @click="setOpt('highlight', h)"
               >
-                <Check :size="13" class="shrink-0" :class="opts.words === w ? '' : 'invisible'" aria-hidden="true" />
-                {{ t(`workspace.diff.hl.${w ? 'words' : 'lines'}`) }}
+                <Check :size="13" class="shrink-0" :class="opts.highlight === h ? '' : 'invisible'" aria-hidden="true" />
+                {{ t(`workspace.diff.hl.${h}`) }}
               </button>
             </div>
           </div>
@@ -758,7 +771,7 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
 
       <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-well">
         <div v-if="selectedEntry" class="flex h-8 min-w-0 shrink-0 items-center gap-1 border-b border-well-line px-2 text-well-ink">
-          <span class="min-w-0 flex-1 truncate font-mono text-2xs" :title="absolute(selectedEntry.path)">
+          <span class="min-w-0 flex-1 truncate font-mono text-2xs" :title="absolute(selectedEntry.path)" data-changes-path>
             <template v-if="selectedEntry.origPath">{{ selectedEntry.origPath }} → </template>{{ selectedEntry.path }}
           </span>
           <span v-if="blocks.length" class="shrink-0 text-2xs tabular text-well-ink" aria-live="polite" data-diff-position>{{
@@ -789,7 +802,7 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           </button>
         </div>
         <p v-if="partial && diffState === 'idle'" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.diff.partial') }}</p>
-        <div class="ccm-scroll min-h-0 flex-1 overflow-auto">
+        <div class="ccm-scroll min-h-0 flex-1" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
           <div v-if="!selectedEntry" class="grid size-full place-items-center p-6 text-sm text-well-ink">{{ t('workspace.changes.selectFile') }}</div>
           <div v-else-if="diffState === 'loading'" class="grid size-full place-items-center text-xs text-well-ink" role="status">{{ t('workspace.changes.loading') }}</div>
           <div v-else-if="diffState !== 'idle' || !diffFile" class="grid size-full place-items-center p-6 text-center text-sm text-well-ink">
@@ -814,7 +827,7 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
             :lang="lang"
             :collapse="collapse"
             :context="opts.context"
-            :words="opts.words"
+            :highlight="opts.highlight"
             :can-revert="canRevert"
             :revert-blocked="revertBlocked"
             :current="currentBlock"

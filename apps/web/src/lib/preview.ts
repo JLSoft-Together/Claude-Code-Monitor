@@ -1,4 +1,4 @@
-import type { CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, RefsResult } from '@ccm/shared'
+import type { BranchOpResult, CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, RefsResult } from '@ccm/shared'
 import { desktop } from './desktop'
 import type { DirEntry } from './explorer/tree'
 
@@ -78,6 +78,12 @@ export type CreateEntryResult =
   | { ok: false; error: 'invalid'; reason: EntryNameProblem }
   | { ok: false; error: 'exists' | 'denied' | 'failed' | 'unavailable' }
 
+export type RenameEntryResult =
+  | { ok: true; path: string }
+  | { ok: false; error: 'invalid'; reason: EntryNameProblem }
+  | { ok: false; error: 'exists' | 'denied' | 'missing' | 'busy' | 'failed' | 'unavailable' }
+export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'exists' | 'failed' | 'unavailable' }
+
 /** Preview methods added to `window.ccmDesktop` by the v21 preload (see .planning/PLAN-v21-integration.md). */
 interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
@@ -99,6 +105,10 @@ interface PreviewBridge {
   logCommit?: (root: string, hash: string) => Promise<CommitDetail>
   logContains?: (root: string, hash: string) => Promise<ContainsResult>
   logDiff?: (root: string, hash: string, path: string, opts?: ChangesDiffOpts, origPath?: string) => Promise<ChangesDiff>
+  gitBranchCreate?: (root: string, name: string, base: string, checkout: boolean) => Promise<BranchOpResult>
+  gitBranchDelete?: (root: string, ref: string) => Promise<BranchOpResult>
+  gitFetch?: (root: string) => Promise<BranchOpResult>
+  gitBranchUpdate?: (root: string, ref: string) => Promise<BranchOpResult>
   changesDiscard?: (root: string, path: string, hunk?: string) => Promise<ChangesResult>
   changesWatch?: (root: string) => Promise<boolean>
   changesUnwatch?: (root: string) => Promise<boolean>
@@ -106,6 +116,8 @@ interface PreviewBridge {
   listFiles?: (root: string) => Promise<FileList | null>
   listDir?: (root: string, dir: string) => Promise<DirEntry[] | null>
   createEntry?: (root: string, parent: string, name: string, kind: 'file' | 'directory') => Promise<CreateEntryResult>
+  renameEntry?: (root: string, path: string, name: string) => Promise<RenameEntryResult>
+  trashEntry?: (root: string, path: string) => Promise<TrashEntryResult>
   clipboardImage?: (pngDataUrl: string) => Promise<boolean>
   clipboardImageFile?: (file: string) => Promise<boolean>
   pickFiles?: () => Promise<string[]>
@@ -151,6 +163,13 @@ export const logCommit = (root: string, hash: string): Promise<WebCommitDetail> 
 export const logContains = (root: string, hash: string): Promise<WebContains> => bridge?.logContains?.(root, hash) ?? Promise.resolve(unavailable)
 export const logDiff = (root: string, hash: string, path: string, opts?: ChangesDiffOpts, origPath?: string): Promise<ChangesDiff> =>
   bridge?.logDiff?.(root, hash, path, opts, origPath) ?? Promise.resolve(unavailable)
+const noBranchOps: BranchOpResult = { ok: false, error: 'denied' }
+export const hasBranchOps = typeof bridge?.gitFetch === 'function'
+export const gitBranchCreate = (root: string, name: string, base: string, checkout: boolean): Promise<BranchOpResult> =>
+  bridge?.gitBranchCreate?.(root, name, base, checkout) ?? Promise.resolve(noBranchOps)
+export const gitBranchDelete = (root: string, ref: string): Promise<BranchOpResult> => bridge?.gitBranchDelete?.(root, ref) ?? Promise.resolve(noBranchOps)
+export const gitFetch = (root: string): Promise<BranchOpResult> => bridge?.gitFetch?.(root) ?? Promise.resolve(noBranchOps)
+export const gitBranchUpdate = (root: string, ref: string): Promise<BranchOpResult> => bridge?.gitBranchUpdate?.(root, ref) ?? Promise.resolve(noBranchOps)
 export const changesDiscard = (root: string, path: string, hunk?: string): Promise<ChangesResult> =>
   bridge?.changesDiscard?.(root, path, hunk) ?? Promise.resolve(unavailable)
 export const changesWatch = (root: string): Promise<boolean> => bridge?.changesWatch?.(root) ?? Promise.resolve(false)
@@ -161,6 +180,9 @@ export const hasExplorer = typeof bridge?.listDir === 'function'
 export const listDir = (root: string, dir: string): Promise<DirEntry[] | null> => bridge?.listDir?.(root, dir) ?? Promise.resolve(null)
 export const createEntry = (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<CreateEntryResult> =>
   bridge?.createEntry?.(root, parent, name, kind) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const renameEntry = (root: string, path: string, name: string): Promise<RenameEntryResult> =>
+  bridge?.renameEntry?.(root, path, name) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const trashEntry = (root: string, path: string): Promise<TrashEntryResult> => bridge?.trashEntry?.(root, path) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const clipboardImage = (pngDataUrl: string): Promise<boolean> => bridge?.clipboardImage?.(pngDataUrl) ?? Promise.resolve(false)
 export const clipboardImageFile = (file: string): Promise<boolean> => bridge?.clipboardImageFile?.(file) ?? Promise.resolve(false)
 export const pickFiles = (): Promise<string[]> => bridge?.pickFiles?.() ?? Promise.resolve([])

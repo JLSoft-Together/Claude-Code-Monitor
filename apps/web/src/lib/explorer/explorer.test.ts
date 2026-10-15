@@ -6,6 +6,8 @@ import { nextRevealStep, type RevealState } from './reveal'
 import {
   createTargetDirectory,
   fileGlyph,
+  movedPath,
+  renamedPanePatches,
   flattenTree,
   openDirectories,
   parentDirectory,
@@ -13,6 +15,7 @@ import {
   resolveFocusIndex,
   sortEntries,
   toggleExpanded,
+  trashedPaneKeys,
   visibleEntries,
   type DirEntry,
 } from './tree'
@@ -173,6 +176,12 @@ describe('checkEntryName', () => {
     [' a', 'space'],
     ['a\tb', 'control'],
     ['a/b', 'separator'],
+    ['a:b', 'character'],
+    ['what?.md', 'character'],
+    ['a<b>', 'character'],
+    ['"q"', 'character'],
+    ['a|b*', 'character'],
+    ['a ', 'space'],
     ['..', 'reserved'],
     ['a.', 'dot'],
     ['CON.txt', 'device'],
@@ -220,5 +229,52 @@ describe('dragPath', () => {
     const dt = transfer()
     dt.setData(PATH_MIME, '/a\n\n /b \n')
     expect(dragPaths(dt)).toEqual(['/a', '/b'])
+  })
+})
+
+describe('movedPath', () => {
+  it('follows a renamed file or folder', () => {
+    expect(movedPath('C:\\r\\a.ts', 'C:\\r\\a.ts', 'C:\\r\\b.ts')).toBe('C:\\r\\b.ts')
+    expect(movedPath('C:\\r\\src\\x\\y.ts', 'C:\\r\\src', 'C:\\r\\lib')).toBe('C:\\r\\lib\\x\\y.ts')
+    expect(movedPath('/r/src/y.ts', '/r/src', '/r/lib')).toBe('/r/lib/y.ts')
+  })
+  it('ignores siblings that only share a prefix', () => {
+    expect(movedPath('C:\\r\\src2\\y.ts', 'C:\\r\\src', 'C:\\r\\lib')).toBeNull()
+    expect(movedPath('C:\\r\\other.ts', 'C:\\r\\src', 'C:\\r\\lib')).toBeNull()
+  })
+  it('is case-insensitive on Windows paths', () => {
+    expect(movedPath('c:\\R\\SRC\\y.ts', 'C:\\r\\src', 'C:\\r\\lib')).toBe('C:\\r\\lib\\y.ts')
+  })
+})
+
+describe('renamedPanePatches', () => {
+  it('moves file paths and run / changes / log folders, never terminals', () => {
+    const panes = [
+      { key: 'f', kind: 'file', path: 'C:\\r\\app\\lib\\main.dart', cwd: 'C:\\r' },
+      { key: 'run', kind: 'run', cwd: 'C:\\r\\app' },
+      { key: 'log', kind: 'log', cwd: 'C:\\r\\app', root: 'C:\\r\\app' },
+      { key: 't', kind: 'term', cwd: 'C:\\r\\app' },
+      { key: 'old', cwd: 'C:\\r\\app' },
+      { key: 'other', kind: 'file', path: 'C:\\r\\app2\\x.ts' },
+    ]
+    expect(renamedPanePatches(panes, 'C:\\r\\app', 'C:\\r\\mobile')).toEqual([
+      { key: 'f', patch: { path: 'C:\\r\\mobile\\lib\\main.dart' } },
+      { key: 'run', patch: { cwd: 'C:\\r\\mobile' } },
+      { key: 'log', patch: { cwd: 'C:\\r\\mobile', root: 'C:\\r\\mobile' } },
+    ])
+  })
+})
+
+describe('trashedPaneKeys', () => {
+  it('closes file viewers on the trashed file or inside the trashed folder only', () => {
+    const panes = [
+      { key: 'f', kind: 'file', path: 'C:\\r\\app\\lib\\main.dart' },
+      { key: 'same', kind: 'file', path: 'c:\\R\\app' },
+      { key: 'sibling', kind: 'file', path: 'C:\\r\\app2\\x.ts' },
+      { key: 'run', kind: 'run', cwd: 'C:\\r\\app' },
+      { key: 't', kind: 'term', cwd: 'C:\\r\\app' },
+    ]
+    expect(trashedPaneKeys(panes, 'C:\\r\\app')).toEqual(['f', 'same'])
+    expect(trashedPaneKeys(panes, 'C:\\r\\app2\\x.ts')).toEqual(['sibling'])
   })
 })

@@ -22,14 +22,17 @@ import {
   hitTest,
   layoutDownload,
   layoutRender,
+  layoutModelPick,
   layoutModelRefresh,
   layoutModelStatus,
+  borrowedModel,
   layoutStatus,
   modelChip,
   needsModelNotice,
   nodeForLine,
   onLayoutEvent,
   shortClass,
+  stepView,
   type CompareConfig,
   type LayoutDiagnostic,
   type LayoutModelInfo,
@@ -123,11 +126,6 @@ const scale = computed(() => {
 })
 const stage = computed(() => ({ width: Math.round((size.value.width || device.value.width) * scale.value), height: Math.round((size.value.height || device.value.height) * scale.value) }))
 const nodes = computed(() => (opts.value.blueprint ? flattenTree(tree.value).slice(0, BLUEPRINT_MAX) : []))
-const parents = computed(() => {
-  const map = new Map<LayoutViewNode, LayoutViewNode>()
-  for (const n of flattenTree(tree.value)) for (const c of n.children) map.set(c, n)
-  return map
-})
 
 const deviceOptions = computed<SelectOption<string>[]>(() =>
   DEVICE_PRESETS.map((d) => ({ value: d.id, label: t(`layout.device.${d.id}`), hint: t('layout.device.hint', dpSize(d)) })),
@@ -162,14 +160,29 @@ const appThemeOptions = computed<SelectOption<string>[]>(() => {
 })
 
 const chip = computed(() => modelChip(model.value))
-const chipText = computed(() => {
+const borrowed = computed(() => borrowedModel(model.value))
+const appOptions = computed<SelectOption<string>[]>(() => (borrowed.value?.choices ?? []).map((m) => ({ value: m, label: m })))
+const appPick = computed({
+  get: () => borrowed.value?.app ?? '',
+  set: (module: string) => void pickApp(module),
+})
+const chipBase = computed(() => {
   const c = chip.value
   if (c.kind === 'ready') return t('layout.model.ready', { time: new Date(c.at ?? 0).toLocaleTimeString(uiLocale.value, { hour: '2-digit', minute: '2-digit' }) })
   if (c.kind === 'running') return t('layout.model.running')
   if (c.kind === 'error') return t('layout.model.error')
   return t('layout.model.framework')
 })
+const chipText = computed(() => {
+  const b = borrowed.value
+  return b && !appOptions.value.length ? `${chipBase.value} · ${t('layout.model.via', { app: b.app })}` : chipBase.value
+})
 const chipTitle = computed(() => {
+  const b = borrowed.value
+  const why = b ? t(b.linked ? 'layout.model.borrowedHint' : 'layout.model.unlinkedHint', { library: b.library, app: b.app }) : ''
+  return [why, chipState.value].filter(Boolean).join('\n')
+})
+const chipState = computed(() => {
   const m = model.value
   if (!m?.target) return m?.reason === 'no-app' ? t('layout.model.noApp') : m?.reason === 'no-gradle' ? t('layout.model.noGradle') : t('layout.model.frameworkHint')
   const s = m.state
@@ -220,6 +233,14 @@ async function loadModel(): Promise<void> {
   const file = props.path
   const info = await layoutModelStatus(file)
   if (file === props.path) model.value = info
+}
+
+async function pickApp(module: string): Promise<void> {
+  const file = props.path
+  const info = await layoutModelPick(file, module)
+  if (file !== props.path || !info) return
+  model.value = info
+  schedule(0)
 }
 
 async function refreshModel(): Promise<void> {
@@ -393,24 +414,29 @@ function onCellMove(e: MouseEvent, id: string, viewTree: LayoutViewNode | null, 
   if (cellHover.value?.id !== id || cellHover.value.node !== node) cellHover.value = { id, node }
 }
 
-function onCanvasKey(e: KeyboardEvent): void {
-  const cur = selected.value ?? tree.value
-  if (!cur) return
-  const parent = parents.value.get(cur)
-  const siblings = parent?.children ?? [cur]
-  const i = siblings.indexOf(cur)
-  let next: LayoutViewNode | undefined
-  if (e.key === 'ArrowUp') next = parent
-  else if (e.key === 'ArrowDown') next = cur.children[0]
-  else if (e.key === 'ArrowLeft') next = siblings[i - 1]
-  else if (e.key === 'ArrowRight') next = siblings[i + 1]
-  else if (e.key === 'Enter') return void pick(cur)
-  else return
+/** Arrows walk `root` from `cur`, Enter jumps to the source line; shared by the single stage and each compare cell. */
+function onTreeKey(e: KeyboardEvent, root: LayoutViewNode | null, cur: LayoutViewNode | null): void {
+  if (!root || e.altKey || e.ctrlKey || e.metaKey) return
+  if (e.key === 'Enter') return void pick(cur ?? root)
+  if (!ARROW_KEYS.has(e.key)) return
   e.preventDefault()
+  const next = stepView(root, cur, e.key)
   if (next) {
     selected.value = next
     if (next.line > 0) emit('reveal', next.line, false)
   }
+}
+const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+
+function onCanvasKey(e: KeyboardEvent): void {
+  onTreeKey(e, tree.value, selected.value)
+}
+
+const cellKeysHint = computed(() => `${t('layout.keys')}\n${t('layout.keysCompare')}`)
+
+function cellLabel(s: { cfg: CompareConfig; viewTree: LayoutViewNode | null }): string {
+  const sel = cellSelected(s.cfg.id, s.viewTree)
+  return sel ? `${shotLabel(s.cfg)}: ${nodeLabel(sel)}, ${t('layout.view.line', { line: sel.line })}` : shotLabel(s.cfg)
 }
 
 function nodeLabel(n: LayoutViewNode): string {
@@ -470,6 +496,7 @@ onBeforeUnmount(() => {
       />
       <AppSelect v-model="opts.theme" :options="appThemeOptions" :label="t('layout.themePick.label')" :icon="Palette" size="sm" />
       <span class="flex-1" />
+      <AppSelect v-if="appOptions.length" v-model="appPick" :options="appOptions" :label="t('layout.model.pickApp')" size="sm" data-layout-model-app />
       <span class="flex min-w-0 shrink items-center gap-1 text-2xs" :title="chipTitle" role="status" data-layout-model>
         <component :is="CHIP[chip.kind].icon" :size="13" class="shrink-0" :class="CHIP[chip.kind].cls" aria-hidden="true" />
         <span class="truncate tabular">{{ chipText }}</span>
@@ -574,13 +601,18 @@ onBeforeUnmount(() => {
       >
         <figure v-for="s in compareLayout" :key="s.cfg.id" class="flex min-w-0 shrink-0 flex-col items-center gap-1.5" :style="{ width: `${s.cellWidth}px` }">
           <div
-            class="relative shrink-0 overflow-hidden rounded-inner shadow-card"
+            class="relative shrink-0 overflow-hidden rounded-inner shadow-card outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             :class="opts.blueprint && s.res.ok ? 'bg-well ring-1 ring-well-line' : 'bg-page'"
             :style="{ width: `${s.width}px`, height: `${s.height}px` }"
+            :tabindex="s.res.ok ? 0 : -1"
+            role="group"
+            :aria-label="cellLabel(s)"
+            :aria-description="s.res.ok ? cellKeysHint : undefined"
             data-layout-compare-cell
             @mousemove="onCellMove($event, s.cfg.id, s.viewTree, s.scale)"
             @mouseleave="cellHover = null"
             @click="s.res.ok && pick(shotHit($event, s.viewTree, s.scale))"
+            @keydown="s.res.ok && onTreeKey($event, s.viewTree, cellSelected(s.cfg.id, s.viewTree))"
           >
             <img v-if="s.res.ok && s.res.pngUrl && !opts.blueprint" :src="s.res.pngUrl" :alt="shotLabel(s.cfg)" class="pointer-events-none block size-full select-none" draggable="false" />
             <LayoutBoxes
@@ -594,7 +626,7 @@ onBeforeUnmount(() => {
               <span class="flex items-center gap-1.5"><CircleAlert :size="13" class="shrink-0 text-st-error" aria-hidden="true" />{{ s.res.ok ? t('layout.noImage') : te(`layout.error.${s.res.code}`) ? t(`layout.error.${s.res.code}`) : t('layout.error.other', { code: s.res.code }) }}</span>
             </p>
           </div>
-          <figcaption class="max-w-full truncate text-2xs" :title="shotLabel(s.cfg)">{{ shotLabel(s.cfg) }}</figcaption>
+          <figcaption class="w-full min-w-0 truncate text-center text-2xs" :title="shotLabel(s.cfg)" data-layout-compare-caption>{{ shotLabel(s.cfg) }}</figcaption>
         </figure>
       </div>
 
@@ -605,6 +637,7 @@ onBeforeUnmount(() => {
           :style="{ width: `${stage.width}px`, height: `${stage.height}px` }"
           tabindex="0"
           role="group"
+          :aria-description="t('layout.keys')"
           :aria-label="selected ? `${nodeLabel(selected)}, ${t('layout.view.line', { line: selected.line })}` : t('layout.image')"
           data-layout-stage
           @mousemove="onMove"

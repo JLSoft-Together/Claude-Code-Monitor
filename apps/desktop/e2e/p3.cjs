@@ -47,7 +47,7 @@ const ALT = 1, CTRL = 2, SHIFT = 8
     check('keyboard focus follows', active)
 
     // Divider drag: move to 30%.
-    const div = await evaluate(`(() => { const d=document.querySelector('[role=separator]'); const r=d.getBoundingClientRect(); const c=d.parentElement.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2,cx:c.x,cw:c.width} })()`)
+    const div = await evaluate(`(() => { const d=document.querySelector('[role=separator][aria-valuemin="15"]'); const r=d.getBoundingClientRect(); const c=d.parentElement.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2,cx:c.x,cw:c.width} })()`)
     await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x: div.x, y: div.y, button: 'left', clickCount: 1 })
     for (let i = 1; i <= 5; i++) await cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x: div.x - ((div.x - (div.cx + div.cw * 0.3)) * i) / 5, y: div.y, button: 'left', buttons: 1 })
     await cmd('Input.dispatchMouseEvent', { type: 'mouseReleased', x: div.cx + div.cw * 0.3, y: div.y, button: 'left', clickCount: 1 })

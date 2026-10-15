@@ -2,11 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from 'lucide-vue-next'
-import { createTargetDirectory, relativeTo, rootName } from '../../lib/explorer/tree'
-import { hasExplorer } from '../../lib/preview'
+import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
+import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
+import { isMac } from '../../lib/platform'
+import { hasExplorer, revealPath } from '../../lib/preview'
 import { useExplorerChanges } from '../../composables/useExplorerChanges'
 import { useExplorerStore, type ExplorerView } from '../../stores/explorer'
 import CreateEntryDialog from './CreateEntryDialog.vue'
+import DiscardConfirm from './DiscardConfirm.vue'
 import ExplorerChanges from './ExplorerChanges.vue'
 import ExplorerTree from './ExplorerTree.vue'
 
@@ -18,7 +21,16 @@ const props = defineProps<{
   /** Workspace on screen: the Changes view watches git only then. */
   visible: boolean
 }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string] }>()
+const emit = defineEmits<{
+  open: [path: string, keep: boolean]
+  openDiff: [root: string, path?: string]
+  openLog: [root: string]
+  openSplit: [path: string]
+  terminal: [dir: string]
+  run: [dir: string]
+  renamed: [from: string, to: string]
+  trashed: [path: string]
+}>()
 
 const { t } = useI18n()
 const explorer = useExplorerStore()
@@ -51,24 +63,105 @@ function onTabKey(e: KeyboardEvent): void {
   tabs.value?.querySelector<HTMLElement>(`[data-view="${next}"]`)?.focus()
 }
 
-const createRequest = ref<{ kind: 'file' | 'directory'; parent: string } | null>(null)
-const dialog = computed(() =>
-  createRequest.value && explorer.root
-    ? { kind: createRequest.value.kind, where: relativeTo(explorer.root, createRequest.value.parent), rootName: rootName(explorer.root) }
-    : null,
-)
+const entryRequest = ref<{ mode: 'create' | 'rename'; kind: 'file' | 'directory'; parent: string; target?: string; initial?: string } | null>(null)
+const configHint = (p: string | undefined): string | undefined => {
+  const key = p ? riskHintKey(p) : null
+  return key ? t(key) : undefined
+}
+const dialog = computed(() => {
+  const r = entryRequest.value
+  return r && explorer.root
+    ? { kind: r.kind, where: relativeTo(explorer.root, r.parent), rootName: rootName(explorer.root), mode: r.mode, initial: r.initial, hint: configHint(r.target) }
+    : null
+})
 
 function askCreate(kind: 'file' | 'directory'): void {
   if (!explorer.root) return
-  createRequest.value = { kind, parent: createTargetDirectory(explorer.rows, explorer.state.focused, explorer.root) }
+  entryRequest.value = { mode: 'create', kind, parent: createTargetDirectory(explorer.rows, explorer.state.focused, explorer.root) }
 }
 
-async function create(name: string): Promise<void> {
-  const req = createRequest.value
-  createRequest.value = null
+async function submitEntry(name: string): Promise<void> {
+  const req = entryRequest.value
+  entryRequest.value = null
   if (!req) return
+  if (req.mode === 'rename' && req.target) {
+    const to = await explorer.rename(req.target, name)
+    if (to) emit('renamed', req.target, to)
+    return
+  }
   const path = await explorer.create(req.parent, name, req.kind)
   if (path && req.kind === 'file') emit('open', path, false)
+}
+
+const pendingTrash = ref<TreeRow | null>(null)
+const trashName = computed(() => t(`workspace.changes.trash.${isMac ? 'mac' : 'win'}`))
+const trashLines = computed(() => {
+  const row = pendingTrash.value
+  if (!row) return []
+  const lines = [
+    t(row.directory ? 'workspace.explorer.trash.folder' : 'workspace.explorer.trash.file', { trash: trashName.value }),
+    t('workspace.explorer.trash.restore', { trash: trashName.value }),
+  ]
+  const hint = configHint(row.path)
+  return hint ? [...lines, hint] : lines
+})
+
+async function copy(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    explorer.status = { key: 'copied', name: text, failed: false }
+  } catch {
+    // clipboard refused (window not focused): no feedback to give
+  }
+}
+
+async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
+  const root = explorer.root
+  if (!root) return
+  const dir = row.depth === 0 ? root : row.directory ? row.path : parentDirectory(row.path)
+  switch (id) {
+    case 'new-file':
+    case 'new-folder':
+      entryRequest.value = { mode: 'create', kind: id === 'new-file' ? 'file' : 'directory', parent: dir }
+      break
+    case 'copy-abs':
+      return copy(row.path)
+    case 'copy-rel':
+      return copy(relativeTo(root, row.path) || '.')
+    case 'copy-name':
+      return copy(row.name)
+    case 'rename':
+      entryRequest.value = { mode: 'rename', kind: row.directory ? 'directory' : 'file', parent: parentDirectory(row.path), target: row.path, initial: row.name }
+      break
+    case 'trash':
+      pendingTrash.value = row
+      break
+    case 'reload':
+      void changes.refresh()
+      await explorer.loadListing(dir)
+      break
+    case 'reveal':
+      void revealPath(row.path)
+      break
+    case 'open-split':
+      emit('openSplit', row.path)
+      break
+    case 'terminal':
+      emit('terminal', dir)
+      break
+    case 'run':
+      emit('run', dir)
+      break
+    case 'show-diff':
+      if (changes.status.value?.ok) emit('openDiff', changes.status.value.root, row.path)
+      break
+  }
+}
+
+async function confirmTrash(): Promise<void> {
+  const row = pendingTrash.value
+  pendingTrash.value = null
+  if (row && (await explorer.trash(row.path))) emit('trashed', row.path)
 }
 
 const statusText = computed(() => {
@@ -127,9 +220,11 @@ const statusText = computed(() => {
         v-if="explorer.view === 'files'"
         :active-path="activePath"
         :git="changes.marks.value"
+        :repo="changes.isRepo.value"
         @open="(p, keep) => emit('open', p, keep)"
         @open-diff="(p) => changes.status.value?.ok && emit('openDiff', changes.status.value.root, p)"
         @create="askCreate"
+        @action="onAction"
       />
       <ExplorerChanges
         v-else
@@ -141,6 +236,14 @@ const statusText = computed(() => {
         @refresh="changes.refresh()"
       />
     </template>
-    <CreateEntryDialog :request="dialog" @create="create" @close="createRequest = null" />
+    <CreateEntryDialog :request="dialog" @create="submitEntry" @close="entryRequest = null" />
+    <DiscardConfirm
+      v-if="pendingTrash"
+      :title="t('workspace.explorer.trash.title', { name: pendingTrash.name, trash: trashName })"
+      :lines="trashLines"
+      :confirm-label="t('workspace.explorer.trash.action', { trash: trashName })"
+      @confirm="confirmTrash"
+      @cancel="pendingTrash = null"
+    />
   </section>
 </template>

@@ -8,7 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import type { IDisposable } from '@xterm/xterm'
+import type { IBufferCell, IDisposable } from '@xterm/xterm'
 import type { PtyServerMessage } from '@ccm/shared'
 import { DevServerDetector, rememberDevUrl } from '../../lib/devServer'
 import { createFileLinkProvider, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
@@ -16,9 +16,11 @@ import { fontEntry, fontStack, SYSTEM_MONO } from '../../lib/fonts'
 import { shortPath } from '../../lib/format'
 import { contextPctOf } from '../../lib/provider'
 import { retireOverlay } from '../../lib/motion'
+import { registerSnapshot } from '../../lib/paneSnapshots'
 import { isMac } from '../../lib/platform'
 import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
 import { imagePasteKey, usePaneAttachments, type PaneScreen } from '../../composables/usePaneAttachments'
+import { SCAN_ROWS } from '../../lib/promptAttachments'
 import { desktop } from '../../lib/desktop'
 import { clipboardImageBlob, imageData } from '../../lib/imageData'
 import { dragPaths, hasDragPath } from '../../lib/explorer/dragPath'
@@ -261,9 +263,30 @@ function readScreen(): PaneScreen | null {
   if (!term) return null
   const b = term.buffer.active
   const rows: string[] = []
-  for (let y = 0; y < term.rows; y++) rows.push(b.getLine(b.baseY + y)?.translateToString(true) ?? '')
-  return { rows, cursor: { x: b.cursorX, y: b.cursorY } }
+  const inverse: { x: number; y: number }[] = []
+  let cell: IBufferCell | undefined
+  for (let y = 0; y < term.rows; y++) {
+    const line = b.getLine(b.baseY + y)
+    rows.push(line?.translateToString(true) ?? '')
+    if (!line || y < term.rows - SCAN_ROWS) continue
+    for (let x = 0; x < line.length; x++) {
+      cell = line.getCell(x, cell)
+      if (cell?.isInverse()) inverse.push({ x, y })
+    }
+  }
+  return { rows, cursor: { x: b.cursorX, y: b.cursorY }, inverse }
 }
+
+const offSnapshot = registerSnapshot(props.pane.key, (n) => {
+  const b = term?.buffer.active
+  if (!b) return []
+  // A margin above the cursor row so trailing blank screen rows can be trimmed.
+  const end = b.baseY + b.cursorY + 1
+  const out: string[] = []
+  for (let y = Math.max(0, end - n - 8); y < end; y++) out.push(b.getLine(y)?.translateToString(true) ?? '')
+  return out
+})
+onBeforeUnmount(offSnapshot)
 
 const att = usePaneAttachments({
   paneKey: () => props.pane.key,
@@ -277,6 +300,7 @@ const att = usePaneAttachments({
     term?.focus()
   },
   screen: readScreen,
+  appCursorKeys: () => !!term?.modes.applicationCursorKeysMode,
   win: isWin,
 })
 
@@ -547,8 +571,10 @@ watch(
 // Browser → agent: lands in the input line only; the user presses Enter.
 watch(
   () => workspace.insertRequest,
-  (req) => {
+  async (req) => {
     if (!req || req.paneKey !== props.pane.key || props.pane.state !== 'running') return
+    await att.idle()
+    if (props.pane.state !== 'running') return
     if (req.image) {
       const key = imagePasteKey(props.pane.preset, isWin)
       if (key) {

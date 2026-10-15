@@ -117,6 +117,21 @@ async function run(app) {
   await key('[', 'BracketLeft', 219)
   await waitFor(`[...document.querySelectorAll('[data-kind=changes] [aria-selected=true]')].some((r) => r.textContent.includes('a.ts'))`, 5000, 'prev file').catch(() => {})
   check('[ goes back a file', await evaluate(`[...document.querySelectorAll('[data-kind=changes] [aria-selected=true]')].some((r) => r.textContent.includes('a.ts'))`))
+
+  // ← / → step files from the diff; focus stays in the pane (not the list) so the next arrow works too.
+  const selected = `[...document.querySelectorAll('[data-kind=changes] [aria-selected=true]')].map((r) => r.textContent).join()`
+  // The list selects a.ts before its diff mounts: wait for the diff itself.
+  await waitFor(`!!document.querySelector('[data-kind=changes] [role=document]')`, 5000, 'a.ts diff').catch(() => {})
+  await evaluate(`document.querySelector('[data-kind=changes] [role=document]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`)
+  await sleep(500)
+  check('→ in the diff opens the next file', (await evaluate(selected)).includes('new.md'), await evaluate(selected))
+  check('focus stays in the Changes pane, not the file list', await evaluate(`!!document.activeElement?.closest('[data-kind=changes]') && !document.activeElement.closest('[role=listbox], [role=tree]')`))
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))`)
+  await sleep(500)
+  check('← goes back to the previous file', (await evaluate(selected)).includes('a.ts'))
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true }))`)
+  await sleep(300)
+  check('Alt+→ does not step files', (await evaluate(selected)).includes('a.ts'))
   await sleep(500)
   await key('F4', 'F4', 115)
   await sleep(500)
@@ -135,6 +150,19 @@ async function run(app) {
   await evaluate(`document.querySelector('[data-changes-tree]').click()`)
   await sleep(300)
   check('tree mode groups files by folder', await evaluate(`!!document.querySelector('[data-kind=changes] [role=tree] [aria-expanded]')`))
+
+  // In the folder tree ← / → still fold folders and leave the selection alone. The tree follows its
+  // cursor (the selected file), so the first ← moves to the parent folder and the second folds it.
+  const shownPath = `document.querySelector('[data-kind=changes] [data-changes-path]')?.textContent ?? ''`
+  const before = await evaluate(shownPath)
+  await evaluate(`document.querySelector('[data-kind=changes] [role=tree] [aria-expanded=true]').focus()`)
+  for (let i = 0; i < 2; i++) {
+    await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))`)
+    await sleep(200)
+  }
+  check('← on a folder row collapses it, selection unchanged', (await evaluate(`document.activeElement?.getAttribute('aria-expanded') === 'false'`)) && (await evaluate(shownPath)) === before, before)
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))`)
+  await sleep(200)
 
   // Split view: the » arrow reverts the block.
   await evaluate(`[...document.querySelectorAll('[data-kind=changes] [role=radio]')].find((b) => /side|cột/i.test(b.textContent)).click()`)

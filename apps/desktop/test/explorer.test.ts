@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { createEntry, listDir } from '../src/preview/explorer'
+import { createEntry, fsFailure, listDir, renameEntry, trashEntry } from '../src/preview/explorer'
 import { registerPreviewIpc } from '../src/preview/ipc'
 import type { PreviewServer } from '../src/preview/server'
 import type { RootWatcher } from '../src/preview/watch'
@@ -96,6 +96,7 @@ describe('ccm:list-dir / ccm:create-entry', () => {
     getWindow: () => null,
     getRoots: () => [project],
     confirmAccess: async () => false,
+    trash: async () => undefined,
   })
   const call = (ch: string, arg: unknown) => Promise.resolve(handlers.get(ch)!({ sender: { id: 1 } }, arg))
 
@@ -105,5 +106,70 @@ describe('ccm:list-dir / ccm:create-entry', () => {
     expect(await call('ccm:list-dir', null)).toBeNull()
     expect(await call('ccm:create-entry', { root: outside, parent: outside, name: 'y.txt', kind: 'file' })).toEqual({ ok: false, error: 'denied' })
     expect(await call('ccm:create-entry', { root: project, parent: project, name: 'y.txt', kind: 'file' })).toMatchObject({ ok: true })
+  })
+
+  it('renames and trashes only inside readable roots', async () => {
+    writeFileSync(path.join(project, 'ipc.txt'), 'i')
+    expect(await call('ccm:rename-entry', { root: outside, path: path.join(outside, 'secret.txt'), name: 'x' })).toEqual({ ok: false, error: 'denied' })
+    expect(await call('ccm:rename-entry', { root: project, path: path.join(project, 'ipc.txt'), name: 'ipc2.txt' })).toMatchObject({ ok: true })
+    expect(await call('ccm:trash-entry', { root: project, path: path.join(project, 'ipc2.txt') })).toEqual({ ok: true })
+  })
+})
+
+describe('renameEntry', () => {
+  it('renames inside the root and never overwrites', async () => {
+    writeFileSync(path.join(project, 'src', 'r1.ts'), '1')
+    writeFileSync(path.join(project, 'src', 'r2.ts'), '2')
+    expect(await renameEntry(project, path.join(project, 'src', 'r1.ts'), 'r3.ts')).toEqual({ ok: true, path: path.join(project, 'src', 'r3.ts') })
+    expect(await renameEntry(project, path.join(project, 'src', 'r3.ts'), 'r2.ts')).toEqual({ ok: false, error: 'exists' })
+  })
+
+  it('allows a case-only rename of the same file', async () => {
+    writeFileSync(path.join(project, 'src', 'case.md'), 'c')
+    expect(await renameEntry(project, path.join(project, 'src', 'case.md'), 'CASE.md')).toMatchObject({ ok: true })
+    expect(readdirSync(path.join(project, 'src'))).toContain('CASE.md')
+    expect(readdirSync(path.join(project, 'src'))).not.toContain('case.md')
+  })
+
+  it('refuses the root, outside paths, `..` and bad names', async () => {
+    expect(await renameEntry(project, project, 'x')).toEqual({ ok: false, error: 'denied' })
+    expect(await renameEntry(project, path.join(outside, 'secret.txt'), 'x')).toEqual({ ok: false, error: 'denied' })
+    expect(await renameEntry(project, `${path.join(project, 'src')}${path.sep}..`, 'x')).toEqual({ ok: false, error: 'denied' })
+    expect(await renameEntry(project, path.join(project, 'README.md'), 'a/b')).toMatchObject({ ok: false, error: 'invalid' })
+    expect(await renameEntry(project, path.join(project, 'nope.txt'), 'x')).toEqual({ ok: false, error: 'missing' })
+  })
+})
+
+describe('trashEntry', () => {
+  it('hands the entry to the trash and refuses the root', async () => {
+    writeFileSync(path.join(project, 'src', 'gone.ts'), 'g')
+    const trashed: string[] = []
+    const trash = async (p: string) => void trashed.push(p)
+    expect(await trashEntry(project, path.join(project, 'src', 'gone.ts'), trash)).toEqual({ ok: true })
+    expect(trashed).toEqual([path.join(project, 'src', 'gone.ts')])
+    expect(await trashEntry(project, project, trash)).toEqual({ ok: false, error: 'denied' })
+    expect(await trashEntry(project, path.join(outside, 'secret.txt'), trash)).toEqual({ ok: false, error: 'denied' })
+    expect(await trashEntry(project, path.join(project, 'missing.ts'), trash)).toEqual({ ok: false, error: 'missing' })
+    expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), async () => { throw new Error('busy') })).toEqual({ ok: false, error: 'failed' })
+  })
+
+  it('reports a held file or folder as busy', async () => {
+    const held = async () => { throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' }) }
+    expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), held)).toEqual({ ok: false, error: 'busy' })
+    expect(await trashEntry(project, path.join(project, 'src', 'a.ts'), async () => { throw new Error('EPERM: operation not permitted') })).toEqual({ ok: false, error: 'busy' })
+  })
+
+  it('names each fs failure by its code or message', () => {
+    const coded = (code: string) => Object.assign(new Error(code), { code })
+    expect(fsFailure(coded('EPERM'))).toBe('busy')
+    expect(fsFailure(coded('EBUSY'))).toBe('busy')
+    expect(fsFailure(new Error('The process cannot access the file because it is being used by another process.'))).toBe('busy')
+    expect(fsFailure(coded('EACCES'))).toBe('denied')
+    expect(fsFailure(new Error('EACCES: permission denied, rename'))).toBe('denied')
+    expect(fsFailure(coded('ENOENT'))).toBe('missing')
+    expect(fsFailure(coded('EEXIST'))).toBe('exists')
+    expect(fsFailure(new Error('ENOTEMPTY: directory not empty'))).toBe('exists')
+    expect(fsFailure(new Error('nope'))).toBe('failed')
+    expect(fsFailure(null)).toBe('failed')
   })
 })

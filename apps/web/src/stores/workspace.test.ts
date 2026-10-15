@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
 import { leaves } from '../lib/splitLayout'
-import { primaryPaneKey, useWorkspaceStore, workCwd } from './workspace'
+import { primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
   if (!o || typeof o !== 'object') return [prefix]
@@ -182,5 +182,68 @@ describe('log panes', () => {
     const next = useWorkspaceStore()
     next.restoreLast()
     expect(next.panes.map((p) => [p.kind, p.cwd])).toEqual([['log', '/repo']])
+  })
+})
+
+describe('tab project', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('is the folder a tab was opened for and never follows a cd', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/work/app')
+    ws.update(a.key, { liveCwd: 'C:/work/other' })
+    const b = ws.split(a.key, 'row')!
+    expect(ws.tabOf(b.key)!.project).toBe('C:/work/app')
+    expect(ws.tabs).toHaveLength(1)
+  })
+
+  it('new viewer and script tabs take their folder; layouts take the layout project', () => {
+    const ws = useWorkspaceStore()
+    const s = ws.runScript('C:/work/api', 'npm test')
+    expect(ws.tabOf(s.key)!.project).toBe('C:/work/api')
+    ws.openLayout({ project: 'C:/work/web', panes: { x: { kind: 'term', preset: 'shell', cwd: 'C:/work/web/src' } }, tabs: [{ root: { pane: 'x' } }] })
+    expect(ws.tabs.at(-1)!.project).toBe('C:/work/web')
+  })
+
+  it('falls back to the primary pane folder for tabs saved before v38', () => {
+    const ws = useWorkspaceStore()
+    const p = ws.open('shell', 'D:/notes')
+    const tab = { ...ws.tabOf(p.key)!, project: undefined }
+    expect(tabProject(tab, (k) => ws.panes.find((x) => x.key === k))).toBe('D:/notes')
+  })
+
+  it('cycles only inside the given scope', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/a')
+    ws.open('claude', 'C:/b')
+    const c = ws.open('claude', 'C:/a')
+    const scope = [ws.tabOf(a.key)!.key, ws.tabOf(c.key)!.key]
+    ws.cycleTab(1, scope)
+    expect(ws.activeKey).toBe(a.key)
+  })
+
+  it('enters the scope at its first tab going forward and its last going back', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/a')
+    const c = ws.open('claude', 'C:/a')
+    const b = ws.open('claude', 'C:/b')
+    const scope = [ws.tabOf(a.key)!.key, ws.tabOf(c.key)!.key]
+    ws.cycleTab(-1, scope)
+    expect(ws.activeKey).toBe(c.key)
+    ws.activate(b.key)
+    ws.cycleTab(1, scope)
+    expect(ws.activeKey).toBe(a.key)
+  })
+
+  it('keeps one Explorer preview slot per project', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.openFile('C:/a/x.ts', undefined, { cwd: 'C:/a', preview: true })
+    const b = ws.openFile('C:/b/y.ts', undefined, { cwd: 'C:/b', preview: true })
+    expect(b.key).not.toBe(a.key)
+    expect(ws.openFile('C:/a/z.ts', undefined, { cwd: 'C:/a', preview: true }).key).toBe(a.key)
   })
 })

@@ -74,10 +74,10 @@ export function cleanDiffOptions(raw: unknown): Required<DiffOptions> {
   return { context: o.context === 'full' ? 'full' : 3, whitespace }
 }
 
-/** `git diff` flags for the options (after `diff <base>`). */
+/** `git diff` flags for the options (after `diff <base>`). Histogram, like IntelliJ: fewer `}` / blank-line mismatches than Myers. */
 export function diffArgs(opts: DiffOptions = {}): string[] {
   const { context, whitespace } = cleanDiffOptions(opts)
-  return [...(context === 'full' ? [FULL_CONTEXT] : []), ...WHITESPACE_ARGS[whitespace]]
+  return ['--histogram', ...(context === 'full' ? [FULL_CONTEXT] : []), ...WHITESPACE_ARGS[whitespace]]
 }
 export const MAX_ENTRIES = 5000
 
@@ -207,6 +207,16 @@ export async function toplevel(dir: string): Promise<{ root: string } | { error:
   return real ? { root: real } : { error: 'not-repo' }
 }
 
+/** Shared `.git` of a checkout: the main checkout and every worktree of one repo answer the same path. */
+export async function commonDir(dir: string): Promise<string | null> {
+  const opts = { maxBytes: 16_384, timeoutMs: 10_000 }
+  // `--path-format` needs git 2.31; older gits print a path relative to `dir`.
+  let res = await execGit(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], opts)
+  if (res.code !== 0) res = await execGit(dir, ['rev-parse', '--git-common-dir'], opts)
+  const out = res.code === 0 ? res.stdout.trim() : ''
+  return out ? realOrNull(path.resolve(dir, out)) : null
+}
+
 async function hasHead(root: string): Promise<boolean> {
   return (await execGit(root, ['rev-parse', '--verify', '-q', 'HEAD'], { maxBytes: 4096 })).code === 0
 }
@@ -244,7 +254,7 @@ export async function status(root: string): Promise<ChangesStatus> {
   const entries = parsed.entries.slice(0, MAX_ENTRIES)
   const base = await baseRev(root)
   if (base) {
-    const num = await execGit(root, ['diff', base, '--numstat', '-z', '-M', '--no-ext-diff', '--no-textconv'], { timeoutMs: 20_000 })
+    const num = await execGit(root, ['diff', base, '--histogram', '--numstat', '-z', '-M', '--no-ext-diff', '--no-textconv'], { timeoutMs: 20_000 })
     if (num.code === 0) {
       const counts = parseNumstat(num.stdout)
       for (const e of entries) Object.assign(e, counts.get(e.path) ?? {})

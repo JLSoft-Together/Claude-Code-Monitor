@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, LayoutTemplate, Search, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, LayoutTemplate, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
 import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
 import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
@@ -16,6 +16,9 @@ import CodeMinimap from './CodeMinimap.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import HunkPopup from './HunkPopup.vue'
 import LayoutPreview from './LayoutPreview.vue'
+import FlutterPreviewPanel from './FlutterPreviewPanel.vue'
+import { hasFlutterPreview, inFlutterProject, isDartFile } from '../../lib/flutterPreview'
+import { desktop } from '../../lib/desktop'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import { hasLayoutPreview, isLayoutXml, type LayoutMode } from '../../lib/layoutPreview'
 import { baseName, changesDiscard, dirOf, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
@@ -117,7 +120,39 @@ const layoutModes = computed<Segment<LayoutMode>[]>(() => [
   { value: 'design', label: t('layout.mode.design'), icon: LayoutTemplate },
 ])
 
-const codeWidth = computed(() => (showDesign.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
+// Flutter widget preview (v40): list + controls beside a .dart file of a pubspec project; open state per user.
+const FWP_OPEN_KEY = 'ccm.fwp.open'
+function readFwpOpen(): boolean {
+  try {
+    return localStorage.getItem(FWP_OPEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const fwpOpen = ref(readFwpOpen())
+watch(fwpOpen, (on) => {
+  try {
+    localStorage.setItem(FWP_OPEN_KEY, on ? '1' : '0')
+  } catch {
+    // storage off
+  }
+})
+const fwpProject = ref(false)
+const isDart = computed(() => hasFlutterPreview && view.value?.kind === 'text' && isDartFile(view.value.path || props.path))
+const showFwp = computed(() => isDart.value && fwpProject.value && fwpOpen.value)
+watch(
+  () => (isDart.value ? (view.value?.path ?? props.path) : null),
+  async (file) => {
+    fwpProject.value = false
+    if (!file) return
+    const flutter = await inFlutterProject(file, async (f) => desktop?.fwpScan?.(f, false))
+    fwpProject.value = flutter && (view.value?.path ?? props.path) === file
+  },
+  { immediate: true },
+)
+const sidePanel = computed(() => showDesign.value || showFwp.value)
+
+const codeWidth = computed(() => (sidePanel.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
 const minimap = computed(() => settings.minimap && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
 
 const html = computed(() => {
@@ -487,6 +522,18 @@ const lineCount = computed(() => lines.value.length)
         <span v-if="changeTotals.removed" class="text-diff-del">−{{ changeTotals.removed }}</span>
       </button>
       <SegmentedControl v-if="isLayout" v-model="layoutMode" class="mx-1 shrink-0" :options="layoutModes" :label="t('layout.mode.label')" icon-only data-layout-mode />
+      <button
+        v-if="isDart && fwpProject"
+        type="button"
+        class="ccm-btn-plain shrink-0"
+        :aria-pressed="fwpOpen"
+        :title="t('fwp.toggle')"
+        :aria-label="t('fwp.toggle')"
+        data-fwp-toggle
+        @click="fwpOpen = !fwpOpen"
+      >
+        <Smartphone :size="14" aria-hidden="true" />
+      </button>
       <template v-if="markdown">
         <button
           type="button"
@@ -572,7 +619,7 @@ const lineCount = computed(() => lines.value.length)
     <p v-if="notice" class="shrink-0 border-b border-line bg-st-waiting-soft px-3 py-1.5 text-xs text-ink" role="status">{{ notice }}</p>
     <p v-if="plainBecauseLarge" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink">{{ t('workspace.viewer.plain') }}</p>
 
-    <div class="flex min-h-0 flex-1" :class="showDesign && layoutStacked ? 'flex-col' : ''">
+    <div class="flex min-h-0 flex-1" :class="sidePanel && layoutStacked ? 'flex-col' : ''">
       <div v-show="showCode" class="flex min-h-0 min-w-0 flex-1">
       <div ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto">
         <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
@@ -613,6 +660,13 @@ const lineCount = computed(() => lines.value.length)
         :line="layoutLine"
         :active="active"
         @reveal="revealLayoutLine"
+      />
+      <FlutterPreviewPanel
+        v-if="showFwp"
+        :class="layoutStacked ? 'border-t border-line' : 'border-l border-line'"
+        :path="view?.path ?? path"
+        :revision="layoutRevision"
+        :active="active"
       />
     </div>
 

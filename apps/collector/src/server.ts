@@ -132,6 +132,8 @@ export function contentSecurityPolicy(html: string): string {
   const hashes = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
     .map((m) => m[1] ?? '')
     .filter((body) => body.trim())
+    // HTML parsing turns CRLF / CR into LF before the browser hashes; a Windows checkout (autocrlf) serves CRLF.
+    .map((body) => body.replace(/\r\n?/g, '\n'))
     .map((body) => `'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`)
   return [
     "default-src 'self'",

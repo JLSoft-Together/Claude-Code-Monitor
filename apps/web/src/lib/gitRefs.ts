@@ -54,6 +54,7 @@ export type RefRow =
       ahead: number
       behind: number
       gone: boolean
+      favorite: boolean
     }
 
 interface Leaf {
@@ -65,51 +66,63 @@ interface Leaf {
   ahead: number
   behind: number
   gone: boolean
+  favorite: boolean
 }
 
+export interface RefTreeOpts {
+  favorites: ReadonlySet<string>
+  /** Nest names by `/` (IntelliJ "Group by Directory"); off = one row per full name. */
+  group: boolean
+  tags: boolean
+}
+
+const DEFAULT_OPTS: RefTreeOpts = { favorites: new Set(), group: true, tags: true }
+
 /** Rows of `leaves` nested by `/` under `prefix`; `strip` = leading name part already shown by a parent row. */
-function nest(rows: RefRow[], leaves: Leaf[], idBase: string, depth: number, strip: string, collapsed: ReadonlySet<string>, open: boolean): void {
+function nest(rows: RefRow[], leaves: Leaf[], idBase: string, depth: number, strip: string, collapsed: ReadonlySet<string>, open: boolean, group: boolean): void {
   const folders = new Map<string, Leaf[]>()
   const direct: Leaf[] = []
   for (const l of leaves) {
     const rest = l.name.slice(strip.length)
-    const slash = rest.indexOf('/')
+    const slash = group ? rest.indexOf('/') : -1
     if (slash < 0) direct.push(l)
     else {
       const f = rest.slice(0, slash)
       folders.set(f, [...(folders.get(f) ?? []), l])
     }
   }
+  direct.sort((a, b) => Number(b.favorite) - Number(a.favorite))
   for (const l of direct) {
     const leaf = l.name.slice(strip.length)
-    rows.push({ kind: 'ref', id: `r:${l.ref}`, ref: l.ref, name: l.name, leaf, depth, refKind: l.refKind, current: l.current, tracked: l.tracked, ahead: l.ahead, behind: l.behind, gone: l.gone })
+    rows.push({ kind: 'ref', id: `r:${l.ref}`, ref: l.ref, name: l.name, leaf, depth, refKind: l.refKind, current: l.current, tracked: l.tracked, ahead: l.ahead, behind: l.behind, gone: l.gone, favorite: l.favorite })
   }
   for (const [f, list] of folders) {
     const id = `${idBase}/${f}`
     const expanded = open || !collapsed.has(id)
     rows.push({ kind: 'folder', id, name: f, depth, expanded })
-    if (expanded) nest(rows, list, id, depth + 1, `${strip}${f}/`, collapsed, open)
+    if (expanded) nest(rows, list, id, depth + 1, `${strip}${f}/`, collapsed, open, group)
   }
 }
 
-export function refTree(refs: RefsOk, filter: string, collapsed: ReadonlySet<string>): RefRow[] {
+export function refTree(refs: RefsOk, filter: string, collapsed: ReadonlySet<string>, opts: RefTreeOpts = DEFAULT_OPTS): RefRow[] {
+  const fav = (ref: string): boolean => opts.favorites.has(ref)
   const q = filter.trim().toLowerCase()
   const match = (name: string): boolean => !q || name.toLowerCase().includes(q)
   const filtering = !!q
   const rows: RefRow[] = [{ kind: 'section', id: 'head', section: 'head', depth: 0, expanded: true }]
   const local: Leaf[] = refs.local
     .filter((l) => match(l.name))
-    .map((l) => ({ ref: l.ref, name: l.name, refKind: 'local', current: l.name === refs.head.branch, tracked: !!l.upstream, ahead: l.ahead, behind: l.behind, gone: l.gone }))
+    .map((l) => ({ ref: l.ref, name: l.name, refKind: 'local', current: l.name === refs.head.branch, tracked: !!l.upstream, ahead: l.ahead, behind: l.behind, gone: l.gone, favorite: fav(l.ref) }))
   const section = (id: 'local' | 'remote' | 'tags', leaves: Leaf[] | null, fill: () => void): void => {
     if (filtering && leaves !== null && !leaves.length) return
     const expanded = filtering || !collapsed.has(id)
     rows.push({ kind: 'section', id, section: id, depth: 0, expanded })
     if (expanded) fill()
   }
-  section('local', local, () => nest(rows, local, 'local', 1, '', collapsed, filtering))
+  section('local', local, () => nest(rows, local, 'local', 1, '', collapsed, filtering, opts.group))
   const remoteLeaves = refs.remotes.map((g) => ({
     name: g.name,
-    leaves: g.refs.filter((r) => match(r.name)).map<Leaf>((r) => ({ ref: r.ref, name: r.name, refKind: 'remote', current: false, tracked: false, ahead: 0, behind: 0, gone: false })),
+    leaves: g.refs.filter((r) => match(r.name)).map<Leaf>((r) => ({ ref: r.ref, name: r.name, refKind: 'remote', current: false, tracked: false, ahead: 0, behind: 0, gone: false, favorite: fav(r.ref) })),
   }))
   section('remote', remoteLeaves.flatMap((g) => g.leaves), () => {
     for (const g of remoteLeaves) {
@@ -117,10 +130,19 @@ export function refTree(refs: RefsOk, filter: string, collapsed: ReadonlySet<str
       const id = `remote/${g.name}`
       const expanded = filtering || !collapsed.has(id)
       rows.push({ kind: 'folder', id, name: g.name, depth: 1, expanded })
-      if (expanded) nest(rows, g.leaves, id, 2, `${g.name}/`, collapsed, filtering)
+      if (expanded) nest(rows, g.leaves, id, 2, `${g.name}/`, collapsed, filtering, opts.group)
     }
   })
-  const tags: Leaf[] = refs.tags.filter((t) => match(t.name)).map((t) => ({ ref: t.ref, name: t.name, refKind: 'tag', current: false, tracked: false, ahead: 0, behind: 0, gone: false }))
-  section('tags', tags, () => nest(rows, tags, 'tags', 1, '', collapsed, filtering))
+  if (opts.tags) {
+    const tags: Leaf[] = refs.tags.filter((t) => match(t.name)).map((t) => ({ ref: t.ref, name: t.name, refKind: 'tag', current: false, tracked: false, ahead: 0, behind: 0, gone: false, favorite: fav(t.ref) }))
+    section('tags', tags, () => nest(rows, tags, 'tags', 1, '', collapsed, filtering, opts.group))
+  }
   return rows
+}
+
+/** Ids of every section and folder (Collapse All collapses them, Expand All clears the set). */
+export function expandableIds(refs: RefsOk, opts: RefTreeOpts = DEFAULT_OPTS): string[] {
+  return refTree(refs, '', new Set(), opts)
+    .filter((r) => r.kind === 'folder' || (r.kind === 'section' && r.section !== 'head'))
+    .map((r) => r.id)
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { asElementPick, consoleLevel, formatConsoleBlock, formatElementBlock, pickerScript, pushConsole, sanitize, type ConsoleEntry } from './agentHandoff'
+import { fileStepKey, inSidewaysScroller } from './changesView'
 import { DevServerDetector, devUrlLabel, normalizeDevUrl, stripAnsi } from './devServer'
-import { firstChangedLine, hunkPatch, parseUnifiedDiff, sideBySide } from './diff'
+import { firstChangedLine, hunkPatch, parseUnifiedDiff } from './diff'
 import { fuzzyFilter, fuzzyScore, highlightRuns, parseQuickOpen } from './fuzzy'
 
 const SAMPLE = [
@@ -80,16 +81,9 @@ describe('parseUnifiedDiff', () => {
     )
   })
 
-  it('finds the first changed line and pairs side by side', () => {
+  it('finds the first changed line', () => {
     expect(firstChangedLine(files[0]!)).toBe(2)
     expect(firstChangedLine(files[2]!)).toBe(1)
-    const rows = sideBySide(files[0]!.hunks[0]!)
-    expect(rows.map((r) => [r.left?.text, r.right?.text])).toEqual([
-      ['one', 'one'],
-      ['two', 'TWO'],
-      ['three', 'three'],
-      ['four', 'four'],
-    ])
   })
 })
 
@@ -181,5 +175,51 @@ describe('agentHandoff', () => {
   it('embeds only a safe colour in the picker script', () => {
     expect(pickerScript('#0071e3')).toContain('"#0071e3"')
     expect(pickerScript("red';alert(1)//")).not.toContain('alert(1)')
+  })
+})
+
+describe('fileStepKey', () => {
+  const k = (key: string, mods: Partial<Record<'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey', boolean>> = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods })
+  it('maps plain ← / → to previous / next file', () => {
+    expect(fileStepKey(k('ArrowRight'))).toBe(1)
+    expect(fileStepKey(k('ArrowLeft'))).toBe(-1)
+  })
+  it('ignores modified arrows (Alt+← is pane focus) and other keys', () => {
+    expect(fileStepKey(k('ArrowRight', { altKey: true }))).toBe(0)
+    expect(fileStepKey(k('ArrowLeft', { shiftKey: true }))).toBe(0)
+    expect(fileStepKey(k('ArrowLeft', { ctrlKey: true }))).toBe(0)
+    expect(fileStepKey(k('ArrowRight', { metaKey: true }))).toBe(0)
+    expect(fileStepKey(k('ArrowDown'))).toBe(0)
+  })
+})
+
+describe('inSidewaysScroller', () => {
+  const widths = (el: HTMLElement, scroll: number, client: number) => {
+    Object.defineProperty(el, 'scrollWidth', { value: scroll, configurable: true })
+    Object.defineProperty(el, 'clientWidth', { value: client, configurable: true })
+  }
+  it('lets ← / → scroll a split side only while it overflows', () => {
+    const side = document.createElement('div')
+    side.dataset.side = 'left'
+    const line = document.createElement('span')
+    side.append(line)
+    document.body.append(side)
+    widths(side, 100, 100)
+    expect(inSidewaysScroller(line)).toBe(false)
+    widths(side, 300, 100)
+    expect(inSidewaysScroller(line)).toBe(true)
+    side.remove()
+  })
+  it('treats an overflowing overflow-x:auto ancestor (inline diff) the same', () => {
+    const box = document.createElement('div')
+    box.style.overflowX = 'auto'
+    const inner = document.createElement('div')
+    box.append(inner)
+    document.body.append(box)
+    widths(box, 300, 100)
+    expect(inSidewaysScroller(inner)).toBe(true)
+    box.style.overflowX = 'hidden'
+    expect(inSidewaysScroller(inner)).toBe(false)
+    box.remove()
   })
 })

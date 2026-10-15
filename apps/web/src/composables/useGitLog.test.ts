@@ -68,6 +68,46 @@ describe('useGitLog', () => {
     scope.stop()
   })
 
+  it('reveal pages until the commit is listed, then selects it', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    expect(await log.reveal('h501')).toBe(true)
+    expect(log.selected.value).toBe('h501')
+    expect(await log.reveal('h9999')).toBe(false)
+    scope.stop()
+  })
+
+  it('reveal clears filters that hide the commit, with one unfiltered reload', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    const base = pageImpl
+    pageImpl = async (q) => (q.author ? { ok: true, commits: [commit(1)], more: false } : base(q))
+    log.setFilters({ author: 'Bo' })
+    await flush()
+    expect(log.commits.value).toHaveLength(1)
+    const before = pages.length
+    expect(await log.reveal('h7')).toBe(true)
+    expect(log.filters.value.author).toBeNull()
+    expect(log.selected.value).toBe('h7')
+    await flush()
+    expect(pages.length).toBe(before + 1)
+    expect(log.selected.value).toBe('h7')
+    scope.stop()
+  })
+
+  it('a new branch filter ends Compare with Current', async () => {
+    const scope = effectScope()
+    const log = scope.run(() => useGitLog(() => '/r', () => true, { debounceMs: 0 }))!
+    await flush()
+    log.setFilters({ branch: 'refs/heads/x', notRef: 'HEAD' })
+    expect(log.filters.value.notRef).toBe('HEAD')
+    log.setFilters({ branch: 'refs/heads/y' })
+    expect(log.filters.value.notRef).toBeNull()
+    scope.stop()
+  })
+
   it('drops a late reply for an old query', async () => {
     let release: (v: unknown) => void = () => undefined
     pageImpl = (q) => (q.text ? Promise.resolve({ ok: true, commits: [commit(9)], more: false }) : new Promise((r) => (release = r)))

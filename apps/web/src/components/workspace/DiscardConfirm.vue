@@ -3,7 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { TriangleAlert } from 'lucide-vue-next'
 
-defineProps<{ title: string; lines: string[]; preview?: string[] }>()
+defineProps<{ title: string; lines: string[]; preview?: string[]; confirmLabel?: string }>()
 const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
 const { t } = useI18n()
@@ -64,7 +64,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="flex justify-end gap-2 pt-1">
           <button ref="cancelButton" type="button" class="ccm-btn" @click="emit('cancel')">{{ t('workspace.changes.confirm.cancel') }}</button>
-          <button type="button" class="ccm-btn ccm-btn-danger" @click="emit('confirm')">{{ t('workspace.changes.confirm.discard') }}</button>
+          <button type="button" class="ccm-btn ccm-btn-danger" @click="emit('confirm')">{{ confirmLabel ?? t('workspace.changes.confirm.discard') }}</button>
         </div>
       </div>
     </div>

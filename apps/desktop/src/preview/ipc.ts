@@ -1,14 +1,15 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent, Session, Shell, WebContents } from 'electron'
-import { discardFile, discardHunk, diff as changesDiff, fileDiff, GitDirWatcher, status as changesStatus, toplevel, type ChangesError } from './changes'
+import { commonDir, discardFile, discardHunk, diff as changesDiff, fileDiff, GitDirWatcher, status as changesStatus, toplevel, type ChangesError } from './changes'
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
-import { createEntry, listDir } from './explorer'
+import { createEntry, listDir, renameEntry, trashEntry } from './explorer'
 import { readFileForView } from './files'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { GrantStore } from './grants'
 import { FileListCache } from './listFiles'
+import { createBranch, deletePlan, fetchAll, runDelete, updateBranch } from './branches'
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { existingDir } from '../pick-start'
@@ -59,6 +60,8 @@ export interface PreviewIpcDeps {
   getWindow: () => BrowserWindow | null
   /** Native yes/no for a folder outside every root; the page cannot grant itself access. */
   confirmAccess: (folder: string) => Promise<boolean>
+  /** Native yes/no showing the exact git commands; the page cannot delete a branch without it. */
+  confirmGit?: (req: { title: string; commands: string[]; force?: boolean }) => Promise<boolean>
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
   trash?: (path: string) => Promise<void>
   /** nativeImage decode + PNG clipboard write; defaults to Electron's own, loaded on first use. */
@@ -78,8 +81,8 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants',
-  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff',
-  'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry',
+  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update',
+  'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -96,6 +99,12 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   const gitDirs = new GitDirWatcher((root) => notifyChanges(root))
   const hooked = new WeakSet<WebContents>()
   const asking = new Map<string, Promise<boolean>>()
+
+  /** OS trash: injected for tests, else Electron's `shell.trashItem`. */
+  const trashFn = (): ((p: string) => Promise<void>) | null => {
+    const shellTrash = (deps.shell as Partial<Shell>).trashItem
+    return deps.trash ?? (shellTrash ? (p: string) => shellTrash.call(deps.shell, p) : null)
+  }
 
   const allowedRoots = async (fresh = false): Promise<string[]> => realRoots([...(await deps.getRoots(fresh)), ...grants.list()])
 
@@ -338,13 +347,41 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return repo ? commitDiff(repo, hash, rel, opts, origPath) : denied
   })
 
+  ipcMain.handle('ccm:git-branch-create', async (event, req: unknown) => {
+    const { root, name, base, checkout } = (req ?? {}) as { root?: unknown; name?: unknown; base?: unknown; checkout?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? createBranch(repo, name, base, checkout) : denied
+  })
+  ipcMain.handle('ccm:git-branch-delete', async (event, req: unknown) => {
+    const { root, ref } = (req ?? {}) as { root?: unknown; ref?: unknown }
+    const repo = await logRepo(event, root)
+    if (!repo || !deps.confirmGit) return denied
+    const plan = await deletePlan(repo, ref, false)
+    if (!plan.ok) return plan
+    if (!(await deps.confirmGit({ title: plan.label, commands: [`git ${plan.args.join(' ')}`] }).catch(() => false))) return { ok: false, error: 'cancelled' }
+    const res = await runDelete(repo, plan.args)
+    if (res.ok || res.error !== 'not-merged' || plan.remote) return res
+    const force = await deletePlan(repo, ref, true)
+    if (!force.ok) return force
+    if (!(await deps.confirmGit({ title: force.label, commands: [`git ${force.args.join(' ')}`], force: true }).catch(() => false))) return { ok: false, error: 'cancelled' }
+    return runDelete(repo, force.args)
+  })
+  ipcMain.handle('ccm:git-fetch', async (event, root: unknown) => {
+    const repo = await logRepo(event, root)
+    return repo ? fetchAll(repo) : denied
+  })
+  ipcMain.handle('ccm:git-branch-update', async (event, req: unknown) => {
+    const { root, ref } = (req ?? {}) as { root?: unknown; ref?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? updateBranch(repo, ref) : denied
+  })
+
   ipcMain.handle('ccm:changes-discard', async (event, req: unknown) => {
     const { root, path: rel, hunk } = (req ?? {}) as { root?: unknown; path?: unknown; hunk?: unknown }
     const repo = isAppFrame(event) ? await repoOf(root) : null
     if (!repo) return { ok: false, error: 'denied' }
     if (hunk !== undefined) return discardHunk(repo, rel, hunk)
-    const shellTrash = (deps.shell as Partial<Shell>).trashItem
-    const trash = deps.trash ?? (shellTrash ? (p: string) => shellTrash.call(deps.shell, p) : null)
+    const trash = trashFn()
     if (!trash) return { ok: false, error: 'failed', detail: 'no trash' }
     const res = await discardFile(repo, rel, { trash })
     fileLists.invalidate(repo)
@@ -401,6 +438,26 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return res
   })
 
+  ipcMain.handle('ccm:rename-entry', async (event, req: unknown) => {
+    const { root, path: target, name } = (req ?? {}) as { root?: unknown; path?: unknown; name?: unknown }
+    const real = isAppFrame(event) ? await explorerRoot(root) : null
+    if (!real) return { ok: false, error: 'denied' }
+    const res = await renameEntry(real, target, name)
+    if (res.ok) fileLists.invalidate(real)
+    return res
+  })
+
+  ipcMain.handle('ccm:trash-entry', async (event, req: unknown) => {
+    const { root, path: target } = (req ?? {}) as { root?: unknown; path?: unknown }
+    const real = isAppFrame(event) ? await explorerRoot(root) : null
+    if (!real) return { ok: false, error: 'denied' }
+    const trash = trashFn()
+    if (!trash) return { ok: false, error: 'failed' }
+    const res = await trashEntry(real, target, trash)
+    if (res.ok) fileLists.invalidate(real)
+    return res
+  })
+
   let clipboardImpl: Promise<ClipboardImageDeps> | null = null
   const imageClipboard = (): Promise<ClipboardImageDeps> => (clipboardImpl ??= deps.clipboardImage ? Promise.resolve(deps.clipboardImage) : electronClipboardImage())
 
@@ -447,7 +504,8 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const top = await toplevel(ok.real)
     if ('error' in top) return { root: ok.real, repo: false }
     repos.set(rootKey(top.root), { root: top.root, from: ok.real })
-    return { root: top.root, repo: true }
+    const common = await commonDir(top.root)
+    return { root: top.root, repo: true, ...(common ? { common } : {}) }
   })
 
   ipcMain.handle('ccm:scripts', async (event, dir: unknown) => {

@@ -81,6 +81,8 @@ export interface ModelTarget {
 
 export interface LayoutModelInfo {
   target: (ModelTarget & { name: string }) | null
+  /** The layout lives in a library module: `target.module` is the app whose model is borrowed. */
+  library?: { module: string; candidates: string[]; linked: boolean }
   /** Why there is no target: no Gradle root above the file, or no application module in it. */
   reason?: 'no-gradle' | 'no-app'
   state: ModelState

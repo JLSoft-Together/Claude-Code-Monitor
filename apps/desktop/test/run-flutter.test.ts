@@ -251,6 +251,12 @@ describe('findFlutterSdk', () => {
     expect(bad.issues).toEqual([{ code: 'flutter-setting-invalid', detail: '/nope' }])
   })
 
+  it('keeps an SDK root named flutter, still accepts the picked executable', () => {
+    const { deps } = fakeDeps(['C:\\src\\flutter\\bin\\flutter.bat'])
+    expect(findFlutterSdk('C:\\p', { ...win, setting: 'C:\\src\\flutter' }, deps)).toMatchObject({ sdk: 'C:\\src\\flutter', source: 'setting', issues: [] })
+    expect(findFlutterSdk('C:\\p', { ...win, setting: 'C:\\src\\flutter\\bin\\flutter.bat' }, deps)).toMatchObject({ sdk: 'C:\\src\\flutter', source: 'setting' })
+  })
+
   it('uses the FVM pin from the cache, or reports it missing', () => {
     const texts = { '/p/.fvmrc': '{"flutter":"3.22.0"}' }
     const { deps } = fakeDeps(['/Users/me/fvm/versions/3.22.0/bin/flutter', '/sdk/env/bin/flutter'], { texts })

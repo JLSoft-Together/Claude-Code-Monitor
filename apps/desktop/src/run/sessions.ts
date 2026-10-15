@@ -21,6 +21,7 @@ import {
 import { isWithin, realOrNull } from '../preview/paths'
 import { detectAndroid } from './android/detect'
 import { androidEnv, gradlewFile } from './android/env'
+import { clearJdkCache } from './android/jdkPick'
 import { runStep } from './before'
 import { previewCommand } from './command'
 import { RunConfigStore, cleanRunConfig, defaultConfigs, dropBlockedEnv, needsTrust } from './configs'
@@ -111,6 +112,7 @@ export class RunManager {
     await fs.mkdir(this.deps.dataDir, { recursive: true })
     await fs.writeFile(file + '.tmp', JSON.stringify(this.settings, null, 2))
     await fs.rename(file + '.tmp', file)
+    clearJdkCache()
     this.restartDevices()
     return this.getSettings()
   }

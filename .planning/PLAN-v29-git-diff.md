@@ -11,6 +11,7 @@ Source: `Plan Git Diff Viewer cho IDE TypeScript.md` (repo root). Owner picked: 
 - Changes pane: options popover (collapse + 3/5/10 context lines, whitespace, words/lines), `ccm.workspace.diffOpts` (migrates `diffLayout`), list ↔ folder tree (`lib/changesTree.ts`, `ccm.workspace.changesTree`), F7/Shift+F7 across blocks then files (warn first), J/K alias, `[ ]` files (Alt+←/→ is pane focus here), F4 open at the block, revert per block (inline ↶ / split »), disabled with a reason when whitespace ≠ none. `select` prop ← store `openChanges(cwd, {select})` (runtime `Pane.select`).
 - File viewer: `useFileChanges` (`changesFile`, re-read on `changes-updated` while active and after the viewer reloads), gutter bar / triangle on the line-number column, `HunkPopup` (old text with word marks, prev/next, Rollback → DiscardConfirm, Show diff, Copy), minimap bars or `ChangeRuler` when the minimap is off, toolbar `+N −M` = Show diff.
 - Explorer: status read while the Explorer is visible (Files too); names coloured by kind + letter + sr text, folders above a change get `diff-mod` + dot; Ctrl+D / ⌘⌥D (⌘D splits) on a changed row → Changes on that file.
+- v33 (2026-10-15): split view rebuilt JetBrains style (no filler rows, curved gutter, synced scroll); see PLAN-v33-split-diff.md.
 - Colour `diff-mod` / `-soft` / `-well` (style.css, every themes.css palette, themes.test contrast); `KIND_CLASS` modified/renamed use it.
 
 ## Out of scope

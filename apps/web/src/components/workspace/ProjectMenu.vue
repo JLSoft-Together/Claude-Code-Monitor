@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CirclePlay, LayoutTemplate, Play, Save, Settings2, Star } from 'lucide-vue-next'
+import { CirclePlay, FolderX, LayoutTemplate, Play, Save, Settings2, Star } from 'lucide-vue-next'
 import { hasRun } from '../../lib/desktop'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import { useRunStore } from '../../stores/run'
 
-const props = defineProps<{ anchor: DOMRect; root: string; name: string; trigger?: HTMLElement | null }>()
-const emit = defineEmits<{ scripts: []; run: []; save: []; manage: []; open: [layout: SavedLayout]; close: [] }>()
+/** `closable`: adds "Close project" (the rail's project header). */
+const props = defineProps<{ anchor: DOMRect; root: string; name: string; trigger?: HTMLElement | null; closable?: boolean }>()
+const emit = defineEmits<{ scripts: []; run: []; save: []; manage: []; open: [layout: SavedLayout]; closeProject: []; close: [] }>()
 
 const { t } = useI18n()
 const WIDTH = 248
@@ -100,6 +101,12 @@ const ICON = 'shrink-0 text-ink-muted group-focus-visible:text-on-accent'
       </button>
       <button v-if="layouts.length" type="button" role="menuitem" :class="ITEM" data-menu="manage" @click="act(() => emit('manage'))">
         <Settings2 :size="14" :class="ICON" aria-hidden="true" /><span class="truncate">{{ t('workspace.layouts.manage') }}</span>
+      </button>
+    </template>
+    <template v-if="closable">
+      <div class="mx-2 my-1 border-t border-line" role="separator" />
+      <button type="button" role="menuitem" :class="ITEM" data-menu="close-project" @click="act(() => emit('closeProject'))">
+        <FolderX :size="14" :class="ICON" aria-hidden="true" /><span class="truncate">{{ t('workspace.rail.closeProject') }}</span>
       </button>
     </template>
   </div>

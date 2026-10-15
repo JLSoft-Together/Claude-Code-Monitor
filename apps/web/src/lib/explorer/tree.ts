@@ -1,4 +1,5 @@
-/** Explorer tree model (ported from spacevibe-deck `files/file-tree.ts`): pure, no DOM, no bridge. */
+// Explorer tree model (ported from spacevibe-deck `files/file-tree.ts`): pure, no DOM, no bridge.
+import { samePath } from '../changesView'
 
 export interface DirEntry {
   /** Leaf name as the filesystem reports it. */
@@ -119,4 +120,46 @@ const GLYPHS = new Map<string, FileGlyph>([
 export function fileGlyph(name: string): FileGlyph {
   const dot = name.lastIndexOf('.')
   return dot <= 0 ? 'file' : (GLYPHS.get(name.slice(dot + 1).toLowerCase()) ?? 'file')
+}
+
+/** `p` after `from` was renamed to `to`: `to` itself or the same path under it; null when `p` is neither. */
+export function movedPath(p: string, from: string, to: string): string | null {
+  if (samePath(p, from)) return to
+  const base = from.replace(/[\\/]+$/, '')
+  if (p.length <= base.length + 1 || !/[\\/]/.test(p[base.length]!) || !samePath(p.slice(0, base.length), base)) return null
+  const sep = to.includes('\\') ? '\\' : '/'
+  return to.replace(/[\\/]+$/, '') + sep + p.slice(base.length + 1)
+}
+
+/** `p` is `entry` or sits under it. */
+export const isWithinEntry = (p: string, entry: string): boolean => movedPath(p, entry, entry) !== null
+
+export interface RenamablePane {
+  key: string
+  kind?: string
+  path?: string
+  cwd?: string
+  root?: string
+}
+
+const FOLLOWS_RENAME = new Set(['file', 'run', 'changes', 'log'])
+
+/** Viewer panes (file / run / changes / log) whose path, cwd or root sat inside a renamed entry, with the moved values. Terminals keep their cwd: the shell process is already there. */
+export function renamedPanePatches(panes: readonly RenamablePane[], from: string, to: string): { key: string; patch: Pick<RenamablePane, 'path' | 'cwd' | 'root'> }[] {
+  const out: { key: string; patch: Pick<RenamablePane, 'path' | 'cwd' | 'root'> }[] = []
+  for (const p of panes) {
+    if (!p.kind || !FOLLOWS_RENAME.has(p.kind)) continue
+    const patch: Pick<RenamablePane, 'path' | 'cwd' | 'root'> = {}
+    for (const field of ['path', 'cwd', 'root'] as const) {
+      const moved = p[field] ? movedPath(p[field], from, to) : null
+      if (moved) patch[field] = moved
+    }
+    if (Object.keys(patch).length) out.push({ key: p.key, patch })
+  }
+  return out
+}
+
+/** File viewers showing a trashed entry (the file, or anything inside the folder): they have nothing left to show. */
+export function trashedPaneKeys(panes: readonly RenamablePane[], trashed: string): string[] {
+  return panes.filter((p) => p.kind === 'file' && !!p.path && isWithinEntry(p.path, trashed)).map((p) => p.key)
 }

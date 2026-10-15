@@ -6,7 +6,7 @@ export const FS = '\x1f'
 export const LOG_FORMAT = ['%H', '%P', '%an', '%ae', '%at', '%D', '%s'].join('%x1f')
 export const MAX_COMMIT_FILES = 5000
 const MAX_PATHS = 20
-const REF = /^refs\/(heads|remotes|tags)\/[^\s~^:?*[\\]+$/
+export const REF = /^refs\/(heads|remotes|tags)\/[^\s~^:?*[\\]+$/
 
 export function parseLog(out: string): LogCommit[] {
   const commits: LogCommit[] = []
@@ -76,13 +76,15 @@ const epoch = (v: unknown): number | null => (typeof v === 'number' && Number.is
 
 export function cleanLogQuery(raw: unknown, root: string): LogQuery {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const branch = typeof o.branch === 'string' && (o.branch === 'HEAD' || (REF.test(o.branch) && !o.branch.includes('..') && !o.branch.endsWith('.lock'))) ? o.branch : null
+  const refOk = (v: unknown): v is string => typeof v === 'string' && (v === 'HEAD' || (REF.test(v) && !v.includes('..') && !v.endsWith('.lock')))
+  const branch = refOk(o.branch) ? o.branch : null
+  const notRef = branch && refOk(o.notRef) && o.notRef !== branch ? o.notRef : null
   const paths = (Array.isArray(o.paths) ? o.paths : [])
     .map((p) => safeRepoPath(root, p)?.rel)
     .filter((p): p is string => !!p)
     .slice(0, MAX_PATHS)
   const skip = typeof o.skip === 'number' && Number.isFinite(o.skip) && o.skip > 0 ? Math.min(Math.floor(o.skip), 10_000_000) : 0
-  return { branch, author: str(o.author, 200), since: epoch(o.since), until: epoch(o.until), text: str(o.text), regex: o.regex === true, matchCase: o.matchCase === true, paths, skip }
+  return { branch, notRef, author: str(o.author, 200), since: epoch(o.since), until: epoch(o.until), text: str(o.text), regex: o.regex === true, matchCase: o.matchCase === true, paths, skip }
 }
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -99,7 +101,7 @@ export function logArgs(q: LogQuery): string[] {
     args.push(q.regex ? '--extended-regexp' : '--fixed-strings')
     if (!q.matchCase) args.push('--regexp-ignore-case')
   }
-  args.push(...(q.branch ? [q.branch] : ['--branches', '--remotes', '--tags', 'HEAD']), '--', ...q.paths)
+  args.push(...(q.branch ? [q.branch, ...(q.notRef ? ['--not', q.notRef] : [])] : ['--branches', '--remotes', '--tags', 'HEAD']), '--', ...q.paths)
   return args
 }
 
@@ -170,7 +172,7 @@ export async function commitDetail(root: string, hash: unknown): Promise<CommitD
   if (!base) return { ok: false, error: 'failed' }
   const [names, nums] = await Promise.all([
     execGit(root, ['diff-tree', '-r', '-z', '-M', '--name-status', base, full], T),
-    execGit(root, ['diff-tree', '-r', '-z', '-M', '--numstat', base, full], T),
+    execGit(root, ['diff-tree', '-r', '-z', '-M', '--histogram', '--numstat', base, full], T),
   ])
   if (names.code !== 0) return { ok: false, error: fail(names) }
   const counts = nums.code === 0 ? parseNumstat(nums.stdout) : new Map()

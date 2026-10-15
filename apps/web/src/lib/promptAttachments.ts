@@ -17,7 +17,10 @@ export interface PromptScan {
 const RULE = /^[\s╭╰├│]*[─━]{8,}[\s╮╯┤│]*$/
 const EDGE = /^\s*│ ?|\s*│\s*$/g
 const IMAGE = /\[Image #(\d+)\]/g
-const FILE = /(?:^|\s)@("[^"\n]+"|[^\s"@]+)/g
+const FILE = /(?:^|\s)@("[^"\n]+"|[^\s"@]+)(\S*)/g
+/** `@file:line:col` points at a place in a file (Run pane "Send to agent", lib/runUi.ts errorPrompt), not an attachment. */
+const LINE_COL = /:\d+(?::\d+)?$/
+const placeMention = (m: RegExpMatchArray): boolean => (m[1]!.startsWith('"') ? /^:\d+(?::\d+)?$/.test(m[2]!) : LINE_COL.test(m[1]!))
 /** Rows scanned from the bottom; the box plus the status lines under it fit easily. */
 export const SCAN_ROWS = 40
 
@@ -33,24 +36,82 @@ export function findPromptRange(rows: string[]): [number, number] | null {
   return null
 }
 
+export interface Cell {
+  x: number
+  y: number
+}
+
+/**
+ * Where the agent's input caret is. Claude Code 2.1.294 parks the terminal cursor on it, but an Ink app may instead
+ * hide the cursor and draw its caret as one inverse cell, leaving the cursor where its last frame ended. So: the one inverse cell inside
+ * the box when there is exactly one (and the cursor, if also inside, agrees), else the cursor when it is inside the
+ * box and no inverse cell is, else null (unsure: nothing gets typed).
+ */
+export function promptCaret(rows: string[], cursor: Cell, inverse: Cell[] = []): Cell | null {
+  const range = findPromptRange(rows)
+  if (!range) return null
+  const inBox = (c: Cell): boolean => c.y >= range[0] && c.y < range[1]
+  const marks = inverse.filter(inBox)
+  if (marks.length > 1) return null
+  const cursorIn = inBox(cursor)
+  if (marks.length === 1) return !cursorIn || (cursor.x === marks[0]!.x && cursor.y === marks[0]!.y) ? marks[0]! : null
+  return cursorIn ? cursor : null
+}
+
 export function findPromptRows(rows: string[]): string[] | null {
   const range = findPromptRange(rows)
   return range ? rows.slice(range[0], range[1]) : null
 }
 
 /**
- * Backspaces that erase `token` when it is the last thing in the prompt and the cursor sits right after it
- * (plus the space we typed after it). Claude Code drops a whole `[Image #N]` on one backspace. null = not safe.
+ * Characters known to take one cell and one UTF-16 unit, so a cursor cell equals a string index (xterm draws ambiguous
+ * widths narrow). Anything else (wide CJK / emoji, zero-width, combining marks) makes the row before the cursor unsafe:
+ * ASCII, Latin incl. precomposed Vietnamese, Greek, Cyrillic, punctuation, arrows, box drawing and the `❯` prompt.
  */
-export function eraseCount(rows: string[], cursor: { x: number; y: number }, token: string): number | null {
+const NARROW = /^[\x20-\x7e -¬®-˿Ͱ-҂Ҋ-ԯḀ-῿‐-‧‰-⁞₠-₿←-⇿─-╿❯]*$/
+
+export interface EraseKeys {
+  /** ← presses from the cursor to just after the token (and the space typed after it). */
+  left: number
+  /** Backspaces: one per character of a mention, one for a whole `[Image #N]`, plus that space. */
+  back: number
+  /** → presses back to where the cursor was. */
+  right: number
+}
+
+// translateToString(true) trims trailing spaces; the cursor cell says how many were typed.
+const cursorHead = (rows: string[], cursor: { x: number; y: number }): string => (rows[cursor.y] ?? '').padEnd(cursor.x).slice(0, cursor.x)
+
+/**
+ * Keys that erase `token` when it sits before the cursor on the cursor's row of the prompt. Claude Code drops a
+ * whole `[Image #N]` on one Backspace (§11p). null = not safe: another row (soft wrap and typed newline look the
+ * same on screen), after the cursor, only a partial match (also one running on past the cursor), or characters of uncertain width before the cursor.
+ */
+export function eraseKeys(rows: string[], cursor: { x: number; y: number }, token: string): EraseKeys | null {
   const range = findPromptRange(rows)
-  if (!range) return null
-  let last = range[1] - 1
-  while (last >= range[0] && !rows[last]!.replace(EDGE, '').trim()) last--
-  if (last < range[0] || cursor.y !== last) return null
-  const row = rows[last]!.replace(/\s+$/, '')
-  if (cursor.x < row.length || !row.endsWith(token)) return null
-  return cursor.x - row.length + (token.startsWith('[Image #') ? 1 : token.length)
+  if (!range || cursor.y < range[0] || cursor.y >= range[1]) return null
+  const head = cursorHead(rows, cursor)
+  if (!NARROW.test(head)) return null
+  // `after` reads the full row: a match ending at the cursor may be the front half of a longer mention (`@foo|bar`).
+  const row = rows[cursor.y] ?? ''
+  const image = token.startsWith('[Image #')
+  let at = head.lastIndexOf(token)
+  while (at >= 0) {
+    const before = head[at - 1]
+    const after = at + token.length < head.length ? head[at + token.length] : row[at + token.length]
+    // An image placeholder may touch text (the agent types it without a space); a mention starts a word.
+    if ((image || at === 0 || /\s/.test(before!)) && (after === undefined || /\s/.test(after))) break
+    at = at > 0 ? head.lastIndexOf(token, at - 1) : -1
+  }
+  if (at < 0) return null
+  const end = at + token.length + (head[at + token.length] === ' ' ? 1 : 0)
+  const left = cursor.x - end
+  return { left, back: end - at - token.length + (image ? 1 : token.length), right: left }
+}
+
+/** The `@mention` ending exactly at the cursor (still being typed, or being erased), else null. */
+export function cursorToken(rows: string[], cursor: { x: number; y: number }): string | null {
+  return /(?:^|\s)(@(?:"[^"\n]+"|[^\s"@]+))$/.exec(cursorHead(rows, cursor))?.[1] ?? null
 }
 
 /** The cell left of the cursor holds text (e.g. `[Image #1]` the agent typed without a space): a mention needs one first. */
@@ -68,7 +129,7 @@ export function scanPrompt(rows: string[]): PromptScan {
     .join('\n')
     .replace(/\s+$/, '')
   const images = [...new Set([...text.matchAll(IMAGE)].map((m) => Number(m[1])))]
-  const files = [...new Set([...text.matchAll(FILE)].map((m) => `@${m[1]}`))]
+  const files = [...new Set([...text.matchAll(FILE)].filter((m) => !placeMention(m)).map((m) => `@${m[1]}`))]
   return { found: true, images, files, text }
 }
 

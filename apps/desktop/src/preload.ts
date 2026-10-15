@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   logContains: (root: string, hash: string): Promise<unknown> => ipcRenderer.invoke('ccm:log-contains', { root, hash }),
   logDiff: (root: string, hash: string, path: string, opts?: unknown, origPath?: string): Promise<unknown> =>
     ipcRenderer.invoke('ccm:log-diff', { root, hash, path, opts, origPath }),
+  gitBranchCreate: (root: string, name: string, base: string, checkout: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:git-branch-create', { root, name, base, checkout }),
+  gitBranchDelete: (root: string, ref: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-branch-delete', { root, ref }),
+  gitFetch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-fetch', root),
+  gitBranchUpdate: (root: string, ref: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-branch-update', { root, ref }),
   // `hunk` stays undefined (not null) for a whole-file discard: the handler branches on `hunk !== undefined`.
   changesDiscard: (root: string, path: string, hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-discard', { root, path, hunk }),
   changesWatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-watch', root),
@@ -58,6 +62,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   listDir: (root: string, dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:list-dir', { root, dir }),
   createEntry: (root: string, parent: string, name: string, kind: 'file' | 'directory'): Promise<unknown> =>
     ipcRenderer.invoke('ccm:create-entry', { root, parent, name, kind }),
+  renameEntry: (root: string, path: string, name: string): Promise<unknown> => ipcRenderer.invoke('ccm:rename-entry', { root, path, name }),
+  trashEntry: (root: string, path: string): Promise<unknown> => ipcRenderer.invoke('ccm:trash-entry', { root, path }),
   clipboardImage: (pngDataUrl: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image', pngDataUrl),
   clipboardImageFile: (file: string): Promise<unknown> => ipcRenderer.invoke('ccm:clipboard-image-file', file),
   pickFiles: (): Promise<unknown> => ipcRenderer.invoke('ccm:pick-files'),
@@ -105,7 +111,14 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   layoutRender: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-render', req),
   layoutModelStatus: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-status', req),
   layoutModelRefresh: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-refresh', req),
+  layoutModelPick: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:layout-model-pick', req),
   onLayoutEvent: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:layout-event', handler),
+  fwpScan: (path: string, withEntries?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-scan', path, withEntries !== false),
+  fwpStart: (root: string, deviceId: string, flavor?: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-start', root, deviceId, flavor ?? null),
+  fwpShow: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-show', id),
+  fwpStop: (): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-stop'),
+  fwpGet: (): Promise<unknown> => ipcRenderer.invoke('ccm:fwp-get'),
+  onFwpState: (handler: (snapshot: unknown) => void): (() => void) => subscribe('ccm:fwp-state', handler),
   /** Workspace chords pressed while a <webview> guest has focus; the page re-dispatches them. */
   onForwardKey: (handler: (key: unknown) => void): (() => void) => subscribe('ccm:forward-key', handler),
 })

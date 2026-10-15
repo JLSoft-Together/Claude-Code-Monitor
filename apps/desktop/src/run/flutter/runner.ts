@@ -3,11 +3,12 @@ import path from 'node:path'
 import { isRunLive, type EnvIssue, type FlutterRunConfig, type LogLevel, type RunResult, type RunState } from '@ccm/shared'
 import { runBeforeLaunch } from '../before'
 import { flutterArgv } from '../command'
-import { lineSplitter, machineRequest, parseBuildError, parseMachineLine } from '../parse'
+import { lineSplitter, parseBuildError } from '../parse'
 import { killTree, substVars } from '../proc'
 import { BadArgError, cmdShim, resolveCommand, type ResolvedCommand } from '../resolve'
 import type { RunContext, Runner } from '../types'
 import { findFlutterSdk, flutterExecutable, flutterSpawn, type FlutterEnvOpts, type FlutterSdkLookup } from './env'
+import { createMachineClient, type MachineClient, type MachineReply } from './machine'
 
 export interface FlutterRunnerDeps {
   findSdk?: (projectDir: string, opts: FlutterEnvOpts) => FlutterSdkLookup
@@ -48,12 +49,11 @@ export function createFlutterRunner(ctx: RunContext, deps: FlutterRunnerDeps = {
   let stopRequested = false
   let sawBuildError = false
   let deviceLost = false
-  let nextId = 1
+  let machine: MachineClient | null = null
   let stopPromise: Promise<void> | null = null
   let settleStart: () => void = () => undefined
   let onExit: () => void = () => undefined
   const exited = new Promise<void>((resolve) => (onExit = resolve))
-  const pending = new Map<number, { resolve: (r: { result?: unknown; error?: unknown }) => void }>()
 
   const setState = (next: RunState, patch?: Parameters<typeof hooks.state>[1]): void => {
     // Late machine events (app.started, progress) after Stop / exit must not revive the session.
@@ -67,8 +67,7 @@ export function createFlutterRunner(ctx: RunContext, deps: FlutterRunnerDeps = {
     ended = true
     if (failure) hooks.fail(failure)
     setState(next, { progress: null })
-    for (const p of pending.values()) p.resolve({ error: 'exited' })
-    pending.clear()
+    machine?.dispose()
     settleStart()
     onExit()
   }
@@ -82,15 +81,8 @@ export function createFlutterRunner(ctx: RunContext, deps: FlutterRunnerDeps = {
     hooks.error(err)
   }
 
-  const request = (method: string, params: Record<string, unknown>): Promise<{ result?: unknown; error?: unknown }> => {
-    const c = child
-    if (!c?.stdin || c.stdin.destroyed || ended) return Promise.resolve({ error: 'not-running' })
-    const id = nextId++
-    return new Promise((resolve) => {
-      pending.set(id, { resolve })
-      c.stdin!.write(machineRequest(id, method, params))
-    })
-  }
+  const request = (method: string, params: Record<string, unknown>): Promise<MachineReply> =>
+    machine && !ended ? machine.request(method, params) : Promise.resolve({ error: 'not-running' })
 
   const onEvent = (event: string, params: Record<string, unknown>): void => {
     switch (event) {
@@ -157,18 +149,6 @@ export function createFlutterRunner(ctx: RunContext, deps: FlutterRunnerDeps = {
     }
   }
 
-  const onLine = (line: string): void => {
-    const msg = parseMachineLine(line)
-    if (msg.kind === 'event') return onEvent(msg.event, msg.params)
-    if (msg.kind === 'response') {
-      const p = pending.get(msg.id)
-      pending.delete(msg.id)
-      p?.resolve({ result: msg.result, error: msg.error })
-      return
-    }
-    if (line.trim()) text(line, started ? 'app' : 'build')
-  }
-
   const onClose = (code: number | null): void => {
     if (ended) return
     if (stopRequested) return end(started ? 'stopped' : 'cancelled')
@@ -215,9 +195,12 @@ export function createFlutterRunner(ctx: RunContext, deps: FlutterRunnerDeps = {
       end('failed', e instanceof BadArgError ? { code: 'bad-arg' } : { code: 'spawn', detail: e instanceof Error ? e.message : String(e) })
       return startDone
     }
-    const out = lineSplitter(onLine)
-    const err = lineSplitter((line) => line.trim() && text(line, started ? 'app' : 'build'))
-    child.stdout?.on('data', out.push)
+    const plain = (line: string): void => {
+      if (line.trim()) text(line, started ? 'app' : 'build')
+    }
+    const out = createMachineClient(child, { onEvent, onText: plain })
+    machine = out
+    const err = lineSplitter(plain)
     child.stderr?.on('data', err.push)
     child.stdin?.on('error', () => undefined)
     child.once('error', (e) => end('failed', { code: 'spawn', detail: e.message }))

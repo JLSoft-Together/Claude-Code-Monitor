@@ -42,6 +42,8 @@ export interface LogCommit {
 export interface LogQuery {
   /** Full refname or `HEAD`; null = every branch, remote and tag. */
   branch: string | null
+  /** With `branch`: hide commits reachable from this ref (`git log <branch> --not <notRef>`). */
+  notRef: string | null
   author: string | null
   since: number | null
   until: number | null

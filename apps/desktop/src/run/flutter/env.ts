@@ -110,9 +110,13 @@ export function flutterSpawn(sdk: string, args: string[], platform: NodeJS.Platf
   return { file: shim.file, args: shim.args, windowsVerbatimArguments: true }
 }
 
-function normalizeSetting(setting: string, platform: NodeJS.Platform): string {
+/** SDK root as given, else the root of a picked `bin/flutter[.bat]` or `bin` folder. */
+function normalizeSetting(setting: string, platform: NodeJS.Platform, deps: EnvDeps): string {
   const p = pathFor(platform)
-  let dir = p.normalize(setting.trim())
+  const given = p.normalize(setting.trim())
+  // The SDK root itself is usually named `flutter` (C:\src\flutter): only strip it when it is not an SDK.
+  if (isSdk(given, platform, deps)) return given
+  let dir = given
   if (/^flutter(\.bat|\.exe)?$/i.test(p.basename(dir))) dir = p.dirname(dir)
   if (p.basename(dir).toLowerCase() === 'bin') dir = p.dirname(dir)
   return dir
@@ -174,7 +178,7 @@ export function findFlutterSdk(projectDir: string, opts: FlutterEnvOpts, deps: E
   const fvm = projectFvmVersion(projectDir, opts.platform, deps)
   const hit = (sdk: string, source: FlutterSdkSource): FlutterSdkLookup => ({ sdk, source, fvm, issues })
   if (opts.setting?.trim()) {
-    const dir = normalizeSetting(opts.setting, opts.platform)
+    const dir = normalizeSetting(opts.setting, opts.platform, deps)
     if (isSdk(dir, opts.platform, deps)) return hit(dir, 'setting')
     issues.push({ code: 'flutter-setting-invalid', detail: dir })
   }
@@ -215,7 +219,7 @@ export function parseFlutterVersion(stdout: string): FlutterVersion | null {
 }
 
 /** `.fvm/flutter_sdk` & co. are files the repo controls: running them is running repo code. */
-function sdkInsideProject(sdk: string, projectDir: string, opts: FlutterEnvOpts, deps: EnvDeps): boolean {
+export function sdkInsideProject(sdk: string, projectDir: string, opts: FlutterEnvOpts, deps: EnvDeps): boolean {
   const real = deps.realpath(sdk)
   return [projectDir, opts.repoRoot].some((root) => !!root && isWithin(deps.realpath(root), real, opts.platform))
 }

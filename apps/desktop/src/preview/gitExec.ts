@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { findGit } from '../pty/git'
+import { killTree } from '../run/proc'
 
 export interface GitExecResult {
   code: number | null
@@ -7,12 +8,16 @@ export interface GitExecResult {
   stderr: string
   /** stdout went past `maxBytes`; the process was killed and `stdout` holds the first part. */
   truncated: boolean
+  /** Killed after `timeoutMs` (code is null then; a spawn error also gives null without this flag). */
+  timedOut?: boolean
 }
 
 export interface GitExecOptions {
   input?: string
   maxBytes?: number
   timeoutMs?: number
+  /** Kill the whole process tree on timeout: network commands leave `git-remote-https` behind on Windows otherwise. */
+  killTree?: boolean
 }
 
 let gitPath: string | null | undefined
@@ -30,7 +35,13 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(file, [...GIT_CONFIG, '-C', cwd, ...args], { windowsHide: true, env: { ...process.env, ...GIT_ENV }, stdio: ['pipe', 'pipe', 'pipe'] })
+      child = spawn(file, [...GIT_CONFIG, '-C', cwd, ...args], {
+        windowsHide: true,
+        env: { ...process.env, ...GIT_ENV },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        // POSIX killTree signals the process group (-pid); only a group leader has one. Pipes stay attached, no unref.
+        detached: opts.killTree === true && process.platform !== 'win32',
+      })
     } catch (err) {
       resolve({ code: null, stdout: '', stderr: String(err), truncated: false })
       return
@@ -40,14 +51,17 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
     let truncated = false
     let stderr = ''
     let done = false
+    let timedOut = false
     const finish = (code: number | null): void => {
       if (done) return
       done = true
       clearTimeout(timer)
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated })
+      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated, ...(timedOut ? { timedOut } : {}) })
     }
     const timer = setTimeout(() => {
-      child.kill()
+      timedOut = true
+      if (opts.killTree) killTree(child)
+      else child.kill()
       finish(null)
     }, opts.timeoutMs ?? 30_000)
     child.stdout!.on('data', (chunk: Buffer) => {

@@ -74,6 +74,8 @@ export interface Tab {
   root: LayoutNode
   /** Pane that gets focus when the tab is selected. */
   focus: string
+  /** Folder the tab was opened for: fixed for the tab's life, a `cd` never moves it. Missing = home / saved before v38. */
+  project?: string
 }
 
 const STORAGE_KEY = 'ccm.workspace.panes'
@@ -109,6 +111,11 @@ export function primaryPaneKey(root: LayoutNode, paneOf: (key: string) => Pick<P
     const p = paneOf(k)
     return !!p && isTerm(p)
   }) ?? keys[0]!
+}
+
+/** A tab's project; tabs saved before v38 fall back to their naming pane's starting folder. */
+export function tabProject(tab: Tab, paneOf: (key: string) => Pick<Pane, 'kind' | 'cwd'> | undefined): string | undefined {
+  return tab.project ?? paneOf(primaryPaneKey(tab.root, paneOf))?.cwd
 }
 
 const isAbs = (p: unknown): p is string => typeof p === 'string' && (/^[A-Za-z]:[\\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\'))
@@ -159,7 +166,9 @@ function loadLast(): LastWorkspace | null {
     if (!raw || !Array.isArray(raw.panes) || !Array.isArray(raw.tabs)) return null
     const panes = raw.panes.map(cleanPane).filter((p): p is LastPane => !!p)
     const known = new Set(panes.map((p) => p.key))
-    const tabs = raw.tabs.filter((t) => t && isLayout(t.root) && leaves(t.root).every((k) => known.has(k)))
+    const tabs = raw.tabs
+      .filter((t) => t && isLayout(t.root) && leaves(t.root).every((k) => known.has(k)))
+      .map((t) => ({ key: String(t.key), root: t.root, focus: String(t.focus), project: isAbs(t.project) ? t.project : undefined }))
     return tabs.length ? { at: String(raw.at ?? ''), panes, tabs } : null
   } catch {
     return null
@@ -230,7 +239,7 @@ function loadSaved(): Saved {
       for (const key of leaves(tab.root)) if (!known.has(key)) root = root && removeLeaf(root, key)
       if (!root) continue
       const left = leaves(root)
-      tabs.push({ key: tab.key, root, focus: left.includes(tab.focus) ? tab.focus : left[0]! })
+      tabs.push({ key: tab.key, root, focus: left.includes(tab.focus) ? tab.focus : left[0]!, project: isAbs((tab as Partial<Tab>).project) ? (tab as Tab).project : undefined })
     }
     const placed = new Set(tabs.flatMap((t) => leaves(t.root)))
     return { panes: panes.filter((p) => placed.has(p.key)), tabs, active: Array.isArray(raw) ? null : (raw.active ?? null) }
@@ -334,7 +343,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (tab && split) {
       tab.root = splitLeaf(tab.root, split.key, pane.key, split.dir)
       tab.focus = pane.key
-    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key })
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: pane.cwd })
     activate(pane.key)
   }
 
@@ -364,7 +373,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       activate(same.key)
       return same
     }
-    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview) : undefined
+    // One preview slot per project: previewing in project B must not take over project A's tab.
+    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview && (!opts.cwd || sameDir(p.cwd, opts.cwd))) : undefined
     if (slot) {
       slot.path = path
       slot.line = line
@@ -449,7 +459,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   /** New tab holding one new pane. */
   function open(preset: PtyPreset, cwd?: string, resume?: string): Pane {
     const pane = addPane(preset, cwd, resume)
-    tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key })
+    tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: cwd })
     activate(pane.key)
     return pane
   }
@@ -490,7 +500,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
    * Adds a saved layout's tabs. Browser / file panes already open stay where they are (their leaf is dropped);
    * agents resume only when the layout stored session ids.
    */
-  function openLayout(layout: Pick<SavedLayout, 'panes' | 'tabs'>): number {
+  function openLayout(layout: Pick<SavedLayout, 'panes' | 'tabs'> & { project?: string }): number {
     let first: string | null = null
     let reused: string | null = null
     for (const tab of layout.tabs) {
@@ -525,7 +535,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
       const mapped = remap(root)
       const focus = (tab.focus && keys.get(tab.focus)) || leaves(mapped)[0]!
-      tabs.value.push({ key: newKey('t'), root: mapped, focus })
+      tabs.value.push({ key: newKey('t'), root: mapped, focus, project: layout.project ?? panes.value.find((p) => p.key === leaves(mapped)[0])?.cwd })
       first ??= focus
     }
     const target = first ?? reused
@@ -547,7 +557,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const keys = new Map<string, string>()
     for (const p of snap.panes) keys.set(p.key, (isTerm(p) ? addPane(p.preset, p.cwd, p.resume) : addView(viewOf(p), p.cwd)).key)
     const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
-    for (const tab of snap.tabs) tabs.value.push({ key: newKey('t'), root: remap(tab.root), focus: keys.get(tab.focus) ?? keys.get(leaves(tab.root)[0]!)! })
+    for (const tab of snap.tabs)
+      tabs.value.push({
+        key: newKey('t'),
+        root: remap(tab.root),
+        focus: keys.get(tab.focus) ?? keys.get(leaves(tab.root)[0]!)!,
+        project: tab.project ?? snap.panes.find((p) => p.key === leaves(tab.root)[0])?.cwd,
+      })
     activeKey.value = tabs.value[0]?.focus ?? null
   }
 
@@ -627,11 +643,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (tab) activeKey.value = tab.focus
   }
 
-  function cycleTab(step: number): void {
-    const n = tabs.value.length
+  /** Next / previous tab; `scope` (tab keys in display order) limits it to the tabs on screen. */
+  function cycleTab(step: number, scope?: readonly string[]): void {
+    const keys = scope?.length ? scope : tabs.value.map((t) => t.key)
+    const n = keys.length
     if (!n) return
-    const at = tabs.value.findIndex((t) => t === activeTab.value)
-    activateTab(tabs.value[(at + step + n) % n]!.key)
+    const at = keys.indexOf(activeTab.value?.key ?? '')
+    activateTab(keys[at < 0 ? (step > 0 ? 0 : n - 1) : (((at + step) % n) + n) % n]!)
   }
 
   function moveFocus(dir: FocusDir): void {

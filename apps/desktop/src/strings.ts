@@ -43,6 +43,11 @@ const en = {
   accessDetail: 'The link points outside the folders of your open terminals. Allowing lets the browser and file tabs read this folder until the app quits.',
   accessAllow: 'Allow',
   accessDeny: 'Cancel',
+  gitDeleteTitle: (name: string) => `Delete branch ${name}?`,
+  gitForceTitle: (name: string) => `${name} is not fully merged. Delete it anyway?`,
+  gitDeleteDetail: (commands: string[]) => `Agent Monitor will run:\n\n${commands.join('\n')}\n\nCommits only on this branch can be lost.`,
+  gitDeleteConfirm: 'Delete',
+  gitDeleteCancel: 'Cancel',
   statusLineTitle: 'Turn on the status line bridge?',
   statusLineDetail: (file: string, json: string, chained: boolean) =>
     `Agent Monitor will set this in ${file}${chained ? ' (your current status line keeps running after the bridge)' : ''}:
@@ -113,6 +118,11 @@ const vi: typeof en = {
   accessDetail: 'Liên kết trỏ ra ngoài thư mục của các terminal đang mở. Cho phép thì tab trình duyệt và tab file đọc được thư mục này tới khi thoát app.',
   accessAllow: 'Cho phép',
   accessDeny: 'Huỷ',
+  gitDeleteTitle: (name) => `Xoá nhánh ${name}?`,
+  gitForceTitle: (name) => `${name} chưa được merge hết. Vẫn xoá?`,
+  gitDeleteDetail: (commands) => `Agent Monitor sẽ chạy:\n\n${commands.join('\n')}\n\nCác commit chỉ có trên nhánh này có thể bị mất.`,
+  gitDeleteConfirm: 'Xoá',
+  gitDeleteCancel: 'Huỷ',
   statusLineTitle: 'Bật status line bridge?',
   statusLineDetail: (file, json, chained) =>
     `Agent Monitor sẽ ghi vào ${file}${chained ? ' (status line hiện tại của bạn vẫn chạy sau bridge)' : ''}:

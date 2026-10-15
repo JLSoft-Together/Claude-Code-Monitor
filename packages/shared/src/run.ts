@@ -85,6 +85,8 @@ export interface AndroidEnv {
   jdkVersion: number | null
   gradlew: boolean
   issues: EnvIssue[]
+  /** Which JDK runs the wrapper and why, e.g. `JDK 17 (corretto-17.0.15) for Gradle 7.3.3`; set when the Gradle version is known. */
+  jdkNote?: string
 }
 
 export type RunEnv = FlutterEnv | AndroidEnv

@@ -21,7 +21,7 @@ async function launch(opts = {}) {
   fs.mkdirSync(TMP, { recursive: true })
   const electron = opts.exe ?? path.join(REPO, 'node_modules/electron/dist/electron.exe')
   const child = spawn(electron, [`--user-data-dir=${path.join(TMP, 'ud')}`, `--remote-debugging-port=${DBG}`, "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", ...(opts.exe ? [] : [path.join(REPO, 'apps/desktop/stage')])], {
-    env: { ...process.env, CCM_PORT: String(PORT), CCM_DATA_DIR: path.join(TMP, 'data'), CCM_TOAST: '0' },
+    env: { ...process.env, ...opts.env, CCM_PORT: String(PORT), CCM_DATA_DIR: path.join(TMP, 'data'), CCM_TOAST: '0' },
     stdio: ['ignore', fs.openSync(path.join(OUT, 'electron.log'), 'w'), fs.openSync(path.join(OUT, 'electron.err'), 'w')],
   })
   let target

@@ -10,8 +10,8 @@ import { useRunStore } from '../../stores/run'
 import { useUiStore } from '../../stores/ui'
 import { useWorkspaceStore } from '../../stores/workspace'
 
-/** Run state of the project at `dir`; `liveOnly` hides the Failed state (session cards). */
-const props = withDefaults(defineProps<{ dir: string; liveOnly?: boolean }>(), { liveOnly: false })
+/** Run state of the project at `dir`; `liveOnly` hides the Failed state (session cards); `compact` = icon only (narrow sidebar). */
+const props = withDefaults(defineProps<{ dir: string; liveOnly?: boolean; compact?: boolean }>(), { liveOnly: false, compact: false })
 
 const { t } = useI18n()
 const run = useRunStore()
@@ -48,12 +48,12 @@ function show(): void {
   <button
     v-if="badge"
     type="button"
-    class="inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded-full px-1.5 text-2xs font-semibold whitespace-nowrap"
-    :class="TONE[badge]"
-    :title="t('run.badge.open', { name: baseName(dir) })"
+    class="inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded-full text-2xs font-semibold whitespace-nowrap"
+    :class="[TONE[badge], compact ? 'w-5 justify-center' : 'px-1.5']"
+    :title="compact ? `${t(`run.badge.${badge}`)} · ${t('run.badge.open', { name: baseName(dir) })}` : t('run.badge.open', { name: baseName(dir) })"
     :data-run-badge="badge"
     @click.stop="show"
   >
-    <component :is="ICON[badge]" :size="11" :class="badge === 'busy' ? 'ccm-spin' : ''" aria-hidden="true" />{{ t(`run.badge.${badge}`) }}
+    <component :is="ICON[badge]" :size="11" :class="badge === 'busy' ? 'ccm-spin' : ''" aria-hidden="true" /><span :class="compact ? 'sr-only' : ''">{{ t(`run.badge.${badge}`) }}</span>
   </button>
 </template>

@@ -130,6 +130,8 @@ describe('workspaceChord', () => {
     expect(workspaceChord(key('BracketRight', { meta: true, shift: true }), true)).not.toBeNull()
     expect(workspaceChord(key('Digit1', { meta: true }, '1'), true)).not.toBeNull()
     expect(workspaceChord(key('KeyK', { meta: true }), true)).not.toBeNull()
+    expect(workspaceChord(key('KeyO', { meta: true, shift: true }), true)).not.toBeNull()
+    expect(workspaceChord(key('KeyO', { control: true, shift: true }), false)).not.toBeNull()
     expect(workspaceChord(key('KeyC', { meta: true }), true)).toBeNull()
     expect(workspaceChord(key('Tab', { control: true }), true)).toBeNull()
   })

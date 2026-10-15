@@ -87,6 +87,13 @@ function scrollToIndex(i: number): void {
   else if (y + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = y + ROW_H - el.clientHeight
 }
 
+function scrollToHash(hash: string): boolean {
+  const i = props.commits.findIndex((c) => c.hash === hash)
+  if (i < 0) return false
+  scrollToIndex(i)
+  return true
+}
+
 watch(
   () => [props.commits.length, props.more, props.loadingMore],
   () => void nextTick(checkMore),
@@ -128,7 +135,7 @@ function onKey(e: KeyboardEvent): void {
   }
 }
 
-defineExpose({ focus: () => scroller.value?.focus() })
+defineExpose({ focus: () => scroller.value?.focus(), scrollToHash })
 </script>
 
 <template>

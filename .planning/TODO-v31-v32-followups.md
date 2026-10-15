@@ -9,11 +9,11 @@ Sau khi xong v31 (Run pane) + v32 (XML Layout Preview).
 - [x] Compare mode có zoom + blueprint (`LayoutBoxes.vue`, `compareCellAt`).
 
 Chưa làm:
-- [ ] E2E (`apps/desktop/e2e/run.cjs`) với flutter/adb/gradlew giả — cần build app trước.
+- [x] E2E `apps/desktop/e2e/run-pane.cjs` (trong `run.cjs`) với flutter/adb/java/gradlew giả (`e2e/fixtures/run-fakes/`): Flutter run/reload/restart/stop/fail, Android build→install→launch→logcat→stop, needs-you.
 - [ ] Thử trên macOS.
 - [ ] Daemon dùng API nội bộ Paparazzi alpha (2.0.0-alpha05.1) → nâng version có thể vỡ render; cần test lại khi bump.
-- [ ] Layout trong module library mượn model của một app module.
-- [ ] Compare: phím mũi tên / Enter chỉ có ở single view; caption cell bị cắt khi zoom nhỏ.
+- [x] Layout trong module library mượn model của một app module (`pickModule` transitive + `projectDeps`, app ưu tiên lưu `preferred-apps.json`, chip "qua :app" + AppSelect khi nhiều app).
+- [x] Compare: phím mũi tên / Enter chỉ có ở single view; caption cell bị cắt khi zoom nhỏ (`stepView`, Tab giữa cell, `COMPARE_CAPTION_MIN`).
 - [ ] Thử thật trong app: Flutter run → model chip đổi; sửa resValues + build → preview cập nhật; đổi qua lại 2 project → log `(warm)`.
 
 Liên quan: `.planning/PLAN-v31-run-android-flutter.md`, `.planning/PLAN-v32-xml-layout-preview.md`, `.planning/PLAN-v31-v32-tasks.md`.

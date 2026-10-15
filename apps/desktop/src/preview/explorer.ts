@@ -72,3 +72,72 @@ export async function createEntry(root: string, parent: unknown, name: unknown, 
     return { ok: false, error: (err as NodeJS.ErrnoException).code === 'EEXIST' ? 'exists' : 'failed' }
   }
 }
+
+export type RenameEntryResult =
+  | { ok: true; path: string }
+  | { ok: false; error: 'invalid'; reason: EntryNameProblem }
+  | { ok: false; error: 'exists' | 'denied' | 'missing' | 'busy' | 'failed' }
+
+export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'exists' | 'failed' }
+
+type FsFailure = 'busy' | 'denied' | 'missing' | 'exists' | 'failed'
+const FS_CODES: Record<string, FsFailure> = { EPERM: 'busy', EBUSY: 'busy', EACCES: 'denied', ENOENT: 'missing', EEXIST: 'exists', ENOTEMPTY: 'exists' }
+
+/**
+ * Why a move failed. Windows reports a file/folder another process holds open (Run's flutter/gradle cwd, the Layout
+ * watcher, an editor) as EPERM / EBUSY; Electron's trashItem gives only a message, so its code is read from there.
+ */
+export function fsFailure(err: unknown): FsFailure {
+  const code = (err as NodeJS.ErrnoException | null)?.code
+  if (code && FS_CODES[code]) return FS_CODES[code]
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
+  if (/being used by another process/i.test(message)) return 'busy'
+  const named = /\b(EPERM|EBUSY|EACCES|ENOENT|EEXIST|ENOTEMPTY)\b/.exec(message)?.[1]
+  return named ? FS_CODES[named]! : 'failed'
+}
+
+/** `target` as its real parent folder (inside `root`) + its own name: a link at `target` itself is not followed, the root never qualifies. */
+async function entryIn(root: string, target: unknown): Promise<string | null> {
+  if (typeof target !== 'string' || !path.isAbsolute(target) || target.includes('\0')) return null
+  const abs = path.normalize(target)
+  const name = path.basename(abs)
+  if (!name || name === '.' || name === '..' || target.split(/[\\/]/).includes('..')) return null
+  const parent = await inside(root, path.dirname(abs))
+  return parent ? path.join(parent, name) : null
+}
+
+/** Renames `target` to `name` in the same folder. Never overwrites; a case-only rename of the same file is allowed. */
+export async function renameEntry(root: string, target: unknown, name: unknown): Promise<RenameEntryResult> {
+  const check = checkEntryName(name)
+  if (!check.ok) return { ok: false, error: 'invalid', reason: check.reason }
+  const from = await entryIn(root, target)
+  if (!from) return { ok: false, error: 'denied' }
+  const stat = await fs.lstat(from, { bigint: true }).catch(() => null)
+  if (!stat) return { ok: false, error: 'missing' }
+  const dest = path.join(path.dirname(from), name as string)
+  if (dest === from) return { ok: true, path: dest }
+  const existing = await fs.lstat(dest, { bigint: true }).catch(() => null)
+  // Case-insensitive disks (Windows, macOS) answer for `dest` with the same file: that is a case-only rename.
+  // bigint: NTFS file ids overflow a double, so distinct files can compare equal as numbers.
+  const sameFile = !!existing && dest.toLowerCase() === from.toLowerCase() && existing.ino === stat.ino && existing.dev === stat.dev
+  if (existing && !sameFile) return { ok: false, error: 'exists' }
+  try {
+    await fs.rename(from, dest)
+    return { ok: true, path: dest }
+  } catch (err) {
+    return { ok: false, error: fsFailure(err) }
+  }
+}
+
+/** Moves `target` to the OS trash (`trash` = Electron `shell.trashItem`); never deletes outright. */
+export async function trashEntry(root: string, target: unknown, trash: (p: string) => Promise<void>): Promise<TrashEntryResult> {
+  const from = await entryIn(root, target)
+  if (!from) return { ok: false, error: 'denied' }
+  if (!(await fs.lstat(from).catch(() => null))) return { ok: false, error: 'missing' }
+  try {
+    await trash(from)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: fsFailure(err) }
+  }
+}

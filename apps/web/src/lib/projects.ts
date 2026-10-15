@@ -63,14 +63,16 @@ export interface ProjectRootInfo {
   root: string
   /** False when the folder is not in a git repo (root = the folder itself). */
   repo: boolean
+  /** Shared `.git` dir: equal for a repo's main checkout and all its worktrees. */
+  common?: string
 }
 
 export async function projectRootInfo(dir: string): Promise<ProjectRootInfo | null> {
   const v = await (bridge?.projectRoot?.(dir) ?? Promise.resolve(null)).catch(() => null)
   if (typeof v === 'string') return { root: v, repo: true }
   if (!v || typeof v !== 'object') return null
-  const { root, repo } = v as Partial<ProjectRootInfo>
-  return typeof root === 'string' ? { root, repo: repo === true } : null
+  const { root, repo, common } = v as Partial<ProjectRootInfo>
+  return typeof root === 'string' ? { root, repo: repo === true, common: typeof common === 'string' ? common : undefined } : null
 }
 
 export const projectRoot = async (dir: string): Promise<string | null> => (await projectRootInfo(dir))?.root ?? null

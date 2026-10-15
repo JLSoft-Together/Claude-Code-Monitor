@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { CircleAlert, CircleCheck, Clock, FilePlus, FileText, ImageIcon, ImagePlus, LoaderCircle, Paperclip, Send, X } from 'lucide-vue-next'
 import { clipboardImageBlob, imageData } from '../../lib/imageData'
 import { pickFiles } from '../../lib/preview'
+import type { EraseKeys } from '../../lib/promptAttachments'
 import { fromPath, useAttachmentsStore, type Attachment } from '../../stores/attachments'
 import ToggleSwitch from '../ToggleSwitch.vue'
 
@@ -11,9 +12,9 @@ import ToggleSwitch from '../ToggleSwitch.vue'
 const props = defineProps<{
   paneKey: string
   imagesSupported: boolean
-  /** Backspaces that erase an inserted item, null = it is not at the end of the prompt (usePaneAttachments). */
-  eraseFor: (a: Attachment) => number | null
-  remove: (a: Attachment) => boolean
+  /** Keys that erase an inserted item, null = not before the cursor on its row (usePaneAttachments). */
+  eraseFor: (a: Attachment) => EraseKeys | null
+  remove: (a: Attachment) => Promise<boolean>
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -45,8 +46,8 @@ async function pasteImage(): Promise<void> {
   store.add(props.paneKey, [{ kind: 'image', name: t('attach.clipboard'), source: 'paste', ...img }])
 }
 
-function removeItem(a: Attachment): void {
-  if (!props.remove(a)) say(t('attach.removeInTerminal'))
+async function removeItem(a: Attachment): Promise<void> {
+  if (!(await props.remove(a))) say(t('attach.removeInTerminal'))
 }
 
 const STATE = {

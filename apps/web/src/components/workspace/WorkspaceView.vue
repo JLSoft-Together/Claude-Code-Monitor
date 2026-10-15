@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, CircleHelp, GraduationCap, History, Keyboard, LayoutTemplate, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
+import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
 import { hasLayouts, hasScripts, listLayouts, rememberScript, type SavedLayout } from '../../lib/projects'
 import { folderName, projectOf } from '../../lib/sidebarRows'
 import { createStartGuard } from '../../lib/startGuard'
@@ -23,7 +24,7 @@ import type { TipAction } from '../../lib/tips'
 import { useTerminalsStore } from '../../stores/terminals'
 import { useTipsStore } from '../../stores/tips'
 import { useUiStore } from '../../stores/ui'
-import { isTerm, primaryPaneKey, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
+import { isTerm, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import LaunchPicker from './LaunchPicker.vue'
 import BrowserPane from './BrowserPane.vue'
@@ -41,6 +42,17 @@ import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
 import ViewPaneControls from './ViewPaneControls.vue'
 import WorkspaceSidebar from './WorkspaceSidebar.vue'
+import SideResizer from './SideResizer.vue'
+import RailColumn from './rail/RailColumn.vue'
+import MissionControl from './MissionControl.vue'
+import AttentionPopover from './AttentionPopover.vue'
+import { clampSideWidth, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
+import { hasRun } from '../../lib/desktop'
+import type { RailCluster } from '../../lib/rail/railModel'
+import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
+import { buildAttentionList } from '../../lib/rail/attentionList'
+import { useRail } from '../../composables/useRail'
+import { useRunStore } from '../../stores/run'
 
 /** The view is on screen: App hides it with v-show for other views and in compact mode. */
 const props = defineProps<{ visible: boolean }>()
@@ -70,6 +82,23 @@ watch(sidebarOpen, (open) => {
     // preference only
   }
 })
+
+// Stored preference; what is drawn is clamped to the current window so a narrow window never hides the stage.
+const sideWidthPref = ref(readSideWidth())
+const viewportW = ref(window.innerWidth)
+const sideWidth = computed(() => clampSideWidth(sideWidthPref.value, viewportW.value))
+const sideMax = computed(() => clampSideWidth(SIDE_MAX, viewportW.value))
+const sideDragging = ref(false)
+function onViewportResize(): void {
+  viewportW.value = window.innerWidth
+}
+function resizeSide(px: number): void {
+  sideWidthPref.value = clampSideWidth(px, viewportW.value)
+}
+function resetSide(): void {
+  sideWidthPref.value = SIDE_DEFAULT
+  writeSideWidth(SIDE_DEFAULT)
+}
 
 /** What the sidebar shows: project groups or the file Explorer of the focused pane's project. */
 type SideView = 'projects' | 'explorer'
@@ -103,6 +132,118 @@ async function showExplorer(): Promise<void> {
   sideView.value = 'explorer'
   await nextTick()
   ;(document.querySelector<HTMLElement>('[data-explorer-tree] [tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-explorer] [role="tab"][tabindex="0"]'))?.focus()
+}
+
+/** Closed sidebar = the rail's avatar column; below SIDE_NARROW run badges in project headers shrink to icons. */
+const RAIL_COLUMN_W = 52
+const SIDE_NARROW = 264
+
+const sideEvents = {
+  scripts: (root: string) => void openScripts([root]),
+  run: (root: string) => withViewTransition(() => workspace.openRun(root)),
+  saveLayout: (root: string, name: string) => showLayouts(root, name, 'save'),
+  manageLayouts: (root: string, name: string) => showLayouts(root, name, 'manage'),
+  openLayout: (layout: SavedLayout) => openLayout(layout),
+  close: (keys: string[]) => closePanes(keys),
+  closeProject: (cluster: RailCluster) => closeProject(cluster),
+}
+
+const rail = useRail()
+/** Spaces: the strip, Ctrl+Alt+1–9 and Ctrl+Tab cover only the active tab's project (Mission Control shows all). */
+const visibleTabKeys = computed(() => projectTabKeys(rail.clusters.value, workspace.tabs, workspace.activeTab?.key ?? null))
+const visibleTabs = computed(() => visibleTabKeys.value.map((k) => workspace.tabs.find((t) => t.key === k)).filter((t): t is Tab => !!t))
+const tabSpaces = computed(() => spaceIndexes(workspace.tabs, (t) => tabProject(t, paneOf)))
+const activeCluster = computed(() => rail.clusters.value.find((c) => c.active) ?? null)
+const otherNeeds = computed(() => rail.clusters.value.filter((c) => !c.active).reduce((n, c) => n + c.needs, 0))
+
+const missionOpen = ref(false)
+const missionOpener = ref<HTMLElement | null>(null)
+let missionReturn: HTMLElement | null = null
+
+function toggleMission(): void {
+  if (missionOpen.value) return closeMission(true)
+  if (!workspace.tabs.length) return
+  missionReturn = document.activeElement as HTMLElement | null
+  missionOpen.value = true
+}
+
+function closeMission(focusOpener: boolean): void {
+  if (!missionOpen.value) return
+  missionOpen.value = false
+  const back = missionReturn ?? missionOpener.value
+  missionReturn = null
+  void nextTick(() => {
+    if (focusOpener && back?.isConnected && back.getClientRects().length) back.focus()
+    else focusActivePane()
+  })
+}
+
+function paneRect(key: string): DOMRect | null {
+  return canvas.value?.querySelector<HTMLElement>(`[data-pane="${CSS.escape(key)}"]`)?.getBoundingClientRect() ?? null
+}
+
+const runs = useRunStore()
+/** Close project while one of its apps still builds / runs: asks, then stops the runs before closing. */
+const runClose = ref<{ cluster: RailCluster; ids: string[] } | null>(null)
+const runCloseButton = ref<HTMLButtonElement | null>(null)
+const runCloseBusy = ref(false)
+
+function closeProject(cluster: RailCluster): void {
+  const dirs = new Set(cluster.checkouts.map((k) => k.path).filter((d): d is string => !!d))
+  for (const tabKey of cluster.tabKeys) {
+    const tab = workspace.tabs.find((x) => x.key === tabKey)
+    for (const key of tab ? leaves(tab.root) : []) {
+      const pane = paneOf(key)
+      if (pane?.kind === 'run' && pane.cwd) dirs.add(pane.cwd)
+    }
+  }
+  const ids = hasRun ? [...new Set([...dirs].flatMap((d) => runs.liveSessionsFor(d).map((s) => s.id)))] : []
+  if (ids.length) {
+    runClose.value = { cluster, ids }
+    void nextTick(() => runCloseButton.value?.focus())
+  } else finishCloseProject(cluster)
+}
+
+function finishCloseProject(cluster: RailCluster): void {
+  const keys = cluster.tabKeys.flatMap((k) => {
+    const tab = workspace.tabs.find((x) => x.key === k)
+    return tab ? leaves(tab.root) : []
+  })
+  const forget = (): void => {
+    for (const dir of cluster.history) workspace.forget(dir)
+  }
+  if (keys.length) closePanes(keys)
+  if (!workspace.pendingClose) return forget()
+  // A busy pane opened the close confirm: forget the history only if the user went through with it.
+  const stop = watch(
+    () => workspace.pendingClose,
+    (now) => {
+      if (now) return
+      stop()
+      if (keys.every((k) => !paneOf(k))) forget()
+    },
+  )
+}
+
+function trapTab(e: KeyboardEvent): void {
+  if (e.key !== 'Tab') return
+  const buttons = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not([disabled])')]
+  const at = buttons.indexOf(document.activeElement as HTMLElement)
+  e.preventDefault()
+  buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus()
+}
+
+async function confirmRunClose(): Promise<void> {
+  const pending = runClose.value
+  if (!pending || runCloseBusy.value) return
+  runCloseBusy.value = true
+  try {
+    await Promise.allSettled(pending.ids.map((id) => runs.stop(id)))
+  } finally {
+    runCloseBusy.value = false
+    runClose.value = null
+  }
+  finishCloseProject(pending.cluster)
 }
 
 const closing = computed(() => (workspace.pendingClose ?? []).map((k) => workspace.panes.find((p) => p.key === k)).filter((p): p is Pane => !!p))
@@ -230,9 +371,11 @@ function showNotice(text: string): void {
 
 const { rootOf, resolve } = useProjectRoots()
 
-/** Project folder of a pane: git toplevel (worktrees fold into their repo), else its own folder. */
+/** Checkout a pane works in: git toplevel of its tab's project (a worktree stays itself), else that folder. */
 function paneProject(pane: Pane): string | null {
-  return pane.cwd ? projectOf(rootOf(pane.cwd) ?? pane.cwd) : null
+  const tab = workspace.tabOf(pane.key)
+  const dir = (tab && tabProject(tab, paneOf)) ?? pane.cwd
+  return dir ? (rootOf(dir) ?? dir) : null
 }
 
 const activeProject = computed(() => (workspace.active ? paneProject(workspace.active) : null))
@@ -245,6 +388,21 @@ function openFromExplorer(path: string, keep: boolean): void {
   const cwd = activeProject.value ?? undefined
   if (keep) withViewTransition(() => workspace.openFile(path, undefined, { cwd, preview: false }))
   else workspace.openFile(path, undefined, { cwd, preview: true })
+}
+
+function openSplitFromExplorer(path: string): void {
+  const cwd = activeProject.value ?? undefined
+  const key = workspace.activeKey
+  withViewTransition(() => workspace.openFile(path, undefined, key ? { cwd, split: { key, dir: 'row' }, preview: false } : { cwd, preview: false }))
+}
+
+function onExplorerTrashed(path: string): void {
+  const keys = trashedPaneKeys(workspace.panes, path)
+  if (keys.length) closePanes(keys)
+}
+
+function onExplorerRenamed(from: string, to: string): void {
+  for (const { key, patch } of renamedPanePatches(workspace.panes, from, to)) workspace.update(key, patch)
 }
 
 const scripts = ref<{ dirs: string[]; query?: string } | null>(null)
@@ -437,10 +595,32 @@ function onPlusClick(): void {
   void openMenu()
 }
 
+/** Needs-you list: failed then asked, oldest first, every project. The chord still jumps straight to the next one. */
+const needs = computed(() => buildAttentionList(rail.clusters.value))
+const chipCount = computed(() => needs.value.entries.length)
+const attentionChip = ref<HTMLButtonElement | null>(null)
+const needsAnchor = ref<DOMRect | null>(null)
+
 function onAttentionClick(): void {
   tips.mouse('attention')
-  workspace.nextAttention()
+  needsAnchor.value = needsAnchor.value ? null : (attentionChip.value?.getBoundingClientRect() ?? null)
 }
+
+function closeNeeds(refocus: boolean): void {
+  needsAnchor.value = null
+  if (refocus) attentionChip.value?.focus()
+}
+watch(chipCount, (n) => {
+  if (!n) needsAnchor.value = null
+})
+watch(
+  () => props.visible,
+  (shown) => {
+    if (shown) return
+    needsAnchor.value = null
+    missionOpen.value = false
+  },
+)
 
 const KEY_TIP: Partial<Record<string, TipAction>> = { newTab: 'newTab', split: 'split', closePane: 'closePane', attention: 'attention', cycleTab: 'tab', tab: 'tab', focus: 'focus' }
 
@@ -689,6 +869,8 @@ function splitActive(dir?: SplitDir, choice?: SplitChoice, key = workspace.activ
 
 function onGlobalKey(e: KeyboardEvent): void {
   if (!props.visible || e.defaultPrevented) return
+  // Alt+↑/↓ on a rail project header reorders projects (WorkspaceSidebar), not pane focus.
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && (e.target as Element | null)?.closest?.('[data-side-head]')) return
   const action = workspaceAction(e, isMac, multiPane.value)
   if (!action) return
   e.preventDefault()
@@ -709,10 +891,10 @@ function onGlobalKey(e: KeyboardEvent): void {
       workspace.nextAttention()
       break
     case 'cycleTab':
-      workspace.cycleTab(action.step)
+      workspace.cycleTab(action.step, visibleTabKeys.value)
       break
     case 'tab': {
-      const tab = workspace.tabs[action.index]
+      const tab = visibleTabs.value[action.index]
       if (tab) workspace.activateTab(tab.key)
       break
     }
@@ -726,14 +908,17 @@ function onGlobalKey(e: KeyboardEvent): void {
     case 'explorer':
       void showExplorer()
       break
+    case 'mission':
+      toggleMission()
+      break
   }
 }
 
 function onTabKey(e: KeyboardEvent, index: number): void {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
   e.preventDefault()
-  const n = workspace.tabs.length
-  const next = workspace.tabs[(index + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]
+  const n = visibleTabs.value.length
+  const next = visibleTabs.value[(index + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]
   if (!next) return
   workspace.activateTab(next.key)
   ;(e.currentTarget as HTMLElement).parentElement?.parentElement?.querySelector<HTMLElement>(`[data-tab="${next.key}"]`)?.focus()
@@ -766,7 +951,7 @@ function measurePill(): void {
   tabPill.value = el ? { x: el.offsetLeft, w: el.offsetWidth } : null
   if (tabPill.value && !pillReady.value) requestAnimationFrame(() => (pillReady.value = true))
 }
-watch(() => [workspace.activeTab?.key, workspace.tabs.map((tab) => tab.key).join(), props.visible], measurePill, { flush: 'post' })
+watch(() => [workspace.activeTab?.key, visibleTabKeys.value.join(), props.visible], measurePill, { flush: 'post' })
 
 const tabPrimary = (tab: Tab): Pane | undefined => paneOf(primaryPaneKey(tab.root, paneOf))
 
@@ -778,15 +963,18 @@ function tabLabel(tab: Tab): string {
 
 function tabTitle(tab: Tab): string | undefined {
   const keys = leaves(tab.root)
-  if (keys.length > 1) return keys.map((k) => paneOf(k)).filter((p): p is Pane => !!p).map(describe).join('\n')
+  const project = tabProject(tab, paneOf)
+  const space = project ? spaceLabel(folderName(project), tabSpaces.value.get(tab.key) ?? null) : null
+  if (keys.length > 1) return [space, ...keys.map((k) => paneOf(k)).filter((p): p is Pane => !!p).map(describe)].filter(Boolean).join('\n')
   const pane = paneOf(keys[0]!)
-  return pane && !isTerm(pane) ? viewDetail(pane) : pane && workCwd(pane)
+  return [space, pane && !isTerm(pane) ? viewDetail(pane) : pane && workCwd(pane)].filter(Boolean).join('\n') || undefined
 }
 
 onMounted(() => {
   // Capture: runs before xterm's own handler sees the key.
   window.addEventListener('keydown', onGlobalKey, true)
   window.addEventListener('focus', clearSeenAttention)
+  window.addEventListener('resize', onViewportResize)
   canvasObserver = new ResizeObserver(([entry]) => {
     if (entry) canvasSize.value = { w: entry.contentRect.width, h: entry.contentRect.height }
   })
@@ -796,6 +984,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKey, true)
   window.removeEventListener('focus', clearSeenAttention)
+  window.removeEventListener('resize', onViewportResize)
   document.removeEventListener('pointerdown', onOutside, true)
   document.removeEventListener('pointerdown', onHelpOutside, true)
   canvasObserver?.disconnect()
@@ -806,8 +995,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="flex h-[calc(100dvh-var(--ccm-header-h,52px))] min-h-0 w-full gap-3 px-3 pt-2 pb-3 sm:px-4">
-    <aside v-if="workspace.tabs.length && sidebarOpen" class="hidden w-60 shrink-0 flex-col gap-1.5 md:flex" data-tour="ws-sidebar">
-      <div ref="sideTabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.sideViews')" @keydown="onSideTabKey">
+    <aside
+      v-if="workspace.tabs.length"
+      class="relative hidden shrink-0 flex-col gap-1.5 md:flex"
+      :class="sideDragging ? 'select-none' : ''"
+      :style="{ width: `${sidebarOpen ? sideWidth : RAIL_COLUMN_W}px` }"
+      data-tour="ws-sidebar"
+    >
+      <div v-if="sidebarOpen" ref="sideTabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.sideViews')" @keydown="onSideTabKey">
         <button
           v-for="v in SIDE_VIEWS"
           :key="v"
@@ -824,20 +1019,24 @@ onBeforeUnmount(() => {
           {{ v === 'projects' ? t('workspace.explorer.projects') : t('workspace.explorer.title') }}
         </button>
       </div>
-      <div v-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
-        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" />
+      <RailColumn v-if="!sidebarOpen" v-on="sideEvents" />
+      <div v-else-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
+        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" @open-split="openSplitFromExplorer" @terminal="(dir) => withViewTransition(() => workspace.open('shell', dir))" @run="(dir) => withViewTransition(() => workspace.openRun(dir))" @renamed="onExplorerRenamed" @trashed="onExplorerTrashed" />
       </div>
-      <WorkspaceSidebar
-        v-else
-        class="min-h-0 flex-1"
-        @scripts="(root) => openScripts([root])"
-        @run="(root) => withViewTransition(() => workspace.openRun(root))"
-        @save-layout="(root, name) => showLayouts(root, name, 'save')"
-        @manage-layouts="(root, name) => showLayouts(root, name, 'manage')"
-        @open-layout="openLayout"
+      <WorkspaceSidebar v-else class="min-h-0 flex-1" :narrow="sideWidth < SIDE_NARROW" v-on="sideEvents" />
+      <SideResizer
+        v-if="sidebarOpen"
+        v-model:dragging="sideDragging"
+        :width="sideWidth"
+        :min="SIDE_MIN"
+        :max="sideMax"
+        :label="t('workspace.side.panel')"
+        @resize="resizeSide"
+        @commit="writeSideWidth(sideWidthPref)"
+        @reset="resetSide"
       />
     </aside>
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2" :class="sideDragging ? 'pointer-events-none' : ''">
     <div v-if="workspace.tabs.length" class="flex min-w-0 items-center gap-2">
       <button
         type="button"
@@ -848,6 +1047,24 @@ onBeforeUnmount(() => {
         @click="toggleSidebar"
       >
         <PanelLeft :size="15" aria-hidden="true" />
+      </button>
+      <button
+        v-if="activeCluster"
+        ref="missionOpener"
+        type="button"
+        class="inline-flex h-7 max-w-[24ch] min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-inner px-2 text-xs font-semibold text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink"
+        :title="[activeCluster.root, t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) })].filter(Boolean).join('\n')"
+        :aria-label="t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) })"
+        aria-haspopup="dialog"
+        :aria-expanded="missionOpen"
+        data-strip-project
+        @click="toggleMission"
+      >
+        <FolderOpen :size="14" class="shrink-0" aria-hidden="true" />
+        <span class="min-w-0 truncate">{{ activeCluster.key === 'home' ? t('workspace.side.home') : activeCluster.name }}</span>
+        <span v-if="otherNeeds" class="inline-flex shrink-0 items-center gap-0.5 text-st-waiting tabular">
+          <BellRing :size="12" aria-hidden="true" />{{ otherNeeds }}<span class="sr-only"> {{ t('workspace.rail.needs', { n: otherNeeds }, otherNeeds) }}</span>
+        </span>
       </button>
       <div class="flex min-w-0 flex-1 items-center gap-1" data-tab-row @dblclick="onStripDblClick">
       <div ref="tabStrip" class="ccm-scroll relative flex min-w-0 items-center overflow-x-auto" role="tablist" :aria-label="t('workspace.tabs')">
@@ -860,7 +1077,7 @@ onBeforeUnmount(() => {
         />
         <TransitionGroup name="ccm-tab" tag="div" role="presentation" class="flex items-center gap-1" @before-leave="pinLeaving">
         <div
-          v-for="(tab, i) in workspace.tabs"
+          v-for="(tab, i) in visibleTabs"
           :key="tab.key"
           role="presentation"
           :data-selected="tab === workspace.activeTab || undefined"
@@ -946,15 +1163,25 @@ onBeforeUnmount(() => {
       </div>
       </div>
       <button
-        v-if="workspace.attentionPanes.length"
+        v-if="chipCount"
+        ref="attentionChip"
         type="button"
-        class="ccm-btn shrink-0 text-st-waiting!"
+        class="ccm-btn shrink-0"
+        :class="needs.entries.some((e) => e.state === 'failed') ? 'text-st-error!' : 'text-st-waiting!'"
         :title="t('workspace.attention.jump', { keys: isMac ? '⌘⇧A' : 'Ctrl+Shift+A' })"
+        aria-haspopup="listbox"
+        :aria-expanded="!!needsAnchor"
+        data-attention-chip
         @click="onAttentionClick"
       >
         <BellRing :size="14" aria-hidden="true" />
-        <span>{{ t('workspace.attention.chip', { n: workspace.attentionPanes.length }, workspace.attentionPanes.length) }}</span>
+        <span>{{ t('workspace.attention.chip', { n: chipCount }, chipCount) }}</span>
       </button>
+      <Teleport to="body">
+        <Transition name="ccm-menu" @before-leave="retireOverlay">
+          <AttentionPopover v-if="needsAnchor" :anchor="needsAnchor" :list="needs" :trigger="attentionChip" @close="closeNeeds" />
+        </Transition>
+      </Teleport>
       <div class="relative shrink-0" @keydown="onHelpKey">
         <button
           ref="helpButton"
@@ -1137,6 +1364,7 @@ onBeforeUnmount(() => {
           :class="d.dir === 'row' ? 'h-full w-0.5' : 'h-0.5 w-full'"
         />
       </div>
+      <MissionControl :open="missionOpen && visible" :pane-rect="paneRect" @close="closeMission" />
     </div>
     </div>
 
@@ -1171,6 +1399,32 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
+        <div v-if="runClose" class="ccm-scrim fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="runClose = null">
+          <div
+            class="ccm-sheet flex w-full max-w-[440px] flex-col gap-3 p-5"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ws-runclose-title"
+            aria-describedby="ws-runclose-body"
+            data-run-close
+            @keydown.esc.stop="runClose = null"
+            @keydown="trapTab"
+          >
+            <h2 id="ws-runclose-title" class="text-base font-semibold text-ink">{{ t('workspace.rail.runConfirm.title', { name: runClose.cluster.name || t('workspace.side.home') }) }}</h2>
+            <p id="ws-runclose-body" class="text-sm text-ink-muted">{{ t('workspace.rail.runConfirm.body') }}</p>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="ccm-btn" @click="runClose = null">{{ t('workspace.rail.runConfirm.cancel') }}</button>
+              <button ref="runCloseButton" type="button" class="ccm-btn ccm-btn-danger" :disabled="runCloseBusy" @click="confirmRunClose">
+                {{ t('workspace.rail.runConfirm.action') }}
+              </button>
+            </div>
+          </div>
+        </div>
       </Transition>
     </Teleport>
 

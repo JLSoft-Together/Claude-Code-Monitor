@@ -19,6 +19,7 @@ Seeing what an agent committed (and on which branch) without leaving the app. Pl
 - `TermPane` has no context menu, so the spec's "terminal context menu" entry became a row in the `+` new-tab menu.
 - The denied state reuses `AccessPrompt` (as the Browser and File panes do). A failed page query (incomplete regex, timeout) keeps the refs tree and filter bar mounted and shows the error with Clear filters / Retry in the table area (`useGitLog.pageError`); only refs-level failures (`useGitLog.error`) replace the whole pane.
 - Local ref pill `accent` / `accent-ink`, remote `ink-muted`, tag `warning`, file kinds `diff-*` via `KIND_CLASS`.
+- v36 (2026-10-15): the Branches toolbar adds create / fast-forward update / fetch / delete (native confirm); see PLAN-v36-log-branches-toolbar.md.
 
 ## Out of scope
 Any write operation, stash list, remote fetch, blame, compare two commits, graph of other repos, editing.

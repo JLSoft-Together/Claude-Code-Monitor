@@ -55,6 +55,8 @@ export type ModelState =
 
 export interface LayoutModelInfo {
   target: { root: string; module: string; name: string } | null
+  /** Layout of a library module: `target.module` is the app whose model is borrowed; `linked` false = no app depends on it. */
+  library?: { module: string; candidates: string[]; linked: boolean }
   reason?: 'no-gradle' | 'no-app'
   state: ModelState
   hasModel: boolean
@@ -165,7 +167,22 @@ export function nodeForLine(root: LayoutViewNode | null, line: number): LayoutVi
   return best
 }
 
-export const layoutStatus = (): Promise<LayoutStatus | null> => desktop?.layoutStatus?.() ?? Promise.resolve(null)
+/** Keyboard walk of the view tree: up = parent, down = first child, left/right = previous/next sibling. */
+export function stepView(root: LayoutViewNode | null, cur: LayoutViewNode | null, key: string): LayoutViewNode | null {
+  if (!root) return null
+  const from = cur ?? root
+  const parent = from === root ? null : (flattenTree(root).find((n) => n.children.includes(from)) ?? null)
+  if (from !== root && !parent) return null
+  const siblings = parent ? parent.children : [from]
+  const i = siblings.indexOf(from)
+  if (key === 'ArrowUp') return parent
+  if (key === 'ArrowDown') return from.children[0] ?? null
+  if (key === 'ArrowLeft') return siblings[i - 1] ?? null
+  if (key === 'ArrowRight') return siblings[i + 1] ?? null
+  return null
+}
+
+export const layoutStatus = ():Promise<LayoutStatus | null> => desktop?.layoutStatus?.() ?? Promise.resolve(null)
 export const layoutDownload = (): Promise<BundleStatus | { state: 'cancelled' } | null> => desktop?.layoutDownload?.() ?? Promise.resolve(null)
 export const layoutRender = (req: LayoutRenderRequest): Promise<LayoutRenderResult> =>
   desktop?.layoutRender?.(req) ?? Promise.resolve({ ok: false, code: 'unavailable' })
@@ -173,6 +190,15 @@ export const onLayoutEvent = (handler: (e: LayoutEvent) => void): (() => void) =
 
 export const layoutModelStatus = (file: string): Promise<LayoutModelInfo | null> => desktop?.layoutModelStatus?.({ file }) ?? Promise.resolve(null)
 export const layoutModelRefresh = (file: string): Promise<LayoutModelInfo | null> => desktop?.layoutModelRefresh?.({ file }) ?? Promise.resolve(null)
+export const layoutModelPick = (file: string, module: string): Promise<LayoutModelInfo | null> =>
+  desktop?.layoutModelPick?.({ file, module }) ?? Promise.resolve(null)
+
+/** Library layout rendered with an app's model: what the chip shows, and whether a picker is worth showing. */
+export function borrowedModel(info: LayoutModelInfo | null): { library: string; app: string; linked: boolean; choices: string[] } | null {
+  if (!info?.target || !info.library) return null
+  const { module, candidates, linked } = info.library
+  return { library: module, app: info.target.module, linked, choices: linked && candidates.length > 1 ? candidates : [] }
+}
 
 /** Theme picker value for "let the daemon resolve tools:context → app theme". */
 export const THEME_AUTO = ''
@@ -218,11 +244,14 @@ export function compareCell(w: number, h: number, boxW: number, boxH: number, n:
   return { cellWidth, scale: fitScale(w, h, cellWidth, Math.max(1, boxH - 64)) }
 }
 
+/** Narrowest compare cell, so the caption under a tiny zoomed image keeps a readable width before it truncates. */
+export const COMPARE_CAPTION_MIN = 140
+
 /** Compare cell for a zoom choice: 'fit' wraps inside the box; a fixed % uses the same scale for every cell so sizes stay comparable. */
 export function compareCellAt(w: number, h: number, boxW: number, boxH: number, n: number, zoom: 'fit' | number): { cellWidth: number; scale: number } {
   if (zoom === 'fit') return compareCell(w, h, boxW, boxH, n)
   const scale = zoom / 100
-  return { cellWidth: Math.max(1, Math.round(w * scale)), scale }
+  return { cellWidth: Math.max(COMPARE_CAPTION_MIN, Math.round(w * scale)), scale }
 }
 
 export const BLUEPRINT_MAX = 800

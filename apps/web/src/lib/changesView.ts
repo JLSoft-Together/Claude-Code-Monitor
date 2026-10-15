@@ -69,3 +69,20 @@ export function gitMarks(root: string, entries: readonly ChangeEntry[]): GitMark
 /** "Show diff" from a list row: Ctrl+D (⌘⌥D on macOS, where ⌘D splits the pane). */
 export const isShowDiffKey = (e: KeyboardEvent): boolean =>
   e.code === 'KeyD' && !e.shiftKey && (isMac ? e.metaKey && e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey && !e.metaKey)
+
+/** ← / → without modifiers in a diff: previous / next file (Alt+← / → stays pane focus). */
+export function fileStepKey(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>): 1 | -1 | 0 {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return 0
+  return e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+}
+
+/** Focus sits in a split side or another sideways scroller that overflows: ← / → scroll it instead of stepping files. */
+export function inSidewaysScroller(el: Element | null): boolean {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    if (n.scrollWidth <= n.clientWidth) continue
+    if (n.matches('[data-side]')) return true
+    const x = getComputedStyle(n).overflowX
+    if (x === 'auto' || x === 'scroll') return true
+  }
+  return false
+}

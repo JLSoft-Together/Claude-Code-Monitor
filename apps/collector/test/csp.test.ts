@@ -22,6 +22,12 @@ describe('contentSecurityPolicy', () => {
     expect(csp).not.toMatch(/(script|connect)-src[^;]*https:/)
   })
 
+  it('hashes a CRLF inline script the way the browser parses it (LF)', () => {
+    const csp = contentSecurityPolicy('<script>\r\n  a()\r\n</script>')
+    const hash = createHash('sha256').update('\n  a()\n').digest('base64')
+    expect(csp).toContain(`'sha256-${hash}'`)
+  })
+
   it('has no hash without inline scripts', () => {
     expect(contentSecurityPolicy('<script src="/a.js"></script>')).toContain("script-src 'self';")
   })

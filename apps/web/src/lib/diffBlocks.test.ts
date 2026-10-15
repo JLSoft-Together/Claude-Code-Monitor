@@ -97,3 +97,20 @@ describe('foldRows', () => {
     expect(foldRows(changed, 0)).toEqual([{ kind: 'rows', from: 0, to: 4 }])
   })
 })
+
+describe('wordDiff modes', () => {
+  it('marks whole words in words mode', () => {
+    expect(wordDiff(['color'], ['colour'])).toEqual({ old: [[{ start: 0, end: 5 }]], new: [[{ start: 0, end: 6 }]] })
+  })
+  it('marks single characters in chars mode', () => {
+    expect(wordDiff(['color'], ['colour'], 'chars')).toEqual({ old: [[]], new: [[{ start: 4, end: 5 }]] })
+  })
+  it('falls back to words when chars mode is past the limit', () => {
+    const line = (tag: string) => Array.from({ length: 60 }, (_, i) => `${tag}${i}abcdefgh`).join(' ')
+    const oldL = [line('a')]
+    const newL = [line('b')]
+    const words = wordDiff(oldL, newL, 'words')
+    expect(words).not.toBeNull()
+    expect(wordDiff(oldL, newL, 'chars')).toEqual(words)
+  })
+})

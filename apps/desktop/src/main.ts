@@ -26,6 +26,7 @@ import { createFlutterRunner } from './run/flutter/runner'
 import { registerRunIpc } from './run/ipc'
 import type { LayoutIpc } from './layout/ipc'
 import { wireLayout } from './layout/wire'
+import { wireFlutterPreview, type FlutterPreviewWire } from './flutterPreview/wire'
 import { afterRunTarget } from './layout/model'
 import { defaultSpawner } from './run/proc'
 import { RunManager } from './run/sessions'
@@ -75,6 +76,7 @@ let disposeExtensions: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let layoutIpc: LayoutIpc | null = null
+let flutterPreview: FlutterPreviewWire | null = null
 let bridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
@@ -151,10 +153,15 @@ function stopPreview(): Promise<void> {
   disposeRun?.()
   disposeRun = null
   previewWatch.closeAll()
+  // Both kept until stopped: a quit during the graceful stop still reaches killNow() through them.
   const layout = layoutIpc
-  layoutIpc = null
   layout?.dispose()
-  return Promise.all([preview.close(), layout?.stop()]).then(() => undefined)
+  const fwp = flutterPreview
+  fwp?.dispose()
+  return Promise.all([preview.close(), layout?.stop(), fwp?.service.stop()]).then(() => {
+    if (layoutIpc === layout) layoutIpc = null
+    if (flutterPreview === fwp) flutterPreview = null
+  })
 }
 
 function openExternal(url: string): void {
@@ -669,6 +676,19 @@ async function ready(): Promise<void> {
       const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
       return response === 0
     },
+    confirmGit: async (req) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: req.force ? t.gitForceTitle(req.title) : t.gitDeleteTitle(req.title),
+        detail: t.gitDeleteDetail(req.commands),
+        buttons: [t.gitDeleteConfirm, t.gitDeleteCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+      return response === 0
+    },
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
   runManager = new RunManager({
@@ -731,6 +751,12 @@ async function ready(): Promise<void> {
     locale: app.getLocale(),
     // Dev reuses the Gradle-staged bundle instead of the 170 MB download; CCM_LAYOUTLIB_DIR= (empty) tests the download flow.
     layoutlibOverride: app.isPackaged ? null : (process.env.CCM_LAYOUTLIB_DIR ?? path.join(REPO, 'apps/layout-daemon/build/layoutlib-dist')),
+  })
+  flutterPreview = wireFlutterPreview({
+    ipcMain,
+    isAppFrame,
+    resolveDir: (p) => previewGate.resolveDir(p),
+    getSettings: () => ({ flutterSdk: runManager?.getSettings().flutterSdk ?? null }),
   })
   // Owner decision: the Gradle project-model task runs after a successful Android build, never on project open.
   // Flutter goes reloading → running on every hot reload; the native build only happened before the first one.
@@ -830,6 +856,7 @@ if (!app.requestSingleInstanceLock()) {
       if (!stopped) {
         runManager?.killAll()
         layoutIpc?.killNow()
+        flutterPreview?.service.killNow()
       }
       return
     }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
-import { BLUEPRINT_MAX, DEVICE_PRESETS, boxRect, compareCell, compareCellAt, compareConfigs, deviceFor, dpSize, fitScale, flattenTree, hitTest, isLayoutXml, modelChip, needsModelNotice, nodeForLine, shortClass, type LayoutModelInfo, type LayoutViewNode } from './layoutPreview'
+import { BLUEPRINT_MAX, borrowedModel, COMPARE_CAPTION_MIN, DEVICE_PRESETS, boxRect, compareCell, compareCellAt, compareConfigs, deviceFor, dpSize, fitScale, flattenTree, hitTest, isLayoutXml, modelChip, needsModelNotice, nodeForLine, shortClass, stepView, type LayoutModelInfo, type LayoutViewNode } from './layoutPreview'
 
 const node = (cls: string, line: number, bounds: [number, number, number, number], children: LayoutViewNode[] = [], xmlId: string | null = null): LayoutViewNode => ({ class: cls, xmlId, line, column: 1, bounds, children })
 
@@ -81,6 +81,14 @@ describe('project model + compare helpers', () => {
     expect(modelChip(info({ state: 'error', code: 'timeout', at: 2 }))).toEqual({ kind: 'error', code: 'timeout' })
   })
 
+  it('describes a borrowed app model and offers a picker only for several dependent apps', () => {
+    const none = info({ state: 'none' })
+    expect(borrowedModel(none)).toBeNull()
+    expect(borrowedModel({ ...none, library: { module: ':ui', candidates: [':app'], linked: true } })).toEqual({ library: ':ui', app: ':app', linked: true, choices: [] })
+    expect(borrowedModel({ ...none, library: { module: ':ui', candidates: [':app', ':demo'], linked: true } })?.choices).toEqual([':app', ':demo'])
+    expect(borrowedModel({ ...none, library: { module: ':ui', candidates: [], linked: false } })).toMatchObject({ linked: false, choices: [] })
+  })
+
   it('suggests the project model only for framework-only renders with missing classes', () => {
     const missing = [{ severity: 'error' as const, message: 'Class not found: com.google.android.material.button.MaterialButton — build the project' }]
     expect(needsModelNotice(true, missing)).toBe(true)
@@ -113,6 +121,36 @@ describe('project model + compare helpers', () => {
     expect(phone).toEqual({ cellWidth: 540, scale: 0.5 })
     expect(tablet.scale).toBe(phone.scale)
     expect(tablet.cellWidth).toBe(800)
+  })
+
+  it('keeps a fixed-zoom compare cell wide enough for its caption', () => {
+    expect(compareCellAt(400, 800, 600, 800, 3, 25)).toEqual({ cellWidth: COMPARE_CAPTION_MIN, scale: 0.25 })
+    expect(compareCellAt(1080, 2340, 600, 800, 3, 25).cellWidth).toBe(270)
+  })
+
+  it('walks the view tree with arrow keys', () => {
+    expect(stepView(root, null, 'ArrowDown')).toBe(text)
+    expect(stepView(root, text, 'ArrowRight')).toBe(frame)
+    expect(stepView(root, frame, 'ArrowLeft')).toBe(text)
+    expect(stepView(root, text, 'ArrowLeft')).toBeNull()
+    expect(stepView(root, overlay, 'ArrowRight')).toBeNull()
+    expect(stepView(root, frame, 'ArrowDown')).toBe(button)
+    expect(stepView(root, button, 'ArrowUp')).toBe(frame)
+    expect(stepView(root, root, 'ArrowUp')).toBeNull()
+    expect(stepView(root, root, 'ArrowRight')).toBeNull()
+    expect(stepView(root, text, 'Enter')).toBeNull()
+    expect(stepView(null, null, 'ArrowDown')).toBeNull()
+  })
+
+  it('does not walk from a view of another tree', () => {
+    const other = node('android.widget.Button', 10, [0, 0, 1, 1])
+    expect(stepView(root, other, 'ArrowUp')).toBeNull()
+  })
+
+  it('has the keys hint in en and vi', () => {
+    expect(vi.layout.keys).toBeTruthy()
+    expect(vi.layout.keysCompare).toBeTruthy()
+    expect(en.layout.keysCompare).toBeTruthy()
   })
 
   it('maps view bounds to a box at scale, never thinner than 1 px', () => {

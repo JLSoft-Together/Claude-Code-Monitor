@@ -6,6 +6,8 @@ import type { PreviewChange } from '../lib/preview'
 const bridge = vi.hoisted(() => ({
   listDir: vi.fn<(root: string, dir: string) => Promise<DirEntry[] | null>>(),
   createEntry: vi.fn(),
+  renameEntry: vi.fn(),
+  trashEntry: vi.fn(),
   watchRoot: vi.fn(() => Promise.resolve(true)),
   unwatchRoot: vi.fn(() => Promise.resolve(true)),
   handlers: new Set<(c: PreviewChange) => void>(),
@@ -14,6 +16,8 @@ const bridge = vi.hoisted(() => ({
 vi.mock('../lib/preview', () => ({
   listDir: bridge.listDir,
   createEntry: bridge.createEntry,
+  renameEntry: bridge.renameEntry,
+  trashEntry: bridge.trashEntry,
   watchRoot: bridge.watchRoot,
   unwatchRoot: bridge.unwatchRoot,
   onPreviewChanged: (h: (c: PreviewChange) => void) => {
@@ -36,6 +40,8 @@ beforeEach(() => {
   fs = { [R]: [e('src', true), e('a.ts')], [`${R}\\src`]: [e('main.ts', false, `${R}\\src`)] }
   bridge.listDir.mockReset().mockImplementation(async (_root, dir) => fs[dir] ?? null)
   bridge.createEntry.mockReset()
+  bridge.renameEntry.mockReset()
+  bridge.trashEntry.mockReset()
   bridge.watchRoot.mockClear()
   bridge.unwatchRoot.mockClear()
   bridge.handlers.clear()
@@ -118,5 +124,57 @@ describe('explorer store', () => {
     bridge.createEntry.mockResolvedValueOnce({ ok: false, error: 'exists' })
     expect(await s.create(R, 'a.ts', 'file')).toBeNull()
     expect(s.status).toMatchObject({ key: 'exists', failed: true })
+  })
+})
+
+describe('rename / trash', () => {
+  it('renames, re-lists the parent and focuses the new row', async () => {
+    const s = useExplorerStore()
+    s.setRoot(R)
+    await flush()
+    fs[R] = [e('src', true), e('b.ts')]
+    bridge.renameEntry.mockResolvedValue({ ok: true, path: `${R}\\b.ts` })
+    expect(await s.rename(`${R}\\a.ts`, 'b.ts')).toBe(`${R}\\b.ts`)
+    expect(s.rows.map((r) => r.name)).toEqual(['repo', 'src', 'b.ts'])
+    expect(s.pendingFocus).toBe(`${R}\\b.ts`)
+  })
+
+  it('keeps a renamed open folder open', async () => {
+    const s = useExplorerStore()
+    s.setRoot(R)
+    await flush()
+    s.toggle(`${R}\\src`)
+    await flush()
+    fs[R] = [e('lib', true), e('a.ts')]
+    fs[`${R}\\lib`] = [e('main.ts', false, `${R}\\lib`)]
+    bridge.renameEntry.mockResolvedValue({ ok: true, path: `${R}\\lib` })
+    await s.rename(`${R}\\src`, 'lib')
+    expect(s.state.expanded.has(`${R}\\lib`)).toBe(true)
+    expect(s.rows.map((r) => r.name)).toEqual(['repo', 'lib', 'main.ts', 'a.ts'])
+  })
+
+  it('reports a failed rename and a failed trash', async () => {
+    const s = useExplorerStore()
+    s.setRoot(R)
+    await flush()
+    bridge.renameEntry.mockResolvedValue({ ok: false, error: 'exists' })
+    expect(await s.rename(`${R}\\a.ts`, 'b.ts')).toBeNull()
+    expect(s.status).toMatchObject({ key: 'exists', name: 'b.ts', failed: true })
+    bridge.trashEntry.mockResolvedValue({ ok: false, error: 'failed' })
+    expect(await s.trash(`${R}\\a.ts`)).toBe(false)
+    expect(s.status).toMatchObject({ key: 'trashFailed', name: 'a.ts', failed: true })
+    bridge.trashEntry.mockResolvedValue({ ok: false, error: 'busy' })
+    expect(await s.trash(`${R}\\src`)).toBe(false)
+    expect(s.status).toMatchObject({ key: 'busy', name: 'src', failed: true })
+  })
+
+  it('trash re-lists the folder', async () => {
+    const s = useExplorerStore()
+    s.setRoot(R)
+    await flush()
+    fs[R] = [e('src', true)]
+    bridge.trashEntry.mockResolvedValue({ ok: true })
+    expect(await s.trash(`${R}\\a.ts`)).toBe(true)
+    expect(s.rows.map((r) => r.name)).toEqual(['repo', 'src'])
   })
 })

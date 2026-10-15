@@ -5,7 +5,7 @@ const NOW = Date.UTC(2026, 9, 15, 12, 0, 0)
 
 describe('logQuery', () => {
   it('maps empty filters to the full history', () => {
-    expect(toQuery(emptyFilters(), NOW)).toEqual({ branch: null, author: null, since: null, until: null, text: null, regex: false, matchCase: false, paths: [], skip: 0 })
+    expect(toQuery(emptyFilters(), NOW)).toEqual({ branch: null, notRef: null, author: null, since: null, until: null, text: null, regex: false, matchCase: false, paths: [], skip: 0 })
     expect(graphMode(emptyFilters())).toBe('graph')
     expect(hasFilters(emptyFilters())).toBe(false)
   })
@@ -59,5 +59,15 @@ describe('custom date range across DST changes', () => {
       expect(q.until).toBe(endOf(y, m, d))
       expect(q.since).toBe(startOf(y, m, d))
     })
+  })
+})
+
+describe('notRef', () => {
+  it('passes through and forces the flat list', () => {
+    const f = { ...emptyFilters(), branch: 'refs/heads/feature', notRef: 'HEAD' }
+    expect(toQuery(f, NOW).notRef).toBe('HEAD')
+    expect(toQuery({ ...f, branch: null }, NOW).notRef).toBeNull()
+    expect(graphMode(f)).toBe('flat')
+    expect(hasFilters({ ...emptyFilters(), notRef: 'HEAD' })).toBe(true)
   })
 })

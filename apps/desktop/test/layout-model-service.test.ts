@@ -152,6 +152,49 @@ describe('module pick', () => {
     expect(info.target).toBeNull()
   })
 
+  it('borrows the app of a library layout, transitively, and flags a library no app uses', async () => {
+    const root = path.join(tmp, `t${Math.random().toString(36).slice(2, 8)}`)
+    write(path.join(root, 'settings.gradle'), "include ':app', ':feature:home', ':core:ui', ':orphan'\n")
+    write(path.join(root, 'app', 'build.gradle'), "plugins { id 'com.android.application' }\ndependencies { implementation project(':feature:home') }\n")
+    write(path.join(root, 'feature', 'home', 'build.gradle'), "plugins { id 'com.android.library' }\ndependencies { api(projects.core.ui) }\n")
+    write(path.join(root, 'core', 'ui', 'build.gradle'), "plugins { id 'com.android.library' }\n")
+    write(path.join(root, 'orphan', 'build.gradle'), "plugins { id 'com.android.library' }\n")
+    const layout = (mod: string) => path.join(root, ...mod.split(':').filter(Boolean), 'src', 'main', 'res', 'layout', 'a.xml')
+    const { service } = setup()
+    expect(await service.info(layout(':core:ui'))).toMatchObject({ target: { module: ':app' }, library: { module: ':core:ui', candidates: [':app'], linked: true } })
+    expect(await service.info(layout(':orphan'))).toMatchObject({ target: { module: ':app' }, library: { module: ':orphan', candidates: [], linked: false } })
+    expect((await service.info(layout(':app'))).library).toBeUndefined()
+  })
+
+  it('several dependent apps: first by path, then the one last run or picked (persisted)', async () => {
+    const p = project()
+    write(path.join(p.root, 'settings.gradle.kts'), 'rootProject.name = "Demo"\ninclude(":app", ":lib", ":other", ":demo")\n')
+    write(path.join(p.root, 'demo', 'build.gradle.kts'), 'plugins { id("com.android.application") }\ndependencies { implementation(projects.lib) }\n')
+    const s = setup()
+    s.deps.canRun = () => false
+    expect(await s.service.info(p.libLayout)).toMatchObject({ target: { module: ':app' }, library: { candidates: [':app', ':demo'], linked: true } })
+    s.service.afterBuild(p.root, ':demo', 'debug')
+    await wait(20)
+    expect((await s.service.info(p.libLayout)).target?.module).toBe(':demo')
+    expect((await s.service.pickApp(p.libLayout, ':other')).target?.module).toBe(':demo')
+    expect((await s.service.pickApp(p.libLayout, ':app')).target?.module).toBe(':app')
+    expect((await s.service.info(p.appLayout)).target?.module).toBe(':app')
+    const next = setup({ modelsDir: s.deps.modelsDir })
+    expect((await next.service.info(p.libLayout)).target?.module).toBe(':app')
+    await next.service.pickApp(p.libLayout, ':demo')
+    expect((await next.service.prepare(p.libLayout)).frameworkOnly).toBe(true)
+    expect(next.spawns).toHaveLength(0)
+  })
+
+  it('uses projectDeps of a cached app model for deps the build scripts do not name', async () => {
+    const p = project()
+    const s = setup({ model: (root) => ({ ...modelJson(root), projectDeps: [':other', 'bad path'] }) })
+    expect((await s.service.info(p.otherLayout)).library).toMatchObject({ linked: false })
+    await s.service.refresh({ root: p.root, module: ':app' })
+    expect((await s.service.info(p.otherLayout)).library).toEqual({ module: ':other', candidates: [':app'], linked: true })
+    expect((await s.service.prepare(p.otherLayout)).frameworkOnly).toBe(false)
+  })
+
   it('dependsOn knows project() and type-safe accessors', () => {
     expect(dependsOn('implementation(project(":core:ui"))', ':core:ui')).toBe(true)
     expect(dependsOn("implementation project(path: ':core:ui')", ':core:ui')).toBe(true)

@@ -1,17 +1,6 @@
 import type { TerminalSession } from '@ccm/shared'
 import { dirKey } from '../stores/favorites'
-import { isTerm, workCwd, type Pane, type Tab } from '../stores/workspace'
-import { leaves } from './splitLayout'
-
-export interface SideGroup {
-  key: string
-  /** Project folder (git toplevel when known); null = panes without a folder (home). */
-  root: string | null
-  name: string
-  panes: Pane[]
-  /** Holds the focused pane. */
-  active: boolean
-}
+import { isTerm, workCwd, type Pane } from '../stores/workspace'
 
 // Worktrees live in `<repo>-wt/<branch>`, so they fold back under the repo they came from.
 const WT = /^(.*[\\/])([^\\/]+)-wt[\\/][^\\/]+(?:[\\/].*)?$/
@@ -37,31 +26,6 @@ export function containingRoot(dir: string, repoRoots: Iterable<string>): string
     }
   }
   return best
-}
-
-/** One row per pane, grouped by project in tab order; `rootOf` maps a folder to its git toplevel once known. */
-export function sideGroups(
-  tabs: readonly Tab[],
-  panes: readonly Pane[],
-  activeKey: string | null,
-  rootOf: (dir: string) => string | undefined,
-): SideGroup[] {
-  const byKey = new Map(panes.map((p) => [p.key, p]))
-  const map = new Map<string, SideGroup>()
-  for (const tab of tabs) {
-    for (const key of leaves(tab.root)) {
-      const pane = byKey.get(key)
-      if (!pane) continue
-      const dir = pane.cwd
-      const root = projectOf(dir ? (rootOf(dir) ?? dir) : undefined)
-      const id = root ? dirKey(root) : '~'
-      const group = map.get(id) ?? { key: id, root, name: root ? folderName(root) : '', panes: [], active: false }
-      group.panes.push(pane)
-      if (key === activeKey) group.active = true
-      map.set(id, group)
-    }
-  }
-  return [...map.values()]
 }
 
 export type RowStatus = { kind: 'status'; status: string; label: string } | { kind: 'starting'; label: string } | null

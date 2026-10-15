@@ -37,14 +37,18 @@ async function main() {
     await evaluate(`window.scrollTo(0, 0)`)
 
     // Install sheet: secret field validates, scope defaults to user in the global view.
-    await click('[data-ext-card="github"] [data-ext-action="open"]')
+    // Uses the first token server this machine hasn't installed (an installed one only offers Remove).
+    const secretCard = await evaluate(`['github', 'gitlab', 'meshy'].find((id) => document.querySelector('[data-ext-card="' + id + '"] [data-ext-action="open"]')) ?? null`)
+    if (!secretCard) throw new Error('github, gitlab and meshy are all installed here — no install sheet to check')
+    await click(`[data-ext-card="${secretCard}"] [data-ext-action="open"]`)
     await waitFor(`!!document.querySelector('[data-ext-sheet]')`, 5000, 'sheet')
-    check('global view offers only the user scope', await evaluate(`[...document.querySelectorAll('[data-ext-scope]')].map(i => i.value).join() === 'user'`))
-    check('focus starts in the token field', await evaluate(`document.activeElement?.id === 'ext-f-GITHUB_PAT'`))
-    check('token input is a password field', await evaluate(`document.querySelector('#ext-f-GITHUB_PAT').type === 'password'`))
+    check(`global view offers only the user scope (${secretCard})`, await evaluate(`[...document.querySelectorAll('[data-ext-scope]')].map(i => i.value).join() === 'user'`))
+    const tokenId = await evaluate(`document.activeElement?.id ?? ''`)
+    check('focus starts in the token field', tokenId.startsWith('ext-f-'), tokenId)
+    check('token input is a password field', await evaluate(`document.getElementById(${JSON.stringify(tokenId)})?.type === 'password'`))
     await click('[data-ext-submit]')
     await sleep(200)
-    check('empty token blocks install', await evaluate(`document.querySelector('#ext-f-GITHUB_PAT').getAttribute('aria-invalid') === 'true' && !!document.querySelector('[data-ext-sheet]')`))
+    check('empty token blocks install', await evaluate(`document.getElementById(${JSON.stringify(tokenId)})?.getAttribute('aria-invalid') === 'true' && !!document.querySelector('[data-ext-sheet]')`))
     await shot('ext-03-install-sheet')
     await evaluate(`document.querySelector('[data-ext-sheet]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await sleep(400)

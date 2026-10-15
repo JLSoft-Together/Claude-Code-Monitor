@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelText, parseDecorations, refTree, type RefsOk } from './gitRefs'
+import { expandableIds, labelText, parseDecorations, refTree, type RefsOk } from './gitRefs'
 
 describe('parseDecorations', () => {
   it('splits HEAD, local, remote and tags and merges a local with its remote', () => {
@@ -69,5 +69,39 @@ describe('refTree tag folders', () => {
     expect(tagRefs(collapsed)).toEqual([])
     expect(collapsed).toContainEqual(expect.objectContaining({ kind: 'folder', id: 'tags/release', expanded: false }))
     expect(tagRefs(refTree(tagged, 'release', new Set(['tags/release'])))).toEqual(['refs/tags/release/1.0'])
+  })
+})
+
+const R = {
+  ok: true as const,
+  root: '/r',
+  head: { branch: 'main', hash: 'a'.repeat(40) },
+  local: [
+    { ref: 'refs/heads/main', name: 'main', hash: 'a', upstream: 'origin/main', ahead: 0, behind: 0, gone: false },
+    { ref: 'refs/heads/feature/x', name: 'feature/x', hash: 'b', upstream: null, ahead: 0, behind: 0, gone: false },
+    { ref: 'refs/heads/zeta', name: 'zeta', hash: 'c', upstream: null, ahead: 0, behind: 0, gone: false },
+  ],
+  remotes: [{ name: 'origin', refs: [{ ref: 'refs/remotes/origin/main', name: 'origin/main', hash: 'a' }] }],
+  tags: [{ ref: 'refs/tags/v1', name: 'v1', hash: 'a' }],
+  me: null,
+}
+const names = (rows: ReturnType<typeof refTree>) => rows.map((r) => (r.kind === 'ref' ? r.name : r.kind === 'folder' ? `[${r.name}]` : `#${r.section}`))
+
+describe('refTree options', () => {
+  it('floats favorites to the top of their section and flags them', () => {
+    const rows = refTree(R as never, '', new Set(), { favorites: new Set(['refs/heads/zeta']), group: true, tags: true })
+    expect(names(rows).slice(0, 5)).toEqual(['#head', '#local', 'zeta', 'main', '[feature]'])
+    expect(rows.find((r) => r.kind === 'ref' && r.name === 'zeta')).toMatchObject({ favorite: true })
+  })
+  it('lists full names without folders when grouping is off', () => {
+    const rows = names(refTree(R as never, '', new Set(), { favorites: new Set(), group: false, tags: true }))
+    expect(rows).toContain('feature/x')
+    expect(rows).not.toContain('[feature]')
+  })
+  it('hides the Tags section when tags are off', () => {
+    expect(names(refTree(R as never, '', new Set(), { favorites: new Set(), group: true, tags: false }))).not.toContain('#tags')
+  })
+  it('lists every expandable id for Collapse All', () => {
+    expect(expandableIds(R as never).sort()).toEqual(['local', 'local/feature', 'remote', 'remote/origin', 'tags'].sort())
   })
 })

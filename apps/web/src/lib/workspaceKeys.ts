@@ -13,6 +13,8 @@ export type WorkspaceAction =
   | { t: 'quickOpen' }
   /** Sidebar → Explorer (⌘⇧E / Ctrl+Shift+E, as in VS Code). */
   | { t: 'explorer' }
+  /** Mission Control: every tab of every project (⌘⇧O / Ctrl+Shift+O). */
+  | { t: 'mission' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 
@@ -32,6 +34,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyW' && !shift && !alt) return { t: 'closePane' }
     if (code === 'KeyP' && !shift && !alt) return { t: 'quickOpen' }
     if (code === 'KeyE' && shift && !alt) return { t: 'explorer' }
+    if (code === 'KeyO' && shift && !alt) return { t: 'mission' }
     if ((code === 'BracketLeft' || code === 'BracketRight') && shift && !alt) return { t: 'cycleTab', step: code === 'BracketRight' ? 1 : -1 }
     if (digit && !shift && !alt) return { t: 'tab', index: Number(digit[1]) - 1 }
     if (alt && !shift && ARROWS[code] && multiPane) return { t: 'focus', dir: ARROWS[code]! }
@@ -43,6 +46,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (ctrl && shift && !alt && code === 'KeyA') return { t: 'attention' }
   if (ctrl && shift && !alt && code === 'KeyP') return { t: 'quickOpen' }
   if (ctrl && shift && !alt && code === 'KeyE') return { t: 'explorer' }
+  if (ctrl && shift && !alt && code === 'KeyO') return { t: 'mission' }
   if (alt && shift && !ctrl) {
     if (code === 'KeyD') return { t: 'split' }
     if (code === 'Equal' || code === 'NumpadAdd') return { t: 'split', dir: 'row' }

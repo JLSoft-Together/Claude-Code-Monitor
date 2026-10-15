@@ -1,8 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { EntryNameProblem } from '@ccm/shared'
-import { flattenTree, isHidden, openDirectories, parentDirectory, toggleExpanded, type DirEntry } from '../lib/explorer/tree'
-import { createEntry as createEntryIpc, listDir, onPreviewChanged, unwatchRoot, watchRoot } from '../lib/preview'
+import { flattenTree, isHidden, movedPath, openDirectories, parentDirectory, rootName, toggleExpanded, type DirEntry } from '../lib/explorer/tree'
+import {
+  createEntry as createEntryIpc,
+  listDir,
+  onPreviewChanged,
+  renameEntry as renameEntryIpc,
+  trashEntry as trashEntryIpc,
+  unwatchRoot,
+  watchRoot,
+} from '../lib/preview'
 import { dirKey } from './favorites'
 
 /** Tree state of one project root; kept per window while the app runs (not persisted). */
@@ -20,7 +28,7 @@ export type ExplorerView = 'files' | 'changes'
 
 /** One transient line under the header; the component translates `key`. */
 export interface ExplorerStatus {
-  key: 'createFailed' | 'exists' | 'invalid' | 'denied' | 'shownHidden'
+  key: 'createFailed' | 'exists' | 'invalid' | 'denied' | 'shownHidden' | 'renameFailed' | 'renameInvalid' | 'trashFailed' | 'missing' | 'busy' | 'copied'
   name: string
   reason?: EntryNameProblem
   failed: boolean
@@ -205,6 +213,43 @@ export const useExplorerStore = defineStore('explorer', () => {
     return res.path
   }
 
+  /** Renames `path` to `name`; open folders under it follow, the parent is listed again and the row focused. Returns the new path. */
+  async function rename(path: string, name: string): Promise<string | null> {
+    const at = root.value
+    if (!at) return null
+    const res = await renameEntryIpc(at, path, name)
+    if (root.value !== at) return null
+    if (!res.ok) {
+      const key =
+        res.error === 'invalid' ? 'renameInvalid' : res.error === 'exists' || res.error === 'denied' || res.error === 'missing' || res.error === 'busy' ? res.error : 'renameFailed'
+      status.value = { key, name: res.error === 'missing' || res.error === 'busy' ? rootName(path) : name, reason: res.error === 'invalid' ? res.reason : undefined, failed: true }
+      return null
+    }
+    status.value = null
+    const moved = [...state.value.expanded].map((p) => movedPath(p, path, res.path))
+    patch({ expanded: new Set([...state.value.expanded].map((p, i) => moved[i] ?? p)) })
+    await Promise.all([parentDirectory(path), ...moved.filter((p): p is string => !!p)].map(loadListing))
+    pendingFocus.value = res.path
+    setFocused(res.path)
+    return res.path
+  }
+
+  /** Moves `path` to the OS trash and lists its folder again. */
+  async function trash(path: string): Promise<boolean> {
+    const at = root.value
+    if (!at) return false
+    const res = await trashEntryIpc(at, path)
+    if (root.value !== at) return false
+    if (!res.ok) {
+      const key = res.error === 'denied' || res.error === 'missing' || res.error === 'busy' || res.error === 'exists' ? res.error : 'trashFailed'
+      status.value = { key, name: rootName(path), failed: true }
+      return false
+    }
+    status.value = null
+    await loadListing(parentDirectory(path))
+    return true
+  }
+
   function clearStatus(): void {
     status.value = null
   }
@@ -232,6 +277,8 @@ export const useExplorerStore = defineStore('explorer', () => {
     setFocused,
     onChanged,
     create,
+    rename,
+    trash,
     clearStatus,
   }
 })

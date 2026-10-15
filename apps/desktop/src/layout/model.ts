@@ -59,7 +59,9 @@ interface Entry {
   diskChecked: boolean
 }
 
-type Resolved = { target: ModelTarget; name: string } | { reason: 'no-gradle' | 'no-app' }
+type Resolved = { target: ModelTarget; name: string; library?: LibraryLink } | { reason: 'no-gradle' | 'no-app' }
+
+const PREFS_FILE = 'preferred-apps.json'
 
 const REFRESH_TIMEOUT_MS = 5 * 60_000
 const RES_DEBOUNCE_MS = 300
@@ -78,33 +80,97 @@ function accessorOf(modulePath: string): string {
   return `projects.${modulePath.replace(/^:/, '').split(':').map(camel).join('.')}`
 }
 
-/** True when the app's build script names the library: `project(":lib")` or the type-safe accessor. */
-export function dependsOn(buildScript: string, libPath: string): boolean {
-  const text = stripComments(buildScript)
+function depMatcher(libPath: string): (strippedScript: string) => boolean {
   const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  if (new RegExp(`project\\s*\\(\\s*(?:path\\s*[:=]\\s*)?["']${esc(libPath)}["']`).test(text)) return true
-  return new RegExp(`\\b${esc(accessorOf(libPath))}\\b(?!\\.)`).test(text)
+  const byPath = new RegExp(`project\\s*\\(\\s*(?:path\\s*[:=]\\s*)?["']${esc(libPath)}["']`)
+  const byAccessor = new RegExp(`\\b${esc(accessorOf(libPath))}\\b(?!\\.)`)
+  return (text) => byPath.test(text) || byAccessor.test(text)
 }
 
-/**
- * Module whose model serves a layout: its own module when that is an app; for a library, the app whose build
- * script references it, else the first app of the Gradle root (the init script only runs on app modules).
- */
-export async function pickModule(project: AndroidProject, file: string, platform: NodeJS.Platform = process.platform): Promise<string | null> {
-  let owner: AndroidModule | null = null
-  for (const m of project.modules) if (isWithin(m.dir, file, platform) && (!owner || m.dir.length > owner.dir.length)) owner = m
-  const apps = project.modules.filter(isApp)
-  if (owner && isApp(owner)) return owner.path
-  if (!apps.length) return null
-  if (owner) {
-    for (const app of apps) {
+/** True when the app's build script names the library: `project(":lib")` or the type-safe accessor. */
+export function dependsOn(buildScript: string, libPath: string): boolean {
+  return depMatcher(libPath)(stripComments(buildScript))
+}
+
+/** Module → project modules its build script names (direct edges only). */
+async function scriptGraph(project: AndroidProject): Promise<Map<string, string[]>> {
+  const matchers = project.modules.map((m) => ({ path: m.path, test: depMatcher(m.path) }))
+  const graph = new Map<string, string[]>()
+  await Promise.all(
+    project.modules.map(async (m) => {
+      let text: string | null = null
       for (const name of ['build.gradle.kts', 'build.gradle']) {
-        const text = await fs.readFile(path.join(app.dir, name), 'utf8').catch(() => null)
-        if (text !== null && dependsOn(text, owner.path)) return app.path
+        text = await fs.readFile(path.join(m.dir, name), 'utf8').catch(() => null)
+        if (text !== null) break
+      }
+      const stripped = text === null ? '' : stripComments(text)
+      graph.set(m.path, stripped ? matchers.filter((o) => o.path !== m.path && o.test(stripped)).map((o) => o.path) : [])
+    }),
+  )
+  return graph
+}
+
+function reaches(graph: Map<string, string[]>, from: string, to: string): boolean {
+  const seen = new Set([from])
+  const queue = [from]
+  while (queue.length) {
+    for (const next of graph.get(queue.shift()!) ?? []) {
+      if (next === to) return true
+      if (!seen.has(next)) {
+        seen.add(next)
+        queue.push(next)
       }
     }
   }
-  return apps[0]!.path
+  return false
+}
+
+/** A library layout renders with an app's model: `candidates` are the apps that depend on it (sorted). */
+export interface LibraryLink {
+  module: string
+  candidates: string[]
+  /** False: no app depends on the library, the model is borrowed from an unrelated app. */
+  linked: boolean
+}
+
+export interface ModulePick {
+  module: string
+  library?: LibraryLink
+}
+
+export interface PickOpts {
+  platform?: NodeJS.Platform
+  /** App last used for preview / run in this Gradle root. */
+  preferred?: string | null
+  /** Project deps from the app's cached Gradle model (catches deps a convention plugin adds). */
+  modelDeps?: (app: string) => Promise<readonly string[] | null>
+}
+
+/**
+ * Module whose model serves a layout: its own module when that is an app (the init script only runs on app modules);
+ * for a library, an app depending on it directly or transitively (preferred one, else the first by path), else the
+ * preferred / first app of the Gradle root.
+ */
+export async function pickModule(project: AndroidProject, file: string, opts: PickOpts = {}): Promise<ModulePick | null> {
+  const platform = opts.platform ?? process.platform
+  let owner: AndroidModule | null = null
+  for (const m of project.modules) if (isWithin(m.dir, file, platform) && (!owner || m.dir.length > owner.dir.length)) owner = m
+  const apps = project.modules.filter(isApp)
+  if (owner && isApp(owner)) return { module: owner.path }
+  if (!apps.length) return null
+  const preferredApp = apps.find((a) => a.path === opts.preferred)?.path
+  if (!owner) return { module: preferredApp ?? apps[0]!.path }
+  const lib = owner.path
+  const graph = await scriptGraph(project)
+  const candidates: string[] = []
+  for (const app of apps) {
+    const deps = (await opts.modelDeps?.(app.path).catch(() => null)) ?? []
+    if (deps.includes(lib) || reaches(graph, app.path, lib)) candidates.push(app.path)
+  }
+  candidates.sort()
+  if (!candidates.length) return { module: preferredApp ?? apps[0]!.path, library: { module: lib, candidates, linked: false } }
+  const module = candidates.includes(opts.preferred ?? '') ? opts.preferred! : candidates[0]!
+  return { module, library: { module: lib, candidates, linked: true } }
 }
 
 export async function findGradleRoot(file: string): Promise<string | null> {
@@ -176,6 +242,7 @@ export class LayoutModelService {
   private resPending = new Set<string>()
   private resTimer: ReturnType<typeof setTimeout> | null = null
   private resSlow = false
+  private prefsLoad: Promise<Map<string, string>> | null = null
 
   constructor(private readonly deps: ModelServiceDeps) {}
 
@@ -202,11 +269,52 @@ export class LayoutModelService {
     const project = root ? await analyzeGradleRoot(root).catch(() => null) : null
     if (!root || !project) value = { reason: 'no-gradle' }
     else {
-      const module = await pickModule(project, file, this.deps.platform)
-      value = module ? { target: { root, module }, name: project.name } : { reason: 'no-app' }
+      const pick = await pickModule(project, file, {
+        platform: this.deps.platform,
+        preferred: (await this.prefs()).get(rootKey(root, this.deps.platform)) ?? null,
+        modelDeps: async (app) => {
+          const e = this.entry({ root, module: app })
+          await this.loadDisk(e)
+          return e.model?.projectDeps ?? null
+        },
+      })
+      value = pick ? { target: { root, module: pick.module }, name: project.name, ...(pick.library ? { library: pick.library } : {}) } : { reason: 'no-app' }
     }
     this.resolved.set(dirKey, { at: this.now(), value })
     return value
+  }
+
+  /** Last app used for preview / run per Gradle root; persisted so a library layout reopens with the same app. */
+  private prefs(): Promise<Map<string, string>> {
+    this.prefsLoad ??= fs
+      .readFile(path.join(this.deps.modelsDir, PREFS_FILE), 'utf8')
+      .then((text) => {
+        const raw = JSON.parse(text) as unknown
+        const out = new Map<string, string>()
+        if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw)) if (typeof v === 'string') out.set(k, v)
+        return out
+      })
+      .catch(() => new Map<string, string>())
+    return this.prefsLoad
+  }
+
+  private async prefer(root: string, module: string): Promise<void> {
+    const prefs = await this.prefs()
+    const key = rootKey(root, this.deps.platform)
+    this.resolved.clear()
+    if (prefs.get(key) === module) return
+    prefs.set(key, module)
+    await fs.mkdir(this.deps.modelsDir, { recursive: true })
+    await fs.writeFile(path.join(this.deps.modelsDir, PREFS_FILE), JSON.stringify(Object.fromEntries(prefs)))
+  }
+
+  /** Model chip picker: render a library layout with another app that depends on it. */
+  async pickApp(file: string, module: string): Promise<LayoutModelInfo> {
+    const r = await this.resolve(file)
+    if ('target' in r && r.library?.candidates.includes(module)) {
+      await this.prefer(r.target.root, module).catch((err: unknown) => this.deps.log('warn', `preferred app: ${msg(err)}`))
+    }
+    return this.info(file)
   }
 
   private entry(target: ModelTarget, name?: string): Entry {
@@ -266,7 +374,7 @@ export class LayoutModelService {
     if (!('target' in r)) return { target: null, reason: r.reason, state: { state: 'none' }, hasModel: false, themes: [] }
     const e = this.entry(r.target, r.name)
     await this.loadDisk(e)
-    return { target: { ...e.target, name: e.name }, state: e.state, hasModel: !!e.model && !e.broken, themes: themesOf(e.model) }
+    return { target: { ...e.target, name: e.name }, ...(r.library ? { library: r.library } : {}), state: e.state, hasModel: !!e.model && !e.broken, themes: themesOf(e.model) }
   }
 
   /** Before each render: pending res changes flushed, the right project (or none) loaded. `key` changes with the model. */
@@ -411,6 +519,7 @@ export class LayoutModelService {
 
   /** Run pane: an Android (or Flutter-on-Android) session reached `running`, so the build outputs the init script reads are fresh. */
   afterBuild(root: string, module: string, variant: string): void {
+    void this.prefer(root, module).catch((err: unknown) => this.deps.log('warn', `preferred app: ${msg(err)}`))
     if (!this.deps.canRun()) return
     void this.refresh({ root, module }, variant)
   }
@@ -444,11 +553,13 @@ export class LayoutModelService {
       const args = projectModelArgs(module, out, this.deps.initScript, variant ?? e.variant)
       const spec = gradlewSpawn(root, args, platform, env)
       const gradleEnv: Record<string, string> = { ...(aenv.jdk ? { JAVA_HOME: aenv.jdk } : {}), ...(aenv.sdk ? { ANDROID_HOME: aenv.sdk } : {}) }
+      if (aenv.jdkNote) this.deps.log('info', `project model: ${aenv.jdkNote}`)
       this.deps.log('info', `project model: gradlew ${args.join(' ')} (in ${root})`)
       const started = this.now()
       const run = await this.runGradle(spec.file, spec.args, spec.verbatim, root, gradleEnv)
       if (run.timedOut) return fail('timeout')
-      if (run.code !== 0) return fail('gradle-failed', run.tail)
+      const incompatible = aenv.issues.find((i) => i.code === 'jdk-incompatible')
+      if (run.code !== 0) return incompatible ? fail(incompatible.code, incompatible.detail) : fail('gradle-failed', run.tail)
       const text = await fs.readFile(out, 'utf8').catch(() => null)
       if (text === null) return fail('no-output')
       let parsed: ParsedProjectModel
@@ -465,6 +576,8 @@ export class LayoutModelService {
       e.variant = parsed.variant
       e.at = this.now()
       e.broken = false
+      // New projectDeps may change which app a library layout borrows.
+      this.resolved.clear()
       this.setState(e, this.ready(e))
       await this.serial(async () => {
         if (this.loadedKey !== e.key) {

@@ -23,6 +23,12 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('Digit2', { ctrlKey: true, altKey: true }, true), false, false)).toBeNull()
   })
 
+  it('maps Ctrl+Shift+O / Cmd+Shift+O to mission control', () => {
+    expect(workspaceAction(key('KeyO', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'mission' })
+    expect(workspaceAction(key('KeyO', { metaKey: true, shiftKey: true }), true, false)).toEqual({ t: 'mission' })
+    expect(workspaceAction(key('KeyO', { ctrlKey: true }), false, false)).toBeNull()
+  })
+
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })

@@ -1,4 +1,4 @@
-import { isTerm, primaryPaneKey, type Pane, type Tab } from '../stores/workspace'
+import { isTerm, primaryPaneKey, tabProject, type Pane, type Tab } from '../stores/workspace'
 import type { LayoutDraft, LayoutPane } from './projects'
 import { leaves } from './splitLayout'
 
@@ -22,13 +22,13 @@ function specOf(pane: Pane, resume: boolean): LayoutPane {
   return { kind: pane.kind === 'log' ? 'log' : 'changes', cwd: pane.root ?? pane.cwd }
 }
 
-/** Tabs whose naming pane belongs to the project, with split trees and ratios; no output, no prompts. */
+/** Tabs of the project (by `Tab.project`, seen as the naming pane's folder), with split trees and ratios; no output, no prompts. */
 export function captureLayout(tabs: readonly Tab[], panes: readonly Pane[], inProject: (pane: Pane) => boolean, opts: CaptureOptions): LayoutDraft | null {
   const byKey = new Map(panes.map((p) => [p.key, p]))
   const paneOf = (k: string): Pane | undefined => byKey.get(k)
   const picked = tabs.filter((t) => {
     const primary = paneOf(primaryPaneKey(t.root, paneOf))
-    return !!primary && inProject(primary)
+    return !!primary && inProject({ ...primary, cwd: tabProject(t, paneOf) })
   })
   const kept = picked.map((t) => ({ root: t.root, focus: t.focus }))
   if (!kept.length) return null

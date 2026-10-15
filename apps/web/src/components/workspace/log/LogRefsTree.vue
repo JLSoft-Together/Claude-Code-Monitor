@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronRight, Folder, GitBranch, Search, Star, Tag } from 'lucide-vue-next'
 import { refTree, type RefRow, type RefsOk } from '../../../lib/gitRefs'
 
-const props = defineProps<{ refs: RefsOk | null; branch: string | null }>()
-const emit = defineEmits<{ pick: [ref: string | null] }>()
+const props = defineProps<{ refs: RefsOk | null; branch: string | null; favorites: ReadonlySet<string>; view: { group: boolean; tags: boolean } }>()
+/** `pick` = click / Enter filters the log; `select` = the focused row, the Branches toolbar's target. */
+const emit = defineEmits<{ pick: [ref: string | null]; select: [row: RefRow | null] }>()
 const { t } = useI18n()
 const filter = ref('')
-const collapsed = ref<Set<string>>(new Set())
-const rows = computed(() => (props.refs ? refTree(props.refs, filter.value, collapsed.value) : []))
+const collapsed = defineModel<Set<string>>('collapsed', { required: true })
+const rows = computed(() => (props.refs ? refTree(props.refs, filter.value, collapsed.value, { favorites: props.favorites, group: props.view.group, tags: props.view.tags }) : []))
 const focusId = ref<string | null>(null)
 const tabId = computed(() => (rows.value.some((r) => r.id === focusId.value) ? focusId.value : rows.value[0]?.id))
+const searchEl = ref<HTMLInputElement | null>(null)
+
+watch([focusId, rows], () => emit('select', rows.value.find((r) => r.id === focusId.value) ?? null))
 
 function toggle(id: string): void {
   const next = new Set(collapsed.value)
@@ -54,13 +58,20 @@ function onKey(e: KeyboardEvent): void {
   else return
   e.preventDefault()
 }
+
+defineExpose({
+  focusSearch: (): void => {
+    searchEl.value?.focus()
+    searchEl.value?.select()
+  },
+})
 </script>
 
 <template>
   <div class="flex min-h-0 min-w-0 flex-col">
     <label class="m-1.5 flex h-6 items-center gap-1 rounded-inner bg-fill px-1.5 focus-within:ring-2 focus-within:ring-focus">
       <Search :size="12" class="shrink-0 text-ink-faint" aria-hidden="true" />
-      <input v-model="filter" type="search" class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-ink-faint" :placeholder="t('workspace.log.refs.search')" :aria-label="t('workspace.log.refs.search')" />
+      <input ref="searchEl" v-model="filter" type="search" class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-ink-faint" :placeholder="t('workspace.log.refs.search')" :aria-label="t('workspace.log.refs.search')" />
     </label>
     <div class="ccm-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-1" role="tree" :aria-label="t('workspace.log.refs.label')" data-log-refs @keydown="onKey">
       <p v-if="filter && rows.length <= 1" class="px-3 py-2 text-xs text-ink-faint">{{ t('workspace.log.refs.none') }}</p>
@@ -76,7 +87,7 @@ function onKey(e: KeyboardEvent): void {
         class="flex h-[22px] min-w-0 cursor-pointer items-center gap-1 rounded-inner pr-2 text-xs outline-none hover:bg-fill focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset"
         :class="[(r.kind === 'ref' && r.ref === branch) || (r.kind === 'section' && r.section === 'head' && branch === 'HEAD') ? 'bg-selection' : '', r.kind === 'section' ? 'font-semibold text-ink' : 'text-ink']"
         :style="{ paddingLeft: `${6 + r.depth * 14}px` }"
-        :title="r.kind === 'ref' ? r.name : undefined"
+        :title="r.kind === 'ref' ? [r.name, r.tracked ? t('workspace.log.refs.tracked') : ''].filter(Boolean).join(' · ') : undefined"
         :data-ref="r.kind === 'ref' ? r.ref : undefined"
         @focus="focusId = r.id"
         @click="focusId = r.id; activate(r)"
@@ -86,7 +97,7 @@ function onKey(e: KeyboardEvent): void {
         <template v-if="r.kind === 'ref'">
           <Tag v-if="r.refKind === 'tag'" :size="13" class="shrink-0 text-warning" aria-hidden="true" />
           <Tag v-else-if="r.current" :size="13" class="shrink-0 text-accent-ink" :aria-label="t('workspace.log.refs.current')" />
-          <Star v-else-if="r.tracked" :size="13" class="shrink-0 text-favorite" :aria-label="t('workspace.log.refs.tracked')" />
+          <Star v-else-if="r.favorite" :size="13" class="shrink-0 fill-current text-favorite" :aria-label="t('workspace.log.branches.favoriteMark')" />
           <GitBranch v-else :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
         </template>
         <span class="min-w-0 flex-1 truncate">{{ label(r) }}</span>

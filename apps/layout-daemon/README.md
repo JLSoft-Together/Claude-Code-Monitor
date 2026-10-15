@@ -86,11 +86,11 @@ Warm cache: projects loaded with a `projectId` stay in an access-order LRU of 3 
 Measured on a real app (AGP 8.10, Material 1.12, ConstraintLayout 2.2, 74 AAR/library res dirs, 180 classpath entries, 6117 R ids): `project/load` ≈ 1.1 s, warm render 100–320 ms (inflate 15–200 ms, PNG 50–95 ms).
 
 ### Gradle init script
-`init/ccm-project-model.gradle` (Groovy, AGP 8.x / Gradle 8.x, read-only: registers one help task, compiles nothing, writes only `-Pccm.out`):
+`init/ccm-project-model.gradle` (Groovy, AGP 8.x / Gradle 8.x; also verified on AGP 7.2.1 + Gradle 7.3.3 / 7.5 with JDK 17/18, where `runtimeConfiguration` falls back to the `<variant>RuntimeClasspath` configuration and `minSdk` to `minSdkVersion`; read-only: registers one help task, compiles nothing, writes only `-Pccm.out`):
 ```sh
 <project>/gradlew -q --init-script <abs>/ccm-project-model.gradle :app:ccmProjectModel -Pccm.out=<abs>/model.json [-Pccm.variant=debug]
 ```
-Output (one module): `version, module, projectDir, variant, namespace, applicationId, minSdk, targetSdk, compileSdk, resDirs[], generatedResDirs[], aarRes[{dir, package, name}], classpath[], classDirs[], rJar, manifest, appTheme, activityThemes{}, warnings[]`.
+Output (one module): `version, module, projectDir, variant, namespace, applicationId, minSdk, targetSdk, compileSdk, resDirs[], generatedResDirs[], aarRes[{dir, package, name}], classpath[], classDirs[], projectDeps[] (project modules on the runtime classpath, transitive), rJar, manifest, appTheme, activityThemes{}, warnings[]`.
 Sources: variant API (`androidComponents.onVariants`: namespace, applicationId, min/targetSdk, `runtimeConfiguration` artifact views `android-classes-jar` / `android-res` / `android-symbol-with-package-name`), compile task `destinationDirectory` for class dirs, `SingleArtifact.MERGED_MANIFEST`. Fallbacks (documented, AGP 8 paths): res source sets when `sources.res.all` refuses to read task outputs of this invocation (it always does when resValues exist); `process<V>Resources.rClassOutputJar` → `build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/<v>/process<V>Resources/R.jar`; merged manifest → `build/intermediates/merged_manifest/<v>/process<V>MainManifest/AndroidManifest.xml` → `src/main/AndroidManifest.xml`. Marked `notCompatibleWithConfigurationCache`. Takes ~6 s warm (~45 s on a cold Gradle cache).
 
 ### Tests

@@ -1,9 +1,38 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronRight, ChevronsDownUp, Eye, File, FileCode, FileImage, FileJson, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Link2, RotateCw } from 'lucide-vue-next'
+import {
+  ChevronRight,
+  ChevronsDownUp,
+  ClipboardCopy,
+  Eye,
+  File,
+  FileCode,
+  FileImage,
+  FileJson,
+  FilePlus,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  GitCompare,
+  Link2,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  RotateCw,
+  SquareSplitHorizontal,
+  SquareTerminal,
+  Trash2,
+} from 'lucide-vue-next'
+import ContextMenu from '../ui/ContextMenu.vue'
 import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMarks } from '../../lib/changesView'
+import { hasRun } from '../../lib/desktop'
+import { explorerKey, explorerMenu, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { setDragPath } from '../../lib/explorer/dragPath'
+import { findAction, isSeparator, type MenuEntry } from '../../lib/menu'
+import { isMac } from '../../lib/platform'
 import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
 import { useExplorerStore } from '../../stores/explorer'
@@ -13,12 +42,16 @@ const props = defineProps<{
   activePath: string | null
   /** Git status of the project: names coloured by kind, folders above changes marked. */
   git?: GitMarks | null
+  /** The project is a git repo: the row menu shows Git ▸ Show Diff. */
+  repo?: boolean
 }>()
 const emit = defineEmits<{
   open: [path: string, keep: boolean]
   /** Ctrl+D (⌘⌥D) on a changed file. */
   openDiff: [path: string]
   create: [kind: 'file' | 'directory']
+  /** Row context menu / shortcut. */
+  action: [id: ExplorerAction, row: TreeRow]
 }>()
 
 const { t } = useI18n()
@@ -94,7 +127,61 @@ function activate(row: TreeRow, index: number, keep = false): void {
   } else emit('open', row.path, keep)
 }
 
+const MENU_ICONS: Partial<Record<string, typeof File>> = {
+  new: Plus,
+  'copy-ref': ClipboardCopy,
+  rename: Pencil,
+  trash: Trash2,
+  'open-split': SquareSplitHorizontal,
+  'open-in': FolderOpen,
+  terminal: SquareTerminal,
+  run: Play,
+  git: GitCompare,
+  reload: RefreshCw,
+}
+const withIcons = (list: MenuEntry[]): MenuEntry[] => list.map((e) => (isSeparator(e) ? e : { ...e, icon: MENU_ICONS[e.id], children: e.children && withIcons(e.children) }))
+const menuFor = (row: TreeRow): MenuEntry[] => withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun }, (k) => t(k)))
+
+const menu = ref<{ at: DOMRect; row: TreeRow; trigger: HTMLElement | null } | null>(null)
+
+function openMenu(row: TreeRow, index: number, at: DOMRect, trigger: HTMLElement | null): void {
+  explorer.setFocused(index === 0 ? null : row.path)
+  menu.value = { at, row, trigger }
+}
+
+/** Windows fires a native `contextmenu` after the ContextMenu / Shift+F10 keydown that already opened the menu. */
+const KEY_MENU_ECHO_MS = 300
+let keyMenuAt = 0
+
+function onContextMenu(e: MouseEvent, row: TreeRow, index: number): void {
+  e.preventDefault()
+  if (menu.value && performance.now() - keyMenuAt < KEY_MENU_ECHO_MS) return
+  openMenu(row, index, new DOMRect(e.clientX, e.clientY, 0, 0), e.currentTarget as HTMLElement)
+}
+
+function onPick(id: string): void {
+  const row = menu.value?.row
+  if (row) emit('action', id as ExplorerAction, row)
+}
+
 function onKey(e: KeyboardEvent): void {
+  // Keys on a button inside a row (root actions) belong to that button.
+  const target = e.target as HTMLElement
+  if (target !== scroller.value && target.getAttribute('role') !== 'treeitem') return
+  const shortcut = explorerKey(e, isMac)
+  if (shortcut) {
+    const i = focusIndex.value
+    const row = rows.value[i]
+    if (!row) return
+    e.preventDefault()
+    if (shortcut === 'menu') {
+      const el = scroller.value?.querySelector<HTMLElement>(`[data-row-index="${i}"]`) ?? null
+      const r = el?.getBoundingClientRect()
+      keyMenuAt = performance.now()
+      openMenu(row, i, r ? new DOMRect(r.left + 24, r.bottom, 0, 0) : new DOMRect(0, 0, 0, 0), el)
+    } else if (!findAction(menuFor(row), shortcut)?.disabled) emit('action', shortcut, row)
+    return
+  }
   if (isShowDiffKey(e)) {
     const row = rows.value[focusIndex.value]
     if (row && gitKind(row)) {
@@ -104,7 +191,6 @@ function onKey(e: KeyboardEvent): void {
     return
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return
-  if ((e.target as HTMLElement).closest('[data-root-action]')) return
   const i = focusIndex.value
   const row = rows.value[i]
   if (!row) return
@@ -227,6 +313,7 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           @focus="explorer.setFocused(index === 0 ? null : row.path)"
           @click="activate(row, index)"
           @dblclick="!row.directory && emit('open', row.path, true)"
+          @contextmenu="onContextMenu($event, row, index)"
         >
           <span class="inline-flex w-3.5 shrink-0 justify-center" aria-hidden="true">
             <ChevronRight
@@ -283,5 +370,14 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
       <p v-if="loading" class="px-3 py-2 text-xs text-ink-muted" role="status">{{ t('workspace.explorer.loading') }}</p>
       <p v-else-if="empty" class="px-3 py-2 text-xs text-ink-faint">{{ t('workspace.explorer.empty') }}</p>
     </div>
+    <ContextMenu
+      v-if="menu"
+      :at="menu.at"
+      :entries="menuFor(menu.row)"
+      :label="t('workspace.explorer.menu.label', { name: menu.row.name })"
+      :trigger="menu.trigger"
+      @pick="onPick"
+      @close="menu = null"
+    />
   </div>
 </template>

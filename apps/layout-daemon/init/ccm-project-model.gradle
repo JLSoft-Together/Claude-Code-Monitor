@@ -38,7 +38,7 @@ allprojects { p ->
 
                 def namespace = safe('namespace') { v.namespace.get() }
                 def applicationId = safe('applicationId') { v.applicationId.get() }
-                def minSdk = safe('minSdk') { apiLevel(v.minSdk) }
+                def minSdk = safe('minSdk') { apiLevel(v.hasProperty('minSdk') ? v.minSdk : v.minSdkVersion) }
                 def targetSdk = safe('targetSdk') {
                     def ts = v.hasProperty('targetSdk') ? v.targetSdk : v.targetSdkVersion
                     apiLevel(ts)
@@ -68,7 +68,11 @@ allprojects { p ->
                     }
                 }
 
-                def runtime = v.runtimeConfiguration
+                // Component.runtimeConfiguration is AGP 7.3+; older AGP names the same configuration <variant>RuntimeClasspath.
+                def runtime = null
+                try { runtime = v.runtimeConfiguration } catch (Throwable ignored) { }
+                if (runtime == null) runtime = p.configurations.findByName("${v.name}RuntimeClasspath")
+                if (runtime == null) throw new GradleException("ccmProjectModel: no runtime classpath for variant '${v.name}' in ${p.path}")
                 def view = { String type ->
                     runtime.incoming.artifactView { av ->
                         av.lenient(true)
@@ -98,6 +102,15 @@ allprojects { p ->
                 safe('android-classes-jar') { view('android-classes-jar').artifacts.each { a -> classpath << a.file.absolutePath } }
                 if (classpath.isEmpty()) {
                     safe('jar') { view('jar').artifacts.each { a -> classpath << a.file.absolutePath } }
+                }
+
+                // Lets the preview borrow this app's model for layouts of the library modules it pulls in.
+                def projectDeps = new LinkedHashSet<String>()
+                safe('project deps') {
+                    runtime.incoming.resolutionResult.allComponents.each { c ->
+                        def id = c.id
+                        if (id instanceof org.gradle.api.artifacts.component.ProjectComponentIdentifier && id.projectPath != p.path) projectDeps << id.projectPath
+                    }
                 }
 
                 def classDirs = new LinkedHashSet<String>()
@@ -176,6 +189,7 @@ allprojects { p ->
                     aarRes        : aarRes,
                     classpath     : classpath as List,
                     classDirs     : classDirs as List,
+                    projectDeps   : projectDeps as List,
                     rJar          : rJar,
                     manifest      : manifest,
                     appTheme      : appTheme,

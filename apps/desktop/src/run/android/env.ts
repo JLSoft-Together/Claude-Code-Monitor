@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { AndroidEnv, EnvIssue } from '@ccm/shared'
 import { isWithin } from '../../preview/paths'
 import { cmdShim, quoteCmdArg } from '../resolve'
+import { chooseJdk, describeJdk } from './jdkPick'
 
 export interface EnvDeps {
   isFile(file: string): Promise<boolean>
@@ -13,6 +14,8 @@ export interface EnvDeps {
   /** Never through a shell; null when it could not start or timed out. */
   exec(file: string, args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string } | null>
   realpath?(file: string): Promise<string>
+  /** Subdirectory names; [] when missing. Without it, JDK discovery skips folder scans. */
+  listDirs?(dir: string): Promise<string[]>
 }
 
 export interface AndroidEnvOpts {
@@ -49,6 +52,10 @@ export const fsEnvDeps: EnvDeps = {
   },
   async mode(file) {
     return (await fs.stat(file).catch(() => null))?.mode ?? null
+  },
+  async listDirs(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    return entries.filter((d) => d.isDirectory() || d.isSymbolicLink()).map((d) => d.name)
   },
   exec(file, args, timeoutMs) {
     return new Promise((resolve) => {
@@ -155,9 +162,10 @@ export async function androidEnv(gradleRoot: string, opts: AndroidEnvOpts, deps:
     adb = await findOnPath(exe('adb', platform), env, platform, deps)
   }
 
-  let jdk: string | null = null
-  let java: string | null = null
-  for (const dir of [opts.jdkSetting, env.JAVA_HOME, studioJbr(platform, env)]) {
+  const choice = await chooseJdk(gradleRoot, { setting: opts.jdkSetting ?? null, env, platform, home: opts.home }, deps)
+  let jdk: string | null = choice.pick?.home ?? null
+  let java: string | null = jdk ? p.join(jdk, 'bin', exe('java', platform)) : null
+  for (const dir of java ? [] : [opts.jdkSetting, env.JAVA_HOME, studioJbr(platform, env)]) {
     if (!dir?.trim()) continue
     const file = p.join(dir.trim(), 'bin', exe('java', platform))
     if (await deps.isFile(file)) {
@@ -176,8 +184,10 @@ export async function androidEnv(gradleRoot: string, opts: AndroidEnvOpts, deps:
   } else if (java) {
     const out = await deps.exec(java, ['-version'], JAVA_TIMEOUT)
     jdkVersion = out ? parseJavaVersion(`${out.stderr}\n${out.stdout}`) : null
-    if (jdkVersion !== null && jdkVersion < MIN_JDK) issues.push({ code: 'jdk-old', detail: String(jdkVersion) })
+    if (jdkVersion !== null && jdkVersion < choice.minJdk) issues.push({ code: 'jdk-old', detail: String(jdkVersion) })
   } else issues.push({ code: 'jdk-missing' })
+  if (choice.issue) issues.push(choice.issue)
+  const jdkNote = describeJdk(choice, jdk, jdkVersion, platform)
 
   const wrapper = gradlewFile(gradleRoot, platform)
   const gradlew = await deps.isFile(wrapper)
@@ -187,7 +197,7 @@ export async function androidEnv(gradleRoot: string, opts: AndroidEnvOpts, deps:
     if (mode !== null && (mode & 0o111) === 0) issues.push({ code: 'gradlew-not-executable' })
   }
 
-  return { kind: 'android', sdk, adb, emulator, jdk, jdkVersion, gradlew, issues }
+  return { kind: 'android', sdk, adb, emulator, jdk, jdkVersion, gradlew, issues, ...(choice.gradle && jdkNote ? { jdkNote } : {}) }
 }
 
 export interface GradlewSpawn {

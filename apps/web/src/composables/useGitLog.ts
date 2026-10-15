@@ -1,9 +1,9 @@
-import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import type { CommitDetail, LogCommit, LogError } from '@ccm/shared'
 import { emptyGraph, extendGraph, flatRows, type GraphRow, type GraphState } from '../lib/commitGraph'
 import { samePath } from '../lib/changesView'
 import type { RefsOk } from '../lib/gitRefs'
-import { emptyFilters, graphMode, toQuery, type LogFilters } from '../lib/logQuery'
+import { emptyFilters, graphMode, hasFilters, toQuery, type LogFilters } from '../lib/logQuery'
 import { changesUnwatch, changesWatch, logCommit, logContains, logPage, logRefs, onChangesUpdated } from '../lib/preview'
 
 export type LogLoadError = LogError | 'unavailable'
@@ -32,6 +32,8 @@ export interface GitLog {
   setFilters(patch: Partial<LogFilters>): void
   contains(hash: string): Promise<string[] | null>
   refreshIfMoved(): Promise<void>
+  /** Navigate Log to a commit: clear filters if it is not listed, load pages until it is (at most `maxPages`), then select it. */
+  reveal(hash: string, maxPages?: number): Promise<boolean>
 }
 
 const DETAIL_CACHE = 50
@@ -192,7 +194,28 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
   }
 
   function setFilters(patch: Partial<LogFilters>): void {
-    filters.value = { ...filters.value, ...patch }
+    // A new branch filter ends Compare with Current unless the patch sets both.
+    filters.value = { ...filters.value, ...('branch' in patch && !('notRef' in patch) ? { notRef: null } : {}), ...patch }
+  }
+
+  async function reveal(hash: string, maxPages = 10): Promise<boolean> {
+    if (!commits.value.some((c) => c.hash === hash) && hasFilters(filters.value)) {
+      // A filter may hide the target for good: reload unfiltered now instead of after the debounce.
+      filters.value = emptyFilters()
+      await nextTick()
+      if (timer) clearTimeout(timer)
+      timer = null
+      await firstPage()
+    }
+    for (let i = 0; i <= maxPages; i++) {
+      if (commits.value.some((c) => c.hash === hash)) {
+        select(hash)
+        return true
+      }
+      if (!more.value || loading.value || loadingMore.value) return false
+      await loadMore()
+    }
+    return false
   }
 
   watch(
@@ -272,5 +295,5 @@ export function useGitLog(cwd: () => string, active: () => boolean, opts: { debo
 
   void reload()
 
-  return { root, refs, error, pageError, filters, commits, rows, mode, more, loading, loadingMore, selected, detail, detailLoading, authors, reload, loadMore, select, setFilters, contains, refreshIfMoved }
+  return { root, refs, error, pageError, filters, commits, rows, mode, more, loading, loadingMore, selected, detail, detailLoading, authors, reload, loadMore, select, setFilters, contains, refreshIfMoved, reveal }
 }

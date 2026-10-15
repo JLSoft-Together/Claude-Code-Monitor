@@ -101,6 +101,7 @@ const SDK_TARGET: Record<string, SdkTarget> = {
   'sdk-missing': 'androidSdk',
   'jdk-missing': 'jdk',
   'jdk-old': 'jdk',
+  'jdk-incompatible': 'jdk',
 }
 const sdkTargets = computed(() => [...new Set(envIssues.value.map((i) => SDK_TARGET[i.code]).filter((x): x is SdkTarget => !!x))])
 

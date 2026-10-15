@@ -145,19 +145,37 @@ async function main() {
     check('Ctrl+V of an image reaches Claude ([Image #N] bound)', viaKey)
     await shot('v25-09-attach-paste')
 
-    // Remove from the panel: the last one (cursor right after it) is erased in the prompt; then the rest in order.
+    // Backspace in the terminal (cursor after the last "[Image #N] "): the row leaves the tray.
+    const before = await evaluate(`${A}.live(${JSON.stringify(claudeKey)}).length`)
+    await evaluate(`document.querySelector('${pane} .xterm-helper-textarea').focus()`)
+    await key('Backspace', 'Backspace', 8, 0)
+    await key('Backspace', 'Backspace', 8, 0)
+    const afterBs = await waitFor(`${A}.live(${JSON.stringify(claudeKey)}).length === ${before - 1}`, 5000, 'backspace removed').catch(() => false)
+    check('Backspace in the terminal removes the tray row', afterBs, String(await evaluate(`JSON.stringify(${A}.live(${JSON.stringify(claudeKey)}).map((a) => a.token))`)))
+
+    // Remove from the panel in any order: always the FIRST row (not at the end of the prompt).
     let removed = 0
     for (let i = 0; i < 6; i++) {
-      const list = await evaluate(`${A}.list(${JSON.stringify(claudeKey)}).filter(a => a.state === 'inserted').map(a => a.id)`)
-      if (!list.length) break
-      const last = list.at(-1)
-      await evaluate(`document.querySelectorAll('${pane} [data-attachments] li[data-attachment=inserted] button')[${list.length - 1}].click()`)
-      const gone = await waitFor(`!${A}.list(${JSON.stringify(claudeKey)}).some(a => a.id === ${JSON.stringify(last)})`, 5000, 'removed').catch(() => false)
+      const first = await evaluate(`${A}.list(${JSON.stringify(claudeKey)}).find(a => a.state === 'inserted')?.id ?? null`)
+      if (!first) break
+      await evaluate(`document.querySelector('${pane} [data-attachments] li[data-attachment=inserted] button').click()`)
+      const gone = await waitFor(`!${A}.list(${JSON.stringify(claudeKey)}).some(a => a.id === ${JSON.stringify(first)})`, 6000, 'removed').catch(() => false)
       if (!gone) break
       removed++
     }
-    check('remove from panel erases them from the prompt', removed >= 3 && (await evaluate(`${A}.live(${JSON.stringify(claudeKey)}).length === 0`)), `removed ${removed}`)
+    check('remove from panel works in any order (first row each time)', removed >= 3 && (await evaluate(`${A}.live(${JSON.stringify(claudeKey)}).length === 0`)), `removed ${removed}`)
     await shot('v25-10-attach-removed')
+
+    // Erasing a mention one Backspace at a time leaves no ghost rows.
+    await evaluate(`${A}.add(${JSON.stringify(claudeKey)}, [{ kind: 'file', name: 'CLAUDE.md', source: 'pick', path: ${JSON.stringify(path.join(REPO, 'CLAUDE.md'))} }], true)`)
+    await waitFor(`${A}.live(${JSON.stringify(claudeKey)}).some(a => a.token === '@CLAUDE.md' && a.seen)`, 10000, 'mention in').catch(() => {})
+    await evaluate(`document.querySelector('${pane} .xterm-helper-textarea').focus()`)
+    for (let i = 0; i < '@CLAUDE.md '.length; i++) {
+      await key('Backspace', 'Backspace', 8, 0)
+      await sleep(60)
+    }
+    await sleep(600)
+    check('no ghost rows while a mention is erased', await evaluate(`${A}.live(${JSON.stringify(claudeKey)}).length === 0`), String(await evaluate(`JSON.stringify(${A}.live(${JSON.stringify(claudeKey)}).map((a) => a.token))`)))
   } catch (err) {
     check('script error', false, String(err?.message ?? err))
     await app.shot('v25-error').catch(() => {})

@@ -5,9 +5,11 @@ import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 import diff from './workspace-diff'
 import log from './workspace-log'
+import rail from './workspace-rail'
 import v28 from './extensions-v28'
 import run from './run-v31'
 import layout from './layout-v32'
+import fwp from './flutter-preview-v40'
 
 export default {
   ...v25.en,
@@ -15,6 +17,7 @@ export default {
   ...v28.en,
   ...run.en,
   ...layout.en,
+  ...fwp.en,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Skip to content',
@@ -33,6 +36,7 @@ export default {
     ...explorer.en,
     ...diff.en,
     ...log.en,
+    ...rail.en,
     tabs: 'Terminals',
     newLabel: 'New tab',
     close: 'Close terminal',
@@ -109,6 +113,7 @@ export default {
       title: 'Projects',
       toggle: 'Show or hide projects',
       home: 'Home folder',
+      panel: 'sidebar',
       waiting: '{n} waiting for you | {n} waiting for you',
     },
     attention: {
@@ -484,8 +489,9 @@ export default {
       wsSplitDown: 'Split the pane downward',
       wsClose: 'Close the focused pane',
       wsAttention: 'Jump to the next pane that needs you',
-      wsCycle: 'Next tab (add Shift to go back)',
-      wsTab: 'Go to tab 1 to 9',
+      wsCycle: 'Next tab of this project (add Shift to go back)',
+      wsTab: 'Tab 1–9 of this project',
+      wsMission: 'Mission Control: every tab of every project',
       wsFocus: 'Move focus to the pane beside it',
       wsQuickOpen: 'Go to file in the project',
       wsExplorer: 'Show the file explorer',

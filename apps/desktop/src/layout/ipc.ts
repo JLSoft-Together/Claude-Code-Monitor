@@ -46,7 +46,7 @@ export interface LayoutIpc {
   model: LayoutModelService | null
 }
 
-const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render', 'ccm:layout-model-status', 'ccm:layout-model-refresh']
+const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render', 'ccm:layout-model-status', 'ccm:layout-model-refresh', 'ccm:layout-model-pick']
 const RENDER_CACHE = 32
 const MAX_SLOT = 3
 
@@ -245,6 +245,14 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     const file = await gateFile(event, req)
     if (!file) return null
     return model ? model.refreshFile(file).catch(() => noModel) : noModel
+  })
+
+  // Library layout: which dependent app's model to borrow (validated against the candidates in the service).
+  ipcMain.handle('ccm:layout-model-pick', async (event, req: unknown): Promise<LayoutModelInfo | null> => {
+    const file = await gateFile(event, req)
+    const module = ((req ?? {}) as Record<string, unknown>).module
+    if (!file || typeof module !== 'string' || module.length > 300) return null
+    return model ? model.pickApp(file, module).catch(() => noModel) : noModel
   })
 
   ipcMain.handle('ccm:layout-status', async (event): Promise<LayoutStatus | null> => {

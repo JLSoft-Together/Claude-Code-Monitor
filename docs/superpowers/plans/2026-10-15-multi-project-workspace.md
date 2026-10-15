@@ -283,7 +283,7 @@ describe('tab project', () => {
     ws.openLayout({ project: 'C:\\work\\web', panes: { x: { kind: 'term', preset: 'shell', cwd: 'C:\\work\\web\\src' } }, tabs: [{ root: { pane: 'x' } }] })
     expect(ws.tabs.at(-1)!.project).toBe('C:\\work\\web')
   })
-  it('falls back to the primary pane folder for tabs saved before v31', () => {
+  it('falls back to the primary pane folder for tabs saved before v38', () => {
     const ws = useWorkspaceStore()
     const p = ws.open('shell', 'D:\\notes')
     const tab = { ...ws.tabOf(p.key)!, project: undefined }
@@ -315,7 +315,7 @@ export interface Tab {
   project?: string
 }
 
-/** A tab's project; tabs saved before v31 fall back to their naming pane's starting folder. */
+/** A tab's project; tabs saved before v38 fall back to their naming pane's starting folder. */
 export function tabProject(tab: Tab, paneOf: (key: string) => Pick<Pane, 'kind' | 'cwd'> | undefined): string | undefined {
   return tab.project ?? paneOf(primaryPaneKey(tab.root, paneOf))?.cwd
 }
@@ -1403,9 +1403,9 @@ export function buildAttentionList(clusters: readonly RailCluster[]) {
 
 **Files:**
 - Modify: `apps/web/src/lib/sidebarRows.ts` (delete `sideGroups`/`SideGroup` if unused; keep `projectOf`, `folderName`, `containingRoot`, `rowStatus`, `shellTitle`, `rowActivity`, `shortAge` still referenced) and `lib/tier2.test.ts` (drop `sideGroups` tests, they moved to `rail.test.ts`)
-- Modify: `.code_index/web.md` (new `## v31 multi-project` section: rail model/order/avatars/spaces/mission/attention, `useRail`, components, storage key, chord), `.code_index/desktop.md` (`ccm:project-root` → `common`), `.code_index/_meta.md` (1–2 lines), `docs/claude-code-integration.md` (new §11t: git common dir, snapshots stay in memory, no session text shown — ruling 2)
+- Modify: `.code_index/web.md` (new `## v38 multi-project` section: rail model/order/avatars/spaces/mission/attention, `useRail`, components, storage key, chord), `.code_index/desktop.md` (`ccm:project-root` → `common`), `.code_index/_meta.md` (1–2 lines), `docs/claude-code-integration.md` (new §11t: git common dir, snapshots stay in memory, no session text shown — ruling 2)
 - Modify: `apps/desktop/package.json` version `2.5.0` → `2.6.0`
-- Modify: `.planning/PLAN-v31-multi-project.md` status (done, commits, follow-ups)
+- Modify: `.planning/PLAN-v38-multi-project.md` status (done, commits, follow-ups)
 
 - [ ] **Step 1:** `rg "sideGroups" apps/web/src` → remove the dead export + its tests; `npm test -w @ccm/web`, `npm test -w @ccm/desktop`, `npm run typecheck` — all green.
 - [ ] **Step 2:** Full E2E: `npm run build -w @ccm/web && npm run build -w @ccm/desktop && npm run e2e -w @ccm/desktop` — `tier2.cjs`, `p6.cjs`, `split.cjs` (sidebar selectors `[data-side-row]`, `[data-side-head]` must still match) and `rail.cjs` all PASS; fix selectors in old scripts if the rail changed them.
@@ -1415,7 +1415,7 @@ export function buildAttentionList(clusters: readonly RailCluster[]) {
 
 ---
 
-## Deliberately not ported (record in `.planning/PLAN-v31-multi-project.md`)
+## Deliberately not ported (record in `.planning/PLAN-v38-multi-project.md`)
 
 - Session sentence / first prompt (ruling 2) — rows read the session name and state only.
 - Deck's slide animation between spaces (text ghost): our panes already own per-pane view-transition names; a stage slide would fight them. Revisit after M2 ships.

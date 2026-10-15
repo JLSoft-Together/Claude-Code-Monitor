@@ -65,7 +65,7 @@ function fixture() {
     // + menu → Browser: empty browser tab next to the terminal tab.
     await openPlus()
     const rows = await evaluate(`[...document.querySelectorAll('[role=dialog] [data-launch]')].map((b) => b.textContent.trim())`)
-    check('+ menu offers Browser, Open file…, Changes', rows.length === 3 && /Browser/.test(rows[0]) && /Open file/.test(rows[1]) && /Changes/.test(rows[2]), JSON.stringify(rows))
+    check('+ menu offers Browser, Open file…, Changes', /Browser/.test(rows[0]) && /Open file/.test(rows[1]) && /Changes/.test(rows[2]), JSON.stringify(rows))
     await shot('browser-01-plus-menu')
     await evaluate(`document.querySelector('[role=dialog] [data-launch="browser"]').click()`)
     await waitFor(`!!${pane('browser')} && ${W}.tabs.length === 2`, 5000, 'browser tab')

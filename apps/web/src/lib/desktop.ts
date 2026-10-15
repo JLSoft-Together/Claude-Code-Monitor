@@ -5,6 +5,9 @@ import type {
   ExtResult,
   ExtSourceRequest,
   ExtStatus,
+  FwpResult,
+  FwpScanResult,
+  FwpSnapshot,
   McpServerRow,
   PtyEndpoint,
   RunCommandPreview,
@@ -118,7 +121,17 @@ interface DesktopBridge {
   /** Project model (Gradle init script) state for the layout's app module; refresh runs the read-only task now. */
   layoutModelStatus?: (req: { file: string }) => Promise<LayoutModelInfo | null>
   layoutModelRefresh?: (req: { file: string }) => Promise<LayoutModelInfo | null>
+  /** Library layout: borrow the model of `module` (one of `library.candidates`). */
+  layoutModelPick?: (req: { file: string; module: string }) => Promise<LayoutModelInfo | null>
   onLayoutEvent?: (handler: (event: LayoutEvent) => void) => () => void
+  /** Flutter widget preview (v40): `@Preview` list + one `flutter run` host session on a mobile device. */
+  /** `withEntries: false` only finds the pubspec folder (toolbar button), no `lib/` walk. */
+  fwpScan?: (path: string, withEntries?: boolean) => Promise<FwpScanResult>
+  fwpStart?: (root: string, deviceId: string, flavor?: string | null) => Promise<FwpResult>
+  fwpShow?: (id: string) => Promise<FwpResult>
+  fwpStop?: () => Promise<FwpResult>
+  fwpGet?: () => Promise<FwpSnapshot | null>
+  onFwpState?: (handler: (snapshot: FwpSnapshot) => void) => () => void
 }
 
 /** Set by the Electron preload; absent in a plain browser, where terminals stay unavailable. */

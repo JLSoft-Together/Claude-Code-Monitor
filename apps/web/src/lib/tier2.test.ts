@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '../stores/workspace'
 import { captureLayout } from './layouts'
 import { recentScripts, rememberScript } from './projects'
-import { containingRoot, projectOf, rowActivity, rowStatus, shellTitle, shortAge, sideGroups } from './sidebarRows'
+import { containingRoot, projectOf, rowActivity, rowStatus, shellTitle, shortAge } from './sidebarRows'
 import { leaves } from './splitLayout'
 import { createStartGuard } from './startGuard'
 
@@ -14,20 +14,7 @@ beforeEach(() => {
 })
 
 describe('sidebar rows', () => {
-  it('groups panes by project root in tab order, folding worktrees and sub-folders', () => {
-    const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app')
-    const home = ws.open('shell')
-    const sub = ws.open('shell', 'C:\\work\\app\\packages\\ui')
-    const wt = ws.open('shell', 'C:\\work\\app-wt\\feature')
-    ws.split(home.key, 'row', { kind: 'browser', url: 'http://localhost:5173/' })
-    const roots: Record<string, string> = { 'C:\\work\\app\\packages\\ui': 'C:\\work\\app' }
-    const groups = sideGroups(ws.tabs, ws.panes, ws.activeKey, (d) => roots[d])
-    expect(groups.map((g) => g.name)).toEqual(['app', ''])
-    expect(groups[0]!.panes.map((p) => p.key)).toEqual([a.key, sub.key, wt.key])
-    expect(groups[1]!.root).toBeNull()
-    expect(groups[1]!.panes).toHaveLength(2)
-    expect(groups[1]!.active).toBe(true)
+  it('folds a `<repo>-wt/<branch>` folder back to its repo by name', () => {
     expect(projectOf('/home/me/repo-wt/fix/src')).toBe('/home/me/repo')
   })
 
@@ -154,16 +141,6 @@ describe('provisional project root', () => {
   it('never matches a sibling that only shares a name prefix', () => {
     expect(containingRoot('C:\\work\\app2', repos)).toBeUndefined()
     expect(containingRoot('C:\\work', repos)).toBeUndefined()
-  })
-
-  it('groups a new pane under the repo before its own lookup answers', () => {
-    const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app')
-    ws.open('shell', 'C:\\work\\app\\packages\\ui')
-    const known = new Map([['c:\\work\\app', 'C:\\work\\app']])
-    const rootOf = (dir: string): string | undefined => known.get(dir.toLowerCase()) ?? containingRoot(dir, known.values())
-    const groups = sideGroups(ws.tabs, ws.panes, ws.activeKey, rootOf)
-    expect(groups.map((g) => [g.name, g.panes.length])).toEqual([['app', 2]])
   })
 })
 

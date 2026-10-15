@@ -113,16 +113,18 @@ export interface WordMark {
 export const WORD_DIFF_LIMIT = 250_000
 
 const TOKEN = /\w+|\s+|[^\w\s]/gu
+const CHAR = /[\s\S]/gu
 
 /**
- * Changed words of a Modified block: LCS over word / space / symbol tokens of the whole block, so a word
- * moved to the next line still pairs up. Returns per-line column ranges for each side; null past the limit.
+ * Changed words (or characters) of a Modified block: LCS over word / space / symbol tokens of the whole block, so a
+ * word moved to the next line still pairs up. Returns per-line column ranges for each side; null past the limit.
  */
-export function wordDiff(oldLines: readonly string[], newLines: readonly string[]): { old: WordMark[][]; new: WordMark[][] } | null {
+export function wordDiff(oldLines: readonly string[], newLines: readonly string[], mode: 'words' | 'chars' = 'words'): { old: WordMark[][]; new: WordMark[][] } | null {
+  const re = mode === 'chars' ? CHAR : TOKEN
   const tok = (lines: readonly string[]) => {
     const out: { text: string; line: number; start: number }[] = []
     lines.forEach((text, line) => {
-      for (const m of text.matchAll(TOKEN)) out.push({ text: m[0], line, start: m.index })
+      for (const m of text.matchAll(re)) out.push({ text: m[0], line, start: m.index })
     })
     return out
   }
@@ -136,7 +138,8 @@ export function wordDiff(oldLines: readonly string[], newLines: readonly string[
   const bi = b.slice(head, b.length - tail)
   const n = ai.length
   const m = bi.length
-  if (n * m > WORD_DIFF_LIMIT) return null
+  // Chars mode has ~5× the tokens: a block too big for it can still get word marks.
+  if (n * m > WORD_DIFF_LIMIT) return mode === 'chars' ? wordDiff(oldLines, newLines, 'words') : null
 
   const keepA = new Uint8Array(n)
   const keepB = new Uint8Array(m)

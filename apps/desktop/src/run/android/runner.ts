@@ -320,10 +320,11 @@ export function androidRunnerFactory(deps: AndroidRunnerDeps = {}): RunnerFactor
         ...(env.sdk ? { ANDROID_HOME: env.sdk } : {}),
         ...cfg.env,
       }
+      if (env.jdkNote) hooks.log({ stream: 'build', text: env.jdkNote })
       hooks.log({ stream: 'build', text: `> gradlew ${androidGradleArgs(cfg, { ...vars, maskEnv: true }).join(' ')}` })
       const built = await gradle(spec.file, spec.args, spec.verbatim, gradleEnv)
       if (halted()) return
-      if (!built) return fail({ code: 'build' })
+      if (!built) return fail(env.issues.find((i) => i.code === 'jdk-incompatible') ?? { code: 'build' })
 
       const out = await findApk(await moduleDir(cwd, cfg.module), cfg.variant)
       if (halted()) return

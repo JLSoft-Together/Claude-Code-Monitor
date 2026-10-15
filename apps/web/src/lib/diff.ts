@@ -164,33 +164,3 @@ export function firstChangedLine(file: DiffFile): number | undefined {
   const h = file.hunks[0]
   return h ? Math.max(1, h.newStart) : undefined
 }
-
-export interface SideRow {
-  left?: DiffLine
-  right?: DiffLine
-}
-
-/** Pairs each run of deletions with the additions that follow it (GitHub-style split view). */
-export function sideBySide(hunk: DiffHunk): SideRow[] {
-  const rows: SideRow[] = []
-  let dels: DiffLine[] = []
-  let adds: DiffLine[] = []
-  const flush = (): void => {
-    const n = Math.max(dels.length, adds.length)
-    for (let i = 0; i < n; i++) rows.push({ left: dels[i], right: adds[i] })
-    dels = []
-    adds = []
-  }
-  for (const line of hunk.lines) {
-    if (line.type === 'del') {
-      if (adds.length) flush()
-      dels.push(line)
-    } else if (line.type === 'add') adds.push(line)
-    else {
-      flush()
-      if (line.type === 'ctx') rows.push({ left: line, right: line })
-    }
-  }
-  flush()
-  return rows
-}

@@ -161,7 +161,8 @@ describe.skipIf(!git)('git repo', () => {
     expect(eol.ok && eol.text).not.toContain('+line 10')
     expect(eol.ok && eol.text).toContain('+changed 2')
     expect(cleanDiffOptions({ context: 99, whitespace: 'rm -rf' })).toEqual({ context: 3, whitespace: 'none' })
-    expect(diffArgs({ whitespace: 'all-blank' })).toEqual(['-w', '--ignore-blank-lines'])
+    expect(diffArgs({ whitespace: 'all-blank' })).toEqual(['--histogram', '-w', '--ignore-blank-lines'])
+    expect(diffArgs({ context: 'full' })).toEqual(['--histogram', '-U1000000'])
     run('checkout', '--', 'src/a.ts')
   })
 

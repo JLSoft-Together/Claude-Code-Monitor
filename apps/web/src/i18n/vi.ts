@@ -6,9 +6,11 @@ import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
 import diff from './workspace-diff'
 import log from './workspace-log'
+import rail from './workspace-rail'
 import v28 from './extensions-v28'
 import run from './run-v31'
 import layout from './layout-v32'
+import fwp from './flutter-preview-v40'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -16,6 +18,7 @@ const vi: typeof en = {
   ...v28.vi,
   ...run.vi,
   ...layout.vi,
+  ...fwp.vi,
   app: {
     title: 'Agent Monitor',
     skipToContent: 'Tới nội dung chính',
@@ -34,6 +37,7 @@ const vi: typeof en = {
     ...explorer.vi,
     ...diff.vi,
     ...log.vi,
+    ...rail.vi,
     tabs: 'Terminal',
     newLabel: 'Tab mới',
     close: 'Đóng terminal',
@@ -110,6 +114,7 @@ const vi: typeof en = {
       title: 'Dự án',
       toggle: 'Ẩn hoặc hiện danh sách dự án',
       home: 'Thư mục home',
+      panel: 'thanh bên',
       waiting: '{n} đang chờ bạn',
     },
     attention: {
@@ -485,8 +490,9 @@ const vi: typeof en = {
       wsSplitDown: 'Chia pane xuống dưới',
       wsClose: 'Đóng pane đang chọn',
       wsAttention: 'Tới pane tiếp theo đang cần bạn',
-      wsCycle: 'Tab kế tiếp (thêm Shift để lùi)',
-      wsTab: 'Tới tab 1 đến 9',
+      wsCycle: 'Tab kế tiếp của dự án này (thêm Shift để lùi)',
+      wsTab: 'Tab 1–9 của dự án này',
+      wsMission: 'Mission Control: mọi tab của mọi dự án',
       wsFocus: 'Chuyển sang pane bên cạnh',
       wsQuickOpen: 'Mở nhanh tệp trong dự án',
       wsExplorer: 'Hiện cây thư mục (Explorer)',

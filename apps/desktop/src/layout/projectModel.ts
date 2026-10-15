@@ -19,11 +19,13 @@ export interface ParsedProjectModel {
   module: string
   variant: string
   payload: ProjectLoadPayload
+  /** Project modules on the app's runtime classpath (transitive), e.g. `[':core:ui']`. */
+  projectDeps: string[]
   /** Gradle-side warnings plus entries dropped here (relative, missing, over cap). */
   warnings: string[]
 }
 
-export const MODEL_CAPS = { resDirs: 64, aarResDirs: 1000, classpath: 4000, activityThemes: 500 } as const
+export const MODEL_CAPS = { resDirs: 64, aarResDirs: 1000, classpath: 4000, activityThemes: 500, projectDeps: 500 } as const
 
 const MODULE_RE = /^(:[A-Za-z0-9_.-]+)+$/
 const VARIANT_RE = /^[A-Za-z][A-Za-z0-9]*$/
@@ -117,7 +119,9 @@ export function parseProjectModel(
   if (minSdk !== undefined) payload.minSdk = minSdk
   if (targetSdk !== undefined) payload.targetSdk = targetSdk
 
-  return { module: str(m.module) || ':app', variant: str(m.variant) || 'debug', payload, warnings }
+  const projectDeps = [...new Set(strings(m.projectDeps).filter((d) => MODULE_RE.test(d)))].slice(0, MODEL_CAPS.projectDeps)
+
+  return { module: str(m.module) || ':app', variant: str(m.variant) || 'debug', payload, projectDeps, warnings }
 }
 
 function str(v: unknown): string {

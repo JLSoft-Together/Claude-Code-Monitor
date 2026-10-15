@@ -75,7 +75,7 @@ describe('log parsers', () => {
 describe('log query', () => {
   it('keeps known values only', () => {
     const q = cleanLogQuery({ branch: 'refs/heads/main', author: ' Ann ', since: 10, until: 'x', text: '', regex: 1, matchCase: true, paths: ['src', '../etc', 5], skip: 1000.7 }, ROOT)
-    expect(q).toEqual({ branch: 'refs/heads/main', author: 'Ann', since: 10, until: null, text: null, regex: false, matchCase: true, paths: ['src'], skip: 1000 })
+    expect(q).toEqual({ branch: 'refs/heads/main', notRef: null, author: 'Ann', since: 10, until: null, text: null, regex: false, matchCase: true, paths: ['src'], skip: 1000 })
   })
 
   it('rejects branch values that are not refs', () => {
@@ -103,6 +103,19 @@ describe('log query', () => {
     expect(args).toContain('--author=A\\.B \\(x\\)')
     expect(args).toContain('--extended-regexp')
     expect(args).not.toContain('--regexp-ignore-case')
+  })
+})
+
+describe('notRef (Compare with Current)', () => {
+  it('excludes commits reachable from notRef', () => {
+    const q = cleanLogQuery({ branch: 'refs/heads/feature', notRef: 'HEAD' }, '/r')
+    expect(q.notRef).toBe('HEAD')
+    expect(logArgs(q).slice(-4)).toEqual(['refs/heads/feature', '--not', 'HEAD', '--'])
+  })
+  it('drops notRef without a branch or when invalid', () => {
+    expect(cleanLogQuery({ notRef: 'HEAD' }, '/r').notRef).toBeNull()
+    expect(cleanLogQuery({ branch: 'HEAD', notRef: '--all' }, '/r').notRef).toBeNull()
+    expect(cleanLogQuery({ branch: 'HEAD', notRef: 'HEAD' }, '/r').notRef).toBeNull()
   })
 })
 
