@@ -15,6 +15,7 @@ import { createFileLinkProvider, type LinkOpenOptions, type LinkTarget } from '.
 import { fontEntry, fontStack, SYSTEM_MONO } from '../../lib/fonts'
 import { duration, now, shortPath } from '../../lib/format'
 import type { MenuEntry } from '../../lib/menu'
+import { newlineFor } from '../../lib/termKeys'
 import { isHeadBlank, processChip, STATE_BADGE, suggestCompact, zoomKeys } from '../../lib/paneHead'
 import { contextPctOf } from '../../lib/provider'
 import { retireOverlay } from '../../lib/motion'
@@ -500,9 +501,10 @@ async function paste(textOnly: boolean): Promise<void> {
 
 function onKey(e: KeyboardEvent): boolean {
   if (e.type !== 'keydown') return true
-  // Ink (Claude Code) reads ESC+CR as a newline inside the prompt instead of submit.
-  if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    conn?.write('\x1b\r')
+  const newline = newlineFor(e, props.pane.preset)
+  if (newline) {
+    e.preventDefault()
+    conn?.write(newline)
     return false
   }
   // Plain Ctrl+F stays with the shell (readline forward-char).
