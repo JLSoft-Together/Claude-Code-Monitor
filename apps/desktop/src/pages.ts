@@ -3,7 +3,7 @@ import type { Strings } from './strings'
 
 export const RETRY_URL = 'ccm-desktop://retry'
 /** Until the wordmark has landed (STYLE `--text` + letters); a faster collector still waits for it. */
-export const INTRO_MS = 2300
+export const INTRO_MS = 2450
 /** `.out` leave animation before the dashboard replaces the page. */
 export const LEAVE_MS = 280
 export const LEAVE_SCRIPT = "document.documentElement.classList.add('out')"
@@ -40,7 +40,7 @@ const tokens = (look: Look | null | undefined): string =>
  */
 // Reduced motion, and the error page (same mark, no intro): the finished mark, nothing moves.
 const still = (scope: string): string => `
-  ${scope} :is(.stage, .mark, .ring, .part, .eye, .draw, .cursor, .word span, .bar, .status, .hint, .ver, body) { animation: none; }
+  ${scope} :is(.stage, .float, .mark, .ring, .part, .eye, .draw, .cursor, .word span, .bar, .status, .hint, .ver, body) { animation: none; }
   ${scope} .draw { opacity: 1; stroke-dashoffset: 0; }
   ${scope} :is(.part, .eye, .cursor) { opacity: 1; transform: none; }
   ${scope} .caret { animation: none; opacity: 0; }
@@ -53,41 +53,44 @@ html:not(.static) body { overflow: hidden; }
 body { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--canvas); color: var(--ink);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased; }
-main { width: 100%; max-width: 560px; display: grid; gap: 12px; justify-items: center; text-align: center; }
-:root { --settle: 1500ms; --text: 1680ms; --after: calc(var(--text) + var(--n) * 32ms); }
-.stage { position: relative; width: 72px; height: 72px; animation: settle .6s cubic-bezier(.65,0,.35,1) var(--settle) both; }
-.mark { width: 72px; height: 72px; border-radius: 17px; display: block; overflow: hidden;
-  box-shadow: 0 1px 2px rgb(0 0 0 / .18), 0 10px 30px rgb(0 0 0 / .16); animation: tile .45s cubic-bezier(.34,1.4,.64,1) both; }
-.ring { position: absolute; inset: 0; border-radius: 17px; border: 1.5px solid #E8915A; opacity: 0; pointer-events: none;
-  animation: ring .7s cubic-bezier(.2,.8,.2,1) 1400ms forwards; }
+main { width: 100%; max-width: 760px; display: grid; gap: 16px; justify-items: center; text-align: center; }
+:root { --settle: 1500ms; --text: 1680ms; --step: 40ms; --after: calc(var(--text) + var(--n) * var(--step));
+  --mark: clamp(96px, 17vmin, 148px); --radius: calc(var(--mark) * .236); --word: clamp(34px, 6.4vmin, 56px); }
+.stage { position: relative; width: var(--mark); height: var(--mark); animation: settle .7s cubic-bezier(.65,0,.35,1) var(--settle) both; }
+.float { position: absolute; inset: 0; animation: float 4.6s ease-in-out calc(var(--settle) + 700ms) infinite; }
+.mark { width: var(--mark); height: var(--mark); border-radius: var(--radius); display: block; overflow: hidden;
+  box-shadow: 0 2px 4px rgb(0 0 0 / .18), 0 18px 48px rgb(0 0 0 / .18); animation: tile .5s cubic-bezier(.34,1.4,.64,1) both; }
+.ring { position: absolute; inset: 0; border-radius: var(--radius); border: 2px solid #E8915A; opacity: 0; pointer-events: none;
+  animation: ring .8s cubic-bezier(.2,.8,.2,1) 1400ms forwards; }
 .part { transform-box: fill-box; transform-origin: center; opacity: 0; animation: place .42s cubic-bezier(.34,1.45,.64,1) var(--at) forwards; }
 .eye { transform-box: fill-box; transform-origin: center; transform: scaleX(0);
   animation: light .26s cubic-bezier(.2,.8,.2,1) 1000ms forwards, wink 3.4s ease-in-out 2600ms infinite; }
 .draw { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .24s cubic-bezier(.65,0,.35,1) 1160ms forwards; }
 .cursor { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0);
   animation: grow .14s ease-out 1380ms forwards, blink 1.05s steps(1) 1600ms infinite; }
-.word { margin: 8px 0 0; font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; display: flex; align-items: baseline; }
+.word { margin: 14px 0 0; font-size: var(--word); line-height: 1.15; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; display: flex; align-items: baseline; }
 .word .ai { color: var(--brand); }
-.word span { display: inline-block; white-space: pre; animation: rise .42s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--text) + var(--i) * 32ms); }
-.caret { width: 2px; height: .9em; margin-left: 3px; align-self: center; border-radius: 1px; background: var(--accent);
+.word span { display: inline-block; white-space: pre; animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--text) + var(--i) * var(--step)); }
+.caret { width: 3px; height: .9em; margin-left: 4px; align-self: center; border-radius: 1.5px; background: var(--accent);
   animation: blink 1s steps(1) calc(var(--after) + 200ms) infinite both; }
-.bar { position: relative; width: 160px; height: 2px; margin-top: 10px; border-radius: 1px; overflow: hidden; background: var(--accent-soft);
-  animation: fade .3s ease-out calc(var(--after) + 300ms) both; }
-.bar::after { content: ""; position: absolute; inset: 0; width: 40%; border-radius: 1px; background: var(--accent); animation: slide 1.1s cubic-bezier(.45,0,.55,1) infinite; }
-.status { margin: 0; color: var(--muted); font-size: 13px; animation: fade .3s ease-out calc(var(--after) + 300ms) both; }
-.hint { margin: -8px 0 0; color: var(--faint); font-size: 12px; animation: fade .3s ease-out calc(var(--after) + 400ms) both; }
-.ver { position: fixed; bottom: 16px; left: 0; right: 0; margin: 0; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: center;
+.bar { position: relative; width: clamp(200px, 30vmin, 280px); height: 3px; margin-top: 18px; border-radius: 2px; overflow: hidden; background: var(--accent-soft);
+  animation: fade .35s ease-out calc(var(--after) + 300ms) both; }
+.bar::after { content: ""; position: absolute; inset: 0; width: 40%; border-radius: 2px; background: var(--accent); animation: slide 1.2s cubic-bezier(.45,0,.55,1) infinite; }
+.status { margin: 0; color: var(--muted); font-size: 15px; animation: fade .35s ease-out calc(var(--after) + 300ms) both; }
+.hint { margin: -10px 0 0; color: var(--faint); font-size: 13px; animation: fade .35s ease-out calc(var(--after) + 400ms) both; }
+.ver { position: fixed; bottom: 18px; left: 0; right: 0; margin: 0; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center;
   animation: fade .4s ease-out calc(var(--after) + 400ms) both; }
 .out body { animation: leave .28s cubic-bezier(.4,0,1,1) forwards; }
 @keyframes tile { from { opacity: 0; transform: scale(.55); } to { opacity: 1; transform: none; } }
-@keyframes settle { from { transform: translateY(64px) scale(1.6); } to { transform: none; } }
+@keyframes settle { from { transform: translateY(calc(var(--mark) * .8)) scale(1.55); } to { transform: none; } }
+@keyframes float { 0%, 100% { transform: none; } 50% { transform: translateY(calc(var(--mark) * -.045)); } }
 @keyframes place { from { opacity: 0; transform: var(--from); } 40% { opacity: 1; } to { opacity: 1; transform: none; } }
 @keyframes light { to { transform: none; } }
 @keyframes wink { 0%, 90%, 100% { transform: none; } 95% { transform: scaleY(.15); } }
 @keyframes draw { from { opacity: 1; } to { opacity: 1; stroke-dashoffset: 0; } }
 @keyframes grow { to { transform: none; } }
-@keyframes ring { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.45); } }
-@keyframes rise { from { opacity: 0; transform: translateY(8px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes ring { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
+@keyframes rise { from { opacity: 0; transform: translateY(.3em); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes leave { to { opacity: 0; transform: scale(.97); filter: blur(4px); } }
 @keyframes blink { 0%, 49% { opacity: 0; } 50%, 100% { opacity: 1; } }
@@ -112,7 +115,7 @@ const BG = '#16181D'
 const part = (x: number, y: number, w: number, h: number, rx: number, at: number, from: string): string =>
   `<rect class="part" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${INK}" style="--at:${at}ms; --from:${from}"/>`
 const MARK =
-  `<div class="stage" aria-hidden="true"><svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none"><rect width="1024" height="1024" fill="${BG}"/>` +
+  `<div class="stage" aria-hidden="true"><div class="float"><svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none"><rect width="1024" height="1024" fill="${BG}"/>` +
   part(388, 680, 108, 168, 40, 260, 'translateY(90px)') +
   part(528, 680, 108, 168, 40, 330, 'translateY(90px)') +
   part(348, 368, 328, 288, 52, 470, 'translateY(-120px) scaleY(.85)') +
@@ -122,7 +125,7 @@ const MARK =
   `<rect class="eye" x="448" y="240" width="128" height="36" rx="14" fill="#E8915A"/>` +
   `<path class="draw" pathLength="1" d="M430 462 492 512 430 562" stroke="${BG}" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>` +
   `<rect class="cursor" x="520" y="540" width="92" height="30" rx="10" fill="${BG}"/>` +
-  `</svg><i class="ring"></i></div>`
+  `</svg><i class="ring"></i></div></div>`
 
 const page = (title: string, body: string, look?: Look | null, n = 0, intro = true): string =>
   `data:text/html;charset=utf-8,${encodeURIComponent(
