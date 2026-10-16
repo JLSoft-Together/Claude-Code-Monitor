@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -32,8 +32,10 @@ import { afterRunTarget } from './layout/model'
 import { defaultSpawner } from './run/proc'
 import { RunManager } from './run/sessions'
 import { PtySupervisor } from './pty/supervisor'
+import { paneOpenResult, parseOpenLink, realDir, takeLinkSlot, type OpenLink } from './openLink'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
+import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
 const APP_ID = 'dev.ccm.monitor'
 const LEGACY_EXES = ['Claude Code Monitor.exe', 'Agent Monitor.exe']
@@ -86,6 +88,11 @@ let bridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
 let rootsCache: { at: number; dirs: string[] } | null = null
+const PANE_OPEN_MS = 5_000
+const linkOpens: number[] = []
+let linkQueue: Promise<void> = Promise.resolve()
+let linksReady = false
+let pendingLink: string | undefined
 
 function devUrlOf(argv: readonly string[]): URL | null {
   const raw = argv.find((a) => a.startsWith('--dev-url='))?.slice('--dev-url='.length)
@@ -108,7 +115,7 @@ const isAppUrl = (url: string): boolean => {
 }
 
 /** Gate for every privileged ccm:* handler: top-level app frame, and the collector on the port is ours. */
-const isAppFrame = (event: Electron.IpcMainInvokeEvent): boolean => {
+const isAppFrame = (event: Pick<Electron.IpcMainInvokeEvent, 'senderFrame'>): boolean => {
   const frame = event.senderFrame
   return !!frame && !frame.parent && isAppUrl(frame.url) && !!host?.ownsPort
 }
@@ -565,6 +572,44 @@ function paneHandles(terminalId: string): Promise<boolean> {
   })
 }
 
+function pageOpen(req: PaneOpenRequest): Promise<PaneOpenResult> {
+  const contents = mainWindow?.webContents
+  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
+    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
+      if (event.sender === contents && id === req.id && isAppFrame(event)) done(paneOpenResult(result))
+    }
+    const done = (result: PaneOpenResult): void => {
+      clearTimeout(timer)
+      ipcMain.removeListener('ccm:pane-open-reply', onReply)
+      resolve(result)
+    }
+    ipcMain.on('ccm:pane-open-reply', onReply)
+    contents.send('ccm:pane-open', req)
+  })
+}
+
+function openFromLink(raw: string): Promise<void> {
+  const link = parseOpenLink(raw, process.platform)
+  if (!link || !mainWindow || !takeLinkSlot(linkOpens, Date.now())) return Promise.resolve()
+  linkQueue = linkQueue.then(() => openLinkPane(link)).catch(() => undefined)
+  return linkQueue
+}
+
+async function openLinkPane(link: OpenLink): Promise<void> {
+  const win = mainWindow
+  if (!win) return
+  showMain()
+  const cwd = realDir(link.cwd)
+  if (!cwd) {
+    await dialog.showMessageBox(win, { type: 'warning', message: t.linkOpenBadFolder, detail: link.cwd })
+    return
+  }
+  const result = await pageOpen({ id: randomUUID(), preset: link.preset, cwd, resume: link.resume })
+  if (!result.ok) await dialog.showMessageBox(win, { type: 'warning', message: result.error === 'live' ? t.linkOpenLive : t.linkOpenFailed })
+}
+
 /** agent-monitor://focus?k=&t= and agent-monitor://snooze?k=&t=&m= from toast buttons (key checked by the collector). */
 async function openLink(raw: string): Promise<void> {
   let url: URL
@@ -574,6 +619,7 @@ async function openLink(raw: string): Promise<void> {
     return
   }
   if (url.protocol !== `${LINK_SCHEME}:` || !host?.ownsPort) return
+  if (url.hostname === 'open') return openFromLink(raw)
   const k = url.searchParams.get('k') ?? ''
   const terminalId = url.searchParams.get('t')
   if (url.hostname === 'snooze') {
@@ -595,7 +641,7 @@ async function openLink(raw: string): Promise<void> {
 const linkIn = (argv: readonly string[]): string | undefined => argv.find((a) => a.startsWith(`${LINK_SCHEME}://`))
 
 function registerLinks(): void {
-  if (IS_MAC || !app.isPackaged) return
+  if (!app.isPackaged) return
   app.setAsDefaultProtocolClient(LINK_SCHEME, PORTABLE_EXE ?? process.execPath, [])
 }
 
@@ -638,6 +684,8 @@ async function ready(): Promise<void> {
     origins: [...new Set([ORIGIN, PAGE_ORIGIN])],
     logFile: path.join(app.getPath('logs'), 'pty.log'),
     shellInitDir: path.join(DATA_DIR, 'shell-init'),
+    onOpen: pageOpen,
+    mcpConfig: path.join(DATA_DIR, 'golaim-mcp.json'),
   })
   // The token is the only gate on a shell; hand it out to top-level app frames only.
   // Any other process that grabbed the port serves its own page: no shell for it.
@@ -892,7 +940,9 @@ async function ready(): Promise<void> {
   createTray()
   mainWindow = createMainWindow()
   await boot()
-  const first = linkIn(process.argv)
+  linksReady = true
+  const first = pendingLink ?? linkIn(process.argv)
+  pendingLink = undefined
   if (first) void openLink(first)
 }
 
@@ -908,6 +958,11 @@ if (!app.requestSingleInstanceLock()) {
     const link = linkIn(argv)
     if (link) void openLink(link)
     else showMain()
+  })
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    if (linksReady) void openLink(url)
+    else pendingLink = url
   })
   app.on('activate', showMain)
   app.on('web-contents-created', (_event, contents) => {

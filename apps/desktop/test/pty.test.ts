@@ -4,7 +4,7 @@ import { branchOfHead, isBranchName, isInside, parseWorktrees, worktreeDest } fr
 import { ownersOf, parsePidTable } from '../src/pty/owners'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
-import { BASH_PROMPT_COMMAND, childEnv, PS_CWD_HOOK, presetCommand, safeShell } from '../src/pty/presets'
+import { BASH_PROMPT_COMMAND, childEnv, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, presetCommand, safeShell } from '../src/pty/presets'
 import { writeShellInit, ZSH_FILES } from '../src/pty/shellInit'
 import { GrantStore, MAX_GRANTS } from '../src/preview/grants'
 
@@ -76,6 +76,47 @@ describe('presets', () => {
   it('keeps app and parent-agent variables out of the child', () => {
     const env = childEnv({ PATH: 'x', CCM_PTY_TOKEN: 't', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--x', CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 's', CLAUDE_CODE_USE_BEDROCK: '1' })
     expect(Object.keys(env).sort()).toEqual(['CLAUDE_CODE_USE_BEDROCK', 'COLORTERM', 'PATH', 'TERM'])
+  })
+
+  it('drops an inherited GolAIm API and token', () => {
+    const env = childEnv({ PATH: 'x', GOLAIM_API: 'http://127.0.0.1:1', GOLAIM_TOKEN: 't', golaim_mcp_config: '/x', GOLAIMX: '1' })
+    expect(Object.keys(env).sort()).toEqual(['COLORTERM', 'GOLAIMX', 'PATH', 'TERM'])
+  })
+
+  const uuid = '0b3c1f9e-1111-4222-8333-444455556666'
+
+  it('starts a new claude with session id, name and the MCP config last on Windows', () => {
+    const spec = presetCommand('claude', 'win32', { SystemRoot: 'C:\\Windows' }, undefined, undefined, { sessionId: uuid, name: 'Review bot', mcp: true })
+    expect(decodePs(spec.args[3]!)).toBe(`${PS_CWD_HOOK}; claude --session-id ${uuid} -n 'Review bot' --mcp-config $env:GOLAIM_MCP_CONFIG`)
+    const plain = presetCommand('claude', 'win32', {}, undefined, undefined, { sessionId: uuid })
+    expect(decodePs(plain.args[3]!).endsWith(`; claude --session-id ${uuid}`)).toBe(true)
+  })
+
+  it('keeps the MCP config path in the env on posix', () => {
+    const spec = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, undefined, undefined, { sessionId: uuid, name: 'Tầng 2', mcp: true })
+    expect(spec.args[3]).toBe(`claude --session-id ${uuid} -n 'Tầng 2' --mcp-config "$GOLAIM_MCP_CONFIG"; exec /bin/bash -l`)
+  })
+
+  it('drops a bad name or session id and lets resume win', () => {
+    const bad = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, undefined, undefined, { sessionId: 'nope', name: "a'b" })
+    expect(bad.args[3]).toBe('claude; exec /bin/bash -l')
+    const resumed = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, uuid, undefined, { sessionId: '11111111-2222-4333-8444-555566667777', name: 'x', mcp: true })
+    expect(resumed.args[3]).toBe(`claude --resume ${uuid} --mcp-config "$GOLAIM_MCP_CONFIG"; exec /bin/bash -l`)
+    const codex = presetCommand('codex', 'win32', {}, undefined, undefined, { sessionId: uuid, name: 'x', mcp: true })
+    expect(decodePs(codex.args[3]!).endsWith('; codex')).toBe(true)
+    const shell = presetCommand('shell', 'win32', {}, undefined, undefined, { mcp: true })
+    expect(decodePs(shell.args[3]!)).toBe(PS_CWD_HOOK)
+  })
+
+  it('accepts only plain pane names', () => {
+    for (const ok of ['Review bot', 'api-v2.1', 'Tầng_2', 'a'.repeat(40)]) expect(isPaneName(ok)).toBe(true)
+    for (const bad of ['', ' lead', 'trail ', "it's", 'a"b', 'a$b', 'a;b', 'a`b', 'a\nb', '-x', '--dangerously-skip-permissions', '.hidden', 'a'.repeat(41), 42, null]) expect(isPaneName(bad)).toBe(false)
+  })
+
+  it('MCP config reads the API and token from the env', () => {
+    expect(JSON.parse(MCP_CONFIG_JSON)).toEqual({
+      mcpServers: { golaim: { type: 'http', url: '${GOLAIM_API}/mcp', headers: { Authorization: 'Bearer ${GOLAIM_TOKEN}' } } },
+    })
   })
 })
 

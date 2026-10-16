@@ -21,26 +21,42 @@ export function safeShell(shellEnv: string | undefined, platform: NodeJS.Platfor
  * Agents start inside the user's shell so PATH/profile apply and the pane survives the agent exiting
  * (Ctrl+C out of claude leaves a prompt, not a dead pane).
  */
-function agentCommand(preset: Exclude<PtyPreset, 'shell'>, resume?: string): string {
-  if (!resume || !isAgentSessionId(resume)) return preset
-  return preset === 'claude' ? `claude --resume ${resume}` : `codex resume ${resume}`
+function agentCommand(preset: Exclude<PtyPreset, 'shell'>, win: boolean, resume?: string, opts: AgentOptions = {}): string {
+  const resumed = !!resume && isAgentSessionId(resume)
+  if (preset === 'codex') return resumed ? `codex resume ${resume}` : 'codex'
+  const base = resumed
+    ? `claude --resume ${resume}`
+    : `claude${isAgentSessionId(opts.sessionId) ? ` --session-id ${opts.sessionId}` : ''}${isPaneName(opts.name) ? ` -n '${opts.name}'` : ''}`
+  return opts.mcp ? `${base} --mcp-config ${win ? '$env:GOLAIM_MCP_CONFIG' : '"$GOLAIM_MCP_CONFIG"'}` : base
 }
+
+export interface AgentOptions {
+  sessionId?: string
+  name?: string
+  mcp?: boolean
+}
+
+export const isPaneName = (v: unknown): v is string => typeof v === 'string' && v.trim() === v && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(v)
+
+export const MCP_CONFIG_JSON = JSON.stringify({
+  mcpServers: { golaim: { type: 'http', url: '${GOLAIM_API}/mcp', headers: { Authorization: 'Bearer ${GOLAIM_TOKEN}' } } },
+})
 
 /**
  * Shells report their folder after every prompt so links and the branch chip follow `cd`: PowerShell via
  * Windows Terminal's OSC 9;9, bash/zsh via OSC 7. `initDir` holds the zsh startup wrappers (see shellInit.ts).
  */
-export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string, initDir?: string): LaunchSpec {
+export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string, initDir?: string, opts?: AgentOptions): LaunchSpec {
   if (platform === 'win32') {
     const file = windowsPowerShell(env.SystemRoot ?? env.SYSTEMROOT)
-    const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, resume)}`
+    const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, true, resume, opts)}`
     // Encoded: no quoting rules between node-pty's command line and PowerShell's parser to get wrong.
     return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)] }
   }
   const shell = safeShell(env.SHELL, platform)
   const hook = posixHook(shell, env, initDir)
   if (preset === 'shell') return { file: shell, args: ['-l'], env: hook.env }
-  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, resume)}; ${hook.reexec}${shell} -l`], env: hook.env }
+  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, false, resume, opts)}; ${hook.reexec}${shell} -l`], env: hook.env }
 }
 
 // Wraps whatever prompt the profile defined (oh-my-posh, starship…) and appends the folder; the visible prompt is unchanged.
@@ -106,7 +122,7 @@ export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const [key, value] of Object.entries(env)) {
     const k = key.toUpperCase()
-    if (k.startsWith('CCM_') || k.startsWith('ELECTRON_') || k === 'NODE_OPTIONS' || AGENT_SESSION_VARS.has(k)) continue
+    if (k.startsWith('CCM_') || k.startsWith('GOLAIM_') || k.startsWith('ELECTRON_') || k === 'NODE_OPTIONS' || AGENT_SESSION_VARS.has(k)) continue
     out[key] = value
   }
   out.TERM = 'xterm-256color'

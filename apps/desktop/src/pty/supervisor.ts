@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { createWriteStream, type WriteStream } from 'node:fs'
-import { utilityProcess, type UtilityProcess } from 'electron'
-import { PTY_PROTOCOL_PREFIX, type PtyEndpoint, type PtySessionInfo } from '../../../../packages/shared/src/pty'
+import { app, utilityProcess, type UtilityProcess } from 'electron'
+import { PTY_PROTOCOL_PREFIX, type PaneOpenRequest, type PaneOpenResult, type PtyEndpoint, type PtySessionInfo } from '../../../../packages/shared/src/pty'
 
 export interface PtySupervisorOptions {
   script: string
@@ -10,6 +10,8 @@ export interface PtySupervisorOptions {
   logFile: string
   /** zsh startup wrappers that report the current folder (posix only). */
   shellInitDir?: string
+  onOpen?: (req: PaneOpenRequest) => Promise<PaneOpenResult>
+  mcpConfig?: string
 }
 
 const START_TIMEOUT_MS = 10_000
@@ -43,7 +45,15 @@ export class PtySupervisor {
     this.token = randomBytes(32).toString('hex')
     this.log ??= createWriteStream(this.opts.logFile, { flags: 'w' })
     const child = utilityProcess.fork(this.opts.script, [], {
-      env: { ...process.env, CCM_PTY_TOKEN: this.token, CCM_PTY_ORIGINS: this.opts.origins.join(','), CCM_NODE_PTY: this.opts.nodePty, ...(this.opts.shellInitDir ? { CCM_PTY_INIT_DIR: this.opts.shellInitDir } : {}) },
+      env: {
+        ...process.env,
+        CCM_PTY_TOKEN: this.token,
+        CCM_PTY_ORIGINS: this.opts.origins.join(','),
+        CCM_NODE_PTY: this.opts.nodePty,
+        CCM_APP_VERSION: app.getVersion(),
+        ...(this.opts.shellInitDir ? { CCM_PTY_INIT_DIR: this.opts.shellInitDir } : {}),
+        ...(this.opts.mcpConfig ? { CCM_PTY_MCP_CONFIG: this.opts.mcpConfig } : {}),
+      },
       stdio: 'pipe',
       serviceName: 'GolAIm terminals',
     })
@@ -56,8 +66,9 @@ export class PtySupervisor {
         child.kill()
         reject(new Error('pty host did not start'))
       }, START_TIMEOUT_MS)
-      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[] }) => {
-        if (data?.t === 'listening' && data.port) {
+      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[]; req?: PaneOpenRequest }) => {
+        if (data?.t === 'open' && typeof data.req?.id === 'string') this.relayOpen(child, data.req)
+        else if (data?.t === 'listening' && data.port) {
           clearTimeout(timer)
           resolve({ url: `ws://127.0.0.1:${data.port}/pty`, protocol: `${PTY_PROTOCOL_PREFIX}${this.token}` })
         } else if (data?.t === 'census') {
@@ -77,6 +88,15 @@ export class PtySupervisor {
         reject(new Error(`pty host exited (${code})`))
       })
     })
+  }
+
+  private relayOpen(child: UtilityProcess, req: PaneOpenRequest): void {
+    void Promise.resolve()
+      .then(() => this.opts.onOpen?.(req) ?? ({ ok: false, error: 'unavailable' } as PaneOpenResult))
+      .catch((): PaneOpenResult => ({ ok: false, error: 'failed' }))
+      .then((result) => {
+        if (this.child === child) child.postMessage({ t: 'open-reply', id: req.id, result })
+      })
   }
 
   /** Live terminals, for the quit confirmation. Empty when the host never started; null when it did not answer. */

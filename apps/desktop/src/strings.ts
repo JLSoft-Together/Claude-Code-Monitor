@@ -80,6 +80,9 @@ New Claude sessions pick up the change.`,
   extWhereNone: 'Claude Code (user settings)',
   extConfirm: 'Run',
   extCancel: 'Cancel',
+  linkOpenBadFolder: 'GolAIm cannot open this folder',
+  linkOpenFailed: 'GolAIm could not open the terminal. Open the Workspace and try again.',
+  linkOpenLive: 'This session is still running in another terminal. Close it there first, then open the link again.',
 }
 
 const vi: typeof en = {
@@ -163,6 +166,9 @@ Các phiên Claude mới sẽ nhận thay đổi.`,
   extWhereNone: 'Claude Code (cấu hình user)',
   extConfirm: 'Chạy',
   extCancel: 'Huỷ',
+  linkOpenBadFolder: 'GolAIm không mở được thư mục này',
+  linkOpenFailed: 'GolAIm không mở được terminal. Hãy mở Workspace rồi thử lại.',
+  linkOpenLive: 'Session này vẫn đang chạy ở một terminal khác. Hãy đóng nó ở đó trước rồi mở lại liên kết.',
 }
 
 export type Strings = typeof en

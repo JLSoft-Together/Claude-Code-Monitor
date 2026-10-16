@@ -4,6 +4,7 @@ import { nextTick } from 'vue'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
 import { boxes, leaves } from '../lib/splitLayout'
+import type { PaneOpenResult, PtyPreset } from '@ccm/shared'
 import { primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
@@ -377,5 +378,136 @@ describe('new terminals join their project tab', () => {
     ws.canvasSize = { w: 1600, h: 900 }
     ws.open('shell', 'C:/work/app', undefined, { tab: true })
     expect(ws.tabs).toHaveLength(3)
+  })
+})
+
+describe('panes opened by an agent', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  const keyOf = (r: PaneOpenResult): string => (r.ok ? r.paneKey : '')
+
+  function caller(ws: ReturnType<typeof useWorkspaceStore>, cwd = 'C:/work/app') {
+    const a = ws.open('claude', cwd)
+    ws.update(a.key, { sessionId: 'host-a', state: 'running' })
+    return a
+  }
+
+  it('resumes a session: reuses its open pane, refuses one live elsewhere, else opens a resumed pane', () => {
+    const ws = useWorkspaceStore()
+    const id = '0d6f6a52-1b2c-4d3e-8f90-123456789abc'
+    const other = ws.open('shell', 'C:/work/other')
+    const res = ws.openFromAgent({ id: 't1', preset: 'claude', cwd: 'C:/work/app', resume: id })
+    const pane = ws.panes.find((p) => p.key === keyOf(res))!
+    expect(pane).toMatchObject({ preset: 'claude', resume: id, agentSessionId: id, openTicket: 't1' })
+    expect(ws.activeKey).toBe(pane.key)
+    ws.activate(other.key)
+    const again = ws.openFromAgent({ id: 't2', preset: 'claude', cwd: 'C:/work/app', resume: id })
+    expect(keyOf(again)).toBe(pane.key)
+    expect(ws.activeKey).toBe(pane.key)
+    expect(ws.panes).toHaveLength(2)
+    const live = '1d6f6a52-1b2c-4d3e-8f90-123456789abc'
+    expect(ws.openFromAgent({ id: 't3', preset: 'codex', cwd: 'C:/work/app', resume: live }, { liveElsewhere: (s) => s === live })).toEqual({ ok: false, error: 'live' })
+    expect(ws.openFromAgent({ id: 't4', preset: 'shell', cwd: 'C:/work/app', resume: id })).toEqual({ ok: false, error: 'resume' })
+    expect(ws.openFromAgent({ id: 't5', preset: 'claude', cwd: 'C:/work/app', resume: '--dangerously-skip-permissions' })).toEqual({ ok: false, error: 'resume' })
+    expect(ws.panes).toHaveLength(2)
+  })
+
+  it('splits beside the calling pane without taking focus', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const a = caller(ws)
+    const other = ws.open('shell', 'C:/work/other')
+    const res = ws.openFromAgent({ id: 'ticket-1', from: 'host-a', preset: 'claude', cwd: 'C:/work/app', prompt: 'fix the build' })
+    expect(res.ok).toBe(true)
+    const key = keyOf(res)
+    expect(leaves(ws.tabOf(a.key)!.root)).toEqual([a.key, key])
+    expect(ws.tabOf(a.key)!.focus).toBe(a.key)
+    expect(ws.activeKey).toBe(other.key)
+    expect(ws.panes.find((p) => p.key === key)).toMatchObject({ preset: 'claude', cwd: 'C:/work/app', state: 'starting', openTicket: 'ticket-1', prefill: 'fix the build' })
+
+    ws.activate(a.key)
+    const next = keyOf(ws.openFromAgent({ id: 'ticket-2', from: 'host-a', preset: 'codex', cwd: 'C:/work/app' }))
+    expect(ws.tabOf(next)).toBe(ws.tabOf(a.key))
+    expect(ws.activeKey).toBe(a.key)
+    expect(ws.tabOf(a.key)!.focus).toBe(a.key)
+  })
+
+  it('opens a background tab of the caller project when there is no room', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 400, h: 250 }
+    const a = caller(ws)
+    const key = keyOf(ws.openFromAgent({ id: 't', from: 'host-a', preset: 'claude', cwd: 'C:/work/app/sub' }))
+    expect(ws.tabs).toHaveLength(2)
+    expect(ws.tabOf(key)!.root).toEqual({ pane: key })
+    expect(ws.tabOf(key)!.project).toBe('C:/work/app')
+    expect(ws.activeKey).toBe(a.key)
+
+    ws.canvasSize = { w: 0, h: 0 }
+    const hidden = keyOf(ws.openFromAgent({ id: 't2', from: 'host-a', preset: 'shell', cwd: 'C:/work/app' }))
+    expect(ws.tabs).toHaveLength(3)
+    expect(ws.tabOf(hidden)!.root).toEqual({ pane: hidden })
+    expect(ws.activeKey).toBe(a.key)
+  })
+
+  it('without a calling pane joins the project tab and becomes active', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const a = caller(ws)
+    ws.open('shell', 'C:/work/other')
+    const key = keyOf(ws.openFromAgent({ id: 't', preset: 'codex', cwd: 'C:/work/app' }))
+    expect(ws.tabOf(key)).toBe(ws.tabOf(a.key))
+    expect(ws.activeKey).toBe(key)
+    const gone = keyOf(ws.openFromAgent({ id: 't2', from: 'host-gone', preset: 'claude', cwd: 'D:/elsewhere' }))
+    expect(ws.tabOf(gone)!.root).toEqual({ pane: gone })
+    expect(ws.tabOf(gone)!.project).toBe('D:/elsewhere')
+    expect(ws.activeKey).toBe(gone)
+  })
+
+  it('never prefills a shell and cleans the prompt', () => {
+    const ws = useWorkspaceStore()
+    const shell = keyOf(ws.openFromAgent({ id: 't', preset: 'shell', cwd: 'C:/work/app', prompt: 'rm -rf /' }))
+    expect(ws.panes.find((p) => p.key === shell)).toMatchObject({ preset: 'shell', openTicket: 't' })
+    expect(ws.panes.find((p) => p.key === shell)!.prefill).toBeUndefined()
+    const blank = keyOf(ws.openFromAgent({ id: 't2', preset: 'claude', cwd: 'C:/work/app', prompt: ' \u0007 ' }))
+    expect(ws.panes.find((p) => p.key === blank)!.prefill).toBeUndefined()
+    const dirty = keyOf(ws.openFromAgent({ id: 't3', preset: 'claude', cwd: 'C:/work/app', prompt: 'a\u001b[2Jb\r\nc' }))
+    expect(ws.panes.find((p) => p.key === dirty)!.prefill).toBe('a[2Jb\nc')
+  })
+
+  it('refuses an unknown preset or an empty folder', () => {
+    const ws = useWorkspaceStore()
+    expect(ws.openFromAgent({ id: 't', preset: 'bash' as PtyPreset, cwd: 'C:/work/app' })).toEqual({ ok: false, error: 'preset' })
+    expect(ws.openFromAgent({ id: 't', preset: 'claude', cwd: '  ' })).toEqual({ ok: false, error: 'cwd' })
+    expect(ws.openFromAgent({ id: 't', preset: 'claude', cwd: 42 as unknown as string })).toEqual({ ok: false, error: 'cwd' })
+    expect(ws.panes).toHaveLength(0)
+    expect(ws.tabs).toHaveLength(0)
+  })
+
+  it('keeps the ticket and the prompt out of storage', async () => {
+    const ws = useWorkspaceStore()
+    caller(ws)
+    const key = keyOf(ws.openFromAgent({ id: 'secret-ticket', from: 'host-a', preset: 'claude', cwd: 'C:/work/app', prompt: 'secret prompt' }))
+    ws.update(key, { sessionId: 'host-b', state: 'running' })
+    await nextTick()
+    const session = sessionStorage.getItem('ccm.workspace.panes')!
+    const last = localStorage.getItem('ccm.workspace.last')!
+    expect(JSON.parse(session).panes.map((p: { key: string }) => p.key)).toContain(key)
+    for (const raw of [session, last]) {
+      expect(raw).not.toContain('secret-ticket')
+      expect(raw).not.toContain('secret prompt')
+      expect(raw).not.toContain('openTicket')
+      expect(raw).not.toContain('prefill')
+    }
+
+    setActivePinia(createPinia())
+    const next = useWorkspaceStore()
+    const restored = next.panes.find((p) => p.key === key)!
+    expect(restored.sessionId).toBe('host-b')
+    expect(restored.openTicket).toBeUndefined()
+    expect(restored.prefill).toBeUndefined()
   })
 })

@@ -14,7 +14,7 @@ export const PTY_PROTOCOL_PREFIX = 'ccm.pty.'
 /** Text frames client → host. Keystrokes go as binary frames. */
 export type PtyClientMessage =
   /** `resume`: an agent session id (UUID) to continue, claude / codex only. */
-  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string }
+  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string; open?: string }
   | { t: 'attach'; id: string }
   | { t: 'resize'; cols: number; rows: number }
   /** Folder the attached shell reported (OSC 7 / 9;9) after a `cd`; answered with `cwd` once validated. */
@@ -64,6 +64,27 @@ export interface PtyWorktree {
 export interface PtyEndpoint {
   url: string
   protocol: string
+}
+
+export interface PaneOpenRequest {
+  id: string
+  from?: string
+  preset: PtyPreset
+  cwd: string
+  prompt?: string
+  resume?: string
+}
+
+export type PaneOpenError = 'unavailable' | 'limit' | 'cwd' | 'preset' | 'rate' | 'failed' | 'resume' | 'live'
+
+export type PaneOpenResult = { ok: true; paneKey: string } | { ok: false; error: PaneOpenError }
+
+export const PANE_OPEN_PROMPT_MAX = 8000
+
+export const cleanPanePrompt = (v: unknown): string | undefined => {
+  if (typeof v !== 'string') return undefined
+  const text = v.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '').trim()
+  return text ? text.slice(0, PANE_OPEN_PROMPT_MAX) : undefined
 }
 
 export interface PtySessionInfo {

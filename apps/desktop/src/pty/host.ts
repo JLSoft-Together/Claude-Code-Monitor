@@ -1,15 +1,18 @@
 import { execFile, execFileSync } from 'node:child_process'
-import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { realpathSync, statSync, watch, type FSWatcher } from 'node:fs'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { mkdirSync, realpathSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { IPty } from '@lydell/node-pty'
 import { WebSocketServer, type WebSocket } from 'ws'
 import {
+  cleanPanePrompt,
   isAgentSessionId,
   isPtyPreset,
   PTY_PROTOCOL_PREFIX,
+  type PaneOpenRequest,
+  type PaneOpenResult,
   type PtyClientMessage,
   type PtyPreset,
   type PtyServerMessage,
@@ -17,8 +20,9 @@ import {
   type WorktreeError,
 } from '../../../../packages/shared/src/pty'
 import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, runGit, worktreeDest } from './git'
+import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome } from './mcp'
 import { ownersOf, readPidTable } from './owners'
-import { childEnv, clampDim, presetCommand, taskkillPath } from './presets'
+import { childEnv, clampDim, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
 import { writeShellInit } from './shellInit'
 
 // Native module ships outside the bundle (resources/pty in a packaged app), so it is required by path.
@@ -35,6 +39,15 @@ const EXITED_TTL_MS = 30 * 60_000
 const PAUSE_AT = 512 * 1024
 const RESUME_AT = 128 * 1024
 const INIT_DIR = !IS_WIN && process.env.CCM_PTY_INIT_DIR && writeShellInit(process.env.CCM_PTY_INIT_DIR) ? process.env.CCM_PTY_INIT_DIR : undefined
+const MCP_FILE = process.env.CCM_PTY_MCP_CONFIG ?? ''
+const MCP_READY = writeMcpConfig(MCP_FILE)
+const APP_VERSION = process.env.CCM_APP_VERSION ?? '0'
+const BODY_MAX = 64 * 1024
+const TICKET_TTL_MS = 60_000
+const OPEN_REPLY_MS = 8_000
+const OPEN_RATE_MAX = 3
+const OPEN_RATE_MS = 60_000
+let PORT = 0
 
 interface Session {
   id: string
@@ -55,9 +68,22 @@ interface Session {
   headWatcher: FSWatcher | null
   /** Bumped per folder change so a slow `git rev-parse` for an old folder never wins. */
   branchGen: number
+  token: string
+  opens: number[]
+}
+
+interface Ticket {
+  preset: PtyPreset
+  cwd: string
+  sessionId?: string
+  name?: string
+  expires: number
 }
 
 const sessions = new Map<string, Session>()
+const tokens = new Map<string, string>()
+const tickets = new Map<string, Ticket>()
+const openWaiters = new Map<string, (result: PaneOpenResult) => void>()
 
 // One bad frame or a dying child must never take every other terminal down with it.
 process.on('uncaughtException', (err) => console.error('pty host error:', err))
@@ -67,6 +93,18 @@ function tokenOk(candidate: string): boolean {
   const a = Buffer.from(candidate.slice(PTY_PROTOCOL_PREFIX.length))
   const b = Buffer.from(TOKEN)
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function writeMcpConfig(file: string): boolean {
+  if (!file || !path.isAbsolute(file)) return false
+  try {
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file, MCP_CONFIG_JSON, { mode: 0o600 })
+    return true
+  } catch (err) {
+    console.error('mcp config write failed:', err)
+    return false
+  }
 }
 
 function send(ws: WebSocket | null, msg: PtyServerMessage): void {
@@ -108,10 +146,12 @@ function flush(s: Session): void {
   }
 }
 
-function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string): Session {
-  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR)
-  const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env: { ...childEnv(process.env), ...spec.env }, useConptyDll: false })
-  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0 }
+function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket): Session {
+  const token = randomBytes(32).toString('hex')
+  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY })
+  const env = { ...childEnv(process.env), ...spec.env, GOLAIM_API: `http://127.0.0.1:${PORT}`, GOLAIM_TOKEN: token, ...(MCP_READY ? { GOLAIM_MCP_CONFIG: MCP_FILE } : {}) }
+  const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
+  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [] }
   proc.onData((d) => {
     s.ring += d
     // Amortised trim; a replay may start mid escape sequence, which xterm shrugs off.
@@ -125,6 +165,7 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
     flush(s)
     s.exitCode = exitCode
     s.exitedAt = Date.now()
+    tokens.delete(token)
     send(s.ws, { t: 'exit', code: exitCode })
   })
   // ConPTY hands out the pid asynchronously (0 right after spawn).
@@ -138,6 +179,7 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
     }, 25)
   }
   sessions.set(s.id, s)
+  tokens.set(token, s.id)
   void trackBranch(s, cwd)
   return s
 }
@@ -189,6 +231,7 @@ const treePid = (s: Session): number | null => (IS_WIN && s.exitCode === null ? 
 // node-pty's kill only ends the shell; agents and their tool processes would survive it on Windows.
 function kill(s: Session, treeKilled = false): void {
   sessions.delete(s.id)
+  tokens.delete(s.token)
   dropWatcher(s)
   const pid = treeKilled ? null : treePid(s)
   if (pid) execFile(taskkillPath(process.env), ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, () => undefined)
@@ -323,9 +366,10 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
     if (!cwd) return send(ws, { t: 'error', message: 'cwd' }), null
     if (liveCount() >= MAX_LIVE) return send(ws, { t: 'error', message: 'limit' }), null
     if (msg.resume !== undefined && (msg.preset === 'shell' || !isAgentSessionId(msg.resume))) return send(ws, { t: 'error', message: 'preset' }), null
+    const ticket = typeof msg.open === 'string' ? takeTicket(msg.open, msg.preset) : undefined
     let s: Session
     try {
-      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume)
+      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume, ticket)
     } catch (err) {
       console.error('spawn failed:', err)
       return send(ws, { t: 'error', message: 'spawn' }), null
@@ -355,7 +399,101 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
   return current
 }
 
-const server = http.createServer((_req, res) => res.writeHead(404).end())
+function takeTicket(id: string, preset: PtyPreset): Ticket | undefined {
+  const ticket = tickets.get(id)
+  if (!ticket || ticket.preset !== preset) return undefined
+  tickets.delete(id)
+  return ticket.expires > Date.now() ? ticket : undefined
+}
+
+function sweepTickets(now: number): void {
+  for (const [id, ticket] of tickets) if (ticket.expires <= now) tickets.delete(id)
+}
+
+function askPage(req: PaneOpenRequest): Promise<PaneOpenResult> {
+  return new Promise((resolve) => {
+    const done = (result: PaneOpenResult): void => {
+      clearTimeout(timer)
+      openWaiters.delete(req.id)
+      resolve(result)
+    }
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), OPEN_REPLY_MS)
+    openWaiters.set(req.id, done)
+    process.parentPort.postMessage({ t: 'open', req })
+  })
+}
+
+async function openFrom(s: Session, args: OpenArgs): Promise<OpenOutcome> {
+  const preset = args.agent ?? 'claude'
+  if (!isPtyPreset(preset)) return { ok: false, error: 'preset' }
+  const asked = args.cwd
+  const cwd = asked === undefined || asked === null ? resolveCwd(s.liveCwd ?? s.cwd) : typeof asked === 'string' && path.isAbsolute(asked) ? resolveCwd(asked) : null
+  if (!cwd) return { ok: false, error: 'cwd' }
+  const resume = args.resume === undefined || args.resume === null || args.resume === '' ? undefined : args.resume
+  if (resume !== undefined && (preset === 'shell' || !isAgentSessionId(resume))) return { ok: false, error: 'resume' }
+  const now = Date.now()
+  s.opens = s.opens.filter((t) => now - t < OPEN_RATE_MS)
+  if (s.opens.length >= OPEN_RATE_MAX) return { ok: false, error: 'rate' }
+  sweepTickets(now)
+  if (liveCount() + tickets.size >= MAX_LIVE) return { ok: false, error: 'limit' }
+  const prompt = preset === 'shell' ? undefined : cleanPanePrompt(args.prompt)
+  const name = preset === 'claude' && isPaneName(args.name) ? args.name : undefined
+  const sessionId = resume ?? (preset === 'claude' ? randomUUID() : undefined)
+  const id = randomUUID()
+  tickets.set(id, { preset, cwd, sessionId: resume ? undefined : sessionId, name: resume ? undefined : name, expires: now + TICKET_TTL_MS })
+  s.opens.push(now)
+  const result = await askPage({ id, from: s.id, preset, cwd, prompt, resume })
+  if (result.ok) return { ok: true, preset, cwd, sessionId, prompt: !!prompt, ...(resume ? { resumed: true } : {}) }
+  tickets.delete(id)
+  const at = s.opens.indexOf(now)
+  if (at >= 0) s.opens.splice(at, 1)
+  return { ok: false, error: result.error }
+}
+
+function readBody(req: http.IncomingMessage): Promise<string | null> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > BODY_MAX) resolve(null)
+      else chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', () => resolve(null))
+  })
+}
+
+const replyJson = (res: http.ServerResponse, status: number, json: unknown): void =>
+  void res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(json))
+
+async function onRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const gate = mcpGate({ method: req.method, url: req.url, host: req.headers.host, origin: req.headers.origin, authorization: req.headers.authorization }, PORT)
+  if ('status' in gate) return void res.writeHead(gate.status, gate.allow ? { Allow: gate.allow } : {}).end()
+  const id = tokens.get(gate.token)
+  const caller = id ? sessions.get(id) : undefined
+  if (!caller || caller.exitCode !== null) return void res.writeHead(401).end()
+  if (Number(req.headers['content-length'] ?? 0) > BODY_MAX) return void res.writeHead(413, { Connection: 'close' }).end()
+  const raw = await readBody(req)
+  if (raw === null) return void res.writeHead(413, { Connection: 'close' }).end()
+  let body: unknown
+  try {
+    body = JSON.parse(raw)
+  } catch {
+    return replyJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
+  }
+  const out = await handleMcp(body, (args) => openFrom(caller, args), APP_VERSION)
+  if (out.json === undefined) res.writeHead(out.status).end()
+  else replyJson(res, out.status, out.json)
+}
+
+const server = http.createServer((req, res) => {
+  onRequest(req, res).catch((err: unknown) => {
+    console.error('mcp request failed:', err)
+    if (!res.headersSent) res.writeHead(500)
+    res.end()
+  })
+})
 const wss = new WebSocketServer({
   server,
   path: '/pty',
@@ -416,7 +554,9 @@ setInterval(() => {
   for (const s of [...sessions.values()]) if (s.exitCode !== null && !s.ws && now - s.exitedAt > EXITED_TTL_MS) {
       dropWatcher(s)
       sessions.delete(s.id)
+      tokens.delete(s.token)
     }
+  sweepTickets(now)
 }, 60_000).unref()
 
 // If Electron dies without a clean shutdown, don't leave shells (and agents) running headless.
@@ -431,10 +571,16 @@ setInterval(() => {
 
 server.listen(0, '127.0.0.1', () => {
   const addr = server.address()
-  process.parentPort.postMessage({ t: 'listening', port: typeof addr === 'object' && addr ? addr.port : 0 })
+  PORT = typeof addr === 'object' && addr ? addr.port : 0
+  process.parentPort.postMessage({ t: 'listening', port: PORT })
 })
 
 process.parentPort.on('message', ({ data }: { data: unknown }) => {
   if (data === 'census') process.parentPort.postMessage({ t: 'census', sessions: census() })
   else if (data === 'shutdown') shutdown()
+  else if (data && typeof data === 'object' && (data as { t?: unknown }).t === 'open-reply') {
+    const { id, result } = data as { id?: unknown; result?: unknown }
+    const parsed = toOpenResult(result)
+    if (typeof id === 'string' && parsed) openWaiters.get(id)?.(parsed)
+  }
 })

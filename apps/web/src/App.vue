@@ -7,7 +7,9 @@ import { startClock } from './lib/format'
 import { useAwayStore } from './stores/away'
 import { useConnectionStore } from './stores/connection'
 import { useSettingsStore } from './stores/settings'
+import { useTerminalsStore } from './stores/terminals'
 import { useUiStore } from './stores/ui'
+import { useWorkspaceStore } from './stores/workspace'
 import AppHeader from './components/AppHeader.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import RecapDialog from './components/RecapDialog.vue'
@@ -55,6 +57,18 @@ desktop?.onSelect?.((terminalId) => {
 const showWorkspace = computed(() => hasTerminals && !ui.compact && ui.view === 'workspace')
 const workspaceOpened = ref(false)
 watch(showWorkspace, (shown) => shown && (workspaceOpened.value = true), { immediate: true })
+
+const workspace = useWorkspaceStore()
+const terminals = useTerminalsStore()
+const liveElsewhere = (sessionId: string): boolean =>
+  terminals.list.some((t) => (t.claudeSessionId === sessionId || t.codexSessionId === sessionId) && t.status !== 'stale' && !workspace.paneByTerminal.get(t.id))
+desktop?.onPaneOpen?.((req) => {
+  const result = workspace.openFromAgent(req, { liveElsewhere })
+  if (!result.ok) return result
+  if (req.from) workspaceOpened.value = true
+  else ui.setView('workspace')
+  return result
+})
 
 // The outgoing view lingers for its fade; it must not keep the #main skip target or take clicks.
 function retireView(el: Element): void {

@@ -30,6 +30,22 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
       if (typeof terminalId === 'string') handler(terminalId)
     })
   },
+  onPaneOpen: (handler: (req: unknown) => unknown): void => {
+    ipcRenderer.on('ccm:pane-open', (_event, req: unknown) => {
+      const id = typeof req === 'object' && req !== null && typeof (req as { id?: unknown }).id === 'string' ? (req as { id: string }).id : null
+      if (id === null) return
+      const reply = (result: unknown): void => {
+        try {
+          ipcRenderer.send('ccm:pane-open-reply', id, result)
+        } catch {
+          ipcRenderer.send('ccm:pane-open-reply', id, { ok: false, error: 'failed' })
+        }
+      }
+      void Promise.resolve()
+        .then(() => handler(req))
+        .then(reply, () => reply({ ok: false, error: 'failed' }))
+    })
+  },
   previewUrl: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:preview-url', path),
   readFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:read-file', path),
   fileWrite: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:file-write', req),

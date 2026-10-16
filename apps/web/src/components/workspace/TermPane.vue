@@ -185,6 +185,44 @@ function sendPending(): void {
   conn.write(`${cmd}\r`)
 }
 
+const PREFILL_FALLBACK_MS = 20_000
+let prefillTimer: ReturnType<typeof setTimeout> | null = null
+let prefillLate = false
+let prefilling = false
+
+function stopPrefill(): void {
+  if (prefillTimer) clearTimeout(prefillTimer)
+  prefillTimer = null
+}
+
+function armPrefill(): void {
+  stopPrefill()
+  prefillLate = false
+  prefillTimer = setTimeout(() => {
+    prefillTimer = null
+    prefillLate = true
+    void sendPrefill()
+  }, PREFILL_FALLBACK_MS)
+  void sendPrefill()
+}
+
+function prefillReady(): boolean {
+  const status = session.value?.status
+  return status === 'idle' || (prefillLate && status !== 'working' && status !== 'waiting')
+}
+
+async function sendPrefill(): Promise<void> {
+  if (prefilling || !props.pane.prefill || props.pane.state !== 'running' || !prefillReady()) return
+  prefilling = true
+  await att.idle()
+  prefilling = false
+  const text = props.pane.prefill
+  if (!text || !term || !conn?.isOpen || props.pane.state !== 'running' || !prefillReady()) return
+  stopPrefill()
+  workspace.update(props.pane.key, { prefill: undefined })
+  term.paste(term.modes.bracketedPasteMode ? text : text.replace(/\s*\n\s*/g, ' '))
+}
+
 const sessionTitle = computed(() => session.value?.alias || session.value?.title || '')
 
 function cssVar(name: string): string {
@@ -421,6 +459,8 @@ function onMessage(msg: PtyServerMessage): void {
       workspace.update(key, { sessionId: msg.id, pid: msg.pid || undefined, cwd: msg.cwd, state: 'running', error: undefined })
       if (term) conn?.resize(term.cols, term.rows)
       if (props.pane.pendingCommand && !msg.replay) pendingTimer = setTimeout(sendPending, PENDING_GRACE_MS)
+      if (!msg.replay && props.pane.openTicket) workspace.update(key, { openTicket: undefined })
+      if (!msg.replay && props.pane.prefill) armPrefill()
       if (props.visible && props.focused) term?.focus()
       break
     case 'pid':
@@ -482,7 +522,7 @@ function restart(): void {
   resetDev()
   reportedCwd = null
   workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
-  void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume } })
+  void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
 }
 
 function reconnect(): void {
@@ -554,7 +594,7 @@ onMounted(() => {
   window.addEventListener('resize', dropMenus)
 
   restoredOnMount = !!props.pane.sessionId
-  void connect(props.pane.sessionId ? { attach: props.pane.sessionId } : { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume } })
+  void connect(props.pane.sessionId ? { attach: props.pane.sessionId } : { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
 })
 
 watch(
@@ -587,6 +627,20 @@ watch(
 )
 
 watch(
+  () => [props.pane.prefill, props.pane.state, session.value?.status] as const,
+  () => void sendPrefill(),
+)
+
+watch(
+  () => props.pane.state,
+  (state) => {
+    if (state !== 'exited' && state !== 'error' && state !== 'gone') return
+    stopPrefill()
+    if (props.pane.prefill || props.pane.openTicket) workspace.update(props.pane.key, { prefill: undefined, openTicket: undefined })
+  },
+)
+
+watch(
   () => props.focused,
   (focused) => {
     if (focused && props.visible) term?.focus()
@@ -607,6 +661,7 @@ watch(() => [settings.codeFont, settings.codeFontSize] as const, () => void appl
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   if (pendingTimer) clearTimeout(pendingTimer)
+  stopPrefill()
   window.removeEventListener('resize', dropMenus)
   linkProvider?.dispose()
   if (!workspace.panes.some((p) => p.key === props.pane.key)) {

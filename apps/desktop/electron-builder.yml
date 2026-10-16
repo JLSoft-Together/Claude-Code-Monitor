@@ -52,6 +52,9 @@ mac:
   # Hardened runtime + ad-hoc breaks Electron's library validation, so it stays off.
   identity: '-'
   hardenedRuntime: false
+  protocols:
+    - name: GolAIm
+      schemes: [agent-monitor]
 dmg:
   artifactName: GolAIm-${version}-${arch}.${ext}
 win:

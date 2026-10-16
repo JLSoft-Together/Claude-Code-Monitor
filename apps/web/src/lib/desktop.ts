@@ -9,6 +9,8 @@ import type {
   FwpScanResult,
   FwpSnapshot,
   McpServerRow,
+  PaneOpenRequest,
+  PaneOpenResult,
   PtyEndpoint,
   RunCommandPreview,
   RunConfig,
@@ -85,6 +87,7 @@ interface DesktopBridge {
   logs?: (action: 'copy' | 'save', report: string) => Promise<{ ok: boolean; path?: string } | null>
   onFocus?: (handler: (terminalId: string) => boolean) => void
   onSelect?: (handler: (terminalId: string) => void) => void
+  onPaneOpen?: (handler: (req: PaneOpenRequest) => PaneOpenResult | Promise<PaneOpenResult>) => void
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>
   watch?: (root: string) => Promise<boolean>

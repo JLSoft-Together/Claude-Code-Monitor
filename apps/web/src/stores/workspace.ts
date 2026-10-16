@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { isAgentSessionId, isPtyPreset, type PtyPreset } from '@ccm/shared'
+import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PtyPreset } from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
@@ -81,6 +81,8 @@ export interface Pane {
   /** Script line started from the scripts menu: names the row; typed once (`pendingCommand`) when the shell is ready. */
   command?: string
   pendingCommand?: string
+  openTicket?: string
+  prefill?: string
   state: PaneState
   exitCode?: number
   error?: string
@@ -325,9 +327,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     { deep: true },
   )
 
-  function addPane(preset: PtyPreset, cwd?: string, resume?: string): Pane {
+  type AgentOpen = Pick<Pane, 'openTicket' | 'prefill'>
+
+  function addPane(preset: PtyPreset, cwd?: string, resume?: string, extra: AgentOpen = {}): Pane {
     const id = resume && preset !== 'shell' && isAgentSessionId(resume) ? resume : undefined
-    const pane: Pane = { key: newKey('p'), preset, cwd, resume: id, agentSessionId: id, state: 'starting' }
+    const pane: Pane = { key: newKey('p'), preset, cwd, resume: id, agentSessionId: id, state: 'starting', ...extra }
     panes.value.push(pane)
     return pane
   }
@@ -497,15 +501,47 @@ export const useWorkspaceStore = defineStore('workspace', () => {
    * no pane has room left, or `opts.tab` asks for one.
    */
   function open(preset: PtyPreset, cwd?: string, resume?: string, opts: { tab?: boolean } = {}): Pane {
-    const pane = addPane(preset, cwd, resume)
-    const tab = opts.tab ? undefined : projectTab(cwd)
+    return joinProject(addPane(preset, cwd, resume), opts)
+  }
+
+  function joinProject(pane: Pane, opts: { tab?: boolean } = {}): Pane {
+    const tab = opts.tab ? undefined : projectTab(pane.cwd)
     const spot = tab ? dockSpot(tab.root, tab.focus, canvasSize.value) : null
     if (tab && spot) {
       tab.root = splitLeaf(tab.root, spot.key, pane.key, spot.dir)
       tab.focus = pane.key
-    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: cwd })
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: pane.cwd })
     activate(pane.key)
     return pane
+  }
+
+  function openFromAgent(req: PaneOpenRequest, opts: { liveElsewhere?: (sessionId: string) => boolean } = {}): PaneOpenResult {
+    if (!isPtyPreset(req.preset)) return { ok: false, error: 'preset' }
+    if (typeof req.cwd !== 'string' || !req.cwd.trim()) return { ok: false, error: 'cwd' }
+    const resume = req.resume === undefined || req.resume === '' ? undefined : req.preset !== 'shell' && isAgentSessionId(req.resume) ? req.resume : null
+    if (resume === null) return { ok: false, error: 'resume' }
+    if (resume) {
+      const running = panes.value.find((p) => p.agentSessionId === resume && (p.state === 'running' || p.state === 'starting'))
+      if (running) {
+        activate(running.key)
+        return { ok: true, paneKey: running.key }
+      }
+      if (opts.liveElsewhere?.(resume)) return { ok: false, error: 'live' }
+    }
+    const extra: AgentOpen = {
+      openTicket: typeof req.id === 'string' && req.id ? req.id : undefined,
+      prefill: req.preset === 'shell' ? undefined : cleanPanePrompt(req.prompt),
+    }
+    const caller = typeof req.from === 'string' && req.from ? panes.value.find((p) => isTerm(p) && p.sessionId === req.from) : undefined
+    const callerTab = caller ? tabOf(caller.key) : undefined
+    if (!caller || !callerTab) return { ok: true, paneKey: joinProject(addPane(req.preset, req.cwd, resume, extra)).key }
+    const pane = addPane(req.preset, req.cwd, resume, extra)
+    const size = canvasSize.value
+    const spot = size.w && size.h ? dockSpot(callerTab.root, caller.key, size) : null
+    if (spot) {
+      callerTab.root = splitLeaf(callerTab.root, spot.key, pane.key, spot.dir)
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: tabProject(callerTab, paneOf) ?? req.cwd })
+    return { ok: true, paneKey: pane.key }
   }
 
   /** Same folder as the target, next to it; same agent unless one is picked (Windows Terminal's "duplicate" split). */
@@ -829,6 +865,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingClose,
     tabOf,
     open,
+    openFromAgent,
     openBrowser,
     openFile,
     openChanges,
