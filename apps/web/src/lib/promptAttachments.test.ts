@@ -29,6 +29,11 @@ describe('prompt attachments', () => {
     expect(scanPrompt(['PS C:\\> dir', 'foo']).found).toBe(false)
   })
 
+  it('a placeholder the agent wrapped at the space between its words still counts (narrow pane)', () => {
+    const rows = screen(['❯ @package.json [Image #1]', '  @CLAUDE.md [Image #2] [Image', '  #3]'])
+    expect(scanPrompt(rows)).toMatchObject({ images: [1, 2, 3], files: ['@package.json', '@CLAUDE.md'] })
+  })
+
   it('multi-line prompts', () => {
     const rows = screen(['❯ first line [Image #3]', '  second @src/x.ts'])
     expect(scanPrompt(rows)).toMatchObject({ images: [3], files: ['@src/x.ts'] })

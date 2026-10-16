@@ -16,7 +16,7 @@ export interface PromptScan {
 
 const RULE = /^[\s╭╰├│]*[─━]{8,}[\s╮╯┤│]*$/
 const EDGE = /^\s*│ ?|\s*│\s*$/g
-const IMAGE = /\[Image #(\d+)\]/g
+const IMAGE = /\[Image\s+#(\d+)\]/g
 const FILE = /(?:^|\s)@("[^"\n]+"|[^\s"@]+)(\S*)/g
 /** `@file:line:col` points at a place in a file (Run pane "Send to agent", lib/runUi.ts errorPrompt), not an attachment. */
 const LINE_COL = /:\d+(?::\d+)?$/
