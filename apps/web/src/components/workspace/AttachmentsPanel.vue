@@ -7,6 +7,7 @@ import { pickFiles } from '../../lib/preview'
 import type { EraseKeys } from '../../lib/promptAttachments'
 import { fromPath, useAttachmentsStore, type Attachment } from '../../stores/attachments'
 import ToggleSwitch from '../ToggleSwitch.vue'
+import AttachmentLook from './AttachmentLook.vue'
 
 /** Tray of one terminal pane: what goes into the agent's prompt, named as the agent names it. */
 const props = defineProps<{
@@ -16,7 +17,7 @@ const props = defineProps<{
   eraseFor: (a: Attachment) => EraseKeys | null
   remove: (a: Attachment) => Promise<boolean>
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; open: [path: string] }>()
 
 const { t } = useI18n()
 const store = useAttachmentsStore()
@@ -60,6 +61,40 @@ const STATE = {
 
 const removable = (a: Attachment): boolean => a.state !== 'inserted' || props.eraseFor(a) !== null
 const label = (a: Attachment): string => (a.source === 'terminal' && a.kind === 'image' ? t('attach.image') : a.name)
+
+const canLook = (a: Attachment): boolean => a.kind === 'image' && !!(a.view || a.data || a.thumb || a.path)
+const canOpen = (a: Attachment): boolean => a.kind === 'file' && !!a.path
+const lookable = computed(() => [...live.value, ...sent.value].filter(canLook))
+const look = ref<{ index: number; origin: DOMRect | null } | null>(null)
+let lookFrom: HTMLElement | null = null
+
+function activate(a: Attachment, e: Event): void {
+  const el = e.currentTarget as HTMLElement
+  if (canOpen(a)) return emit('open', a.path!)
+  const index = lookable.value.findIndex((x) => x.id === a.id)
+  if (index < 0) return
+  lookFrom = el
+  look.value = { index, origin: (el.querySelector('[data-attach-thumb]') ?? el).getBoundingClientRect() }
+}
+
+function moveLook(index: number): void {
+  if (!look.value) return
+  const a = lookable.value[index]
+  const row = a ? document.querySelector<HTMLElement>(`[data-attach-open="${CSS.escape(a.id)}"]`) : null
+  look.value = { index, origin: (row?.querySelector('[data-attach-thumb]') ?? row)?.getBoundingClientRect() ?? null }
+}
+
+function closeLook(): void {
+  const index = look.value?.index ?? -1
+  const a = lookable.value[index]
+  look.value = null
+  const row = a ? document.querySelector<HTMLElement>(`[data-attach-open="${CSS.escape(a.id)}"]`) : null
+  ;(row ?? lookFrom)?.focus({ preventScroll: true })
+  lookFrom = null
+}
+
+const actionTitle = (a: Attachment): string =>
+  canOpen(a) ? t('attach.openFile', { name: label(a) }) : canLook(a) ? t('attach.preview', { name: label(a) }) : (a.path ?? label(a))
 </script>
 
 <template>
@@ -94,13 +129,30 @@ const label = (a: Attachment): string => (a.source === 'terminal' && a.kind === 
           class="group flex min-w-0 items-center gap-2 rounded-inner px-1.5 py-1 hover:bg-fill"
           :data-attachment="a.state"
         >
-          <img v-if="a.thumb" :src="a.thumb" alt="" class="size-7 shrink-0 rounded-[4px] object-cover shadow-control" />
-          <span v-else class="inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-fill text-ink-muted" aria-hidden="true">
+          <component
+            :is="canLook(a) || canOpen(a) ? 'button' : 'span'"
+            :type="canLook(a) || canOpen(a) ? 'button' : undefined"
+            class="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2 rounded-inner py-1 pl-1.5 text-left"
+            :class="canLook(a) || canOpen(a) ? 'cursor-pointer' : ''"
+            :title="actionTitle(a)"
+            :data-attach-open="canLook(a) || canOpen(a) ? a.id : undefined"
+            :aria-haspopup="canLook(a) ? 'dialog' : undefined"
+            @click="(e: MouseEvent) => (canLook(a) || canOpen(a)) && activate(a, e)"
+          >
+          <img
+            v-if="a.thumb"
+            :src="a.thumb"
+            alt=""
+            class="size-7 shrink-0 rounded-[4px] object-cover shadow-control transition-transform duration-(--ccm-dur-fast) ease-out-quint"
+            :class="canLook(a) ? 'group-hover:scale-105' : ''"
+            data-attach-thumb
+          />
+          <span v-else class="inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] bg-fill text-ink-muted" aria-hidden="true" data-attach-thumb>
             <ImageIcon v-if="a.kind === 'image'" :size="14" />
             <FileText v-else :size="14" />
           </span>
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-xs text-ink" :title="a.path ?? label(a)">{{ label(a) }}</span>
+            <span class="block truncate text-xs text-ink" :class="canOpen(a) ? 'group-hover:underline' : ''">{{ label(a) }}</span>
             <span class="flex min-w-0 items-center gap-1 text-2xs" :class="STATE[a.state].cls">
               <component :is="STATE[a.state].icon" :size="11" class="shrink-0" :class="a.state === 'inserting' ? 'ccm-spin' : ''" aria-hidden="true" />
               <span class="shrink-0">{{ t(`attach.state.${a.state}`) }}</span>
@@ -108,12 +160,14 @@ const label = (a: Attachment): string => (a.source === 'terminal' && a.kind === 
               <span v-else-if="a.error" class="min-w-0 truncate" :title="t(`attach.error.${a.error}`)">· {{ t(`attach.error.${a.error}`) }}</span>
             </span>
           </span>
+          </component>
           <button
             type="button"
             class="ccm-btn-plain -mr-0.5 shrink-0 opacity-70 group-hover:opacity-100 focus-visible:opacity-100"
             :aria-label="t('attach.remove', { name: label(a) })"
             :title="removable(a) ? t('attach.remove', { name: label(a) }) : t('attach.removeInTerminal')"
             :aria-disabled="!removable(a)"
+            data-attach-remove
             @click="removeItem(a)"
           >
             <X :size="13" aria-hidden="true" />
@@ -127,10 +181,21 @@ const label = (a: Attachment): string => (a.source === 'terminal' && a.kind === 
           <button type="button" class="text-2xs text-link hover:underline" @click="store.clearSent(paneKey)">{{ t('attach.clearSent') }}</button>
         </div>
         <ul class="mt-1 flex flex-col gap-0.5" role="list">
-          <li v-for="a in sent" :key="a.id" class="flex min-w-0 items-center gap-2 px-1.5 py-0.5 text-2xs text-ink-faint" data-attachment="sent">
-            <Send :size="11" class="shrink-0" aria-hidden="true" />
-            <span class="min-w-0 flex-1 truncate" :title="a.path ?? label(a)">{{ label(a) }}</span>
-            <span v-if="a.token" class="max-w-[45%] shrink-0 truncate font-mono">{{ a.token }}</span>
+          <li v-for="a in sent" :key="a.id" class="flex min-w-0 text-2xs text-ink-faint" data-attachment="sent">
+            <component
+              :is="canLook(a) || canOpen(a) ? 'button' : 'span'"
+              :type="canLook(a) || canOpen(a) ? 'button' : undefined"
+              class="flex min-w-0 flex-1 items-center gap-2 rounded-inner px-1.5 py-0.5 text-left"
+              :class="canLook(a) || canOpen(a) ? 'cursor-pointer hover:bg-fill hover:text-ink-muted' : ''"
+              :title="actionTitle(a)"
+              :data-attach-open="canLook(a) || canOpen(a) ? a.id : undefined"
+              :aria-haspopup="canLook(a) ? 'dialog' : undefined"
+              @click="(e: MouseEvent) => (canLook(a) || canOpen(a)) && activate(a, e)"
+            >
+              <Send :size="11" class="shrink-0" aria-hidden="true" data-attach-thumb />
+              <span class="min-w-0 flex-1 truncate">{{ label(a) }}</span>
+              <span v-if="a.token" class="max-w-[45%] shrink-0 truncate font-mono">{{ a.token }}</span>
+            </component>
           </li>
         </ul>
       </template>
@@ -143,5 +208,8 @@ const label = (a: Attachment): string => (a.source === 'terminal' && a.kind === 
       </button>
       <ToggleSwitch v-model="store.autoInsert" :label="t('attach.auto')" :hint="imagesSupported ? t('attach.clipboardNote') : undefined" class="[&_p:first-child]:text-xs" />
     </footer>
+    <Teleport to="body">
+      <AttachmentLook v-if="look && lookable.length" :items="lookable" :index="Math.min(look.index, lookable.length - 1)" :origin="look.origin" :label="label" @move="moveLook" @close="closeLook" />
+    </Teleport>
   </aside>
 </template>

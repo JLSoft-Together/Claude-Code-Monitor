@@ -19,6 +19,7 @@ export interface Attachment {
   data?: string
   /** Small preview (≤ 96 px) of `data`. */
   thumb?: string
+  view?: string
   /** What the prompt shows: `[Image #3]`, `@src/a.ts`. */
   token?: string
   state: AttachmentState
@@ -30,7 +31,7 @@ export interface Attachment {
   at: number
 }
 
-export type NewAttachment = Pick<Attachment, 'kind' | 'name' | 'source' | 'path' | 'data' | 'thumb'>
+export type NewAttachment = Pick<Attachment, 'kind' | 'name' | 'source' | 'path' | 'data' | 'thumb' | 'view'>
 
 let seq = 0
 const AUTO_KEY = 'ccm.workspace.autoInsert'

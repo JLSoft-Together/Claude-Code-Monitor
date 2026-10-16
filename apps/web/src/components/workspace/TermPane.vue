@@ -487,7 +487,7 @@ async function paste(textOnly: boolean): Promise<void> {
   if (key && blob) {
     conn?.write(key)
     const img = await imageData(blob)
-    att.notePaste({ kind: 'image', name: t('attach.clipboard'), source: 'paste', thumb: img?.thumb })
+    att.notePaste({ kind: 'image', name: t('attach.clipboard'), source: 'paste', thumb: img?.thumb, view: img?.view })
     return
   }
   try {
@@ -1046,6 +1046,7 @@ onBeforeUnmount(() => {
       :erase-for="att.eraseFor"
       :remove="att.remove"
       @close="attachments.toggle(pane.key, false)"
+      @open="(path) => emit('openLink', { kind: 'file', path }, {})"
     />
     </div>
   </section>

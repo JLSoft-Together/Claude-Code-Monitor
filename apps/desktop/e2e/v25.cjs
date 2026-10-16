@@ -167,7 +167,7 @@ async function main() {
     for (let i = 0; i < 6; i++) {
       const first = await evaluate(`${A}.list(${JSON.stringify(claudeKey)}).find(a => a.state === 'inserted')?.id ?? null`)
       if (!first) break
-      await evaluate(`document.querySelector('${pane} [data-attachments] li[data-attachment=inserted] button').click()`)
+      await evaluate(`document.querySelector('${pane} [data-attachments] li[data-attachment=inserted] [data-attach-remove]').click()`)
       const gone = await waitFor(`!${A}.list(${JSON.stringify(claudeKey)}).some(a => a.id === ${JSON.stringify(first)})`, 6000, 'removed').catch(() => false)
       if (!gone) break
       removed++

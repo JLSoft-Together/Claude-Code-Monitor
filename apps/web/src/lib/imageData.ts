@@ -21,7 +21,9 @@ function readDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-export async function imageData(blob: Blob, thumbPx = 96): Promise<{ data: string; thumb: string } | null> {
+export const VIEW_PX = 960
+
+export async function imageData(blob: Blob, thumbPx = 96, viewPx = VIEW_PX): Promise<{ data: string; thumb: string; view: string } | null> {
   let bmp: ImageBitmap | null = null
   try {
     bmp = await createImageBitmap(blob)
@@ -36,7 +38,9 @@ export async function imageData(blob: Blob, thumbPx = 96): Promise<{ data: strin
     const data = blob.type === 'image/png' ? await readDataUrl(blob) : draw(image.width, image.height)
     const scale = Math.min(1, thumbPx / Math.max(image.width, image.height))
     const thumb = draw(Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale)))
-    return { data, thumb }
+    const fit = Math.min(1, viewPx / Math.max(image.width, image.height))
+    const view = fit === 1 ? data : draw(Math.max(1, Math.round(image.width * fit)), Math.max(1, Math.round(image.height * fit)))
+    return { data, thumb, view }
   } catch {
     return null
   } finally {
