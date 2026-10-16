@@ -5,7 +5,6 @@ node_modules/
 dist/
 build/
 out/
-package-lock.json
 
 # Environment variables
 .env
