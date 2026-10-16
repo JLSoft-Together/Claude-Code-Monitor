@@ -6,7 +6,7 @@ import type { RunDevice, RunEvent } from '@ccm/shared'
 import { RunManager } from '../src/run/sessions'
 import type { DeviceService, RunContext, Runner } from '../src/run/types'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-run-sessions-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-run-sessions-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 function project(): string {

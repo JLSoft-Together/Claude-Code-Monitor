@@ -7,7 +7,7 @@ import { encodeForDisk, MAX_WRITE_BYTES, writeTextFile } from '../src/preview/fi
 import { cleanDirty } from '../src/editors'
 import { cleanText, isLayoutTarget } from '../src/layout/ipc'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-write-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-write-')))
 const project = path.join(tmp, 'project')
 const outside = path.join(tmp, 'outside')
 mkdirSync(project, { recursive: true })

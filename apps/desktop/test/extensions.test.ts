@@ -7,7 +7,7 @@ import { buildInstall, buildRemove, buildSource, mcpConfig, parseAvailable, pars
 import { checkDir, registerExtensionsIpc, type ConfirmPlan, type ExtRunner } from '../src/extensions/ipc'
 import { readConfigured, sameDir } from '../src/extensions/status'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-ext-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-ext-')))
 const project = path.join(tmp, 'project')
 const home = path.join(tmp, 'home')
 mkdirSync(path.join(project, '.claude', 'skills', 'review'), { recursive: true })

@@ -564,7 +564,7 @@ export class CodexMonitor {
   }
 
   private title(t: Thread): string {
-    return this.names.get(t.id) ?? (t.meta.cwd ? path.basename(t.meta.cwd.replace(/[\\/]+$/, '')) : 'Codex')
+    return this.names.get(t.id) ?? (t.meta.cwd ? path.win32.basename(t.meta.cwd.replace(/[\\/]+$/, '')) : 'Codex')
   }
 
   /** Where a thread shows up: inside a Claude session, under its Codex parent, or as its own session. */

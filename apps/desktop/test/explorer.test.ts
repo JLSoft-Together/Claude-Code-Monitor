@@ -7,7 +7,7 @@ import { registerPreviewIpc } from '../src/preview/ipc'
 import type { PreviewServer } from '../src/preview/server'
 import type { RootWatcher } from '../src/preview/watch'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-explorer-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-explorer-')))
 const project = path.join(tmp, 'project')
 const outside = path.join(tmp, 'outside')
 mkdirSync(path.join(project, 'src'), { recursive: true })

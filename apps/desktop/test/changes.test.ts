@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -9,7 +9,7 @@ import { FileListCache, listFiles, parseLsFiles, walkFiles } from '../src/previe
 import { findGit } from '../src/pty/git'
 
 const git = findGit()
-const tmp = mkdtempSync(path.join(os.tmpdir(), 'ccm-changes-'))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-changes-')))
 const repo = path.join(tmp, 'repo')
 const run = (...args: string[]): string => execFileSync(git!, ['-C', repo, ...args], { encoding: 'utf8' })
 

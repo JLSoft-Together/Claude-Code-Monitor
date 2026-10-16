@@ -25,7 +25,7 @@ vi.mock('../src/run/proc', async (orig) => {
   }
 })
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-android-run-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-android-run-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 let n = 0
 

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -9,7 +9,7 @@ import { isWithin } from '../src/preview/paths'
 import { mimeOf, PreviewServer } from '../src/preview/server'
 import { RootWatcher } from '../src/preview/watch'
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), 'ccm-preview-'))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-preview-')))
 const site = path.join(tmp, 'site')
 const other = path.join(tmp, 'other')
 const server = new PreviewServer()

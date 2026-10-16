@@ -13,7 +13,7 @@ import {
 } from '../src/run/android/detect'
 import { androidEnv, gradlewSpawn, parseJavaVersion, quoteCmdArg, readProperty, type EnvDeps } from '../src/run/android/env'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-android-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-android-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 let n = 0

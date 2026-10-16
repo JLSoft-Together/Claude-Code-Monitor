@@ -14,10 +14,10 @@ const SID = '0e1d2c3b-4a59-4687-9a1b-2c3d4e5f6a7b'
 
 describe('claude stop runner', () => {
   it('looks for the real executable next to PATH entries and the npm package', () => {
-    const list = claudeCliCandidates({ PATH: ['C:\\npm', 'C:\\bin'].join(path.delimiter), USERPROFILE: 'C:\\Users\\me' }, 'win32')
-    expect(list).toContain(path.join('C:\\npm', 'claude.exe'))
-    expect(list).toContain(path.join('C:\\npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'))
-    expect(list).toContain(path.join('C:\\Users\\me', '.local', 'bin', 'claude.exe'))
+    const list = claudeCliCandidates({ PATH: ['C:\\npm', 'C:\\bin'].join(path.win32.delimiter), USERPROFILE: 'C:\\Users\\me' }, 'win32')
+    expect(list).toContain(path.win32.join('C:\\npm', 'claude.exe'))
+    expect(list).toContain(path.win32.join('C:\\npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'))
+    expect(list).toContain(path.win32.join('C:\\Users\\me', '.local', 'bin', 'claude.exe'))
     expect(list.some((f) => /\.(cmd|ps1|bat)$/i.test(f))).toBe(false)
   })
 

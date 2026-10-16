@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { drawableFolderKind, drawableKind, xmlRootName } from '@ccm/shared'
 import { cleanSwatches, drawableDevice, registerLayoutIpc } from '../src/layout/ipc'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-drawable-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-drawable-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 const SHAPE = '<?xml version="1.0" encoding="utf-8"?>\n<!-- cta -->\n<shape xmlns:android="http://schemas.android.com/apk/res/android"><gradient android:startColor="#f00" android:endColor="#00f"/></shape>'

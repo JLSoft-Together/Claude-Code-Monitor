@@ -8,7 +8,7 @@ import { buildSourceModel, scriptDependencies } from '../src/layout/sourceModel'
 import { extractZip } from '../src/layout/zip'
 import { makeZip } from './make-zip'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-source-model-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-source-model-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 function write(file: string, text: string | Buffer): void {

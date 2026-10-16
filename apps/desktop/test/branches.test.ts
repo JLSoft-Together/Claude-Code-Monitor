@@ -9,7 +9,7 @@ import { registerPreviewIpc } from '../src/preview/ipc'
 import type { PreviewServer } from '../src/preview/server'
 import type { RootWatcher } from '../src/preview/watch'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-branches-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-branches-')))
 const origin = path.join(tmp, 'origin.git')
 const repo = path.join(tmp, 'repo')
 const other = path.join(tmp, 'other')

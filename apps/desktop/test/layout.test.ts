@@ -12,7 +12,7 @@ import { FrameParser, encodeMessage } from '../src/layout/rpc'
 import { extractZip, safeEntryName } from '../src/layout/zip'
 import { makeZip } from './make-zip'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-layout-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-layout-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 type Handler = (msg: { id?: number; method: string; params: Record<string, unknown> }, child: FakeChild) => void

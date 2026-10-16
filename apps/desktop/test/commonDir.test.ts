@@ -15,7 +15,7 @@ try {
 
 describe.skipIf(!hasGit)('commonDir', () => {
   it('answers the same .git for the main checkout and its worktree', async () => {
-    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccm-common-')))
+    const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ccm-common-')))
     try {
       const main = path.join(base, 'app')
       fs.mkdirSync(main)

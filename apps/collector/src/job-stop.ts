@@ -21,15 +21,16 @@ const exists = (file: string) =>
 
 export function claudeCliCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
   const win = platform === 'win32'
+  const p = win ? path.win32 : path.posix
   const exe = win ? 'claude.exe' : 'claude'
   const out: string[] = []
-  for (const dir of (env.PATH ?? env.Path ?? '').split(path.delimiter)) {
+  for (const dir of (env.PATH ?? env.Path ?? '').split(p.delimiter)) {
     if (!dir) continue
-    out.push(path.join(dir, exe))
-    out.push(path.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', exe))
+    out.push(p.join(dir, exe))
+    out.push(p.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', exe))
   }
   const home = env.USERPROFILE ?? env.HOME
-  if (home) out.push(path.join(home, '.local', 'bin', exe))
+  if (home) out.push(p.join(home, '.local', 'bin', exe))
   return out
 }
 

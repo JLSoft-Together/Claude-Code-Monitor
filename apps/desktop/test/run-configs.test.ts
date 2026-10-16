@@ -8,7 +8,7 @@ import { androidGradleArgs, customArgv, flutterArgv, previewCommand } from '../s
 import { cleanRunConfig, defaultConfigs, RunConfigStore } from '../src/run/configs'
 import { importIntellij, importVscode, stripJsonc } from '../src/run/importers'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-runcfg-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-runcfg-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 let n = 0

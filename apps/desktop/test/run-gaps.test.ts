@@ -12,7 +12,7 @@ import { androidToolchain, flutterToolchain, parseDoctorMachine, parseDoctorText
 import type { DeviceService, RunContext, Runner } from '../src/run/types'
 import { DETECT_FILE, ProjectWatchers, watchDirs } from '../src/run/watch'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-run-gaps-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-run-gaps-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms))
 

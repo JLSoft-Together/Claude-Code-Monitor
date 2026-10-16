@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,7 +69,7 @@ describe('Monitor with fixture claude root', () => {
   const deps = (): MonitorDeps => ({ isPidAlive: () => alive, queryProcesses: async () => null, now: () => now })
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(os.tmpdir(), 'ccm-root-'))
+    root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'ccm-root-')))
     now = Date.parse('2026-10-07T10:00:00.000Z')
     alive = true
     projectDir = path.join(root, 'projects', SLUG)
@@ -243,7 +243,7 @@ describe('Monitor with fixture claude root', () => {
     expect(await monitor.openFavorite(CWD, 'new')).toBe(false)
     expect(monitor.toggleFavorite(id)).toBe(true)
     expect(store.snapshot().favorites).toMatchObject([{ dir: path.resolve(CWD), label: 'demo-1a' }])
-    expect(await monitor.openFavorite(CWD.toUpperCase(), 'continue')).toBe(true)
+    expect(await monitor.openFavorite(process.platform === 'win32' ? CWD.toUpperCase() : CWD, 'continue')).toBe(true)
     expect(launched).toEqual([`${path.resolve(CWD)}|continue`])
     expect(store.snapshot().activity.at(-1)).toMatchObject({ kind: 'launch.started', data: { title: 'demo-1a', mode: 'continue' } })
     expect(monitor.renameFavorite(CWD, '  Ads\napp ')).toBe(true)

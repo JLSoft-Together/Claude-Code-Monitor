@@ -10,7 +10,7 @@ import type { PreviewServer } from '../src/preview/server'
 import { findGit } from '../src/pty/git'
 import type { RootWatcher } from '../src/preview/watch'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-ipc-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-ipc-')))
 const project = path.join(tmp, 'project')
 const outside = path.join(tmp, 'outside')
 mkdirSync(project, { recursive: true })

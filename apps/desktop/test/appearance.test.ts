@@ -7,7 +7,7 @@ import { loadingPage, errorPage, onAccent, wordmark } from '../src/pages'
 import { stringsFor } from '../src/strings'
 import { BACKUP_SUFFIX, bridgeCommand, claudeSettingsFile, readStatusLine, writeStatusLine } from '../src/statusline'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-v27-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-v27-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 const LOOK = { canvas: '#282a36', surface: '#21222c', ink: '#f8f8f2', muted: '#bfbfbf', faint: '#8a8a8a', accent: '#bd93f9', dark: true }

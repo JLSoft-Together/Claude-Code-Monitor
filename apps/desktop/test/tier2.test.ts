@@ -8,7 +8,7 @@ import { cargoCommands, detectScripts, justRecipes, makeTargets, packageScripts,
 import type { PreviewServer } from '../src/preview/server'
 import type { RootWatcher } from '../src/preview/watch'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-tier2-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-tier2-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 describe('script parsers', () => {

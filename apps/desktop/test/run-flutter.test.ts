@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { detectFlutter, gradleFlavors, parsePubspec, yamlKeys } from '../src/run/flutter/detect'
 import { findFlutterSdk, flutterEnv, flutterSpawn, parseFlutterVersion, type EnvDeps, type ExecResult } from '../src/run/flutter/env'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-flutter-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-flutter-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 let n = 0

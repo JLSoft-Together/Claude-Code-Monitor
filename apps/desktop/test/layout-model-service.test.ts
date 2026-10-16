@@ -13,7 +13,7 @@ import type { LayoutEvent } from '../src/layout/types'
 import { RunManager } from '../src/run/sessions'
 import type { DeviceService, RunContext, Runner } from '../src/run/types'
 
-const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'ccm-layout-model-')))
+const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'ccm-layout-model-')))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
