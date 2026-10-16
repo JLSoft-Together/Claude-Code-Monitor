@@ -94,6 +94,14 @@ export function keepStore<T>(limit: number, ttl: number, free: (value: T) => voi
   }
 }
 
+let enabled = false
+
+export function setDustEnabled(on: boolean): void {
+  enabled = on
+}
+
+export const dustOn = (): boolean => enabled && !reducedMotion() && !!desktop?.captureRect
+
 let host: HTMLDivElement | null = null
 let playing = 0
 
@@ -185,7 +193,7 @@ export const layerCount = (w: number, h: number): number => Math.min(16, Math.ma
 const onScreen = (r: DOMRect): boolean => r.width >= 2 && r.height >= 2 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth
 
 export async function captureEl(el: Element): Promise<DustShot | null> {
-  if (reducedMotion() || !desktop?.captureRect) return null
+  if (!dustOn() || !desktop?.captureRect) return null
   const rect = el.getBoundingClientRect()
   if (!onScreen(rect)) return null
   try {
@@ -298,7 +306,7 @@ async function dustOf(el: Element): Promise<{ rect: DOMRect; dust: Dust } | null
 }
 
 export async function dustOutAll(els: readonly HTMLElement[], later: readonly Element[] = [], opts: DustOutOptions = {}): Promise<boolean[]> {
-  if (reducedMotion() || !desktop?.captureRect) return els.map(() => false)
+  if (!dustOn()) return els.map(() => false)
   const keys = els.map((el) => opts.keep?.(el))
   for (const el of els) lock(el)
   const [now, saved] = await Promise.all([Promise.all(els.map(dustOf)), Promise.all(later.map(dustOf))])
@@ -326,7 +334,7 @@ export async function dustIn(el: HTMLElement, key: string): Promise<boolean> {
   const ash = undo.take(key)
   if (!ash) return false
   const rect = el.getBoundingClientRect()
-  if (reducedMotion() || !desktop?.captureRect || !ash.flakes.length || !onScreen(rect)) {
+  if (!dustOn() || !ash.flakes.length || !onScreen(rect)) {
     release(ash)
     return false
   }
@@ -379,6 +387,18 @@ export function dustOut(el: HTMLElement): Promise<boolean> {
   })
 }
 
+function fadeAway(el: HTMLElement, done: () => void): void {
+  const ms = reducedMotion() ? 0 : fadeMs()
+  if (!ms) return done()
+  const ease = getComputedStyle(document.documentElement).getPropertyValue('--ease-exit').trim() || SCATTER_EASE
+  el.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(0.98)' }], { duration: ms, easing: ease, fill: 'forwards' })
+    .finished.catch(() => undefined)
+    .then(done)
+}
+
 export function onDustLeave(el: Element, done: () => void): void {
-  void dustOut(el as HTMLElement).finally(done)
+  void dustOut(el as HTMLElement).then(
+    (ok) => (ok ? done() : fadeAway(el as HTMLElement, done)),
+    done,
+  )
 }

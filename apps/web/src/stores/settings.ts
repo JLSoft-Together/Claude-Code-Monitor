@@ -4,6 +4,7 @@ import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
 import { readLook } from '../lib/appearance'
 import { desktop } from '../lib/desktop'
+import { setDustEnabled } from '../lib/dust'
 import { clampCodeSize, CODE_SIZE_DEFAULT, fontEntry, fontStack, isFontId } from '../lib/fonts'
 import { applyTheme, isThemeId, themeMeta, toggleTarget, type ThemeId } from '../lib/themes'
 
@@ -68,6 +69,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const minimap = ref(read('ccm.minimap') !== '0')
   const dimInactive = ref(read('ccm.workspace.dim') === '1')
+  const dustEffect = ref(read('ccm.dust') === '1')
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
@@ -92,6 +94,8 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(breakReminder, (value) => persist('ccm.breakReminder', value ? '1' : '0'))
   watch(minimap, (value) => persist('ccm.minimap', value ? '1' : '0'))
   watch(dimInactive, (value) => persist('ccm.workspace.dim', value ? '1' : '0'))
+  watch(dustEffect, (value) => persist('ccm.dust', value ? '1' : '0'))
+  watch(dustEffect, setDustEnabled, { flush: 'sync', immediate: true })
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
   watch(dailyBudget, (value) => persist('ccm.budget', String(value)))
@@ -211,6 +215,7 @@ export const useSettingsStore = defineStore('settings', () => {
     keyHints,
     minimap,
     dimInactive,
+    dustEffect,
     pinned,
     activityPageSize,
     dailyBudget,

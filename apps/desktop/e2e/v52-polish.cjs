@@ -166,6 +166,7 @@ async function run(app) {
   await sleep(400)
   check('F6: "Not now" closes the tip for good', await evaluate(`!document.querySelector('[data-dim-tip]') && localStorage.getItem('ccm.workspace.dimTip') === '1'`))
   await evaluate(`${S}.get('tips').setOff(true)`)
+  await evaluate(`${S}.get('settings').dustEffect = true`)
 
   const t2tab = await evaluate(`${W}.tabOf('${t2}').key`)
   const t2b = await evaluate(`${W}.tabs.find((t) => t.key === '${t2tab}') && ${W}.panes.find((p) => p.key !== '${t2}' && ${W}.tabOf(p.key)?.key === '${t2tab}').key`)

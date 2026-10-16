@@ -145,6 +145,7 @@ async function run(app) {
   await key('Escape', 'Escape', 27)
   await waitFor(`!document.querySelector('[data-mission]')`, 5000, 'mission closed')
 
+  await evaluate(`${S}.get('settings').dustEffect = true`)
   const bytes = await evaluate(`window.ccmDesktop.captureRect({ x: 0, y: 0, width: 40, height: 20 }).then((b) => b?.byteLength ?? b?.length ?? 0)`)
   check('capture-rect returns a PNG for the dust effect', bytes > 0, String(bytes))
 

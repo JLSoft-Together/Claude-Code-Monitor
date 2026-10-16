@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { dropKept, dustIn, gatherDelay, gatherFrames, GATHER_LAYER_MS, hasKept, keepStore, layerBand, layerOf, scatterFrames, scatterOf, travelOf, UNDO_MS } from './dust'
+import { dropKept, dustIn, dustOn, dustOutAll, gatherDelay, gatherFrames, GATHER_LAYER_MS, hasKept, keepStore, layerBand, layerOf, onDustLeave, scatterFrames, scatterOf, setDustEnabled, travelOf, UNDO_MS } from './dust'
 
 describe('dust layers', () => {
   it('sends left pixels to early layers and right pixels to late ones', () => {
@@ -139,6 +139,28 @@ describe('dust kept for undo', () => {
     await expect(dustIn(el, 'gone')).resolves.toBe(false)
     expect(el.style.opacity).toBe('')
     expect(document.querySelector('[data-dust="in"]')).toBeNull()
+    el.remove()
+  })
+})
+
+describe('dust setting', () => {
+  afterEach(() => setDustEnabled(false))
+
+  it('is off until the setting turns it on, and needs the desktop capture', () => {
+    expect(dustOn()).toBe(false)
+    setDustEnabled(true)
+    expect(dustOn()).toBe(false)
+  })
+
+  it('leaves elements alone and still finishes the leave while off', async () => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    await expect(dustOutAll([el])).resolves.toEqual([false])
+    expect(el.style.visibility).toBe('')
+    expect(el.style.transition).toBe('')
+    const done = vi.fn()
+    onDustLeave(el, done)
+    await vi.waitFor(() => expect(done).toHaveBeenCalledOnce())
     el.remove()
   })
 })

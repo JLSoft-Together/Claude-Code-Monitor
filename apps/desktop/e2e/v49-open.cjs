@@ -131,9 +131,25 @@ const fireLink = (link) => {
     const focused = await evaluate(`${W}.activeKey`)
     check('resume of an open session focuses its pane', again?.ok === true && again?.resumed === true && focused === childKey && (await evaluate(`${W}.panes.length`)) === panesBefore, JSON.stringify(again))
     check('resume rejects a non-uuid', (await call(port, env.token, { agent: 'claude', resume: '--dangerously-skip-permissions' }))?.error === 'resume')
-    const a = await call(port, env.token, { agent: 'shell' })
-    const b = await call(port, env.token, { agent: 'shell' })
-    check('rate limit: 3 per pane per minute', a?.ok === true && b?.error === 'rate', JSON.stringify([a, b]))
+    const running = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
+    const settle = async (keep) => {
+      const fresh = `${W}.panes.filter((p) => !${JSON.stringify(keep)}.includes(p.key))`
+      await waitFor(`${fresh}.every((p) => p.state === 'running' && p.pid)`, 20000, 'burst panes').catch(() => {})
+      const pids = await evaluate(`${fresh}.map((p) => p.pid).filter(Boolean)`)
+      await evaluate(`${fresh}.forEach((p) => ${W}.remove(p.key))`)
+      for (let i = 0; i < 40 && pids.some(running); i++) await sleep(250)
+    }
+    const burst = []
+    while (burst.length < 21 && burst.at(-1)?.error !== 'rate') {
+      const keep = await evaluate(`${W}.panes.map((p) => p.key)`)
+      for (let i = 0; i < 8 && burst.length < 21; i++) {
+        burst.push(await call(port, env.token, { agent: 'shell' }))
+        if (burst.at(-1)?.ok !== true) break
+      }
+      await settle(keep)
+    }
+    const oks = burst.filter((r) => r?.ok === true).length
+    check('rate limit: 20 per pane per minute', oks >= 18 && oks <= 20 && burst.slice(0, -1).every((r) => r?.ok === true) && burst.at(-1)?.error === 'rate', JSON.stringify(burst.map((r) => r?.ok ?? r?.error)))
 
     const before = await evaluate(`${W}.panes.length`)
     await evaluate(`${S}.get('ui').setView('monitor')`)

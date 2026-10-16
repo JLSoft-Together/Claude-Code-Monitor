@@ -15,8 +15,8 @@ import { createStartGuard } from '../../lib/startGuard'
 import { dirKey } from '../../stores/favorites'
 import type { LinkOpenOptions, LinkTarget } from '../../lib/fileLinks'
 import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
-import { motionMs, pinLeaving, reducedMotion, retireOverlay, withViewTransition } from '../../lib/motion'
-import { dropKept, dustIn, dustOutAll, hasKept, onDustLeave } from '../../lib/dust'
+import { motionMs, pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
+import { dropKept, dustIn, dustOn, dustOutAll, hasKept, onDustLeave } from '../../lib/dust'
 import type { MenuEntry } from '../../lib/menu'
 import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, MIN_PANE, type Box, type Divider, type Edge, type SplitDir } from '../../lib/splitLayout'
@@ -60,7 +60,7 @@ import UndoToast, { type UndoInfo } from './UndoToast.vue'
 import DimToggle from './DimToggle.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
 import { clampSideWidth, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
-import { desktop, hasRun } from '../../lib/desktop'
+import { hasRun } from '../../lib/desktop'
 import { latestPeer, type RailCluster } from '../../lib/rail/railModel'
 import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
 import { buildAttentionList } from '../../lib/rail/attentionList'
@@ -630,7 +630,7 @@ function removePanes(keys: string[], asksFor: (pane: Pane) => boolean, opts: { r
 const dusting = new Set<string>()
 const closingTabs = new Set<string>()
 const closeOut = ref(false)
-const canDust = (): boolean => !reducedMotion() && !!desktop?.captureRect
+const canDust = dustOn
 
 function shownPane(key: string): HTMLElement | null {
   if (!props.visible || !tabBoxes.value.has(key)) return null
@@ -762,18 +762,20 @@ const nextFrame = (): Promise<void> => new Promise((done) => requestAnimationFra
 async function confirmPending(): Promise<void> {
   const keys = [...(workspace.pendingClose ?? [])]
   if (!keys.length || closeOut.value) return
-  const shown = canDust() ? keys.filter((k) => shownPane(k)) : []
+  const shown = keys.filter((k) => shownPane(k))
   if (!shown.length) {
     markClosingTabs(keys)
     workspace.confirmClose()
     return
   }
+  const dust = canDust()
   closeOut.value = true
   await wait(motionMs(180))
   await nextFrame()
-  await dustPanes(shown)
+  if (dust) await dustPanes(shown)
   markClosingTabs(keys)
-  workspace.confirmClose()
+  if (dust) workspace.confirmClose()
+  else withViewTransition(() => workspace.confirmClose())
   closeOut.value = false
 }
 

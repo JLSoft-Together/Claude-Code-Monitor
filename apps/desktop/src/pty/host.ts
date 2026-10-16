@@ -45,7 +45,7 @@ const APP_VERSION = process.env.CCM_APP_VERSION ?? '0'
 const BODY_MAX = 64 * 1024
 const TICKET_TTL_MS = 60_000
 const OPEN_REPLY_MS = 8_000
-const OPEN_RATE_MAX = 3
+const OPEN_RATE_MAX = 20
 const OPEN_RATE_MS = 60_000
 let PORT = 0
 

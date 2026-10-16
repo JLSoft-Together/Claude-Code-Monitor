@@ -648,6 +648,8 @@ export default {
     breakReminder: 'Break reminders',
     minimap: 'Code minimap',
     minimapHint: 'A zoomed-out overview of the file beside the file viewer. Click or drag it to scroll.',
+    dust: 'Disintegrate on close',
+    dustHint: 'Closed sessions, panes and tabs crumble into dust and fly back together on undo. Off: they fade out.',
     breakHint: 'Every {n} minutes from the first collector start of the day: drink some water, stand up and walk a bit.',
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',
