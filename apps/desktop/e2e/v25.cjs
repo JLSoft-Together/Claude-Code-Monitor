@@ -82,7 +82,7 @@ async function main() {
     check('Apple dark has no data-theme', await evaluate(`!document.documentElement.dataset.theme && document.documentElement.classList.contains('dark')`))
 
     // Claude pane: linked session for the map menu, then the attachments tray.
-    await evaluate(`${W}.open('claude', ${JSON.stringify(REPO)})`)
+    await evaluate(`${W}.open('claude', ${JSON.stringify(REPO)}, undefined, { tab: true })`)
     await waitFor(`${W}.panes[1]?.state === 'running'`, 20000, 'claude running')
     const claudeKey = await evaluate(`${W}.panes[1].key`)
     const terminalId = await waitFor(`${W}.panes[1]?.terminalId`, 60000, 'claude linked').catch(() => null)

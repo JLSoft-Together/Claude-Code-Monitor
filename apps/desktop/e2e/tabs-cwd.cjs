@@ -58,22 +58,23 @@ async function phaseOne(app) {
 
   // Split a browser next to the shell: the tab keeps naming the shell, the badge counts 2.
   const shellKey = await evaluate(`${W}.panes[0].key`)
-  await evaluate(`document.querySelector('[data-pane="${shellKey}"] button[aria-haspopup=menu]').click()`)
+  await evaluate(`document.querySelector('[data-pane="${shellKey}"] [data-pane-split]').click()`)
   await waitFor(`!!document.querySelector('[role=menu] [role=menuitem]')`, 5000, 'split menu')
   await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => /Browser/.test(b.textContent)).click()`)
   await waitFor(`${W}.panes.some((p) => p.kind === 'browser') && ${W}.activeKey !== '${shellKey}'`, 5000, 'browser split')
   await sleep(700)
   const label = await evaluate(`${activeTab}.querySelector('[data-tab-label]').textContent.trim()`)
   const badge = await evaluate(`${activeTab}.querySelector('[data-pane-count]')?.textContent.trim()`)
-  check('split tab label stays "Shell" while the browser has focus', label === 'Shell', label)
+  const named = path.basename(DIR).toLowerCase()
+  check('split tab label stays the shell folder while the browser has focus', label.toLowerCase() === named, label)
   check('pane-count badge = 2', /^2/.test(badge ?? ''), badge)
   const tip = await evaluate(`${activeTab}.title`)
   const tipLines = tip.split('\n')
-  check('tab tooltip names the project, then both panes', tipLines.length === 3 && /Shell/.test(tipLines[1]) && /Browser/.test(tipLines[2]), JSON.stringify(tip))
+  check('tab tooltip: tab name, project, both panes, rename hint', tipLines[0].toLowerCase() === named && tipLines.some((l) => /^Shell/.test(l)) && tipLines.some((l) => /^Browser/.test(l)) && /F2/.test(tipLines.at(-1)), JSON.stringify(tip))
   await shot('fix-01-tab-label-browser-split')
   await evaluate(`${W}.activate('${shellKey}')`)
   await sleep(300)
-  check('label unchanged after focusing the shell again', (await evaluate(`${activeTab}.querySelector('[data-tab-label]').textContent.trim()`)) === 'Shell')
+  check('label unchanged after focusing the shell again', (await evaluate(`${activeTab}.querySelector('[data-tab-label]').textContent.trim()`)).toLowerCase() === named)
 
   // cd into the nested repo: live cwd, header path and branch follow it.
   await evaluate(`document.querySelector('[data-pane="${shellKey}"] .xterm-helper-textarea').focus()`)

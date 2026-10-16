@@ -75,7 +75,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await sleep(2000)
     await shot('03-claude')
     const header = await evaluate(`document.querySelectorAll('section header')[1]?.innerText`)
-    check('pane header shows session status', !!header && /Working|Waiting|Idle|Đang|Chờ|Rảnh/i.test(header), JSON.stringify(header))
+    check('pane header shows session status', !!header && /Working|Waiting|Idle|Ready|Đang|Chờ|Rảnh|Sẵn sàng/i.test(header), JSON.stringify(header))
 
     // Browser-style "+": icon only (v25), the accessible name says what it makes.
     const plus = await evaluate(`(() => { const b = [...document.querySelectorAll('button[aria-haspopup=dialog]')].find(b=>/^(New tab|Tab mới|New terminal or tab|Terminal hoặc tab mới)$/.test(b.getAttribute('aria-label') ?? '')); return b ? b.textContent.trim() : null })()`)

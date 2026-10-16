@@ -156,7 +156,7 @@ function fixture() {
 
     // Split menu on the terminal: Browser opens next to it.
     await focusShell()
-    await evaluate(`document.querySelector('[data-pane="' + ${W}.activeKey + '"] button[aria-haspopup=menu]').click()`)
+    await evaluate(`document.querySelector('[data-pane="' + ${W}.activeKey + '"] [data-pane-split]').click()`)
     await waitFor(`!!document.querySelector('[role=menu] [role=menuitem]')`, 5000, 'split menu')
     const items = await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent.trim())`)
     check('split menu: Claude / Codex / Shell / Browser', items.length === 4 && /Browser/.test(items[3]), JSON.stringify(items))

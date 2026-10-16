@@ -27,7 +27,7 @@ async function boot(app) {
     await app.waitFor(`${W}.panes[0]?.state === 'running'`, 20000, 'shell')
     await app.evaluate(`${W}.split(${W}.panes[0].key, 'row')`)
     await app.waitFor(`${W}.panes[1]?.state === 'running'`, 20000, 'split')
-    await app.evaluate(`${W}.open('claude', ${JSON.stringify(REPO)}, ${JSON.stringify(FAKE)})`)
+    await app.evaluate(`${W}.open('claude', ${JSON.stringify(REPO)}, ${JSON.stringify(FAKE)}, { tab: true })`)
     await app.waitFor(`${W}.panes[2]?.state === 'running'`, 20000, 'claude resume pane')
     await app.sleep(7000)
     const out = await app.evaluate(`(async () => {
