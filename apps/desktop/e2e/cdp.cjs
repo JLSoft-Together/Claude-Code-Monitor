@@ -17,7 +17,15 @@ const getJson = (url) =>
   new Promise((res, rej) => http.get(url, (r) => { let b = ''; r.on('data', (d) => (b += d)); r.on('end', () => { try { res(JSON.parse(b)) } catch (e) { rej(e) } }) }).on('error', rej))
 
 async function launch(opts = {}) {
-  if (!opts.keep) fs.rmSync(TMP, { recursive: true, force: true })
+  for (let i = 0; !opts.keep; i++) {
+    try {
+      fs.rmSync(TMP, { recursive: true, force: true })
+      break
+    } catch (e) {
+      if (i >= 40) throw e
+      await sleep(250)
+    }
+  }
   fs.mkdirSync(TMP, { recursive: true })
   // Decided "no" up front: the first-visit full-access confirm would otherwise sit modal over every run.
   fs.mkdirSync(path.join(TMP, 'data'), { recursive: true })

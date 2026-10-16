@@ -76,10 +76,10 @@ async function run(app) {
   await evaluate(`${W}.openChanges(${JSON.stringify(DIR)}, { select: ${JSON.stringify(path.join(DIR, 'src', 'long.ts'))} })`)
   await waitFor(`!!document.querySelector('[data-kind=changes] [data-split-diff] path.sd-conn')`, 10000, 'split view').catch(() => {})
   await shot('split-diff-01')
-  check('split view has syntax colours (shiki tokens resolve)', await evaluate(`(() => {
+  check('split view has syntax colours (shiki tokens resolve)', await waitFor(`(() => {
     const spans = [...document.querySelectorAll('[data-kind=changes] [data-split-diff] [data-side] span[style*="--shiki"]')]
     return new Set(spans.map((s) => getComputedStyle(s).color)).size >= 2
-  })()`))
+  })()`, 10000, 'shiki colours').catch(() => false))
   const counts = await evaluate(`[...document.querySelectorAll('[data-kind=changes] [data-side]')].map((p) => p.querySelectorAll('.sd-row').length)`)
   check('no filler rows: left 400 lines, right 396', JSON.stringify(counts) === JSON.stringify([400, 396]), JSON.stringify(counts))
   check('modified rows are tinted on both sides', await evaluate(`document.querySelectorAll('[data-kind=changes] .sd-row.modified').length === 2`))

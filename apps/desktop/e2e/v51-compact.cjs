@@ -73,8 +73,11 @@ async function run(app) {
   check('flow starts in "writing" with a .planning/HANDOFF file', flow?.step === 'writing' && /\.planning[\\/]HANDOFF-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(file), file)
   check('handoff prompt sent (prefill consumed)', await evaluate(`!${W}.panes.find((p) => p.key === '${pane}').prefill`))
   check('pane header shows "writing" chip', await evaluate(`!!document.querySelector('[data-pane="${pane}"] [data-compact-step="writing"]')`))
-  await sleep(1200)
-  const sent = await output()
+  let sent = ''
+  for (let i = 0; i < 15 && !/CommandNotFoundException|not recognized/i.test(sent); i++) {
+    await sleep(1000)
+    sent = await output()
+  }
   check('prompt text reached the pane and was submitted (shell ran it)', /handoff|CommandNotFoundException|not recognized/i.test(sent), sent.slice(-200))
   await shot('v51-02-writing')
 
