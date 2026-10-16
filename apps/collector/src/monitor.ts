@@ -20,6 +20,7 @@ import type { JsonFile } from './json-file'
 import { isDaemonRunning, stopBackgroundJob } from './job-stop'
 import { hasControlChars, LaunchError, launchClaude } from './launcher'
 import { readModelCatalog } from './model-catalog'
+import { PEER_TTL_MS, PeerLinkStore, type PeerMessage } from './peers'
 import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
 import { latestLimits, StatusLineReader } from './statusline'
@@ -60,6 +61,7 @@ export interface MonitorDeps {
   openFolder?: (dir: string, app: OpenApp) => Promise<OpenResult>
   diffStat?: (cwd: string) => Promise<GitDiffStat | null>
   diffDelayMs?: number
+  peerHoldMs?: number
   stopJob?: (jobId: string) => Promise<JobStopResult>
 }
 
@@ -111,6 +113,7 @@ export class Monitor {
   private readonly timeline: StatusTimeline
   private readonly notes: AliasStore
   private readonly dismissedJobsFile: JsonFile | null
+  private readonly peers: PeerLinkStore
   /** Codex sessions live in their own monitor; session actions on `codex:` ids are delegated to it. */
   codex: CodexMonitor | null = null
 
@@ -132,6 +135,13 @@ export class Monitor {
     this.projectsDir = path.join(config.claudeRoot, 'projects')
     this.jobReader = new JobReader(path.join(config.claudeRoot, 'jobs'))
     this.statusLine = new StatusLineReader(path.join(config.dataDir, 'statusline'))
+    this.peers = new PeerLinkStore(store, {
+      ttlMs: config.peerTtlMs ?? PEER_TTL_MS,
+      holdMs: deps.peerHoldMs,
+      now: () => this.deps.now(),
+      senderOf: (fromKey) => this.senderOf(fromKey),
+      onMessage: (message) => this.peerActivity(message),
+    })
   }
 
   async start(options: { watch?: boolean } = {}): Promise<void> {
@@ -271,6 +281,7 @@ export class Monitor {
   stop(): void {
     this.stopped = true
     this.codex?.stop()
+    this.peers.stop()
     for (const w of this.watchers) w.close()
     for (const t of this.timers) clearInterval(t)
     for (const t of this.syncTimers.values()) clearTimeout(t)
@@ -332,6 +343,7 @@ export class Monitor {
       this.sweptAt.set(tracker.terminalId, now)
       await tracker.sync(true)
       this.publish(tracker)
+      this.drainPeers(tracker)
       this.scheduleDiff(tracker)
       if (!initial) {
         this.pushActivity([{ kind: 'terminal.started', terminalId: tracker.terminalId, data: { title: tracker.buildTerminal().title } }])
@@ -350,6 +362,8 @@ export class Monitor {
       const endedAt = Date.parse(tracker.endedAt ?? '')
       if (Number.isFinite(endedAt) && now - endedAt >= this.config.staleTtlMs) this.forget(tracker)
     }
+    this.peers.flush(true)
+    this.peers.prune()
   }
 
   /** The watcher reports writes to finished subagents; reconcile re-reads them only once per sweep as a safety net. */
@@ -439,6 +453,8 @@ export class Monitor {
       this.publish(tracker)
       for (const span of tracker.drainSpans()) this.store.toolSpan(span)
       this.pushActivity(drafts)
+      this.drainPeers(tracker)
+      this.peers.flush()
     } catch (err) {
       console.error('[collector] sync failed:', (err as Error).message)
     }
@@ -495,6 +511,7 @@ export class Monitor {
     this.syncTimers.delete(tracker.terminalId)
     this.syncFiles.delete(tracker.terminalId)
     this.sweptAt.delete(tracker.terminalId)
+    this.peers.dropTerminal(tracker.terminalId)
     this.store.removeTerminal(tracker.terminalId)
     this.aliases.delete(tracker.terminalId)
     this.notes.delete(tracker.terminalId)
@@ -707,6 +724,36 @@ export class Monitor {
 
   private titleOf(tracker: SessionTracker): string {
     return this.aliases.get(tracker.terminalId) ?? tracker.buildTerminal().title
+  }
+
+  private drainPeers(tracker: SessionTracker): void {
+    const { inbound, sent } = tracker.drainPeers()
+    if (sent.length) this.peers.sent(sent)
+    if (inbound.length) this.peers.inbound(inbound)
+  }
+
+  private senderOf(fromKey: string): string | undefined {
+    let ended: string | undefined
+    for (const t of this.trackers.values()) {
+      if (t.record.sockKey !== fromKey) continue
+      if (!t.ended) return t.terminalId
+      ended ??= t.terminalId
+    }
+    return ended
+  }
+
+  private peerActivity(message: PeerMessage): void {
+    const from = this.trackers.get(message.from)
+    const to = this.trackers.get(message.to)
+    this.pushActivity([
+      {
+        kind: 'peer.message',
+        terminalId: message.from,
+        agentId: message.agentId,
+        at: message.at,
+        data: { title: from ? this.titleOf(from) : undefined, to: to ? this.titleOf(to) : undefined },
+      },
+    ])
   }
 
   private publish(tracker: SessionTracker): void {

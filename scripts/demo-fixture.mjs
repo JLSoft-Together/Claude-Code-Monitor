@@ -16,6 +16,7 @@ const SESSIONS = Number(args.sessions ?? 4)
 const SUBAGENTS = Number(args.subagents ?? 3)
 const TICK_MS = Number(args.tick ?? 1200)
 const DURATION_S = Number(args.duration ?? 0)
+const PEERS = Number(args.peers ?? 0)
 
 const TOOLS = ['Read', 'Edit', 'Bash', 'Grep', 'Glob', 'Write', 'PowerShell']
 const AGENT_TYPES = ['Explore', 'general-purpose', 'Plan', 'code-reviewer']
@@ -52,6 +53,7 @@ function writeRegistry(s) {
       waitingFor: s.status === 'waiting' ? 'permission prompt' : undefined,
       updatedAt: Date.now(),
       statusUpdatedAt: Date.now(),
+      messagingSocketPath: PEERS > 0 ? s.sock : undefined,
     }),
   )
 }
@@ -113,6 +115,38 @@ function finishSubagent(s, sub) {
   sub.done = true
 }
 
+function sendPeer(from, to) {
+  const msgId = randomUUID()
+  const sub = Math.random() < 0.3 ? pick(from.subs.filter((x) => !x.done)) : undefined
+  const file = sub ? sub.file : transcript(from)
+  const id = toolUse(file, 'SendMessage', Boolean(sub))
+  toolResult(file, id, false, { toolUseResult: { success: true, message: '', display: '', msg_id: msgId } })
+  const at = iso()
+  const envelope = `<cross-session-message from="uds:${from.sock}" from-name="${from.name}" from-mode="prompting">\n</cross-session-message>`
+  const into = transcript(to)
+  appendFileSync(into, line({ type: 'queue-operation', operation: 'enqueue', timestamp: at, sessionId: to.sessionId, content: envelope }))
+  appendFileSync(into, line({ type: 'queue-operation', operation: 'dequeue', timestamp: at, sessionId: to.sessionId }))
+  appendFileSync(
+    into,
+    line({
+      type: 'user',
+      uuid: randomUUID(),
+      timestamp: at,
+      sessionId: to.sessionId,
+      isMeta: true,
+      turnOrigin: 'peer',
+      promptSource: 'system',
+      origin: { kind: 'peer', from: `uds:${from.sock}`, msg_id: msgId, name: from.name, fromMode: 'prompting', body: '' },
+      message: { role: 'user', content: envelope },
+    }),
+  )
+}
+
+function peerPair() {
+  const from = Math.random() < 0.5 ? sessions[0] : pick(sessions)
+  return [from, pick(sessions.filter((s) => s !== from))]
+}
+
 for (let i = 0; i < SESSIONS; i++) {
   const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1e9)'], { stdio: 'ignore' })
   children.push(child)
@@ -128,6 +162,7 @@ for (let i = 0; i < SESSIONS; i++) {
     name: `${name}-${(i + 10).toString(16)}`,
     nameSource: 'derived',
     status: 'busy',
+    sock: `\\\\.\\pipe\\LOCAL\\cc-msg-demo-${i}-${randomUUID().slice(0, 8)}`,
     open: null,
     subs: [],
   }
@@ -138,8 +173,11 @@ for (let i = 0; i < SESSIONS; i++) {
   sessions.push(s)
 }
 
+const canMessage = PEERS > 0 && sessions.length >= 2
+if (canMessage) for (let k = 0; k < PEERS; k++) sendPeer(...peerPair())
+
 console.log(`[demo] fixture root ${ROOT}`)
-console.log(`[demo] ${SESSIONS} sessions, ${SUBAGENTS} subagents each, tick ${TICK_MS}ms`)
+console.log(`[demo] ${SESSIONS} sessions, ${SUBAGENTS} subagents each, tick ${TICK_MS}ms${canMessage ? `, ${PEERS} peer messages seeded` : ''}`)
 console.log(`[demo] run collector: CLAUDE_CONFIG_DIR=${ROOT} CCM_VERIFY_PROCESSES=0 npm run dev -w @ccm/collector`)
 
 let ticks = 0
@@ -177,6 +215,7 @@ const timer = setInterval(() => {
       writeRegistry(s)
     }
   }
+  if (canMessage && Math.random() < 0.12) sendPeer(...peerPair())
   if (DURATION_S > 0 && ticks * TICK_MS >= DURATION_S * 1000) shutdown()
 }, TICK_MS)
 

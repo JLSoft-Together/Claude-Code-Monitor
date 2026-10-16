@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useCountUp } from '../composables/useCountUp'
 import { compactNumber } from '../lib/format'
 
-const props = withDefaults(defineProps<{ value: number; withUnit?: boolean }>(), { withUnit: true })
+const props = withDefaults(defineProps<{ value: number; withUnit?: boolean; delta?: 'above' | 'side' }>(), { withUnit: true, delta: 'above' })
 const { t } = useI18n()
 
 // Increases inside this window add up into one growing badge instead of a new badge per transcript line.
@@ -39,8 +39,8 @@ watch(
       v-if="bump"
       :key="`d-${bump}`"
       aria-hidden="true"
-      class="ccm-token-delta pointer-events-none absolute right-0 -top-4 inline-flex h-4 items-center rounded-inner px-1.5 text-[10px] leading-none font-semibold whitespace-nowrap bg-accent-soft text-accent-ink shadow-control"
-      :class="delta >= BIG ? 'ring-1 ring-accent-ink' : ''"
+      class="ccm-token-delta pointer-events-none absolute inline-flex h-4 items-center rounded-inner px-1.5 text-[10px] leading-none font-semibold whitespace-nowrap bg-accent-soft text-accent-ink shadow-control"
+      :class="[props.delta === 'side' ? 'top-1/2 left-full ml-2 -translate-y-1/2' : 'right-0 -top-4', delta >= BIG ? 'ring-1 ring-accent-ink' : '']"
     >+{{ compactNumber(delta) }}</span>
   </span>
 </template>

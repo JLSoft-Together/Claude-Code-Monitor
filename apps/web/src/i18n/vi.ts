@@ -24,6 +24,12 @@ import v52Pane from './workspace-v52-pane'
 import v52Tabs from './workspace-v52-tabs'
 import v52Rail from './workspace-v52-rail'
 import v52Mission from './workspace-v52-mission'
+import monitorV53 from './monitor-v53'
+import sessionV53 from './session-v53'
+import usageV53 from './usage-v53'
+import peerV54 from './peer-v54'
+import peerMapV54 from './peer-map-v54'
+import peerWsV54 from './peer-ws-v54'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -33,6 +39,12 @@ const vi: typeof en = {
   ...layout.vi,
   ...fwp.vi,
   ...fileEditor.vi,
+  ...monitorV53.vi,
+  ...sessionV53.vi,
+  ...usageV53.vi,
+  ...peerV54.vi,
+  ...peerMapV54.vi,
+  ...peerWsV54.vi,
   app: {
     title: 'GolAIm',
     skipToContent: 'Tới nội dung chính',
@@ -278,7 +290,6 @@ const vi: typeof en = {
     renameReset: 'Quay về tên gốc ({title})',
     renameOffline: 'Collector offline — chưa lưu được tên. Thử lại khi kết nối lại.',
     originalName: 'Tên gốc: {title}',
-    nameHint: 'Tên tự đặt · đổi bằng nút bút chì hoặc /rename',
     nameHintLong: 'Claude tự đặt tên theo thư mục. Đổi tên ngay tại đây, gõ /rename <tên> trong Claude, hoặc mở Claude bằng claude -n "<tên>".',
   },
   agent: {
@@ -411,11 +422,6 @@ const vi: typeof en = {
   usage: {
     vs: { today: 'so với hôm qua', '7d': 'so với 7 ngày trước đó', '30d': 'so với 30 ngày trước đó', all: '' },
     vsTitle: 'So với {from} đến {to}, cùng bộ lọc',
-    hitRate: 'Tỉ lệ đọc cache',
-    hitShort: 'Đọc cache',
-    hitTitle: 'Phần token prompt lấy từ cache: cache read / (input + cache write + cache read). Càng cao càng rẻ.',
-    hitDelta: '{pts} điểm',
-    title: 'Thống kê token',
     subtitle: 'Đọc từ transcript Claude Code trên máy này. Đếm theo từng message API, tách theo loại token và model.',
     rangeLabel: 'Khoảng thời gian',
     metricLabel: 'Đơn vị',
@@ -431,35 +437,17 @@ const vi: typeof en = {
     empty: 'Chưa có token nào được ghi nhận.',
     emptyHint: 'Số liệu xuất hiện sau khi Claude Code trả lời message đầu tiên.',
     footnote: 'Chi phí là ước tính theo giá API niêm yết (kiểm tra ngày {date}), không phải hoá đơn — gói subscription tính khác.',
-    totalTokens: 'Tổng token',
-    messages: '{n} message',
-    modelCount: '{n} model',
-    share: '{pct} tổng',
-    estimatedCost: 'Chi phí ước tính',
-    costNote: 'theo giá API niêm yết',
     unpriced: '{n} message từ model chưa có giá',
     series: { input: 'Input', output: 'Output', cacheWrite: 'Cache write', cacheRead: 'Cache read' },
-    daily: 'Theo ngày',
     chartSummary: '{days} ngày · {total} · nhiều nhất {peak}',
-    toggleSeries: 'Ẩn / hiện loại này',
     showTable: 'Xem dạng bảng',
     showChart: 'Xem dạng biểu đồ',
     total: 'Tổng',
     day: 'Ngày',
-    byModel: 'Theo model',
-    byModelHint: 'Chọn một model để lọc cả trang.',
     noRows: 'Không có dữ liệu trong khoảng này.',
     cost: 'Chi phí ƯT',
     clearFilter: 'Bỏ lọc model',
     filterBy: 'Lọc theo {name}',
-    byProject: 'Theo project',
-    byProjectHint: 'Thư mục làm việc của session. Sắp xếp theo cột, tìm, lọc theo ổ đĩa; chọn một dòng để lọc cả trang.',
-    otherProjects: '{n} project khác',
-    live: 'Session đang chạy',
-    liveHint: 'Token của cuộc hội thoại hiện tại trong từng terminal, gồm main agent và subagent.',
-    session: 'Session',
-    liveInput: 'Input + cache write',
-    agentCount: '{n} agent',
   },
   panel: {
     pin: 'Ghim thành cột',

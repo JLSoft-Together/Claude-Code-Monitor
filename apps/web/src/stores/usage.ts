@@ -9,6 +9,7 @@ export type SeriesKey = 'input' | 'output' | 'cacheWrite' | 'cacheRead'
 /** Stack order matches the validated categorical slot order (adjacent pairs are CVD-checked). */
 export const SERIES: SeriesKey[] = ['input', 'output', 'cacheWrite', 'cacheRead']
 export const MODEL_SLOTS = 8
+export const TOP_PROJECTS = 6
 
 export interface Aggregate {
   messages: number
@@ -134,6 +135,7 @@ export const useUsageStore = defineStore('usage', () => {
   const project = ref<string | null>(null)
   const model = ref<string | null>(null)
   const today = ref(dayKey(new Date()))
+  const selectedDay = ref<string | null>(null)
 
   watch(
     [range, metric, hidden, groupRepos],
@@ -205,37 +207,60 @@ export const useUsageStore = defineStore('usage', () => {
     ),
   )
 
+  const inRange = (day: string): boolean => day >= startDay.value && day <= today.value
+
+  watch(range, () => (selectedDay.value = null), { flush: 'sync' })
+  watch([startDay, today], () => {
+    if (selectedDay.value !== null && !inRange(selectedDay.value)) selectedDay.value = null
+  })
+
+  function selectDay(day: string | null): void {
+    selectedDay.value = day === null || day === selectedDay.value || !inRange(day) ? null : day
+  }
+
+  const scoped = computed(() => (selectedDay.value === null ? filtered.value : filtered.value.filter((b) => b.day === selectedDay.value)))
+
   /** The window of the same length right before the current one (same project / model filter); none for "all". */
-  const previous = computed<{ from: string; to: string; totals: Aggregate } | null>(() => {
-    const days = RANGE_DAYS[range.value]
-    if (days === null) return null
-    const to = shiftDay(startDay.value, -1)
-    const from = shiftDay(startDay.value, -days)
-    const agg = emptyAggregate()
-    let any = false
-    for (const b of all.value) {
-      if (b.day < from || b.day > to) continue
-      if (project.value !== null && projectOf(b.project) !== project.value) continue
-      if (model.value !== null && b.model !== model.value) continue
-      addBucket(agg, b)
-      any = true
-    }
-    return any ? { from, to, totals: agg } : null
-  })
-
   const visibleSeries = computed(() => SERIES.filter((k) => !hidden.value.includes(k)))
-
-  const totals = computed(() => {
-    const agg = emptyAggregate()
-    for (const b of filtered.value) addBucket(agg, b)
-    return agg
-  })
 
   const valueOf = (b: UsageBucket): number => {
     let v = 0
     for (const k of visibleSeries.value) v += seriesValue(b, k, metric.value)
     return v
   }
+
+  const previous = computed<{ from: string; to: string; totals: Aggregate; value: number } | null>(() => {
+    const days = RANGE_DAYS[range.value]
+    if (days === null) return null
+    const to = shiftDay(startDay.value, -1)
+    const from = shiftDay(startDay.value, -days)
+    const agg = emptyAggregate()
+    let value = 0
+    let any = false
+    for (const b of all.value) {
+      if (b.day < from || b.day > to) continue
+      if (project.value !== null && projectOf(b.project) !== project.value) continue
+      if (model.value !== null && b.model !== model.value) continue
+      addBucket(agg, b)
+      value += valueOf(b)
+      any = true
+    }
+    return any ? { from, to, totals: agg, value } : null
+  })
+
+  const totals = computed(() => {
+    const agg = emptyAggregate()
+    for (const b of scoped.value) addBucket(agg, b)
+    return agg
+  })
+
+  const seriesTotals = computed<Record<SeriesKey, number>>(() => {
+    const out: Record<SeriesKey, number> = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }
+    for (const b of scoped.value) for (const k of SERIES) out[k] += seriesValue(b, k, metric.value)
+    return out
+  })
+
+  const heroTotal = computed(() => visibleSeries.value.reduce((s, k) => s + seriesTotals.value[k], 0))
 
   const daily = computed<DayRow[]>(() => {
     const rows = new Map<string, DayRow>()
@@ -251,9 +276,14 @@ export const useUsageStore = defineStore('usage', () => {
     return [...rows.values()]
   })
 
+  const dailyAverage = computed(() => {
+    const rows = daily.value
+    return rows.length > 1 ? rows.reduce((s, r) => s + r.total, 0) / rows.length : null
+  })
+
   function groupBy(pick: (b: UsageBucket) => string): GroupRow[] {
     const map = new Map<string, GroupRow>()
-    for (const b of filtered.value) {
+    for (const b of scoped.value) {
       const id = pick(b)
       let row = map.get(id)
       if (!row) map.set(id, (row = { id, value: 0, ...emptyAggregate() }))
@@ -305,6 +335,7 @@ export const useUsageStore = defineStore('usage', () => {
 
   const byModel = computed(() => groupBy((b) => b.model))
   const byProject = computed(() => groupBy((b) => projectOf(b.project)))
+  const topProjects = computed(() => byProject.value.slice(0, TOP_PROJECTS))
 
   const hasData = computed(() => all.value.length > 0)
 
@@ -326,17 +357,23 @@ export const useUsageStore = defineStore('usage', () => {
     project,
     model,
     today,
+    selectedDay,
     models,
     projects,
     modelSlot,
     startDay,
     filtered,
+    scoped,
     visibleSeries,
     totals,
+    seriesTotals,
+    heroTotal,
     previous,
     daily,
+    dailyAverage,
     byModel,
     byProject,
+    topProjects,
     projectRows,
     roots,
     groupRepos,
@@ -349,5 +386,6 @@ export const useUsageStore = defineStore('usage', () => {
     setScan,
     setRoots,
     toggleSeries,
+    selectDay,
   }
 })

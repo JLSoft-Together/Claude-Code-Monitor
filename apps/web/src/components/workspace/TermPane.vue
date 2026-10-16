@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Maximize2, Minimize2, Paperclip, Play, RotateCw, TriangleAlert, X } from 'lucide-vue-next'
+import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Network, Paperclip, Play, RotateCw, TriangleAlert, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -42,8 +42,10 @@ import DevServerChip from './DevServerChip.vue'
 import TermFind from './TermFind.vue'
 import StatusIcon from '../StatusIcon.vue'
 import { statusMeta } from '../../lib/status'
-import { usePaneInfo } from '../../composables/usePaneInfo'
+import { usePaneInfo, usePeerSweep } from '../../composables/usePaneInfo'
 import { useCompact } from '../../composables/useCompact'
+import { needsUser } from '../../lib/rail/railModel'
+import { leaves } from '../../lib/splitLayout'
 import PaneMore from './PaneMore.vue'
 import PresetIcon from './PresetIcon.vue'
 import SplitMenu from './SplitMenu.vue'
@@ -179,6 +181,21 @@ const sessionChip = computed(() => {
   return { state, badge, status: info.statusOf(props.pane) ?? s.status, label: info.stateText(props.pane) ?? '', subagents: info.subagentsOf(props.pane), meta: statusMeta(badge) }
 })
 const chipKey = computed(() => (sessionChip.value ? `s:${sessionChip.value.state}:${sessionChip.value.label}` : `p:${procChip.value?.kind ?? ''}:${procChip.value?.label ?? ''}`))
+
+const peer = computed(() => (props.pane.state === 'running' ? info.peerOf(props.pane) : null))
+const peerBadge = computed(() => !!sessionChip.value && needsUser(sessionChip.value.state))
+const coordinating = computed(() => (props.pane.state === 'running' ? info.coordinatingOf(props.pane) : null))
+const peerTip = computed(() => [...new Set([peer.value?.label ?? '', ...info.peerLines(props.pane), peer.value?.action ?? ''].filter(Boolean))].join('\n'))
+const peerAria = computed(() => (peer.value ? (peer.value.action ? t('peerWs.chipLabel', { text: peer.value.label, action: peer.value.action }) : peer.value.label) : ''))
+const peerSweep = usePeerSweep(() => peer.value)
+const hiddenNews = computed(() => {
+  if (!props.zoomed || props.hiddenCount <= 0) return null
+  const tab = workspace.tabOf(props.pane.key)
+  return tab ? info.peerNewsOf(leaves(tab.root).filter((k) => k !== props.pane.key).map((k) => workspace.panes.find((p) => p.key === k))) : null
+})
+const hiddenLabel = computed(() =>
+  [t('workspace.paneHead.hidden', { n: props.hiddenCount }, props.hiddenCount), hiddenNews.value?.label].filter(Boolean).join(' · '),
+)
 
 const activity = computed(() => info.activityOf(props.pane))
 const activityText = computed(() => {
@@ -768,7 +785,7 @@ onBeforeUnmount(() => {
     @pointerdown="onPointerDown"
   >
     <header
-      class="flex h-7 min-w-0 items-center gap-2 px-1 text-xs select-none @max-[420px]:gap-1"
+      class="relative flex h-7 min-w-0 items-center gap-2 px-1 text-xs select-none @max-[420px]:gap-1"
       :class="multi ? 'cursor-grab' : ''"
       :title="multi ? t('workspace.drag.paneHint', { key: isMac ? '⌘' : 'Ctrl' }) : undefined"
       :data-pane-grip="multi || undefined"
@@ -776,6 +793,7 @@ onBeforeUnmount(() => {
       data-pane-head
       @dblclick="onHeadDblClick"
     >
+      <span v-if="peerSweep" :key="peerSweep" class="ccm-peer-sweep-x absolute inset-x-1 top-0 h-0.5" aria-hidden="true" data-pane-peer-sweep />
       <PresetIcon :preset="pane.preset" :size="15" class="shrink-0" />
       <span class="shrink-0 font-semibold transition-colors duration-(--ccm-dur-fast) ease-out-quint @max-[420px]:sr-only" :class="multi && !focused ? 'text-ink-muted' : 'text-ink'">{{
         t(`workspace.preset.${pane.preset}`)
@@ -868,12 +886,20 @@ onBeforeUnmount(() => {
               :key="chipKey"
               class="inline-flex h-5 max-w-full min-w-6 items-center gap-1 rounded-inner px-1.5 text-2xs font-medium whitespace-nowrap"
               :class="[sessionChip.meta.text, sessionChip.meta.soft]"
-              :title="sessionChip.label"
+              :title="peerBadge && peer ? `${sessionChip.label}\n${peerTip}` : sessionChip.label"
               :data-pane-status="sessionChip.status"
               :data-subagents="sessionChip.subagents || undefined"
             >
-              <StatusIcon :status="sessionChip.badge" :size="12" class="shrink-0" />
+              <span class="relative inline-flex shrink-0">
+                <StatusIcon :status="sessionChip.badge" :size="12" />
+                <Transition name="ccm-fade">
+                  <span v-if="peerBadge && peer" class="absolute -top-1 -right-1 inline-flex rounded-full bg-surface p-px" aria-hidden="true" :data-pane-peer-badge="peer.dir">
+                    <component :is="peer.glyph" :size="8" :class="peer.tone" />
+                  </span>
+                </Transition>
+              </span>
               <span class="min-w-0 truncate @max-[460px]:sr-only">{{ sessionChip.label }}</span>
+              <span v-if="peerBadge && peer" class="sr-only">, {{ peer.label }}</span>
             </span>
             <span
               v-else-if="procChip"
@@ -886,6 +912,37 @@ onBeforeUnmount(() => {
               <LoaderCircle v-if="!procChip.status" :size="12" class="ccm-spin shrink-0" aria-hidden="true" />
               <StatusIcon v-else :status="procChip.status" :size="12" class="shrink-0" />
               <span class="min-w-0 truncate @max-[460px]:sr-only">{{ procChip.label }}</span>
+            </span>
+          </Transition>
+        </span>
+        <span class="grid min-w-5 shrink-[1000] justify-items-end empty:hidden *:[grid-area:1/1]" data-pane-chip data-pane-peer-cell>
+          <Transition name="ccm-fade">
+            <button
+              v-if="peer && !peerBadge"
+              :key="`p:${peer.kind}:${peer.dir}:${peer.text}`"
+              type="button"
+              class="inline-flex h-5 max-w-full min-w-5 cursor-pointer items-center justify-center gap-1 rounded-inner px-1 text-2xs font-medium whitespace-nowrap text-ink transition-colors duration-(--ccm-dur-fast) ease-out-quint hover:bg-fill disabled:cursor-default disabled:hover:bg-transparent"
+              :disabled="!peer.other"
+              :title="peerTip"
+              :aria-label="peerAria"
+              :data-pane-peer="peer.dir"
+              :data-peer-kind="peer.kind"
+              data-no-drag
+              @click="info.goToPeer(peer.other)"
+            >
+              <component :is="peer.glyph" :size="12" class="shrink-0" :class="peer.tone" aria-hidden="true" />
+              <span class="max-w-[17ch] min-w-0 truncate @max-[720px]:hidden" data-pane-peer-text>{{ peer.text }}</span>
+            </button>
+            <span
+              v-else-if="coordinating && !peerBadge"
+              key="coordinating"
+              role="img"
+              class="inline-flex h-5 min-w-5 items-center justify-center text-ink-faint"
+              :title="peerTip || coordinating.label"
+              :aria-label="coordinating.label"
+              :data-pane-coordinating="coordinating.n"
+            >
+              <Network :size="12" aria-hidden="true" />
             </span>
           </Transition>
         </span>
@@ -951,11 +1008,14 @@ onBeforeUnmount(() => {
             v-if="zoomed && hiddenCount > 0"
             type="button"
             class="inline-flex h-5 shrink-0 cursor-pointer items-center rounded-inner bg-accent-soft px-1.5 text-2xs font-medium text-accent-ink tabular-nums transition-colors duration-(--ccm-dur-fast) ease-out-quint hover:text-ink @max-[300px]:hidden"
-            :title="t('workspace.paneHead.hidden', { n: hiddenCount }, hiddenCount)"
-            :aria-label="t('workspace.paneHead.hidden', { n: hiddenCount }, hiddenCount)"
+            :title="hiddenLabel"
+            :aria-label="hiddenLabel"
             data-pane-hidden
             @click="emit('zoom')"
           >
+            <Transition name="ccm-fade">
+              <Mail v-if="hiddenNews" :size="10" class="mr-1 shrink-0 text-peer" aria-hidden="true" data-pane-hidden-peer />
+            </Transition>
             +{{ hiddenCount }}
           </button>
         </Transition>

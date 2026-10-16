@@ -6,6 +6,7 @@ import { useAgentsStore } from './agents'
 import { useExtrasStore } from './extras'
 import { useFavoritesStore } from './favorites'
 import { useHistoryStore } from './history'
+import { usePeersStore } from './peers'
 import { useSettingsStore } from './settings'
 import { useSnoozeStore } from './snooze'
 import { useTerminalsStore } from './terminals'
@@ -65,6 +66,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const settings = useSettingsStore()
   const snooze = useSnoozeStore()
   const toolSpans = useToolSpansStore()
+  const peers = usePeersStore()
   let pendingFocus = takeFocusParam()
 
   function url(): string {
@@ -75,6 +77,7 @@ export const useConnectionStore = defineStore('connection', () => {
   function hydrate(snapshot: MonitorSnapshot): void {
     terminals.replaceAll(snapshot.terminals ?? [])
     agents.replaceAll(snapshot.agents ?? [])
+    peers.replaceAll(snapshot.peerLinks ?? [])
     activity.replaceAll(snapshot.activity ?? [])
     usage.reset(snapshot.usage)
     favorites.replaceAll(snapshot.favorites ?? [])
@@ -113,6 +116,7 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'terminal.removed':
           terminals.remove(event.payload.id)
           toolSpans.removeTerminal(event.payload.id)
+          peers.dropTerminal(event.payload.id)
           break
         case 'tool.span':
           toolSpans.upsert(event.payload)
@@ -129,6 +133,15 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'agent.removed':
           agents.remove(event.payload.id)
           if (ui.selectedAgentId === event.payload.id) ui.selectAgent(null)
+          break
+        case 'link.created':
+          peers.upsert(event.payload, sessionsLoading.value)
+          break
+        case 'link.updated':
+          peers.patch(event.payload, sessionsLoading.value)
+          break
+        case 'link.removed':
+          peers.remove(event.payload.id)
           break
         case 'activity':
           newActivity.push(event.payload)

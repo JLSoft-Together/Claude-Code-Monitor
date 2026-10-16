@@ -409,6 +409,99 @@ describe('Monitor with fixture claude root', () => {
     expect(store.getAgent('a3')?.parentId).toBe(`${store.snapshot().terminals[0]!.id}:main`)
   })
 
+  it('publishes subagent message counts: built at start without activity, patched live', async () => {
+    const AID = 'a0123456789abcdef'
+    const dir = path.join(projectDir, SID, 'subagents')
+    const main = path.join(projectDir, `${SID}.jsonl`)
+    const sub = path.join(dir, `agent-${AID}.jsonl`)
+    const coordinator = (uuid: string, at: string) =>
+      line({ type: 'user', uuid, timestamp: at, isMeta: true, agentId: AID, origin: { kind: 'coordinator' }, message: { role: 'user', content: 'secret follow-up' } })
+    const origin = { kind: 'peer', from: AID, senderTaskId: AID, handback: true, name: 'secret name', body: 'secret report' }
+    await writeFile(path.join(dir, `agent-${AID}.meta.json`), JSON.stringify({ agentType: 'Plan', toolUseId: 'toolu_msg', spawnDepth: 1 }))
+    await writeFile(sub, coordinator('u-c1', '2026-10-07T09:59:10.000Z'))
+    await appendFile(main, line({ type: 'user', uuid: 'u-h1', timestamp: '2026-10-07T09:59:20.000Z', isMeta: true, origin, message: { role: 'user', content: 'secret report' } }))
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, deps())
+    await monitor.start({ watch: false })
+    expect(store.getAgent(AID)).toMatchObject({ msgIn: 1, msgOut: 1 })
+    expect(store.snapshot().activity).toHaveLength(0)
+
+    store.flush()
+    const events: { type: string; payload: unknown }[] = []
+    store.subscribe((m) => events.push(...m.events))
+    await appendFile(sub, coordinator('u-c2', '2026-10-07T10:00:10.000Z'))
+    await appendFile(
+      main,
+      line({ type: 'queue-operation', operation: 'enqueue', timestamp: '2026-10-07T10:00:20.000Z', content: `<agent-message from="${AID}">secret report</agent-message>` }) +
+        line({ type: 'attachment', uuid: 'att-2', timestamp: '2026-10-07T10:00:20.000Z', attachment: { type: 'queued_command', prompt: 'secret report', source_uuid: 'src-h2', isMeta: true, origin } }),
+    )
+    await monitor.reconcile()
+    store.flush()
+    expect(events).toContainEqual({ type: 'agent.updated', payload: expect.objectContaining({ id: AID, msgIn: 2, msgOut: 2 }) })
+    expect(events.some((e) => e.type === 'activity')).toBe(false)
+    expect(JSON.stringify(events)).not.toContain('secret')
+    expect(JSON.stringify(store.snapshot())).not.toContain('secret')
+  })
+
+  it('links two sessions by socket hash: catch-up without activity, live message, removal', async () => {
+    const SOCK_A = '\\\\.\\pipe\\LOCAL\\cc-msg-secret'
+    const SOCK_B = '\\\\.\\pipe\\LOCAL\\cc-msg-secret-b'
+    const SID_B = '77777777-8888-9999-aaaa-bbbbbbbbbbbb'
+    const dirB = path.join(root, 'projects', 'D--work-other')
+    const mainA = path.join(projectDir, `${SID}.jsonl`)
+    const mainB = path.join(dirB, `${SID_B}.jsonl`)
+    const sent = (msgId: string, at: string) =>
+      line({ type: 'user', uuid: `s-${msgId}`, timestamp: at, toolUseResult: { success: true, message: 'secret text', display: 'secret', msg_id: msgId }, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `toolu_${msgId}`, content: 'secret' }] } })
+    const delivered = (socket: string, msgId: string, at: string) =>
+      line({ type: 'user', uuid: `d-${msgId}`, timestamp: at, isMeta: true, turnOrigin: 'peer', promptSource: 'system', origin: { kind: 'peer', from: `uds:${socket}`, msg_id: msgId, name: 'secret name', fromMode: 'prompting', body: 'secret body' }, message: { role: 'user', content: `<cross-session-message from="uds:${socket}">secret body</cross-session-message>` } })
+    await mkdir(dirB, { recursive: true })
+    await writeFile(path.join(root, 'sessions', '5151.json'), registry({ pid: 5151, sessionId: SID_B, cwd: 'D:\\work\\other', procStart: '134358400099999999', name: 'other-2b', messagingSocketPath: SOCK_B }))
+    await writeFile(mainB, sent('11111111-0000-4000-8000-000000000000', '2026-10-07T09:59:30.000Z'))
+    await appendFile(mainA, delivered(SOCK_B, '11111111-0000-4000-8000-000000000000', '2026-10-07T09:59:30.050Z'))
+    store = new MonitorStore({ activityLimit: 300, batchMs: 1 })
+    monitor = new Monitor(config(), store, deps())
+    await monitor.start({ watch: false })
+
+    const idA = `${PID}:134358400013081891`
+    const idB = '5151:134358400099999999'
+    const linkId = `${idA}>${idB}`
+    expect(store.snapshot().peerLinks).toEqual([
+      { id: linkId, kind: 'message', a: idA, b: idB, ab: 0, ba: 1, firstAt: '2026-10-07T09:59:30.050Z', lastAt: '2026-10-07T09:59:30.050Z', lastDir: 'ba', lastAgentId: `${idB}:main` },
+    ])
+    expect(store.snapshot().activity.some((a) => a.kind === 'peer.message')).toBe(false)
+
+    store.flush()
+    const events: { type: string; payload: unknown }[] = []
+    store.subscribe((m) => events.push(...m.events))
+    await appendFile(mainA, sent('22222222-0000-4000-8000-000000000000', '2026-10-07T10:00:05.000Z'))
+    await appendFile(mainB, delivered(SOCK_A, '22222222-0000-4000-8000-000000000000', '2026-10-07T10:00:05.040Z'))
+    await monitor.reconcile()
+    store.flush()
+    expect(events).toContainEqual({ type: 'link.updated', payload: { id: linkId, ab: 1, lastAt: '2026-10-07T10:00:05.040Z', lastDir: 'ab', lastAgentId: `${idA}:main` } })
+    expect(events.filter((e) => e.type === 'activity')).toEqual([
+      { type: 'activity', payload: expect.objectContaining({ kind: 'peer.message', terminalId: idA, agentId: `${idA}:main`, at: '2026-10-07T10:00:05.040Z', data: { title: 'demo-1a', to: 'other-2b' } }) },
+    ])
+
+    await monitor.reconcile()
+    store.flush()
+    expect(store.snapshot().peerLinks).toMatchObject([{ ab: 1, ba: 1 }])
+
+    await rm(path.join(root, 'sessions', '5151.json'))
+    await monitor.reconcile()
+    expect(store.snapshot().peerLinks).toHaveLength(1)
+    expect(monitor.dismissEnded(idB)).toBe(1)
+    store.flush()
+    expect(events).toContainEqual({ type: 'link.removed', payload: { id: linkId } })
+    expect(store.snapshot().peerLinks).toEqual([])
+
+    for (const json of [JSON.stringify(events), JSON.stringify(store.snapshot())]) {
+      expect(json).not.toContain('secret')
+      expect(json).not.toContain('pipe')
+      expect(json).not.toContain('cc-msg')
+    }
+    monitor.stop()
+  })
+
   it('completes foreground subagent from its synchronous tool result', async () => {
     const dir = path.join(projectDir, SID, 'subagents')
     await appendFile(

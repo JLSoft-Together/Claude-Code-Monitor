@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -16,12 +17,19 @@ export interface RegistryRecord {
   waitingFor?: string
   updatedAt?: number
   statusUpdatedAt?: number
+  sockKey?: string
 }
 
 export type RegistryEntry = RegistryRecord | 'unreadable'
 
 const MAX_RECORD_BYTES = 262_144
 const TORN_RETRY_MS = 60
+const MAX_SOCKET_PATH = 300
+
+export function socketKey(socketPath: unknown): string | undefined {
+  if (typeof socketPath !== 'string' || socketPath.length === 0 || socketPath.length > MAX_SOCKET_PATH) return undefined
+  return createHash('sha256').update(socketPath.toLowerCase()).digest('hex').slice(0, 16)
+}
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -63,6 +71,7 @@ export function parseRegistryRecord(pid: number, text: string): RegistryRecord |
     waitingFor: str(o.waitingFor),
     updatedAt: num(o.updatedAt),
     statusUpdatedAt: num(o.statusUpdatedAt),
+    sockKey: socketKey(o.messagingSocketPath),
   }
 }
 

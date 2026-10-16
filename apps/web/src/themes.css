@@ -28,6 +28,7 @@
   --ccm-diff-add-well: var(--ccm-ansi-2);
   --ccm-diff-del-well: var(--ccm-ansi-1);
   --ccm-diff-mod-soft: color-mix(in srgb, var(--ccm-diff-mod) 12%, transparent);
+  --ccm-peer-soft: color-mix(in srgb, var(--ccm-peer) 10%, transparent);
   --ccm-diff-mod-well: var(--ccm-ansi-4);
   --ccm-grid: color-mix(in srgb, var(--ccm-ink) 7%, var(--ccm-surface));
   --ccm-flow-dot: color-mix(in srgb, var(--ccm-ink) 16%, var(--ccm-surface));
@@ -44,6 +45,7 @@
   --ccm-diff-add-soft: color-mix(in srgb, var(--ccm-diff-add) 16%, transparent);
   --ccm-diff-del-soft: color-mix(in srgb, var(--ccm-diff-del) 14%, transparent);
   --ccm-diff-mod-soft: color-mix(in srgb, var(--ccm-diff-mod) 16%, transparent);
+  --ccm-peer-soft: color-mix(in srgb, var(--ccm-peer) 16%, transparent);
 }
 
 :root[data-theme='xcode-light'] {
@@ -78,6 +80,7 @@
   --ccm-agent-codex: #5e4fc0;
   --ccm-agent-browser: #0071a4;
   --ccm-agent-file: #7f6545;
+  --ccm-peer: #a83279;
   --ccm-ansi-0: #262626;
   --ccm-ansi-1: #c41a16;
   --ccm-ansi-2: #1c7a2a;
@@ -142,6 +145,7 @@
   --ccm-agent-codex: #a49cf0;
   --ccm-agent-browser: #64d2ff;
   --ccm-agent-file: #b59469;
+  --ccm-peer: #ff7ac6;
   --ccm-ansi-0: #1c1c1e;
   --ccm-ansi-1: #ff453a;
   --ccm-ansi-2: #30d158;
@@ -206,6 +210,7 @@
   --ccm-agent-codex: #ae81ff;
   --ccm-agent-browser: #66d9ef;
   --ccm-agent-file: #c9a46b;
+  --ccm-peer: #ff8ce6;
   --ccm-ansi-0: #3e3d32;
   --ccm-ansi-1: #f92672;
   --ccm-ansi-2: #a6e22e;
@@ -270,6 +275,7 @@
   --ccm-agent-codex: #ff79c6;
   --ccm-agent-browser: #8be9fd;
   --ccm-agent-file: #d6b88a;
+  --ccm-peer: #ffb3f0;
   --ccm-ansi-0: #21222c;
   --ccm-ansi-1: #ff5555;
   --ccm-ansi-2: #50fa7b;
@@ -334,6 +340,7 @@
   --ccm-agent-codex: #5b5fb5;
   --ccm-agent-browser: #1d7c75;
   --ccm-agent-file: #85683e;
+  --ccm-peer: #b02a6d;
   --ccm-ansi-0: #073642;
   --ccm-ansi-1: #dc322f;
   --ccm-ansi-2: #859900;
@@ -398,6 +405,7 @@
   --ccm-agent-codex: #9599e6;
   --ccm-agent-browser: #39b7ad;
   --ccm-agent-file: #c4a171;
+  --ccm-peer: #f07ab8;
   --ccm-ansi-0: #073642;
   --ccm-ansi-1: #dc322f;
   --ccm-ansi-2: #859900;
@@ -462,6 +470,7 @@
   --ccm-agent-codex: #8250df;
   --ccm-agent-browser: #0550ae;
   --ccm-agent-file: #845e30;
+  --ccm-peer: #bf3989;
   --ccm-ansi-0: #24292f;
   --ccm-ansi-1: #cf222e;
   --ccm-ansi-2: #116329;
@@ -526,6 +535,7 @@
   --ccm-agent-codex: #a371f7;
   --ccm-agent-browser: #58a6ff;
   --ccm-agent-file: #c69a66;
+  --ccm-peer: #f778ba;
   --ccm-ansi-0: #484f58;
   --ccm-ansi-1: #ff7b72;
   --ccm-ansi-2: #3fb950;
@@ -590,6 +600,7 @@
   --ccm-agent-codex: #c792ea;
   --ccm-agent-browser: #89ddff;
   --ccm-agent-file: #d1ad7c;
+  --ccm-peer: #ff7fd0;
   --ccm-ansi-0: #546e7a;
   --ccm-ansi-1: #ff5370;
   --ccm-ansi-2: #c3e88d;
@@ -654,6 +665,7 @@
   --ccm-agent-codex: #c678dd;
   --ccm-agent-browser: #56b6c2;
   --ccm-agent-file: #c9a272;
+  --ccm-peer: #ff7fc8;
   --ccm-ansi-0: #3f4451;
   --ccm-ansi-1: #e06c75;
   --ccm-ansi-2: #98c379;
@@ -718,6 +730,7 @@
   --ccm-agent-codex: #8060db;
   --ccm-agent-browser: #31827b;
   --ccm-agent-file: #85683e;
+  --ccm-peer: #a8327c;
   --ccm-ansi-0: #000000;
   --ccm-ansi-1: #ce0505;
   --ccm-ansi-2: #067d17;
@@ -782,6 +795,7 @@
   --ccm-agent-codex: #a894f6;
   --ccm-agent-browser: #6aaea6;
   --ccm-agent-file: #c29a6b;
+  --ccm-peer: #f07cc6;
   --ccm-ansi-0: #33353b;
   --ccm-ansi-1: #f0524f;
   --ccm-ansi-2: #5c962c;

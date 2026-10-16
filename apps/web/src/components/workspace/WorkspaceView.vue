@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, Maximize2, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
@@ -28,6 +28,9 @@ import { flashKind, stepSlot, tabMoveIndex, type FlashKind, type TabSignal } fro
 import { isMenuKey } from '../../lib/rail/railMenu'
 import type { TipAction } from '../../lib/tips'
 import { useTipsStore } from '../../stores/tips'
+import { usePeersStore } from '../../stores/peers'
+import { useTerminalsStore } from '../../stores/terminals'
+import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
 import { useSettingsStore } from '../../stores/settings'
 import { closedPanes, isTerm, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type ClosedEntry, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
@@ -58,7 +61,7 @@ import DimToggle from './DimToggle.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
 import { clampSideWidth, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
 import { desktop, hasRun } from '../../lib/desktop'
-import type { RailCluster } from '../../lib/rail/railModel'
+import { latestPeer, type RailCluster } from '../../lib/rail/railModel'
 import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
 import { buildAttentionList } from '../../lib/rail/attentionList'
 import { useRail } from '../../composables/useRail'
@@ -178,6 +181,10 @@ const tabSpaces = computed(() => spaceIndexes(workspace.tabs, (t) => tabProject(
 const activeCluster = computed(() => rail.clusters.value.find((c) => c.active) ?? null)
 const otherNeeds = computed(() => rail.clusters.value.filter((c) => !c.active).reduce((n, c) => n + c.needs, 0))
 const otherFailed = computed(() => rail.clusters.value.some((c) => !c.active && c.failed > 0))
+const otherNews = computed(() => {
+  const latest = latestPeer(rail.clusters.value.filter((c) => !c.active))
+  return latest ? t('peerWs.projectNews', { text: info.peerView(latest).label }) : null
+})
 
 const missionOpen = ref(false)
 const missionOpener = ref<HTMLElement | null>(null)
@@ -1288,6 +1295,26 @@ const tabNames = computed(() => new Map(visibleTabs.value.map((tab) => [tab.key,
 const tabName = (tab: Tab): string => tabNames.value.get(tab.key) ?? info.tabTitle(tab)
 const tabStates = computed(() => new Map(visibleTabs.value.map((tab) => [tab.key, computeTabState(tab)] as const)))
 const tabState = (tab: Tab): TabState | null => tabStates.value.get(tab.key) ?? null
+const tabNews = computed(
+  () => new Map(visibleTabs.value.filter((tab) => tab !== workspace.activeTab).map((tab) => [tab.key, info.peerNewsOf(leaves(tab.root).map(paneOf))] as const)),
+)
+const tabNewsOf = (tab: Tab) => tabNews.value.get(tab.key) ?? null
+const tabPeerLines = (tab: Tab): string[] => [...new Set(leaves(tab.root).flatMap((k) => info.peerLines(paneOf(k))))]
+
+const peers = usePeersStore()
+const terminals = useTerminalsStore()
+let heardKey = peers.pulses.at(-1)?.key ?? 0
+watch(
+  () => peers.pulses,
+  (list) => {
+    const fresh = list.filter((p) => p.key > heardKey)
+    heardKey = list.at(-1)?.key ?? heardKey
+    const last = [...fresh].reverse().find((p) => p.kind === 'message' && workspace.paneByTerminal.has(p.to))
+    if (!last || !props.visible) return
+    const name = (id: string): string => displayTitle(terminals.byId[id]) || t('peerWs.someone')
+    announce(t('peer.live', { to: name(last.to), from: name(last.from), n: last.n }, last.n))
+  },
+)
 
 function tabStatusText(tab: Tab): string {
   const s = tabState(tab)
@@ -1606,7 +1633,7 @@ function tabTip(tab: Tab): string | undefined {
   const dock = tabDraggable() && tab !== workspace.activeTab ? t('workspace.drag.tabHint') : ''
   const subs = tabState(tab)?.subagents ?? 0
   const running = subs ? t('workspace.subagentState.count', { n: subs }, subs) : ''
-  return [tabName(tab), running, tabDetail(tab), hints, dock].filter(Boolean).join('\n') || undefined
+  return [tabName(tab), running, ...tabPeerLines(tab), tabDetail(tab), hints, dock].filter(Boolean).join('\n') || undefined
 }
 
 function tabDetail(tab: Tab): string | undefined {
@@ -1710,8 +1737,8 @@ onBeforeUnmount(() => {
         ref="missionOpener"
         type="button"
         class="inline-flex h-7 max-w-[24ch] min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-inner px-2 text-xs font-semibold text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink"
-        :title="[activeCluster.root, t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) })].filter(Boolean).join('\n')"
-        :aria-label="t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) })"
+        :title="[activeCluster.root, t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) }), otherNews].filter(Boolean).join('\n')"
+        :aria-label="[t('workspace.rail.mission.open', { keys: shortcutText('wsMission', isMac) }), otherNews].filter(Boolean).join('. ')"
         aria-haspopup="dialog"
         :aria-expanded="missionOpen"
         data-strip-project
@@ -1722,6 +1749,11 @@ onBeforeUnmount(() => {
         <span v-if="otherNeeds" class="inline-flex shrink-0 items-center gap-0.5 tabular" :class="otherFailed ? 'text-st-error' : 'text-st-waiting'">
           <BellRing :size="12" aria-hidden="true" />{{ otherNeeds }}<span class="sr-only"> {{ t('workspace.rail.needs', { n: otherNeeds }, otherNeeds) }}</span>
         </span>
+        <Transition name="ccm-fade">
+          <span v-if="otherNews" class="inline-flex shrink-0 text-peer" aria-hidden="true" data-strip-project-peer>
+            <Mail :size="11" />
+          </span>
+        </Transition>
       </button>
       <div
         ref="tabRow"
@@ -1803,6 +1835,12 @@ onBeforeUnmount(() => {
               :class="[tabPrimary(tab)?.preview ? 'italic' : '', labelFlash[tab.key] ? 'ccm-highlight' : '']"
               data-tab-label
             >{{ tabName(tab) }}</span>
+            <Transition name="ccm-fade">
+              <span v-if="tabNewsOf(tab)" class="inline-flex shrink-0 text-peer" :data-tab-peer="tabNewsOf(tab)!.dir">
+                <Mail :size="10" aria-hidden="true" />
+                <span class="sr-only">{{ tabNewsOf(tab)!.label }}</span>
+              </span>
+            </Transition>
             <span v-if="leaves(tab.root).some((k) => paneOf(k)?.dirty)" class="shrink-0 text-warning" :title="t('editor.unsaved')" data-tab-dirty>
               <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>
             </span>

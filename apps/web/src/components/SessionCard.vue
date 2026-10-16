@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellOff, Check, Code, Cpu, FileDiff, FoldVertical, FolderOpen, GitBranch, LoaderCircle, StickyNote, X } from 'lucide-vue-next'
+import { BellOff, Check, Clock, Code, FileDiff, FoldVertical, FolderOpen, GitBranch, LoaderCircle, StickyNote, X } from 'lucide-vue-next'
 import type { OpenApp, TerminalSession } from '@ccm/shared'
 import { formatUsd } from '../lib/attention'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
@@ -23,7 +23,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useUiStore } from '../stores/ui'
-import ContextGauge from './ContextGauge.vue'
+import ContextRing from './ContextRing.vue'
 import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
 import RunBadge from './workspace/RunBadge.vue'
@@ -125,13 +125,21 @@ watch(
   },
 )
 
-const timeLine = computed(() => {
+const age = computed(() => {
+  const term = props.terminal
+  let label: string | null
+  let full: string | null
   if (ended.value) {
-    const ago = relativeTime(props.terminal.endedAt, locale.value, now.value)
-    return ago ? t('terminal.endedAgo', { ago }) : null
+    label = relativeTime(term.endedAt, locale.value, now.value)
+    full = label ? t('terminal.endedAgo', { ago: label }) : null
+  } else {
+    label = duration(term.startedAt, now.value)
+    full = label ? t('terminal.duration', { duration: label }) : null
   }
-  const d = duration(props.terminal.startedAt, now.value)
-  return d ? t('terminal.duration', { duration: d }) : null
+  const pid = term.processId ? t('terminal.process', { pid: term.processId }) : null
+  const parts = [full, pid, term.shell, term.codexVersion ? t('provider.version', { v: term.codexVersion }) : null].filter((p): p is string => !!p)
+  if (!parts.length) return null
+  return { label: label ?? parts[0], title: parts.join(' · ') }
 })
 
 const wait = computed(() => (props.terminal.status === 'waiting' ? waitDisplay(props.terminal.waitingFor, main.value?.currentTool, t) : null))
@@ -149,6 +157,18 @@ const detail = computed(() => {
   if (main.value?.currentTool) return t('terminal.running', { tool: main.value.currentTool })
   if (term.backgroundShell) return t('terminal.backgroundShell')
   return null
+})
+const detailKey = computed(() => {
+  const term = props.terminal
+  return [term.status, wait.value?.reason ?? '', main.value?.currentTool ?? '', term.backgroundShell ? 'bg' : ''].join('|')
+})
+
+const modelLine = computed(() => {
+  const m = main.value
+  if (!m?.model) return null
+  const label = modelLabel(m.model, m.contextWindow, extras.modelNames) ?? m.model
+  const effort = effortLabel(m.effort, t)
+  return effort ? t('sessionV53.modelEffort', { model: label, effort }) : label
 })
 
 // A Claude session's total stays Claude-only; Codex runs it started are summed separately (other provider, other quota).
@@ -174,7 +194,7 @@ const tokens = computed(() => {
   const sum = sumTokens(codex.value)
   if (!sum) return null
   const counts = { input: fullNumber(sum.input, locale.value), output: fullNumber(sum.output, locale.value), cache: fullNumber(sum.cache, locale.value) }
-  return { total: sum.total, title: t('terminal.tokensTitle', counts) }
+  return { total: sum.total, title: [modelLine.value, t('terminal.tokensTitle', counts)].filter(Boolean).join('\n') }
 })
 const codexTokens = computed(() => {
   if (codex.value) return null
@@ -194,16 +214,6 @@ const branch = computed(() => {
   const b = props.terminal.gitBranch
   if (!b) return null
   return b === 'HEAD' ? t('terminal.detached') : b
-})
-const model = computed(() => {
-  const m = main.value
-  if (!m?.model) return null
-  const effort = effortLabel(m.effort, t)
-  return {
-    label: modelLabel(m.model, m.contextWindow, extras.modelNames),
-    effort,
-    title: effort ? t('agent.modelEffortTitle', { model: m.model, effort }) : t('agent.modelTitle', { model: m.model }),
-  }
 })
 const cost = computed(() => (props.terminal.costUsd === undefined ? null : formatUsd(props.terminal.costUsd)))
 
@@ -226,7 +236,6 @@ const openApps: { app: OpenApp; icon: typeof FolderOpen }[] = [
 function open(app: OpenApp): void {
   if (!connection.openFolder(props.terminal.id, app)) ui.reportOpenResult(props.terminal.id, app, 'offline')
 }
-const effortBump = useBump(() => model.value?.effort)
 const costBump = useBump(() => cost.value)
 const context = computed(() => {
   const m = main.value
@@ -250,7 +259,7 @@ function commitNote(): void {
 
 <template>
   <article
-    class="group relative rounded-card bg-surface px-4 py-3.5 shadow-card transition-shadow duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+    class="group group/card relative rounded-card bg-surface px-4 py-3 shadow-card transition-shadow duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     :class="[focused ? 'ring-2 ring-focus' : '', ended ? 'text-ink-muted' : '']"
     tabindex="0"
     :aria-label="title"
@@ -281,7 +290,7 @@ function commitNote(): void {
         </p>
       </Transition>
     </div>
-    <span class="absolute inset-y-3.5 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
+    <span class="absolute inset-y-3 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
 
     <SessionCardHeader :terminal="terminal" @note="startNote" />
@@ -312,7 +321,7 @@ function commitNote(): void {
     <button
       v-else-if="!noting && terminal.note"
       type="button"
-      class="relative z-10 mt-2 flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-inner bg-accent-soft/60 px-2 py-1 text-left text-xs text-ink transition-colors hover:bg-accent-soft"
+      class="relative z-10 mt-1.5 flex w-full min-w-0 cursor-pointer items-start gap-1.5 rounded-inner bg-accent-soft/60 px-2 py-1 text-left text-xs text-ink transition-colors hover:bg-accent-soft"
       :title="t('terminal.noteEdit')"
       @click="startNote"
     >
@@ -320,13 +329,26 @@ function commitNote(): void {
       <span class="min-w-0 break-words">{{ terminal.note }}</span>
     </button>
 
-    <div class="mt-2 flex min-w-0 items-center gap-2">
-      <StatusBadge :status="terminal.status" />
-      <span v-if="detail" class="inline-flex min-w-0 items-center gap-1 text-xs text-ink-muted" :title="detail">
-        <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0" aria-hidden="true" />
-        <span class="truncate">{{ detail }}</span>
+    <div class="mt-1.5 flex min-w-0 items-center gap-2">
+      <span class="inline-grid shrink-0">
+        <Transition name="ccm-fade">
+          <StatusBadge :key="terminal.status" class="col-start-1 row-start-1" :status="terminal.status" />
+        </Transition>
       </span>
-      <RunBadge v-if="terminal.cwd && !ended" :dir="terminal.cwd" live-only class="relative z-10 ml-auto" />
+      <span class="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)]">
+        <Transition name="ccm-fade">
+          <span
+            v-if="detail"
+            :key="detailKey"
+            class="col-start-1 row-start-1 inline-flex min-w-0 items-center gap-1 text-xs text-ink-muted"
+            :title="detail"
+          >
+            <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0" aria-hidden="true" />
+            <span class="truncate tabular-nums">{{ detail }}</span>
+          </span>
+        </Transition>
+      </span>
+      <RunBadge v-if="terminal.cwd && !ended" :dir="terminal.cwd" live-only class="relative z-10 shrink-0" />
     </div>
     <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
       <template v-if="snoozedUntil">
@@ -349,76 +371,69 @@ function commitNote(): void {
     </div>
     <SessionCardSignals :terminal="terminal" />
 
-    <div v-if="mode || branch || model" class="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-2xs">
-      <span
-        v-if="mode"
-        class="inline-flex items-center gap-1 rounded-inner px-1.5 py-px font-medium"
-        :class="mode.cls"
-        :title="t('mode.title', { mode: modeLabel })"
-      >
-        <component :is="mode.icon" :size="12" aria-hidden="true" />{{ modeLabel }}
+    <Transition name="ccm-fade">
+      <div v-if="mode || branch || diff" class="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-card-git>
+        <span
+          v-if="mode"
+          class="inline-flex shrink-0 items-center gap-1 rounded-inner px-1.5 py-px text-2xs font-medium"
+          :class="mode.cls"
+          :title="t('mode.title', { mode: modeLabel })"
+        >
+          <component :is="mode.icon" :size="12" aria-hidden="true" />{{ modeLabel }}
+        </span>
+        <span v-if="branch" class="inline-flex min-w-0 max-w-full items-center gap-1 text-ink-muted" :title="t('terminal.branch', { branch })">
+          <GitBranch :size="13" class="shrink-0" aria-hidden="true" />
+          <span class="truncate font-mono text-2xs">{{ branch }}</span>
+        </span>
+        <span v-if="diff" class="inline-flex min-w-0 max-w-full items-center gap-1.5 tabular-nums" :title="diff.title">
+          <FileDiff :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+          <span class="sr-only">{{ t('terminal.diffLabel') }}</span>
+          <span class="font-medium text-diff-add">+{{ fullNumber(diff.insertions, locale) }}</span>
+          <span class="font-medium text-diff-del">−{{ fullNumber(diff.deletions, locale) }}</span>
+          <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
+        </span>
+      </div>
+    </Transition>
+
+    <div v-if="terminal.cwd || age" class="mt-1.5 flex min-w-0 items-center gap-2 text-2xs text-ink-faint" data-card-place>
+      <span v-if="terminal.cwd" class="min-w-0 flex-1 truncate font-mono" :title="terminal.cwd">
+        <span class="sr-only">{{ t('terminal.directory') }}: </span>{{ shortPath(terminal.cwd) }}
       </span>
-      <span
-        v-if="model"
-        class="inline-flex items-center gap-1 rounded-inner bg-fill px-1.5 py-px font-medium text-ink-muted"
-        :title="model.title"
-      >
-        <Cpu :size="12" aria-hidden="true" />{{ model.label }}<span v-if="model.effort" :key="effortBump" class="text-ink-faint" :class="effortBump ? 'ccm-tick' : ''">· {{ model.effort }}</span>
+      <span v-if="age" class="ms-auto inline-flex shrink-0 items-center gap-1 tabular-nums" :title="age.title" data-card-age>
+        <Clock :size="12" class="shrink-0" aria-hidden="true" />
+        <span aria-hidden="true">{{ age.label }}</span>
+        <span class="sr-only">{{ age.title }}</span>
       </span>
-      <span v-if="branch" class="inline-flex min-w-0 max-w-full items-center gap-1 text-ink-muted" :title="t('terminal.branch', { branch })">
-        <GitBranch :size="12" class="shrink-0" aria-hidden="true" />
-        <span class="truncate font-mono">{{ branch }}</span>
+      <span v-if="terminal.cwd" class="relative z-10 -my-1 -me-1.5 flex shrink-0 items-center">
+        <button
+          v-for="o in openApps"
+          :key="o.app"
+          type="button"
+          class="ccm-btn-plain disabled:cursor-wait!"
+          :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
+          :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
+          :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"
+          @click="open(o.app)"
+        >
+          <LoaderCircle v-if="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app" :size="14" class="animate-spin" aria-hidden="true" />
+          <component :is="o.icon" v-else :size="14" aria-hidden="true" />
+        </button>
       </span>
     </div>
 
-    <p v-if="diff" class="mt-2 flex min-w-0 items-center gap-1.5 text-xs tabular" :title="diff.title">
-      <FileDiff :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
-      <span class="sr-only">{{ t('terminal.diffLabel') }}</span>
-      <span class="font-medium text-diff-add">+{{ fullNumber(diff.insertions, locale) }}</span>
-      <span class="font-medium text-diff-del">−{{ fullNumber(diff.deletions, locale) }}</span>
-      <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
-    </p>
-
-    <ContextGauge v-if="context" class="mt-3" :tokens="context.tokens" :window="context.window" :pct="context.pct" />
-
-    <dl class="mt-3 space-y-1 text-xs text-ink-muted">
-      <div v-if="terminal.cwd" class="flex min-w-0 items-center gap-2">
-        <dt class="sr-only">{{ t('terminal.directory') }}</dt>
-        <dd class="min-w-0 flex-1 truncate font-mono text-2xs" :title="terminal.cwd">{{ shortPath(terminal.cwd) }}</dd>
-        <dd class="relative z-10 -my-1 flex shrink-0 items-center">
-          <button
-            v-for="o in openApps"
-            :key="o.app"
-            type="button"
-            class="ccm-btn-plain disabled:cursor-wait!"
-            :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
-            :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
-            :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"
-            @click="open(o.app)"
-          >
-            <LoaderCircle v-if="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app" :size="14" class="animate-spin" aria-hidden="true" />
-            <component :is="o.icon" v-else :size="14" aria-hidden="true" />
-          </button>
-        </dd>
-      </div>
-      <div class="flex flex-wrap gap-x-3 gap-y-0.5 tabular">
-        <dd v-if="terminal.processId">{{ t('terminal.process', { pid: terminal.processId }) }}</dd>
-        <dd v-if="terminal.shell">{{ terminal.shell }}</dd>
-        <dd v-if="terminal.codexVersion">{{ t('provider.version', { v: terminal.codexVersion }) }}</dd>
-        <dd v-if="timeLine">{{ timeLine }}</dd>
-      </div>
-    </dl>
-
-    <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs text-ink-muted">
+    <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-xs text-ink-muted">
       <SubagentCounts :terminal-id="terminal.id" />
       <span v-if="terminal.compactions" class="inline-flex items-center gap-1" :title="t('terminal.compactionsTitle')">
         <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
       </span>
-      <span v-if="tokens || cost || codexTokens" class="ml-auto inline-flex items-center gap-2 tabular">
+      <span v-if="tokens || cost || codexTokens || context" class="ml-auto inline-flex items-center gap-2.5 tabular-nums">
         <span v-if="codexTokens" class="inline-flex items-center gap-1 text-agent-codex" :title="codexTokens.title">
           <ProviderBadge variant="icon" />{{ codexTokens.label }}
         </span>
         <span v-if="cost" :key="costBump" class="text-ink-muted" :class="costBump ? 'ccm-tick' : ''" :title="t('terminal.costTitle')">{{ cost }}</span>
+        <Transition name="ccm-fade">
+          <ContextRing v-if="context" data-card-context :tokens="context.tokens" :window="context.window" :pct="context.pct" :model="modelLine" />
+        </Transition>
         <TokenCount v-if="tokens" class="font-medium text-ink" :title="tokens.title" :value="tokens.total" />
       </span>
     </div>

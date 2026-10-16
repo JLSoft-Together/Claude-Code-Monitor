@@ -5,9 +5,9 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { mapRegistryStatus, mapTaskNotificationStatus, waitReason } from '@ccm/shared'
 import { parseProcessQueryOutput, parsePsNames, parsePsOutput, procStartMatches } from '../src/process'
-import { parseRegistryRecord, pidFromFileName } from '../src/registry'
+import { parseRegistryRecord, pidFromFileName, socketKey } from '../src/registry'
 import { JsonlTailer } from '../src/tailer'
-import { extractSignals, TranscriptState } from '../src/transcript'
+import { extractSignals, TranscriptState, type Signal } from '../src/transcript'
 import { MonitorStore } from '../src/store'
 import { loadConfig } from '../src/config'
 import type { RunResult, Runner } from '../src/osascript'
@@ -61,6 +61,19 @@ describe('registry', () => {
 
   it('returns null on torn json', () => {
     expect(parseRegistryRecord(7, '{"pid":7,"sess')).toBeNull()
+  })
+
+  it('keeps only a short hash of the messaging socket path', () => {
+    const socket = '\\\\.\\pipe\\LOCAL\\cc-msg-0123456789abcdef0123456789abcdef'
+    const rec = parseRegistryRecord(7, JSON.stringify({ pid: 7, messagingSocketPath: socket }))
+    expect(rec?.sockKey).toMatch(/^[0-9a-f]{16}$/)
+    expect(rec?.sockKey).toBe(socketKey(socket))
+    expect(socketKey(socket.toUpperCase())).toBe(rec?.sockKey)
+    expect(JSON.stringify(rec)).not.toContain('pipe')
+    expect(JSON.stringify(rec)).not.toContain('cc-msg')
+    expect(parseRegistryRecord(7, JSON.stringify({ pid: 7, messagingSocketPath: 'x'.repeat(301) }))?.sockKey).toBeUndefined()
+    expect(parseRegistryRecord(7, JSON.stringify({ pid: 7, messagingSocketPath: 42 }))?.sockKey).toBeUndefined()
+    expect(socketKey('')).toBeUndefined()
   })
 })
 
@@ -148,6 +161,140 @@ describe('transcript signals', () => {
   it('ignores unknown record types', () => {
     expect(extractSignals({ type: 'brand-new-thing', foo: 1 })).toEqual([])
     expect(extractSignals(null)).toEqual([])
+  })
+
+  describe('main ↔ subagent messages', () => {
+    const AID = 'a0123456789abcdef'
+    const FAKE = '…fake-body…'
+    const T = '2026-10-16T10:00:00.000Z'
+    const user = (origin: unknown, extra: Record<string, unknown> = {}) => ({
+      type: 'user',
+      uuid: 'u-1',
+      timestamp: T,
+      isMeta: true,
+      promptSource: 'system',
+      origin,
+      message: { role: 'user', content: `<agent-message from="${AID}">${FAKE}</agent-message>` },
+      ...extra,
+    })
+    const queued = (origin: unknown, extra: Record<string, unknown> = {}) => ({
+      type: 'attachment',
+      uuid: 'att-1',
+      timestamp: T,
+      attachment: { type: 'queued_command', prompt: FAKE, source_uuid: 'src-1', delivery_id: 'del-1', commandMode: 'prompt', isMeta: true, timestamp: T, origin, ...extra },
+    })
+    const handback = { kind: 'peer', from: AID, senderTaskId: AID, handback: true, name: FAKE, body: FAKE }
+    const sendMessage = (to: string) => ({
+      type: 'assistant',
+      timestamp: T,
+      message: { id: 'm1', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'toolu_s1', name: 'SendMessage', input: { to, message: FAKE, summary: FAKE, type: 'message', recipient: to, content: FAKE } }] },
+    })
+    const message = (s: Signal) => s.k === 'coordinator_msg' || s.k === 'handback' || s.k === 'send_main'
+
+    it('reads a coordinator message from the user record or the queued command, by id and time only', () => {
+      expect(extractSignals(user({ kind: 'coordinator' }))).toEqual([
+        { k: 'seen', at: T },
+        { k: 'coordinator_msg', key: 'u-1', at: T },
+      ])
+      expect(extractSignals(queued({ kind: 'coordinator' }))).toEqual([{ k: 'coordinator_msg', key: 'src-1', at: T }])
+    })
+
+    it('reads a hand-back only when it comes from an agent id with handback set', () => {
+      expect(extractSignals(user(handback)).filter(message)).toEqual([{ k: 'handback', from: AID, key: 'u-1', at: T }])
+      expect(extractSignals(queued(handback))).toEqual([{ k: 'handback', from: AID, key: 'src-1', at: T }])
+      expect(extractSignals(user({ ...handback, handback: undefined })).filter(message)).toEqual([])
+      expect(extractSignals(user({ ...handback, from: 'uds:\\\\.\\pipe\\LOCAL\\cc-msg-x' })).filter(message)).toEqual([])
+      expect(extractSignals(user({ ...handback, from: 'a1' })).filter(message)).toEqual([])
+      expect(extractSignals(user({ kind: 'human' })).filter(message)).toEqual([])
+      expect(extractSignals(queued({ kind: 'human' }))).toEqual([])
+      expect(extractSignals({ type: 'queue-operation', operation: 'enqueue', timestamp: T, content: `<agent-message from="${AID}">${FAKE}</agent-message>` })).toEqual([])
+    })
+
+    it('reads SendMessage to main by its tool use id and ignores sends to a subagent', () => {
+      expect(extractSignals(sendMessage('main')).filter(message)).toEqual([{ k: 'send_main', key: 'toolu_s1', at: T }])
+      expect(extractSignals(sendMessage(AID)).filter(message)).toEqual([])
+      expect(extractSignals(sendMessage(AID)).map((s) => s.k)).toContain('tool_use')
+    })
+
+    it('falls back to the timestamp as key and drops records with neither', () => {
+      expect(extractSignals(user({ kind: 'coordinator' }, { uuid: undefined })).filter(message)).toEqual([{ k: 'coordinator_msg', key: `@${T}`, at: T }])
+      expect(extractSignals(user({ kind: 'coordinator' }, { uuid: 'not a valid id' })).filter(message)).toEqual([{ k: 'coordinator_msg', key: `@${T}`, at: T }])
+      expect(extractSignals(user({ kind: 'coordinator' }, { uuid: undefined, timestamp: undefined })).filter(message)).toEqual([])
+      expect(extractSignals(queued(handback, { source_uuid: undefined })).filter(message)).toEqual([{ k: 'handback', from: AID, key: 'att-1', at: T }])
+    })
+
+    it('lets no message content out', () => {
+      const out = [user({ kind: 'coordinator' }), queued({ kind: 'coordinator' }), user(handback), queued(handback), sendMessage('main'), sendMessage(AID)].flatMap((r) => extractSignals(r))
+      expect(out.filter(message)).toHaveLength(5)
+      expect(JSON.stringify(out)).not.toContain('fake-body')
+    })
+  })
+
+  describe('session ↔ session messages', () => {
+    const SOCKET = '\\\\.\\pipe\\LOCAL\\cc-msg-0123456789abcdef0123456789abcdef'
+    const MSG = '0f8fad5b-d9cb-469f-a165-70867728950e'
+    const FAKE = '…fake-body…'
+    const T = '2026-10-16T10:00:00.000Z'
+    const peer = (from: string, extra: Record<string, unknown> = {}) => ({ kind: 'peer', from, msg_id: MSG, name: FAKE, fromMode: 'prompting', hopChain: ['abc'], body: FAKE, ...extra })
+    const delivered = (origin: unknown, extra: Record<string, unknown> = {}) => ({
+      type: 'user',
+      uuid: 'u-1',
+      timestamp: T,
+      isMeta: true,
+      turnOrigin: 'peer',
+      promptSource: 'system',
+      origin,
+      message: { role: 'user', content: `<cross-session-message from="uds:${SOCKET}" from-name="${FAKE}">${FAKE}</cross-session-message>` },
+      ...extra,
+    })
+    const queued = (origin: unknown) => ({
+      type: 'attachment',
+      uuid: 'att-1',
+      timestamp: T,
+      attachment: { type: 'queued_command', prompt: FAKE, source_uuid: 'src-1', commandMode: 'prompt', isMeta: true, origin },
+    })
+    const result = (toolUseResult: Record<string, unknown>) => ({
+      type: 'user',
+      uuid: 'u-2',
+      timestamp: T,
+      toolUseResult,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_s1', content: FAKE }] },
+    })
+    const peerOnly = (s: Signal) => s.k === 'peer_in' || s.k === 'peer_sent'
+
+    it('reads a delivered message as the hashed sender socket, msg_id and time', () => {
+      const fromKey = socketKey(SOCKET)
+      expect(extractSignals(delivered(peer(`uds:${SOCKET}`))).filter(peerOnly)).toEqual([{ k: 'peer_in', fromKey, msgId: MSG, dedupeKey: 'u-1', at: T }])
+      expect(extractSignals(queued(peer(`uds:${SOCKET}`)))).toEqual([{ k: 'peer_in', fromKey, msgId: MSG, dedupeKey: 'src-1', at: T }])
+      expect(extractSignals(delivered(peer(`uds:${SOCKET.toUpperCase()}`))).filter(peerOnly)[0]).toMatchObject({ fromKey })
+      expect(extractSignals(delivered(peer('uds:/tmp/cc%20msg.sock'))).filter(peerOnly)[0]).toMatchObject({ fromKey: socketKey('/tmp/cc msg.sock') })
+      expect(extractSignals(delivered(peer('uds:/tmp/%E0%A4%A.sock'))).filter(peerOnly)[0]).toMatchObject({ fromKey: socketKey('/tmp/%E0%A4%A.sock') })
+      expect(extractSignals(delivered(peer(`uds:${SOCKET}`, { msg_id: 'bad id!' }))).filter(peerOnly)).toEqual([{ k: 'peer_in', fromKey, msgId: undefined, dedupeKey: 'u-1', at: T }])
+    })
+
+    it('ignores other addresses and hand-backs', () => {
+      for (const from of ['bridge:abc', 'did:x:y', 'unknown', 'a0123456789abcdef', 'uds:']) {
+        expect(extractSignals(delivered(peer(from))).filter(peerOnly)).toEqual([])
+      }
+      expect(extractSignals({ type: 'queue-operation', operation: 'enqueue', timestamp: T, content: `<cross-session-message from="uds:${SOCKET}">${FAKE}</cross-session-message>` })).toEqual([])
+    })
+
+    it('reads a successful send by msg_id only, never a send to a subagent', () => {
+      expect(extractSignals(result({ success: true, message: FAKE, display: FAKE, msg_id: MSG })).filter(peerOnly)).toEqual([{ k: 'peer_sent', msgId: MSG, at: T }])
+      expect(extractSignals(result({ success: false, message: FAKE, msg_id: MSG })).filter(peerOnly)).toEqual([])
+      expect(extractSignals(result({ success: true, message: FAKE, msg_id: MSG, pin: { id: 'a0123456789abcdef', name: FAKE } })).filter(peerOnly)).toEqual([])
+      expect(extractSignals(result({ success: true, message: FAKE, msg_id: MSG, resumedAgentId: 'a0123456789abcdef' })).filter(peerOnly)).toEqual([])
+      expect(extractSignals(result({ success: true, message: FAKE })).filter(peerOnly)).toEqual([])
+    })
+
+    it('lets no message content or socket path out', () => {
+      const out = [delivered(peer(`uds:${SOCKET}`)), queued(peer(`uds:${SOCKET}`)), result({ success: true, message: FAKE, display: FAKE, msg_id: MSG })].flatMap((r) => extractSignals(r))
+      const json = JSON.stringify(out)
+      expect(out.filter(peerOnly)).toHaveLength(3)
+      expect(json).not.toContain('fake-body')
+      expect(json).not.toContain('pipe')
+      expect(json).not.toContain('cc-msg')
+    })
   })
 })
 

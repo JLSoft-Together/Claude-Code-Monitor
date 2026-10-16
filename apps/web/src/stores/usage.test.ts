@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import type { UsageBucket } from '@ccm/shared'
 import { displayTitle, isAutoNamed } from '../lib/title'
 import { useConnectionStore } from './connection'
@@ -134,6 +135,121 @@ describe('usage store', () => {
     })
     expect(usage.totals.cost).toBeCloseTo(4)
     expect(usage.totals.unpriced).toBe(1)
+  })
+})
+
+describe('hero, picked day and top lists', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  const sum = (rows: { total: number }[]) => rows.reduce((s, r) => s + r.total, 0)
+
+  function seed() {
+    const usage = useUsageStore()
+    usage.reset({
+      buckets: [
+        bucket(today, 'claude-opus-5-5', 'D:/a', { key: 't1', input: 1_000, output: 2_000 }),
+        bucket(today, 'claude-haiku-4-5', 'D:/b', { key: 't2' }),
+        bucket(yesterday, 'claude-opus-5-5', 'D:/c', { key: 'y1', output: 50_000 }),
+        bucket(yesterday, 'claude-opus-5-5', 'D:/a', { key: 'y2' }),
+        bucket(old, 'claude-opus-5-5', 'D:/z', { key: 'o1' }),
+      ],
+      scan: { state: 'ready', filesDone: 1, filesTotal: 1 },
+    })
+    usage.range = '7d'
+    return usage
+  }
+
+  it('keeps the hero total equal to the sum of the visible bars, tokens and cost', () => {
+    const usage = seed()
+    expect(usage.visibleSeries).not.toContain('cacheRead')
+    expect(usage.heroTotal).toBe(sum(usage.daily))
+    expect(usage.heroTotal).toBe(usage.totals.input + usage.totals.output + usage.totals.cacheWrite)
+    usage.toggleSeries('cacheRead')
+    expect(usage.heroTotal).toBe(sum(usage.daily))
+    usage.toggleSeries('output')
+    expect(usage.heroTotal).toBe(sum(usage.daily))
+    usage.metric = 'cost'
+    expect(usage.heroTotal).toBeGreaterThan(0)
+    expect(usage.heroTotal).toBeCloseTo(sum(usage.daily), 9)
+    usage.toggleSeries('output')
+    expect(usage.heroTotal).toBeCloseTo(sum(usage.daily), 9)
+    expect(usage.heroTotal).toBeCloseTo(usage.totals.cost, 9)
+  })
+
+  it('reports every series for the legend and a daily average over the range', () => {
+    const usage = seed()
+    expect(usage.seriesTotals.cacheRead).toBe(4 * 10_000)
+    expect(usage.dailyAverage).toBeCloseTo(sum(usage.daily) / 7)
+    usage.range = 'today'
+    expect(usage.dailyAverage).toBeNull()
+  })
+
+  it('narrows totals, models and projects to the picked day; the chart keeps every day', () => {
+    const usage = seed()
+    usage.selectDay(yesterday)
+    expect(usage.selectedDay).toBe(yesterday)
+    expect(usage.daily).toHaveLength(7)
+    expect(usage.totals.messages).toBe(2)
+    expect(usage.totals.output).toBe(50_100)
+    expect(usage.byModel.map((r) => r.id)).toEqual(['claude-opus-5-5'])
+    expect(usage.byProject.map((r) => r.id)).toEqual(['D:/c', 'D:/a'])
+    expect(usage.heroTotal).toBe(usage.daily.find((r) => r.day === yesterday)!.total)
+    expect(usage.byProject.reduce((s, r) => s + r.value, 0)).toBe(usage.heroTotal)
+    usage.selectDay(yesterday)
+    expect(usage.selectedDay).toBeNull()
+    expect(usage.totals.messages).toBe(4)
+    usage.selectDay(old)
+    expect(usage.selectedDay).toBeNull()
+  })
+
+  it('clears the picked day when the range changes or no longer holds it', async () => {
+    const usage = seed()
+    usage.selectDay(today)
+    usage.range = '30d'
+    expect(usage.selectedDay).toBeNull()
+    usage.selectDay(yesterday)
+    expect(usage.selectedDay).toBe(yesterday)
+    usage.range = 'today'
+    expect(usage.selectedDay).toBeNull()
+    usage.range = '7d'
+    usage.selectDay(yesterday)
+    usage.model = 'claude-haiku-4-5'
+    expect(usage.selectedDay).toBe(yesterday)
+    expect(usage.totals.messages).toBe(0)
+    usage.model = null
+    usage.range = 'all'
+    usage.selectDay(old)
+    expect(usage.selectedDay).toBe(old)
+    usage.reset({ buckets: [bucket(today, 'm', 'p')], scan: { state: 'ready', filesDone: 1, filesTotal: 1 } })
+    await nextTick()
+    expect(usage.selectedDay).toBeNull()
+  })
+
+  it('orders top projects by the current measure, at most six', async () => {
+    const { TOP_PROJECTS } = await import('./usage')
+    const usage = useUsageStore()
+    const list = Array.from({ length: 9 }, (_, i) => bucket(today, 'claude-opus-5-5', `D:/p${i}`, { key: `p${i}`, output: (i + 1) * 100 }))
+    usage.reset({ buckets: list, scan: { state: 'ready', filesDone: 1, filesTotal: 1 } })
+    expect(TOP_PROJECTS).toBe(6)
+    expect(usage.topProjects.map((r) => r.id)).toEqual(['D:/p8', 'D:/p7', 'D:/p6', 'D:/p5', 'D:/p4', 'D:/p3'])
+    expect(usage.topProjects.every((r, i, a) => i === 0 || a[i - 1]!.value >= r.value)).toBe(true)
+    expect(usage.projectRows).toHaveLength(9)
+  })
+
+  it('compares the hero measure with the previous window', () => {
+    const usage = useUsageStore()
+    usage.reset({
+      buckets: [bucket(today, 'm', 'p', { key: 'a' }), bucket(yesterday, 'm', 'p', { key: 'b', output: 300 })],
+      scan: { state: 'ready', filesDone: 0, filesTotal: 0 },
+    })
+    usage.range = 'today'
+    expect(usage.heroTotal).toBe(10 + 100 + 1000)
+    expect(usage.previous?.value).toBe(10 + 300 + 1000)
+    usage.toggleSeries('cacheRead')
+    expect(usage.previous?.value).toBe(10 + 300 + 1000 + 10_000)
   })
 })
 

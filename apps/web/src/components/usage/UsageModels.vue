@@ -1,83 +1,49 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { compactNumber, formatCost, fullNumber } from '../../lib/format'
-import { useUsageStore, cacheHitRate } from '../../stores/usage'
+import { useUsageStore } from '../../stores/usage'
+import UsageRankList, { type RankRow } from './UsageRankList.vue'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const usage = useUsageStore()
 
-const max = computed(() => Math.max(0, ...usage.byModel.map((r) => r.value)))
-const fmt = (v: number) => (usage.metric === 'cost' ? formatCost(v, locale.value) : compactNumber(v))
 const MODEL_BG = ['bg-model-1', 'bg-model-2', 'bg-model-3', 'bg-model-4', 'bg-model-5', 'bg-model-6', 'bg-model-7', 'bg-model-8']
 const slotClass = (model: string) => {
   const slot = usage.modelSlot[model]
-  return slot ? MODEL_BG[slot - 1] : 'bg-ink-faint'
+  return slot ? MODEL_BG[slot - 1]! : 'bg-ink-faint'
 }
 
-function toggle(model: string): void {
-  usage.model = usage.model === model ? null : model
-}
-const hitOf = (row: { input: number; cacheWrite: number; cacheRead: number }) => {
-  const r = cacheHitRate(row)
-  return r === null ? '—' : `${Math.round(r * 100)}%`
+const rows = computed<RankRow[]>(() =>
+  usage.byModel.map((r) => {
+    const color = slotClass(r.id)
+    return { id: r.id, label: r.id, title: r.id, value: r.value, bar: color, swatch: color }
+  }),
+)
+
+const actionOf = (row: RankRow) => (usage.model === row.id ? t('usage.clearFilter') : t('usage.filterBy', { name: row.id }))
+
+function toggle(id: string): void {
+  usage.model = usage.model === id ? null : id
 }
 </script>
 
 <template>
-  <section class="min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5" aria-labelledby="usage-models-title">
-    <h3 id="usage-models-title" class="text-base font-semibold">{{ t('usage.byModel') }}</h3>
-    <p class="mt-0.5 text-xs text-ink-muted">{{ t('usage.byModelHint') }}</p>
-
-    <p v-if="usage.byModel.length === 0" class="mt-6 text-sm text-ink-muted">{{ t('usage.noRows') }}</p>
-    <div v-else class="mt-4 overflow-x-auto">
-      <table class="w-full min-w-[680px] text-left text-sm">
-        <thead class="text-xs text-ink-muted">
-          <tr class="border-b border-line">
-            <th scope="col" class="py-2 pr-3 font-medium">{{ t('usage.model') }}</th>
-            <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.input') }}</th>
-            <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.output') }}</th>
-            <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.cacheWrite') }}</th>
-            <th scope="col" class="px-2 py-2 text-right font-medium">{{ t('usage.series.cacheRead') }}</th>
-            <th scope="col" class="px-2 py-2 text-right font-medium" :title="t('usage.hitTitle')">{{ t('usage.hitShort') }}</th>
-            <th scope="col" class="py-2 pl-2 text-right font-medium">{{ t('usage.cost') }}</th>
-          </tr>
-        </thead>
-        <TransitionGroup tag="tbody" name="ccm-list" class="ccm-list-inflow relative">
-          <tr v-for="row in usage.byModel" :key="row.id" class="border-b border-line last:border-b-0">
-            <th scope="row" class="py-2.5 pr-3 font-normal">
-              <button
-                type="button"
-                class="group flex w-full min-w-[180px] cursor-pointer flex-col gap-1.5 text-left"
-                :aria-pressed="usage.model === row.id"
-                :title="usage.model === row.id ? t('usage.clearFilter') : t('usage.filterBy', { name: row.id })"
-                @click="toggle(row.id)"
-              >
-                <span class="flex items-center gap-2">
-                  <span class="size-2.5 shrink-0 rounded-sm" :class="slotClass(row.id)" aria-hidden="true" />
-                  <span class="truncate font-medium group-hover:underline" :class="usage.model === row.id ? 'text-accent-ink' : 'text-ink'">{{ row.id }}</span>
-                  <span class="ml-auto text-xs text-ink-muted tabular-nums">{{ fmt(row.value) }}</span>
-                </span>
-                <span class="block h-1.5 w-full rounded-full bg-fill" aria-hidden="true">
-                  <span
-                    class="ccm-grow-x block h-full origin-left rounded-full transition-transform duration-(--ccm-dur-slow) ease-out-quint"
-                    :class="slotClass(row.id)"
-                    :style="{ transform: `scaleX(${max > 0 ? Math.max(0.01, row.value / max) : 0})` }"
-                  />
-                </span>
-              </button>
-            </th>
-            <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.input, locale)">{{ compactNumber(row.input) }}</td>
-            <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.output, locale)">{{ compactNumber(row.output) }}</td>
-            <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.cacheWrite, locale)">{{ compactNumber(row.cacheWrite) }}</td>
-            <td class="px-2 py-2.5 text-right tabular-nums" :title="fullNumber(row.cacheRead, locale)">{{ compactNumber(row.cacheRead) }}</td>
-            <td class="px-2 py-2.5 text-right text-ink-muted tabular-nums">{{ hitOf(row) }}</td>
-            <td class="py-2.5 pl-2 text-right font-medium tabular-nums">
-              {{ row.unpriced > 0 && row.cost === 0 ? '—' : formatCost(row.cost, locale) }}
-            </td>
-          </tr>
-        </TransitionGroup>
-      </table>
+  <section class="flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card sm:p-5" aria-labelledby="usage-models-title">
+    <div class="flex min-h-7 items-center">
+      <h3 id="usage-models-title" class="text-base font-semibold">{{ t('usageV53.models') }}</h3>
+    </div>
+    <div class="mt-2 min-h-0 flex-1">
+      <Transition name="ccm-fade" mode="out-in">
+        <UsageRankList
+          :key="usage.selectedDay ?? ''"
+          :rows="rows"
+          :active="usage.model"
+          :label="t('usageV53.models')"
+          :empty="usage.selectedDay ? t('usageV53.noRowsDay') : t('usage.noRows')"
+          :action-of="actionOf"
+          @toggle="toggle"
+        />
+      </Transition>
     </div>
   </section>
 </template>

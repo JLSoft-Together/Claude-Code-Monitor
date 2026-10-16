@@ -62,6 +62,8 @@
   --color-agent-shell: var(--ccm-agent-shell);
   --color-agent-browser: var(--ccm-agent-browser);
   --color-agent-file: var(--ccm-agent-file);
+  --color-peer: var(--ccm-peer);
+  --color-peer-soft: var(--ccm-peer-soft);
   --color-page: var(--ccm-page);
 
   --color-series-input: var(--ccm-cat-1);
@@ -178,6 +180,8 @@
   --ccm-agent-shell: var(--ccm-ink-muted);
   --ccm-agent-browser: #0071a4;
   --ccm-agent-file: #7f6545;
+  --ccm-peer: #a83279;
+  --ccm-peer-soft: rgb(168 50 121 / 0.1);
 
   /* Terminal.app dark set + Xcode Default Dark: the well is dark in both themes, so one set. */
   --ccm-ansi-0: #1c1c1e;
@@ -296,6 +300,8 @@
   --ccm-agent-codex: #a49cf0;
   --ccm-agent-browser: #64d2ff;
   --ccm-agent-file: #b59469;
+  --ccm-peer: #ff7ac6;
+  --ccm-peer-soft: rgb(255 122 198 / 0.16);
 
   /* dataviz categorical slots, dark steps validated against the dark surface */
   --ccm-cat-1: #3987e5;
@@ -587,14 +593,185 @@ body {
   }
 }
 
-.ccm-breathe::before {
+.ccm-attention::before {
   content: '';
   position: absolute;
-  inset: -4px;
-  border-radius: 12px;
-  box-shadow: 0 0 0 2px var(--ccm-working-soft);
+  inset: -5px;
+  border-radius: 14px;
+  box-shadow: 0 0 0 3px var(--ccm-waiting-soft);
   pointer-events: none;
   animation: ccm-breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes ccm-node-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.ccm-node-in {
+  animation: ccm-node-in var(--ccm-dur-slow) var(--ease-spring) both;
+}
+
+@keyframes ccm-pill-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+.ccm-pill-in {
+  transform-origin: 19px 0;
+  animation: ccm-pill-in var(--ccm-dur-base) var(--ease-spring) both;
+}
+
+@keyframes ccm-glyph-pop {
+  50% {
+    scale: 1.18;
+  }
+}
+
+.ccm-glyph-pop {
+  animation: ccm-glyph-pop var(--ccm-dur-slow) var(--ease-spring);
+}
+
+.ccm-swap-enter-active {
+  transition:
+    opacity var(--ccm-dur-fast) var(--ease-out-quint),
+    translate var(--ccm-dur-fast) var(--ease-out-quint);
+}
+.ccm-swap-leave-active {
+  transition: opacity 100ms var(--ease-exit);
+}
+.ccm-swap-enter-from {
+  opacity: 0;
+  translate: 0 3px;
+}
+.ccm-swap-leave-to {
+  opacity: 0;
+}
+
+.ccm-dot-enter-active {
+  transition:
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-dot-leave-active {
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-dot-enter-from {
+  opacity: 0;
+  scale: 0;
+}
+.ccm-dot-leave-to {
+  opacity: 0;
+}
+.ccm-dot-move {
+  transition: transform var(--ccm-dur-base) var(--ease-out-quint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-attention::before {
+    animation: none;
+    opacity: 0.85;
+  }
+  .ccm-node-in,
+  .ccm-pill-in,
+  .ccm-glyph-pop {
+    animation: none;
+  }
+}
+
+@keyframes ccm-peer-ring {
+  0% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--ccm-peer-soft);
+  }
+  100% {
+    opacity: 0;
+    box-shadow: 0 0 0 6px var(--ccm-peer-soft);
+  }
+}
+
+.ccm-peer-ring {
+  border: 2px solid var(--ccm-peer);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: ccm-peer-ring 600ms var(--ease-out-quint) forwards;
+}
+
+@keyframes ccm-peer-sweep-y {
+  0% {
+    opacity: 0;
+    scale: 1 0;
+    animation-timing-function: var(--ease-out-quint);
+  }
+  30%,
+  65% {
+    opacity: 1;
+    scale: 1 1;
+    animation-timing-function: var(--ease-exit);
+  }
+  100% {
+    opacity: 0;
+    scale: 1 1;
+  }
+}
+
+@keyframes ccm-peer-sweep-x {
+  0% {
+    opacity: 0;
+    scale: 0 1;
+    animation-timing-function: var(--ease-out-quint);
+  }
+  30%,
+  65% {
+    opacity: 1;
+    scale: 1 1;
+    animation-timing-function: var(--ease-exit);
+  }
+  100% {
+    opacity: 0;
+    scale: 1 1;
+  }
+}
+
+.ccm-peer-sweep,
+.ccm-peer-sweep-x {
+  border-radius: 1px;
+  background: var(--ccm-peer);
+  pointer-events: none;
+}
+
+.ccm-peer-sweep {
+  transform-origin: top;
+  animation: ccm-peer-sweep-y 1.4s linear forwards;
+}
+
+.ccm-peer-sweep-x {
+  transform-origin: left;
+  animation: ccm-peer-sweep-x 1.4s linear forwards;
+}
+
+@keyframes ccm-peer-hold {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-peer-ring {
+    animation: ccm-peer-hold 1.2s linear forwards;
+  }
+  .ccm-peer-sweep,
+  .ccm-peer-sweep-x {
+    animation: ccm-peer-hold 4s linear forwards;
+  }
 }
 
 @keyframes ccm-grow {
@@ -1072,21 +1249,17 @@ body {
 }
 
 .vue-flow__edge.ccm-edge-hot .vue-flow__edge-path {
-  stroke: var(--ccm-working);
-  stroke-width: 2;
-  stroke-dasharray: 6 5;
-  animation: ccm-dash 900ms linear infinite;
+  stroke: var(--ccm-ink-faint);
+}
+
+.vue-flow__edge.ccm-edge-tray .vue-flow__edge-path {
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
 }
 
 /* hand-off into another CLI keeps the Codex hue even while running, so the boundary stays visible in a busy tree */
 .vue-flow__edge.ccm-edge-codex .vue-flow__edge-path {
   stroke: var(--ccm-agent-codex);
-}
-
-@keyframes ccm-dash {
-  to {
-    stroke-dashoffset: -22;
-  }
 }
 
 /* new edge draws from parent to child; AgentMap sets --ccm-edge-len to the path length, the fallback keeps it hidden until then */
@@ -1127,6 +1300,61 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+
+.vue-flow__node.ccm-node-to-tray {
+  pointer-events: none;
+}
+.ccm-node-to-tray [data-agent-node] {
+  transform-origin: 19px 15px;
+  animation: ccm-to-tray 560ms var(--ease-out-quint) forwards;
+}
+.ccm-node-from-tray [data-agent-node] {
+  transform-origin: 19px 15px;
+  animation: ccm-from-tray 460ms var(--ease-out-quint) both;
+}
+
+@keyframes ccm-to-tray {
+  0% {
+    clip-path: inset(0 0 0 0 round 999px);
+  }
+  38% {
+    clip-path: inset(0 calc(100% - 30px) 0 0 round 999px);
+    translate: 0 0;
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 calc(100% - 30px) 0 0 round 999px);
+    translate: var(--ccm-to-x, 0) var(--ccm-to-y, 0);
+    scale: 0.28;
+    opacity: 0.6;
+  }
+}
+
+@keyframes ccm-from-tray {
+  0% {
+    clip-path: inset(0 calc(100% - 30px) 0 0 round 999px);
+    translate: var(--ccm-to-x, 0) var(--ccm-to-y, 0);
+    scale: 0.28;
+    opacity: 0.6;
+  }
+  55% {
+    clip-path: inset(0 calc(100% - 30px) 0 0 round 999px);
+    translate: 0 0;
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0 round 999px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-node-to-tray [data-agent-node],
+  .ccm-node-from-tray [data-agent-node] {
+    animation: none;
+  }
 }
 
 /* Workspace panes morph on split / close / sidebar toggle (View Transitions). Snapshots are clipped, not

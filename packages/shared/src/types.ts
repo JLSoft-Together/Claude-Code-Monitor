@@ -90,9 +90,31 @@ export interface Agent {
   /** Prompt-cache TTL tier of the latest reply and when that reply landed (cache expiry estimate). */
   cacheTtl?: CacheTtl
   cacheAt?: string
+
+  msgIn?: number
+  msgOut?: number
 }
 
 export type CacheTtl = '5m' | '1h'
+
+export type PeerLinkKind = 'message' | 'opened'
+
+export type PeerLinkDir = 'ab' | 'ba'
+
+export interface PeerLink {
+  id: string
+  kind: PeerLinkKind
+  a: string
+  b: string
+  ab: number
+  ba: number
+  firstAt: string
+  lastAt: string
+  lastDir: PeerLinkDir
+  lastAgentId?: string
+}
+
+export type PeerLinkPatch = Patch<PeerLink>
 
 export type ActivityKind =
   | 'terminal.started'
@@ -114,6 +136,7 @@ export type ActivityKind =
   | 'job.done'
   | 'job.stopped'
   | 'job.stopFailed'
+  | 'peer.message'
 
 export interface ActivityEvent {
   id: string
@@ -175,6 +198,7 @@ export interface MonitorSnapshot {
   snoozes?: Record<string, SnoozeEntry>
   /** True while the collector's first pass over live sessions runs; `sessions.loading` reports the end. */
   loading?: boolean
+  peerLinks?: PeerLink[]
 }
 
 export type ToastState = 'on' | 'off' | 'unsupported'
@@ -393,6 +417,9 @@ export type MonitorEvent =
   | { type: 'agent.created'; payload: Agent }
   | { type: 'agent.updated'; payload: AgentPatch }
   | { type: 'agent.removed'; payload: { id: string } }
+  | { type: 'link.created'; payload: PeerLink }
+  | { type: 'link.updated'; payload: PeerLinkPatch }
+  | { type: 'link.removed'; payload: { id: string } }
   | { type: 'activity'; payload: ActivityEvent }
   | { type: 'usage.reset'; payload: UsageSnapshot }
   | { type: 'usage.updated'; payload: { buckets: UsageBucket[] } }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChartColumnBig, Table2 } from 'lucide-vue-next'
 import { compactNumber, formatCost, formatDay, fullNumber } from '../../lib/format'
 import { SERIES, useUsageStore, type SeriesKey } from '../../stores/usage'
+
+defineProps<{ showTable: boolean }>()
 
 const { t, locale } = useI18n()
 const usage = useUsageStore()
@@ -21,26 +22,37 @@ const SERIES_BG: Record<SeriesKey, string> = {
   cacheRead: 'bg-series-read',
 }
 
-const HEIGHT = 260
-const PAD = { top: 12, right: 8, bottom: 28, left: 56 }
-const BAR_MAX = 24
+const HEIGHT = 200
+const PAD = { top: 10, right: 30, bottom: 24, left: 56 }
+const BAR_MAX = 28
 const GAP = 2
+const RADIUS = 4
 
 const box = ref<HTMLElement | null>(null)
-const width = ref(640)
-const showTable = ref(false)
+const width = ref(0)
+const instant = ref(false)
 const hover = ref<number | null>(null)
 let observer: ResizeObserver | null = null
+let settle = 0
 
 onMounted(() => {
   if (!box.value) return
-  width.value = box.value.clientWidth
+  width.value = Math.max(240, box.value.clientWidth)
   observer = new ResizeObserver(([entry]) => {
-    if (entry) width.value = Math.max(240, entry.contentRect.width)
+    if (!entry || !entry.contentRect.width) return
+    const next = Math.max(240, Math.round(entry.contentRect.width))
+    if (next === width.value) return
+    instant.value = true
+    width.value = next
+    window.clearTimeout(settle)
+    settle = window.setTimeout(() => (instant.value = false), 160)
   })
   observer.observe(box.value)
 })
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  window.clearTimeout(settle)
+})
 
 const fmt = (v: number) => (usage.metric === 'cost' ? formatCost(v, locale.value) : compactNumber(v))
 const fmtFull = (v: number) => (usage.metric === 'cost' ? formatCost(v, locale.value) : fullNumber(Math.round(v), locale.value))
@@ -53,44 +65,44 @@ function niceMax(v: number): number {
   return step * mag
 }
 
+const innerH = HEIGHT - PAD.top - PAD.bottom
+const baseline = PAD.top + innerH
+
 const plot = computed(() => {
   const rows = usage.daily
-  const innerW = width.value - PAD.left - PAD.right
-  const innerH = HEIGHT - PAD.top - PAD.bottom
+  const innerW = Math.max(1, width.value - PAD.left - PAD.right)
   const max = niceMax(Math.max(0, ...rows.map((r) => r.total)))
   const slot = rows.length ? innerW / rows.length : innerW
   const bar = Math.max(2, Math.min(BAR_MAX, slot * 0.62))
-  const y = (v: number) => PAD.top + innerH - (v / max) * innerH
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((k) => ({ value: max * k, y: y(max * k) }))
-  const labelEvery = Math.max(1, Math.ceil(rows.length / Math.max(1, Math.floor(innerW / 64))))
+  const px = (v: number) => (v / max) * innerH
+  const ticks = [0, 0.5, 1].map((k) => ({ value: max * k, y: baseline - px(max * k) }))
+  const labelEvery = Math.max(1, Math.ceil(rows.length / Math.max(1, Math.floor(innerW / 56))))
+  const visible = usage.visibleSeries
 
   const columns = rows.map((row, i) => {
-    const cx = PAD.left + slot * i + slot / 2
+    const shown = visible.filter((k) => row.values[k] > 0)
+    const topKey = shown.at(-1)
     let acc = 0
-    const segments: { key: SeriesKey; x: number; y: number; w: number; h: number; top: boolean }[] = []
-    const visible = usage.visibleSeries.filter((k) => row.values[k] > 0)
-    visible.forEach((key, idx) => {
-      const v = row.values[key]
-      const y0 = y(acc)
-      acc += v
-      const y1 = y(acc)
-      const top = idx === visible.length - 1
-      const h = Math.max(0, y0 - y1 - (top ? 0 : GAP))
-      segments.push({ key, x: cx - bar / 2, y: y1 + (top ? 0 : GAP), w: bar, h, top })
+    const segments = SERIES.map((key) => {
+      const on = shown.includes(key)
+      const h = on ? px(row.values[key]) : 0
+      const offset = acc
+      acc += h
+      const height = Math.max(0, h - (on && key !== topKey ? GAP : 0))
+      return { key, offset, k: height / innerH }
     })
-    return { row, cx, segments, label: i % labelEvery === 0 || i === rows.length - 1 }
+    return { row, cx: PAD.left + slot * i + slot / 2, segments, label: i % labelEvery === 0 || i === rows.length - 1 }
   })
-  return { columns, ticks, slot, innerH, baseline: y(0) }
+  const avg = usage.range !== 'today' && usage.dailyAverage ? usage.dailyAverage : null
+  return { columns, ticks, slot, bar, avgY: avg === null ? null : baseline - px(avg) }
 })
 
-/** Data-end rounded 4px, square at the baseline. */
-function segmentPath(s: { x: number; y: number; w: number; h: number; top: boolean }): string {
-  const r = s.top ? Math.min(4, s.w / 2, s.h) : 0
-  const { x, y, w, h } = s
-  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`
-}
+const capClip = computed(() => {
+  const r = Math.min(RADIUS, plot.value.bar / 2)
+  return `inset(0 round ${r}px ${r}px 0 0)`
+})
 
-const hovered = computed(() => (hover.value === null ? null : plot.value.columns[hover.value] ?? null))
+const hovered = computed(() => (hover.value === null ? null : (plot.value.columns[hover.value] ?? null)))
 const tooltipLeft = computed(() => {
   const c = hovered.value
   if (!c) return 0
@@ -108,82 +120,55 @@ const summary = computed(() => {
   })
 })
 
+const dimmed = (day: string) => usage.selectedDay !== null && usage.selectedDay !== day
+
 function onKey(e: KeyboardEvent): void {
   const n = plot.value.columns.length
   if (!n) return
   if (e.key === 'ArrowRight') hover.value = Math.min(n - 1, (hover.value ?? -1) + 1)
   else if (e.key === 'ArrowLeft') hover.value = Math.max(0, (hover.value ?? n) - 1)
-  else if (e.key === 'Escape') hover.value = null
+  else if (e.key === 'Home') hover.value = 0
+  else if (e.key === 'End') hover.value = n - 1
+  else if ((e.key === 'Enter' || e.key === ' ') && hovered.value) usage.selectDay(hovered.value.row.day)
+  else if (e.key === 'Escape' && hover.value !== null) hover.value = null
+  else if (e.key === 'Escape' && usage.selectedDay !== null) usage.selectDay(null)
   else return
   e.preventDefault()
 }
 </script>
 
 <template>
-  <section class="min-w-0 rounded-card bg-surface shadow-card p-4 sm:p-5" aria-labelledby="usage-daily-title">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <h3 id="usage-daily-title" class="text-base font-semibold">{{ t('usage.daily') }}</h3>
-        <p class="mt-0.5 text-xs text-ink-muted">{{ summary }}</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-1.5">
-        <button
-          v-for="key in SERIES"
-          :key="key"
-          type="button"
-          class="ccm-btn-plain px-2! text-xs"
-          :class="usage.hidden.includes(key) ? 'text-ink-faint!' : ''"
-          :aria-pressed="!usage.hidden.includes(key)"
-          :title="t('usage.toggleSeries')"
-          @click="usage.toggleSeries(key)"
-        >
-          <span
-            class="size-2.5 rounded-sm transition-opacity"
-            :class="[SERIES_BG[key], usage.hidden.includes(key) ? 'opacity-30' : '']"
-            aria-hidden="true"
-          />
-          {{ t(`usage.series.${key}`) }}
-        </button>
-        <button
-          type="button"
-          class="ccm-btn-plain ml-1"
-          :aria-pressed="showTable"
-          :aria-label="showTable ? t('usage.showChart') : t('usage.showTable')"
-          :title="showTable ? t('usage.showChart') : t('usage.showTable')"
-          @click="showTable = !showTable"
-        >
-          <component :is="showTable ? ChartColumnBig : Table2" :size="16" aria-hidden="true" />
-        </button>
-      </div>
-    </div>
-
-    <div v-show="!showTable" ref="box" class="relative mt-4 min-w-0">
+  <div class="min-w-0">
+    <div v-show="!showTable" ref="box" class="relative min-w-0" :style="{ height: `${HEIGHT}px` }">
       <svg
+        v-if="width"
         :width="width"
         :height="HEIGHT"
-        class="block max-w-full outline-none"
+        class="usage-chart block max-w-full outline-none"
+        :data-instant="instant ? '' : undefined"
         role="img"
         tabindex="0"
         :aria-label="summary"
+        :aria-description="t('usageV53.chartKeys')"
         @mouseleave="hover = null"
         @keydown="onKey"
         @blur="hover = null"
       >
         <g>
           <line
-            v-for="tick in plot.ticks"
-            :key="tick.value"
-            :x1="56"
-            :x2="width - 8"
+            v-for="(tick, ti) in plot.ticks"
+            :key="`g${ti}`"
+            :x1="PAD.left"
+            :x2="width - PAD.right"
             :y1="tick.y"
             :y2="tick.y"
-            :stroke="tick.value === 0 ? 'var(--ccm-line-strong)' : 'var(--ccm-grid)'"
+            :class="tick.value === 0 ? 'stroke-line-strong' : 'usage-gridline'"
             stroke-width="1"
           />
           <text
-            v-for="tick in plot.ticks"
-            :key="`l${tick.value}`"
-            :x="48"
+            v-for="(tick, ti) in plot.ticks"
+            :key="`l${ti}`"
+            :x="PAD.left - 8"
             :y="tick.y + 4"
             text-anchor="end"
             class="fill-ink-faint text-[11px] tabular-nums"
@@ -191,32 +176,58 @@ function onKey(e: KeyboardEvent): void {
             {{ fmt(tick.value) }}
           </text>
         </g>
-        <g v-for="(col, i) in plot.columns" :key="col.row.day">
+        <g
+          v-for="(col, i) in plot.columns"
+          :key="col.row.day"
+          class="usage-col"
+          :style="{ transform: `translateX(${col.cx}px)` }"
+        >
           <rect
-            :x="col.cx - plot.slot / 2"
-            :y="12"
+            :x="-plot.slot / 2"
+            :y="PAD.top"
             :width="plot.slot"
-            :height="plot.innerH"
-            :class="hover === i ? 'fill-raised' : 'fill-transparent'"
+            :height="innerH"
+            class="cursor-pointer transition-colors duration-(--ccm-dur-fast)"
+            :class="usage.selectedDay === col.row.day ? 'fill-fill' : hover === i ? 'fill-raised' : 'fill-transparent'"
             @mouseenter="hover = i"
+            @click="usage.selectDay(col.row.day)"
           />
-          <path
-            v-for="(s, si) in col.segments"
-            :key="s.key"
-            :d="segmentPath(s)"
-            :class="[SERIES_FILL[s.key], 'ccm-grow pointer-events-none']"
-            :style="{ animationDelay: `${Math.min(i * 18 + si * 30, 600)}ms` }"
-          />
+          <g
+            class="pointer-events-none transition-opacity duration-(--ccm-dur-fast) ease-out-quint"
+            :class="dimmed(col.row.day) ? 'opacity-35' : 'opacity-100'"
+            :style="{ clipPath: capClip }"
+          >
+            <g class="ccm-grow" :style="{ animationDelay: `${Math.min(i * 20, 600)}ms` }">
+              <rect
+                v-for="s in col.segments"
+                :key="s.key"
+                :x="-plot.bar / 2"
+                :y="PAD.top"
+                :width="plot.bar"
+                :height="innerH"
+                class="usage-seg"
+                :class="SERIES_FILL[s.key]"
+                :style="{ transform: `translateY(${-s.offset}px) scaleY(${s.k})` }"
+              />
+            </g>
+          </g>
           <text
             v-if="col.label"
-            :x="col.cx"
-            :y="plot.baseline + 18"
+            :x="0"
+            :y="baseline + 17"
             text-anchor="middle"
-            class="pointer-events-none fill-ink-faint text-[11px] tabular-nums"
+            class="pointer-events-none text-[11px] tabular-nums"
+            :class="usage.selectedDay === col.row.day ? 'fill-ink font-semibold' : 'fill-ink-faint'"
           >
             {{ formatDay(col.row.day, locale) }}
           </text>
         </g>
+        <Transition name="ccm-fade">
+          <g v-if="plot.avgY !== null" class="usage-avg pointer-events-none" :style="{ transform: `translateY(${plot.avgY}px)` }">
+            <line :x1="PAD.left" :x2="width - PAD.right" y1="0" y2="0" class="stroke-ink-faint" stroke-width="1" stroke-dasharray="3 3" />
+            <text :x="width - PAD.right + 4" y="4" class="fill-ink-faint text-[10px] font-medium">{{ t('usageV53.avg') }}</text>
+          </g>
+        </Transition>
       </svg>
 
       <Transition
@@ -244,11 +255,14 @@ function onKey(e: KeyboardEvent): void {
               <dd class="font-semibold text-ink tabular-nums">{{ fmtFull(hovered.row.total) }}</dd>
             </div>
           </dl>
+          <p class="mt-2 text-2xs text-ink-faint">
+            {{ usage.selectedDay === hovered.row.day ? t('usageV53.unpickHint') : t('usageV53.pickHint') }}
+          </p>
         </div>
       </Transition>
     </div>
 
-    <div v-if="showTable" class="mt-4 max-h-[320px] overflow-auto rounded-lg border border-line">
+    <div v-if="showTable" class="overflow-auto rounded-lg border border-line" :style="{ maxHeight: `${HEIGHT}px` }">
       <table class="w-full min-w-[520px] text-left text-xs">
         <thead class="sticky top-0 bg-raised text-ink-muted">
           <tr>
@@ -258,13 +272,56 @@ function onKey(e: KeyboardEvent): void {
           </tr>
         </thead>
         <tbody class="divide-y divide-line">
-          <tr v-for="row in [...usage.daily].reverse()" :key="row.day">
-            <th scope="row" class="px-3 py-1.5 font-normal">{{ formatDay(row.day, locale, 'long') }}</th>
+          <tr v-for="row in [...usage.daily].reverse()" :key="row.day" :class="usage.selectedDay === row.day ? 'bg-accent-soft' : ''">
+            <th scope="row" class="px-1.5 py-0.5 font-normal">
+              <button
+                type="button"
+                class="ccm-btn-plain min-h-6! justify-start px-1.5! text-xs"
+                :class="usage.selectedDay === row.day ? 'font-medium text-accent-ink!' : 'text-ink!'"
+                :aria-pressed="usage.selectedDay === row.day"
+                :title="usage.selectedDay === row.day ? t('usageV53.unpickHint') : t('usageV53.pickHint')"
+                @click="usage.selectDay(row.day)"
+              >
+                {{ formatDay(row.day, locale, 'long') }}
+              </button>
+            </th>
             <td v-for="key in usage.visibleSeries" :key="key" class="px-3 py-1.5 text-right tabular-nums">{{ fmtFull(row.values[key]) }}</td>
             <td class="px-3 py-1.5 text-right font-medium tabular-nums">{{ fmtFull(row.total) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
-  </section>
+  </div>
 </template>
+
+<style scoped>
+.usage-gridline {
+  stroke: var(--ccm-grid);
+}
+
+.usage-col {
+  transition: transform var(--ccm-dur-slow) var(--ease-out-quint);
+}
+
+.usage-avg {
+  transition:
+    transform var(--ccm-dur-slow) var(--ease-out-quint),
+    opacity var(--ccm-dur-base) var(--ease-out-quint);
+}
+
+.usage-avg.ccm-fade-leave-active {
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+
+.usage-seg {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform var(--ccm-dur-slow) var(--ease-out-quint);
+}
+
+.usage-chart[data-instant] .usage-col,
+.usage-chart[data-instant] .usage-avg,
+.usage-chart[data-instant] .usage-seg {
+  transition: none;
+}
+</style>

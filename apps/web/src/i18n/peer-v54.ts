@@ -1,0 +1,51 @@
+const en = {
+  peer: {
+    sent: 'Sent to {name}',
+    sentMany: 'Sent to {n} session | Sent to {n} sessions',
+    received: 'Message from {name}',
+    receivedMany: 'Messages from {n} session | Messages from {n} sessions',
+    talking: 'Talking with {name}',
+    outside: 'Sent outside this machine',
+    fromUnknown: 'Message from another session',
+    openedBy: 'Opened by {name}',
+    coordinating: 'Coordinating {n}',
+    coordinatingLabel: 'Coordinating {n} session: {names} | Coordinating {n} sessions: {names}',
+    sentList: 'Sent to {names}',
+    heardList: 'Heard from {names}',
+    openedList: 'Opened {names}',
+    edgeCount: '{from} → {to}: {n}',
+    lastAt: 'Last message {ago}',
+    outsideWorkspace: '{name} (outside Workspace)',
+    goTo: 'Go to {name}',
+    live: '{to} got a message from {from} | {to} got {n} messages from {from}',
+    activity: '{from} sent a message to {to}',
+    activityOpened: '{from} opened {to}',
+  },
+}
+
+const vi: typeof en = {
+  peer: {
+    sent: 'Đã gửi cho {name}',
+    sentMany: 'Đã gửi cho {n} phiên',
+    received: 'Tin từ {name}',
+    receivedMany: 'Tin từ {n} phiên',
+    talking: 'Đang trao đổi với {name}',
+    outside: 'Đã gửi ra ngoài máy',
+    fromUnknown: 'Tin từ một session khác',
+    openedBy: 'Được mở bởi {name}',
+    coordinating: 'Điều phối {n}',
+    coordinatingLabel: 'Điều phối {n} phiên: {names}',
+    sentList: 'Gửi cho {names}',
+    heardList: 'Nhận từ {names}',
+    openedList: 'Đã mở {names}',
+    edgeCount: '{from} → {to}: {n}',
+    lastAt: 'Tin cuối {ago}',
+    outsideWorkspace: '{name} (ngoài Workspace)',
+    goTo: 'Đi tới {name}',
+    live: '{to} nhận tin từ {from} | {to} nhận {n} tin từ {from}',
+    activity: '{from} gửi tin cho {to}',
+    activityOpened: '{from} đã mở {to}',
+  },
+}
+
+export default { en, vi }

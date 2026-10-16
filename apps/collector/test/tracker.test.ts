@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RegistryRecord } from '../src/registry'
-import { cwdSlug, findTranscript, SessionTracker, terminalIdOf } from '../src/tracker'
+import { cwdSlug, findTranscript, SessionTracker, signalLineFilter, terminalIdOf } from '../src/tracker'
 
 const SID = '11111111-2222-3333-4444-555555555555'
 const SID2 = '66666666-7777-8888-9999-000000000000'
@@ -50,6 +50,121 @@ describe('tracker helpers', () => {
 
     expect(await findTranscript(projects, SID2, CWD)).toBeNull()
     expect(await findTranscript(path.join(projects, 'missing'), SID)).toBeNull()
+  })
+
+  it('parses a queued command line only when it carries a message origin', () => {
+    const buf = (o: unknown) => Buffer.from(JSON.stringify(o))
+    const queued = (origin: unknown) => ({ type: 'attachment', attachment: { type: 'queued_command', prompt: '…', origin }, gitBranch: 'main' })
+    expect(signalLineFilter(buf(queued({ kind: 'coordinator' })), 0, 0)).toBeUndefined()
+    expect(signalLineFilter(buf(queued({ kind: 'peer', from: 'a0123456789abcdef', handback: true })), 0, 0)).toBeUndefined()
+    expect(signalLineFilter(buf(queued({ kind: 'human' })), 0, 0)).toEqual({ gitBranch: 'main' })
+    expect(signalLineFilter(buf({ type: 'attachment', attachment: { type: 'hook_success', content: '{"kind":"peer","type":"queued_command"}' } }), 0, 0)).toBeNull()
+  })
+})
+
+describe('SessionTracker main ↔ subagent message counts', () => {
+  const AID = 'a0123456789abcdef'
+  const CHILD = 'afedcba9876543210'
+  const at = (s: number) => new Date(Date.parse('2026-10-16T10:00:00.000Z') + s * 1000).toISOString()
+  const peer = (from: string, handback = true) => ({ kind: 'peer', from, senderTaskId: from, ...(handback ? { handback: true } : {}), body: '…' })
+  const coordinator = (uuid: string, t: string) =>
+    line({ type: 'user', uuid, timestamp: t, isMeta: true, agentId: AID, origin: { kind: 'coordinator' }, message: { role: 'user', content: '…' } })
+  const coordinatorQueued = (src: string, t: string) =>
+    line({ type: 'attachment', uuid: `att-${src}`, timestamp: t, attachment: { type: 'queued_command', prompt: '…', source_uuid: src, isMeta: true, origin: { kind: 'coordinator' } } })
+  const handbackUser = (from: string, uuid: string, t: string) =>
+    line({ type: 'user', uuid, timestamp: t, isMeta: true, promptSource: 'system', origin: peer(from), message: { role: 'user', content: '…' } })
+  const queuedPeer = (origin: unknown, src: string, t: string) =>
+    line({ type: 'attachment', uuid: `att-${src}`, timestamp: t, attachment: { type: 'queued_command', prompt: '…', source_uuid: src, delivery_id: `d-${src}`, commandMode: 'prompt', isMeta: true, timestamp: t, origin } })
+  const enqueue = (from: string, t: string) =>
+    line({ type: 'queue-operation', operation: 'enqueue', timestamp: t, sessionId: SID, content: `<agent-message from="${from}">…</agent-message>` })
+  const sendMain = (id: string, t: string) =>
+    line({ type: 'assistant', timestamp: t, message: { id: `m-${id}`, stop_reason: 'tool_use', content: [{ type: 'tool_use', id, name: 'SendMessage', input: { to: 'main', message: '…', summary: '…' } }] } })
+
+  let projects: string
+  let transcript: string
+  let subDir: string
+  let tracker: SessionTracker
+
+  const agents = () => tracker.buildAgents(tracker.buildTerminal())
+  const counts = (id: string) => {
+    const a = agents().find((x) => x.id === id)
+    return a && { msgIn: a.msgIn, msgOut: a.msgOut }
+  }
+  const addSubagent = async (id: string, body: string, meta: Record<string, unknown> = {}) => {
+    await writeFile(path.join(subDir, `agent-${id}.meta.json`), JSON.stringify({ agentType: 'Explore', toolUseId: `toolu_${id}`, ...meta }))
+    await writeFile(path.join(subDir, `agent-${id}.jsonl`), body)
+  }
+
+  beforeEach(async () => {
+    projects = await mkdtemp(path.join(os.tmpdir(), 'ccm-msg-'))
+    transcript = path.join(projects, cwdSlug(CWD), `${SID}.jsonl`)
+    subDir = path.join(projects, cwdSlug(CWD), SID, 'subagents')
+    await mkdir(subDir, { recursive: true })
+    await writeFile(transcript, toolUse('m1', `toolu_${AID}`, 'Agent', at(0)))
+    tracker = new SessionTracker(terminalIdOf(record()), record(), projects, {}, () => Date.parse(at(60)))
+  })
+
+  it('builds counts at catch-up without activity: coordinator in, hand-backs and SendMessage to main out', async () => {
+    await appendFile(
+      transcript,
+      enqueue(AID, at(5)) + handbackUser(AID, 'u-h1', at(5)) + queuedPeer(peer(AID, false), 'src-p1', at(8)) + enqueue(AID, at(9)) + queuedPeer(peer(AID), 'src-h2', at(9)),
+    )
+    await addSubagent(AID, coordinator('u-c1', at(1)) + coordinatorQueued('src-c2', at(2)) + sendMain('toolu_sm1', at(3)))
+
+    expect(await tracker.sync(true)).toEqual([])
+    expect(counts(AID)).toEqual({ msgIn: 2, msgOut: 3 })
+    const main = agents().find((a) => a.role === 'main')!
+    expect(main).not.toHaveProperty('msgIn')
+    expect(main).not.toHaveProperty('msgOut')
+  })
+
+  it('counts each record once when lines repeat and adds live messages', async () => {
+    await addSubagent(AID, coordinator('u-c1', at(1)))
+    await appendFile(transcript, handbackUser(AID, 'u-h1', at(5)))
+    await tracker.sync(true)
+    expect(counts(AID)).toEqual({ msgIn: 1, msgOut: 1 })
+
+    await appendFile(path.join(subDir, `agent-${AID}.jsonl`), coordinator('u-c1', at(1)) + coordinator('u-c2', at(10)))
+    await appendFile(transcript, handbackUser(AID, 'u-h1', at(5)) + enqueue(AID, at(11)) + queuedPeer(peer(AID), 'src-h2', at(11)))
+    expect(await tracker.sync(false)).toEqual([])
+    expect(counts(AID)).toEqual({ msgIn: 2, msgOut: 2 })
+
+    await appendFile(path.join(subDir, `agent-${AID}.jsonl`), sendMain('toolu_sm1', at(12)))
+    const activity = await tracker.sync(false)
+    expect(activity.map((a) => a.kind)).toEqual(['tool.started'])
+    expect(counts(AID)).toEqual({ msgIn: 2, msgOut: 3 })
+  })
+
+  it('keeps a hand-back for an agent it has not seen yet', async () => {
+    await appendFile(transcript, handbackUser(AID, 'u-h1', at(5)))
+    await tracker.sync(true)
+    expect(agents()).toHaveLength(1)
+
+    await addSubagent(AID, '')
+    await tracker.sync(false)
+    expect(counts(AID)).toEqual({ msgIn: undefined, msgOut: 1 })
+  })
+
+  it("credits a nested hand-back to the child, read from its parent's transcript", async () => {
+    await addSubagent(AID, toolUse('s1', `toolu_${CHILD}`, 'Agent', at(1)) + handbackUser(CHILD, 'u-h1', at(4)))
+    await addSubagent(CHILD, '', { parentAgentId: AID, spawnDepth: 2 })
+    await tracker.sync(true)
+    expect(counts(CHILD)).toEqual({ msgIn: undefined, msgOut: 1 })
+    expect(counts(AID)).toEqual({ msgIn: undefined, msgOut: undefined })
+  })
+
+  it('forgets counts when the registry switches session', async () => {
+    await addSubagent(AID, coordinator('u-c1', at(1)))
+    await tracker.sync(true)
+    expect(counts(AID)).toEqual({ msgIn: 1, msgOut: undefined })
+    tracker.setRecord(record({ sessionId: SID2 }))
+    await writeFile(path.join(projects, cwdSlug(CWD), `${SID2}.jsonl`), '')
+    const dir2 = path.join(projects, cwdSlug(CWD), SID2, 'subagents')
+    await mkdir(dir2, { recursive: true })
+    await writeFile(path.join(dir2, `agent-${AID}.meta.json`), JSON.stringify({ agentType: 'Explore' }))
+    await writeFile(path.join(dir2, `agent-${AID}.jsonl`), '')
+    await tracker.sync(true)
+    expect(counts(AID)).toEqual({ msgIn: undefined, msgOut: undefined })
   })
 })
 
@@ -387,6 +502,16 @@ describe('SessionTracker catch-up on real-shaped transcripts', () => {
     await utimes(bg, OLD, OLD)
     await tracker.sync(true)
     expect(tracker.toolSpans().map((s) => s.id)).toEqual(['toolu_live', 'toolu_b1', 'toolu_r1', 'toolu_l1'])
+  })
+
+  it('still counts coordinator messages in the skipped head of an old finished subagent', async () => {
+    const tracker = await fixture()
+    const bg = path.join(subDir, 'agent-bg.jsonl')
+    const coordinator = line({ type: 'user', uuid: 'u-c1', timestamp: '2026-10-07T10:00:02.500Z', isMeta: true, agentId: 'bg', origin: { kind: 'coordinator' }, message: { role: 'user', content: '…' }, ...tail })
+    await writeFile(bg, coordinator + bgLines())
+    await utimes(bg, OLD, OLD)
+    await tracker.sync(true)
+    expect(tracker.buildAgents(tracker.buildTerminal()).find((a) => a.id === 'bg')).toMatchObject({ status: 'completed', msgIn: 1 })
   })
 
   it('reads only the files a targeted sync names', async () => {

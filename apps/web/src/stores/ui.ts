@@ -121,7 +121,7 @@ function initialSizes(): Record<PanelSize, number> {
   return out
 }
 
-const MAP_KEY = 'ccm.mapLayout'
+const MAP_KEY = 'ccm.mapLayout.v53'
 const MAP_LIMIT = 300
 
 interface MapLayout {
@@ -134,6 +134,7 @@ const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 function initialMapLayout(): MapLayout {
   const out: MapLayout = { sizes: {}, pos: {} }
   try {
+    localStorage.removeItem('ccm.mapLayout')
     const raw = JSON.parse(localStorage.getItem(MAP_KEY) ?? '{}') as { sizes?: Record<string, NodeSize>; pos?: Record<string, Point> }
     for (const [id, s] of Object.entries(raw.sizes ?? {})) {
       const size: NodeSize = {}
@@ -192,6 +193,15 @@ export const useUiStore = defineStore('ui', () => {
     if (folded) next.add(id)
     else next.delete(id)
     collapsedAgents.value = next
+  }
+  const openTrays = ref<ReadonlySet<string>>(new Set())
+  function toggleTray(terminalId: string): void {
+    const next = new Set(openTrays.value)
+    if (!next.delete(terminalId)) next.add(terminalId)
+    openTrays.value = next
+  }
+  function setOpenTrays(ids: Iterable<string>): void {
+    openTrays.value = new Set(ids)
   }
 
   let mapSaveTimer: number | undefined
@@ -465,6 +475,9 @@ export const useUiStore = defineStore('ui', () => {
     setNodePos,
     collapsedAgents,
     setCollapsed,
+    openTrays,
+    toggleTray,
+    setOpenTrays,
     paletteOpen,
     opening,
     openResult,

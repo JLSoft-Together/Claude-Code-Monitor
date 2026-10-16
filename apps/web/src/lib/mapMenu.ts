@@ -1,5 +1,5 @@
-import { AppWindow, ChevronsDownUp, ChevronsUpDown, ClipboardCopy, Copy, Crosshair, Eye, EyeOff, Info, LayoutGrid, ListTree, Maximize, ScanSearch, Search, SquareTerminal } from 'lucide-vue-next'
-import type { MenuEntry } from './menu'
+import { AppWindow, ChevronsDownUp, ChevronsUpDown, ClipboardCopy, Copy, Crosshair, Eye, EyeOff, Info, LayoutGrid, ListTree, Mail, Maximize, ScanSearch, Search, SquareTerminal } from 'lucide-vue-next'
+import type { MenuAction, MenuEntry } from './menu'
 import { keyCombo } from './shortcuts'
 
 export type NodeAction =
@@ -20,6 +20,7 @@ export type NodeAction =
   | 'show-session'
   | 'details'
   | 'toggle-subtree'
+  | `go-peer:${string}`
 
 export type CanvasAction = 'fit' | 'reset-layout' | 'expand-all' | 'collapse-all' | 'toggle-finished' | 'copy-map' | 'find'
 
@@ -38,6 +39,14 @@ export interface NodeMenuState {
   collapsed: boolean
   picked: number
   detailsOpen: boolean
+  peers?: readonly { terminalId: string; name: string }[]
+}
+
+export const GO_PEER = 'go-peer:'
+export const PEER_MENU_FLAT = 4
+
+export function peerTarget(id: string): string | null {
+  return id.startsWith(GO_PEER) && id.length > GO_PEER.length ? id.slice(GO_PEER.length) : null
 }
 
 type T = (key: string, args?: Record<string, unknown>) => string
@@ -88,6 +97,13 @@ export function nodeMenu(s: NodeMenuState, t: T, mac: boolean): MenuEntry[] {
       icon: s.collapsed ? ChevronsUpDown : ChevronsDownUp,
       shortcut: 'Space',
     })
+  const peers = s.peers ?? []
+  if (peers.length) {
+    out.push({ separator: true })
+    const items: MenuAction[] = peers.map((p) => ({ id: `${GO_PEER}${p.terminalId}`, label: t('peer.goTo', { name: p.name }), icon: Mail }))
+    if (peers.length <= PEER_MENU_FLAT) out.push(...items)
+    else out.push({ id: 'go-peer', label: t('peerMap.goToMenu'), icon: Mail, children: items.map((e) => ({ ...e, icon: undefined })) })
+  }
   return out
 }
 

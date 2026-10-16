@@ -2,9 +2,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Columns2, LoaderCircle, X } from 'lucide-vue-next'
-import { usePaneInfo } from '../../../composables/usePaneInfo'
+import { usePaneInfo, usePeerSweeps, type PanePeer } from '../../../composables/usePaneInfo'
 import type { MissionCard, MissionTile } from '../../../lib/rail/mission'
-import { stateWord, type RailState } from '../../../lib/rail/railModel'
+import { peerSlot, stateWord, type PeerSlot, type RailState } from '../../../lib/rail/railModel'
 import type { RunBadge } from '../../../lib/runUi'
 import type { Box } from '../../../lib/splitLayout'
 import { isTerm, useWorkspaceStore, type Pane } from '../../../stores/workspace'
@@ -67,6 +67,12 @@ const details = computed<Record<string, string>>(() =>
     }),
   ),
 )
+const peers = computed<Record<string, PanePeer | null>>(() => Object.fromEntries(props.card.tiles.map((x) => [x.paneKey, info.peerOf(paneOf(x.paneKey))])))
+const slots = computed<Record<string, PeerSlot>>(() => Object.fromEntries(props.card.tiles.map((x) => [x.paneKey, peerSlot(x.state, peers.value[x.paneKey])])))
+const peerLine = (paneKey: string): PanePeer | null => (slots.value[paneKey] === 'line' ? peers.value[paneKey]! : null)
+const peerBadge = (paneKey: string): PanePeer | null => (slots.value[paneKey] === 'badge' ? peers.value[paneKey]! : null)
+const relations = computed<Record<string, string[]>>(() => Object.fromEntries(props.card.tiles.map((x) => [x.paneKey, info.peerLines(paneOf(x.paneKey))])))
+const sweeps = usePeerSweeps(() => peers.value)
 const cardWord = computed(() => wordOf({ state: props.card.state, run: null, subagents: props.card.subagents }))
 const lead = computed(() => paneOf(props.card.tiles[0]?.paneKey ?? ''))
 
@@ -86,11 +92,22 @@ const titleTip = computed(() => [props.card.title, t('workspace.missionGrid.rena
 
 function tileLabel(x: MissionTile): string {
   const detail = details.value[x.paneKey]
-  const parts = [x.title, words.value[x.paneKey], detail !== undefined ? detail : props.snaps[x.paneKey] ? '' : t('workspace.rail.mission.empty')]
+  const parts = [x.title, words.value[x.paneKey], peers.value[x.paneKey]?.label, detail !== undefined ? detail : props.snaps[x.paneKey] ? '' : t('workspace.rail.mission.empty')]
   return t('workspace.rail.mission.enter', { name: parts.filter(Boolean).join(', ') })
 }
 const tileTip = (x: MissionTile): string =>
-  [x.title, words.value[x.paneKey], details.value[x.paneKey], props.draggable || props.card.tiles.length > 1 ? t('workspace.missionGrid.dragPane') : ''].filter(Boolean).join('\n')
+  [
+    ...new Set(
+      [
+        x.title,
+        words.value[x.paneKey],
+        peers.value[x.paneKey]?.label,
+        ...(relations.value[x.paneKey] ?? []),
+        details.value[x.paneKey],
+        props.draggable || props.card.tiles.length > 1 ? t('workspace.missionGrid.dragPane') : '',
+      ].filter(Boolean),
+    ),
+  ].join('\n')
 
 const GAP = 2
 const tileStyle = (b: Box): Record<string, string> => ({
@@ -218,7 +235,7 @@ onBeforeUnmount(() => clearTimeout(clickTimer))
           v-for="tile in card.tiles"
           :key="tile.paneKey"
           type="button"
-          class="mc-tile absolute flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[7px] bg-surface text-left shadow-control outline-offset-1 hover:ring-1 hover:ring-line-strong"
+          class="mc-tile @container absolute flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[7px] bg-surface text-left shadow-control outline-offset-1 hover:ring-1 hover:ring-line-strong"
           :class="dragging === tile.paneKey ? 'outline-2 outline-dashed outline-line-strong' : ''"
           :style="tileStyle(tile.box)"
           :tabindex="roving ? 0 : -1"
@@ -231,11 +248,28 @@ onBeforeUnmount(() => clearTimeout(clickTimer))
         >
           <span class="flex min-h-0 min-w-0 flex-1 flex-col" data-mission-tile-inner>
             <span class="flex h-5 min-w-0 shrink-0 items-center gap-1 px-1.5 text-2xs">
-              <PaneIcon v-if="paneOf(tile.paneKey)" :pane="paneOf(tile.paneKey)!" :size="12" class="shrink-0" />
+              <span class="relative inline-flex shrink-0">
+                <PaneIcon v-if="paneOf(tile.paneKey)" :pane="paneOf(tile.paneKey)!" :size="12" />
+                <Transition name="ccm-fade">
+                  <span v-if="peerBadge(tile.paneKey)" class="absolute -top-1 -right-1 inline-flex rounded-full bg-surface p-px" aria-hidden="true" data-mission-peer-badge>
+                    <component :is="peerBadge(tile.paneKey)!.glyph" :size="8" :class="peerBadge(tile.paneKey)!.tone" />
+                  </span>
+                </Transition>
+              </span>
               <span class="min-w-0 flex-1 truncate font-medium text-ink">{{ tile.title }}</span>
               <Transition name="ccm-fade" mode="out-in">
                 <span
-                  v-if="words[tile.paneKey]"
+                  v-if="peerLine(tile.paneKey)"
+                  :key="`p:${peerLine(tile.paneKey)!.text}`"
+                  class="inline-flex max-w-[60%] min-w-0 shrink-0 items-center gap-0.5 text-ink"
+                  :data-mission-peer="peerLine(tile.paneKey)!.dir"
+                >
+                  <component :is="peerLine(tile.paneKey)!.glyph" :size="10" class="shrink-0" :class="peerLine(tile.paneKey)!.tone" aria-hidden="true" />
+                  <span class="truncate @max-[260px]:hidden">{{ peerLine(tile.paneKey)!.text }}</span>
+                  <span class="hidden truncate @max-[260px]:inline">{{ peerLine(tile.paneKey)!.short }}</span>
+                </span>
+                <span
+                  v-else-if="words[tile.paneKey]"
                   :key="words[tile.paneKey]"
                   class="inline-flex max-w-[60%] min-w-0 shrink-0 items-center gap-0.5"
                   :class="inkOf(tile.state)"
@@ -263,6 +297,13 @@ onBeforeUnmount(() => clearTimeout(clickTimer))
               <span v-else class="m-auto px-1 text-center text-2xs text-well-ink" data-mission-empty>{{ t('workspace.rail.mission.empty') }}</span>
             </span>
           </span>
+          <span
+            v-if="sweeps[tile.paneKey]"
+            :key="`sweep-${sweeps[tile.paneKey]}`"
+            class="ccm-peer-sweep-x absolute inset-x-1.5 top-0 z-10 h-0.5"
+            aria-hidden="true"
+            data-mission-peer-sweep
+          />
           <span
             v-if="flashes[tile.paneKey]"
             :key="`flash-${flashes[tile.paneKey]}`"

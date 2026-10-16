@@ -7,6 +7,7 @@ import { retireOverlay } from '../../lib/motion'
 import ProjectTable from './ProjectTable.vue'
 
 const open = defineModel<boolean>({ required: true })
+const props = withDefaults(defineProps<{ origin?: HTMLElement | null; mode?: 'pick' | 'all' }>(), { origin: null, mode: 'pick' })
 
 const { t } = useI18n()
 const usage = useUsageStore()
@@ -92,6 +93,17 @@ function close(): void {
   open.value = false
 }
 
+function aim(el: Element): void {
+  const panelEl = el as HTMLElement
+  const from = props.origin?.isConnected ? props.origin.getBoundingClientRect() : null
+  if (!from) {
+    panelEl.style.transformOrigin = ''
+    return
+  }
+  const box = panelEl.getBoundingClientRect()
+  panelEl.style.transformOrigin = `${Math.round(from.left + from.width / 2 - box.left)}px ${Math.round(from.top + from.height / 2 - box.top)}px`
+}
+
 function pick(id: string | null): void {
   usage.project = id
   close()
@@ -141,7 +153,7 @@ onBeforeUnmount(() => {
     <Transition name="ccm-scrim">
       <div v-if="open" class="fixed inset-0 z-50 ccm-scrim" aria-hidden="true" @click="close" />
     </Transition>
-    <Transition name="ccm-sheet" @before-leave="retireOverlay">
+    <Transition name="usage-sheet" @enter="aim" @before-leave="retireOverlay">
       <div
         v-if="open"
         ref="panel"
@@ -154,8 +166,8 @@ onBeforeUnmount(() => {
       >
         <div class="flex items-start gap-3 border-b border-line px-5 py-4">
           <div class="min-w-0 flex-1">
-            <h2 id="project-picker-title" class="text-base font-semibold">{{ t('projects.pickTitle') }}</h2>
-            <p class="mt-0.5 text-2xs text-ink-muted">{{ t('projects.pickHint') }}</p>
+            <h2 id="project-picker-title" class="text-base font-semibold">{{ mode === 'all' ? t('usageV53.allTitle') : t('projects.pickTitle') }}</h2>
+            <p class="mt-0.5 text-2xs text-ink-muted">{{ mode === 'all' ? t('usageV53.allHint') : t('projects.pickHint') }}</p>
           </div>
           <button
             v-if="usage.project"
@@ -207,3 +219,30 @@ onBeforeUnmount(() => {
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+.usage-sheet-enter-active {
+  transition:
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    scale var(--ccm-dur-slow) var(--ease-out-quint),
+    translate var(--ccm-dur-slow) var(--ease-out-quint);
+}
+
+.usage-sheet-leave-active {
+  pointer-events: none;
+  transition:
+    opacity var(--ccm-dur-fast) var(--ease-exit),
+    scale var(--ccm-dur-fast) var(--ease-exit);
+}
+
+.usage-sheet-enter-from {
+  opacity: 0;
+  scale: 0.9;
+  translate: 0 24px;
+}
+
+.usage-sheet-leave-to {
+  opacity: 0;
+  scale: 0.97;
+}
+</style>

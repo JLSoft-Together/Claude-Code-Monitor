@@ -14,6 +14,7 @@ import {
   type SessionRecord,
   type MonitorEvent,
   type MonitorSnapshot,
+  type PeerLink,
   type PlanLimits,
   type ResponseStats,
   type ServerMessage,
@@ -52,6 +53,7 @@ function clean<T extends object>(obj: T): T {
 export class MonitorStore implements UsageSink {
   private readonly terminals = new Map<string, TerminalSession>()
   private readonly agents = new Map<string, Agent>()
+  private readonly links = new Map<string, PeerLink>()
   private readonly activity: ActivityEvent[] = []
   /** tool.* events get their own ring so a busy session cannot push waits/completions out of history. */
   private readonly toolActivity: ActivityEvent[] = []
@@ -177,6 +179,23 @@ export class MonitorStore implements UsageSink {
 
   removeAgent(id: string): void {
     if (this.agents.delete(id)) this.emit({ type: 'agent.removed', payload: { id } })
+  }
+
+  peerLinks(): PeerLink[] {
+    return [...this.links.values()]
+  }
+
+  upsertLink(next: PeerLink): void {
+    const value = clean(next)
+    const prev = this.links.get(value.id)
+    this.links.set(value.id, value)
+    if (!prev) return this.emit({ type: 'link.created', payload: value })
+    const patch = diff(prev, value)
+    if (patch) this.emit({ type: 'link.updated', payload: { ...patch, id: value.id } })
+  }
+
+  removeLink(id: string): void {
+    if (this.links.delete(id)) this.emit({ type: 'link.removed', payload: { id } })
   }
 
   pushActivity(event: Omit<ActivityEvent, 'id' | 'at'> & { at?: string }): void {
@@ -313,6 +332,7 @@ export class MonitorStore implements UsageSink {
       dayStartedAt: this.dayStartedAt,
       notify: this.notify,
       snoozes: { ...this.snoozes },
+      peerLinks: [...this.links.values()],
       ...(this.loading ? { loading: true } : {}),
     }
   }
@@ -350,7 +370,7 @@ export class MonitorStore implements UsageSink {
    * client would end up with). A removal ends the chain, so a later created starts a new event.
    */
   private coalesce(event: MonitorEvent): boolean {
-    const kind = event.type.startsWith('terminal.') ? 'terminal' : event.type.startsWith('agent.') ? 'agent' : null
+    const kind = event.type.startsWith('terminal.') ? 'terminal' : event.type.startsWith('agent.') ? 'agent' : event.type.startsWith('link.') ? 'link' : null
     if (!kind) return false
     const key = `${kind}:${(event.payload as { id: string }).id}`
     const verb = event.type.slice(kind.length + 1)

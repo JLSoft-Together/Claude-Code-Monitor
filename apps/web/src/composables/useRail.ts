@@ -47,6 +47,7 @@ function createRail() {
       tabTitleOf: (tab) => info.tabTitle(tab),
       agentLabel: (p) => (p === 'shell' ? t('workspace.preset.shell') : t(`provider.${p}`)),
       runOf,
+      peerOf: (p) => info.railPeerOf(p),
       history: workspace.recentDirs,
       order: order.value,
     }),

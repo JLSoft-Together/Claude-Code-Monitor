@@ -1,4 +1,5 @@
 import type { CacheTtl } from '@ccm/shared'
+import { socketKey } from './registry'
 
 export type Signal =
   | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true }
@@ -12,13 +13,24 @@ export type Signal =
   | { k: 'compact'; trigger?: string; preTokens?: number; postTokens?: number; at?: string }
   | { k: 'permission_mode'; mode: string }
   | { k: 'branch'; branch: string }
+  | { k: 'coordinator_msg'; key: string; at?: string }
+  | { k: 'handback'; from: string; key: string; at?: string }
+  | { k: 'send_main'; key: string; at?: string }
+  | { k: 'peer_in'; fromKey: string; msgId?: string; dedupeKey: string; at?: string }
+  | { k: 'peer_sent'; msgId: string; at?: string }
 
 type Obj = Record<string, unknown>
 
 const EFFORT_RE = /^[a-z]{2,12}$/
+const AGENT_ID_RE = /^a[0-9a-f]{16}$/
+const RECORD_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
+const MSG_ID_RE = /^[A-Za-z0-9_-]{8,64}$/
+const UDS_PREFIX = 'uds:'
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+const idOf = (v: unknown): string | undefined => (typeof v === 'string' && RECORD_ID_RE.test(v) ? v : undefined)
+const msgIdOf = (v: unknown): string | undefined => (typeof v === 'string' && MSG_ID_RE.test(v) ? v : undefined)
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
 
 const MAX_ENUM = 120
@@ -48,6 +60,34 @@ export function parseTaskNotifications(text: string, at: string | undefined): Si
     out.push({ k: 'task_notification', toolUseId: tag(body, 'tool-use-id'), taskId: tag(body, 'task-id'), status, at })
   }
   return out
+}
+
+function originSignals(origin: unknown, id: string | undefined, at: string | undefined): Signal[] {
+  const key = id ?? (at ? `@${at}` : undefined)
+  if (!isObj(origin) || !key) return []
+  if (origin.kind === 'coordinator') return [{ k: 'coordinator_msg', key, at }]
+  if (origin.kind === 'peer' && origin.handback === true && typeof origin.from === 'string' && AGENT_ID_RE.test(origin.from)) {
+    return [{ k: 'handback', from: origin.from, key, at }]
+  }
+  if (origin.kind === 'peer' && typeof origin.from === 'string' && origin.from.startsWith(UDS_PREFIX)) {
+    const fromKey = socketKey(decodeAddress(origin.from.slice(UDS_PREFIX.length)))
+    if (fromKey) return [{ k: 'peer_in', fromKey, msgId: msgIdOf(origin.msg_id), dedupeKey: key, at }]
+  }
+  return []
+}
+
+function decodeAddress(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+function peerSent(result: unknown, at: string | undefined): Signal[] {
+  if (!isObj(result) || result.success !== true || result.pin !== undefined || result.resumedAgentId !== undefined) return []
+  const msgId = msgIdOf(result.msg_id)
+  return msgId ? [{ k: 'peer_sent', msgId, at }] : []
 }
 
 function textsOf(content: unknown): string[] {
@@ -97,6 +137,7 @@ export function extractSignals(rec: unknown): Signal[] {
       for (const b of msg.content) {
         if (isObj(b) && b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string') {
           out.push({ k: 'tool_use', id: b.id, name: b.name, at, ...(mentionsCodex(b.name, b.input) ? { codex: true as const } : {}) })
+          if (b.name === 'SendMessage' && isObj(b.input) && b.input.to === 'main') out.push({ k: 'send_main', key: b.id, at })
         }
       }
     }
@@ -116,6 +157,14 @@ export function extractSignals(rec: unknown): Signal[] {
       }
     }
     for (const t of textsOf(content)) out.push(...parseTaskNotifications(t, at))
+    out.push(...originSignals(rec.origin, idOf(rec.uuid), at))
+    out.push(...peerSent(rec.toolUseResult, at))
+    return out
+  }
+
+  if (type === 'attachment' && isObj(rec.attachment) && rec.attachment.type === 'queued_command') {
+    const a = rec.attachment
+    out.push(...originSignals(a.origin, idOf(a.source_uuid) ?? idOf(rec.uuid), at ?? str(a.timestamp)))
     return out
   }
 

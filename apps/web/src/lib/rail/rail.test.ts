@@ -6,7 +6,26 @@ import { buildAttentionList } from './attentionList'
 import { avatarInitials } from './avatars'
 import { flipTransform } from './mission'
 import { projectTabKeys, spaceIndexes, spaceLabel } from './spaces'
-import { buildRail, groupState, headId, paneState, railItems, rowId, rowLines, runState, showsCheckouts, stateWord, tabStopOf, treeIds, type RailInput, type RailSession } from './railModel'
+import {
+  buildRail,
+  groupState,
+  headId,
+  isPeerNews,
+  latestPeer,
+  paneState,
+  peerSlot,
+  railItems,
+  rowId,
+  rowLines,
+  runState,
+  showsCheckouts,
+  stateWord,
+  tabStopOf,
+  treeIds,
+  type RailInput,
+  type RailPeer,
+  type RailSession,
+} from './railModel'
 import { applyOrder, MAX_RAIL_ORDER, pinAt } from './railOrder'
 import { mainCheckout, repoFacts } from './repo'
 
@@ -551,5 +570,56 @@ describe('needs-you list', () => {
     const r = ws.openRun('C:\\work\\app')
     const list = buildAttentionList(buildRail(input({ runOf: () => 'failed' })))
     expect(list.entries).toMatchObject([{ paneKey: r.key, state: 'failed', run: 'failed' }])
+  })
+})
+
+describe('peer messages on the rail', () => {
+  const news = (over: Partial<RailPeer> = {}): RailPeer => ({ dir: 'in', kind: 'message', other: 't9', name: 'A', inside: true, peers: 1, n: 1, at: 1_000, until: 9_000, ...over })
+
+  it('puts the pane peer on its row, never on a run row', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const r = ws.split(a.key, 'row', { kind: 'run' })!
+    const rows = buildRail(input({ peerOf: () => news() }))[0]!.checkouts[0]!.rows
+    expect(rows.find((x) => x.paneKey === a.key)!.peer).toMatchObject({ dir: 'in', name: 'A' })
+    expect(rows.find((x) => x.paneKey === r.key)!.peer).toBeUndefined()
+    expect('peer' in buildRail(input())[0]!.checkouts[0]!.rows[0]!).toBe(false)
+  })
+
+  it('leads a group with the newest member message unless a member needs you', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.split(a.key, 'row')!
+    for (const p of [a, b]) ws.update(p.key, { state: 'running' })
+    const byPane: Record<string, RailPeer> = { [a.key]: news({ name: 'old', at: 1_000 }), [b.key]: news({ dir: 'out', name: 'new', at: 2_000 }) }
+    const peerOf = (p: Pane): RailPeer | undefined => byPane[p.key]
+    expect(buildRail(input({ peerOf }))[0]!.checkouts[0]!.groups[0]!.peer).toMatchObject({ name: 'new', dir: 'out' })
+    ws.update(a.key, { attention: 'waiting' })
+    const g = buildRail(input({ peerOf }))[0]!.checkouts[0]!.groups[0]!
+    expect(g.state).toBe('asked')
+    expect(g.peer).toBeUndefined()
+  })
+
+  it('flags a project only for messages that arrive', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('claude', 'D:\\notes', undefined, { tab: true })
+    const byPane: Record<string, RailPeer> = { [a.key]: news({ dir: 'out' }), [b.key]: news({ dir: 'both', name: 'B' }) }
+    const rail = buildRail(input({ peerOf: (p) => byPane[p.key] }))
+    expect(rail.find((c) => c.name === 'app')!.peer).toBeUndefined()
+    expect(rail.find((c) => c.name === 'notes')!.peer).toMatchObject({ dir: 'both', name: 'B' })
+    const opened = buildRail(input({ peerOf: () => news({ kind: 'opened' }) }))
+    expect(opened.every((c) => !c.peer)).toBe(true)
+    expect(latestPeer([{ peer: news({ at: 5 }) }, {}, { peer: news({ at: 9, name: 'z' }) }])?.name).toBe('z')
+  })
+
+  it('lets needs-you keep the line: the message drops to a badge', () => {
+    expect(peerSlot('asked', news())).toBe('badge')
+    expect(peerSlot('failed', news())).toBe('badge')
+    expect(peerSlot('working', news())).toBe('line')
+    expect(peerSlot('idle', null)).toBeNull()
+    expect(isPeerNews(news())).toBe(true)
+    expect(isPeerNews(news({ dir: 'out' }))).toBe(false)
+    expect(isPeerNews(news({ kind: 'opened' }))).toBe(false)
   })
 })

@@ -21,6 +21,27 @@ export interface RailSession {
   subagents: number
 }
 
+export interface RailPeer {
+  dir: 'out' | 'in' | 'both'
+  kind: 'message' | 'opened'
+  other: string | null
+  name: string
+  inside: boolean
+  peers: number
+  n: number
+  at: number
+  until: number
+}
+
+export const isPeerNews = (p: Pick<RailPeer, 'dir' | 'kind'> | null | undefined): boolean => !!p && p.kind === 'message' && p.dir !== 'out'
+
+export type PeerSlot = 'line' | 'badge' | null
+
+export function peerSlot(state: RailState | null | undefined, peer: unknown): PeerSlot {
+  if (!peer) return null
+  return state && needsUser(state) ? 'badge' : 'line'
+}
+
 export interface RailRow {
   /** Pane key for agent / run rows, `tab:<key>` for a tab without either. */
   key: string
@@ -44,6 +65,7 @@ export interface RailRow {
   tabActive: boolean
   group: string | null
   twin?: string
+  peer?: RailPeer
 }
 
 export interface RailGroup {
@@ -59,6 +81,7 @@ export interface RailGroup {
   focused: boolean
   paneKeys: string[]
   lead: string | null
+  peer?: RailPeer
 }
 
 export type RailItem = { kind: 'group'; key: string; group: RailGroup } | { kind: 'row'; key: string; row: RailRow; group: RailGroup | null }
@@ -91,6 +114,7 @@ export interface RailCluster {
   tabKeys: string[]
   /** Remembered folders this cluster covers (✕ forgets them). */
   history: string[]
+  peer?: RailPeer
 }
 
 export interface RailInput {
@@ -105,6 +129,7 @@ export interface RailInput {
   agentLabel: (preset: PtyPreset) => string
   /** Run pane → run badge of its project. */
   runOf?: (pane: Pane) => RunBadge | null
+  peerOf?: (pane: Pane) => RailPeer | undefined
   history: readonly string[]
   order: readonly string[]
 }
@@ -233,6 +258,12 @@ function markTwins(rows: readonly RailRow[]): void {
   }
 }
 
+export function latestPeer(rows: readonly Pick<RailRow, 'peer'>[], keep: (p: RailPeer) => boolean = () => true): RailPeer | undefined {
+  let best: RailPeer | undefined
+  for (const r of rows) if (r.peer && keep(r.peer) && (!best || r.peer.at > best.at)) best = r.peer
+  return best
+}
+
 function leadOf(rows: readonly RailRow[], state: RailState): string | null {
   let lead: RailRow | undefined
   for (const r of rows) if (r.state === state && (!lead || r.since < lead.since)) lead = r
@@ -311,6 +342,10 @@ export function buildRail(input: RailInput): RailCluster[] {
     const shown = grouped ? members : members.filter((p) => p.kind === 'run' || p.preset !== 'shell')
     const named = !grouped && shown.length === 1 ? tab.name : undefined
     const titleOf = (): string => (input.tabTitleOf ? input.tabTitleOf(tab) : tabTitle(tab, paneOf, input.labelOf))
+    const peerOf = (pane: Pane): Pick<RailRow, 'peer'> => {
+      const peer = isTerm(pane) ? input.peerOf?.(pane) : undefined
+      return peer ? { peer } : {}
+    }
     const first = checkout.rows.length
     for (const pane of shown) {
       const focused = tabActive && pane.key === input.activeKey
@@ -331,7 +366,7 @@ export function buildRail(input: RailInput): RailCluster[] {
         const shell = input.agentLabel('shell')
         checkout.rows.push({
           key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'shell', pane, preset: pane.preset, agent: shell, task: input.labelOf(pane),
-          ordinal: shell, state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group,
+          ordinal: shell, state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group, ...peerOf(pane),
         })
         continue
       }
@@ -339,16 +374,18 @@ export function buildRail(input: RailInput): RailCluster[] {
       const task = named ?? (session?.title || null)
       checkout.rows.push({
         key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'agent', pane, preset: pane.preset, agent, task,
-        ordinal: claim(task ? `${task} · ` : '', agent), state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group,
+        ordinal: claim(task ? `${task} · ` : '', agent), state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group, ...peerOf(pane),
       })
     }
     if (group) {
       const rows = checkout.rows.slice(first)
       const state = groupState(rows.map((r) => r.state))
+      const peer = rows.some((r) => needsUser(r.state)) ? undefined : latestPeer(rows)
       checkout.groups.push({
         key: group, tabKey: tab.key, title: titleOf(), named: !!tab.name, count: rows.length, state,
         subagents: rows.reduce((n, r) => n + r.subagents, 0), folded: !!tab.folded, tabActive,
         focused: tabActive && !!input.activeKey && keys.includes(input.activeKey), paneKeys: rows.map((r) => r.paneKey), lead: leadOf(rows, state),
+        ...(peer ? { peer } : {}),
       })
     }
     if (!shown.length) {
@@ -359,7 +396,7 @@ export function buildRail(input: RailInput): RailCluster[] {
       checkout.rows.push({
         key: `tab:${tab.key}`, paneKey: tab.focus, tabKey: tab.key, kind: 'other', pane: primary, preset: primary.preset, agent: label, task: null,
         ordinal: label, state: isTerm(primary) ? paneState(primary, undefined) : 'idle', subagents: 0, run: null, since: primary.focusedAt ?? 0,
-        focused: tabActive, tabActive, group: null,
+        focused: tabActive, tabActive, group: null, ...peerOf(primary),
       })
     }
   }
@@ -371,6 +408,8 @@ export function buildRail(input: RailInput): RailCluster[] {
     const rows = c.checkouts.flatMap((k) => k.rows)
     c.needs = rows.filter((r) => needsUser(r.state)).length
     c.failed = rows.filter((r) => r.state === 'failed').length
+    const peer = latestPeer(rows, isPeerNews)
+    if (peer) c.peer = peer
   }
 
   // Remembered projects: opened before, nothing open now. Folded per repo; dropped when a live cluster already draws them.

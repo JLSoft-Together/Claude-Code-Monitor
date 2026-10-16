@@ -226,6 +226,8 @@ Never forward to frontend: `messagingSocketPath`, tool inputs, message text, thi
 
 Forwarded: name, cwd, pid, status, `waitingFor`, tool **names**, `agentType`, `description`, model, token counts, timestamps.
 
+Messages between sessions and agents (v54, §11y / §11z): `messagingSocketPath` and the `uds:` sender address are reduced to `sockKey` (first 16 hex of sha256 of the lower-cased path) at parse time and kept in RAM only; the path is never stored, sent or logged. The message text in `origin.body`, `origin.name` (sender-chosen label), `message.content`, `attachment.prompt`, the `queue-operation` envelope, the `SendMessage` input and `toolUseResult.message` / `display` is never read out of `extractSignals`. Only counts, ids (`msg_id`, record uuid, agent id), terminal ids and timestamps leave it; display names come from the registry / dashboard alias.
+
 ---
 
 ## 10. Deviations from PLAN.md
@@ -554,6 +556,59 @@ Plan `.planning/PLAN-v51-compact-handoff.md`. Owner decision: the menu item **Co
 - The flow is runtime state on the pane (`Pane.compact`), never persisted; closing / exiting the pane drops it, the menu offers **Cancel compact** meanwhile.
 - v52: the pane header also offers the same action as a chip ("Context 82% · Compact…") once the main agent's context reaches `CONTEXT_THRESHOLDS.warning` and the flow could start (`compactState` `ready`). It is only a shortcut to the menu item: nothing is sent until the owner clicks it.
 - v52 undo close (`reopenClosed`): a closed Claude / Codex pane comes back with `--resume <agentSessionId>`, the same path as v49 `resume`; a session already running in another pane is not reopened twice.
+
+## 11y. Main ↔ subagent messages mid-run: `Agent.msgIn` / `Agent.msgOut` (v54, verified 2026-10-16, Claude Code 2.1.289, keys / ids / timestamps only)
+
+Plan `.planning/PLAN-v54-main-agent-messaging.md`, research `.planning/RESEARCH-v54-main-agent-messaging.md` §3.1 / §3.5. The collector publishes two counters on subagent agents and nothing else; the UI pulses when one grows (never on snapshot / `agent.created`). Session ↔ session messages get their own section.
+
+Verified on every transcript under `~/.claude/projects` (583 files, 278 subagent transcripts) by a read-only script outside the repo that printed field names, id shapes, timestamps and counts only.
+
+| Direction | Where | Record | Count |
+|---|---|---|---|
+| main → subagent (`SendMessage`, `to` = subagent id) | `subagents/agent-<id>.jsonl` | `user` with `origin {kind:"coordinator"}` (no other origin field), `isMeta`, `uuid`, `timestamp`, top-level `agentId` = file id; delivered mid-turn: `attachment {type:"queued_command", source_uuid, prompt, isMeta, origin {kind:"coordinator"}}` | 46 (14 user + 32 queued) = 46 `SendMessage` calls from main; equal per agent for all 24 agents |
+| subagent → parent, hand-back (`SubagentHandback`) | parent transcript: main, or the parent subagent's for a nested agent | `user` with `origin {kind:"peer", from, senderTaskId, handback:true, name?, body}` (`from` = `senderTaskId` = `a` + 16 hex, always a subagent of the same session); or `attachment queued_command` (`source_uuid`, `delivery_id?`, `timestamp`, same origin) | 259 (main 166 user + 90 queued; nested 3, in the parent subagent's transcript) |
+| subagent → main, `SendMessage {to:"main"}` | sender: `tool_use` in `agent-<id>.jsonl`; receiver: main gets `attachment queued_command` with `origin {kind:"peer", from:<id>}` **without** `handback` (11 s later) | 1 |
+
+- **(a) One message, several lines.** Each hand-back in main is one `queue-operation enqueue` (content starts `<agent-message from="a…">`) plus exactly **one** delivery record: `user` (main idle on arrival, 166) or `queue-operation remove` (`reason: absorbed_mid_turn`) + `attachment queued_command` (main busy, 91). 257 enqueues = 257 delivery records; no `source_uuid` equals a `user.uuid`; no key repeats. The delivery record follows its enqueue within 0.1 s (p90; max 8.9 s). Subagent transcripts have no `queue-operation`. The collector counts delivery records only (key `uuid` / `attachment.source_uuid`, then the record `uuid`, then `@<timestamp>`), ignores the enqueue, and keeps keys per agent so a re-read never counts twice.
+- **(b) A hand-back ends a run.** 261 `SubagentHandback` calls (all succeeded) for 259 records; 241 of 245 agents hand back once, the others were woken again by `SendMessage` (2 or 4+ hand-backs). The `completed` task-notification follows the last hand-back by ~9 s (median). So `msgOut` grows when a subagent finishes and the UI merges it with the "done" pulse; the only message up mid-run is `SendMessage {to:"main"}`.
+- **(c) Coordinator records** carry `timestamp`, `uuid` (user) / `source_uuid` (queued) and `agentId`. They are written when the subagent takes the message, 0.5–270 s after main's `SendMessage` (median 8.6 s): `msgIn` grows on delivery, not on send.
+- **(d) Waking a finished subagent** (`toolUseResult.resumedAgentId`, 13 calls) still writes the coordinator record into the same `subagents/agent-<id>.jsonl` (13 / 13). The collector keeps such an agent `completed` (resolution is final, unchanged), so its `msgIn` can grow on a finished agent.
+
+Collector:
+
+- `transcript.ts` `extractSignals`: `coordinator_msg {key, at}` (`user` / queued command with `origin.kind` `coordinator`), `handback {from, key, at}` (`origin.kind` `peer`, `origin.handback === true`, `from` matches `^a[0-9a-f]{16}$`), `send_main {key = tool_use id, at}` (`SendMessage` whose `input.to === "main"`; nothing else of the input is read). A peer record without `handback` (the receiving copy of `to:"main"`) is ignored, so that message is counted once, on the sender side.
+- `tracker.ts`: `coordinator_msg` / `send_main` credit the agent whose transcript holds them (main's own are ignored); `handback` credits `origin.from` wherever it is read. A hand-back for an agent not discovered yet waits in the map (catch-up reads main before `subagents/`), so the agent is created with its count. Keys reset on `/clear`. `buildAgents` sets `msgIn` / `msgOut` only when > 0; the store diff turns a change into an `agent.updated` patch. Catch-up builds the counts; these messages never create activity.
+- Line filter (§11v): an `attachment` line is parsed only when it has a raw `"type":"queued_command"` and `"kind":"coordinator"` / `"kind":"peer"`; the lite catch-up keeps head lines with those kinds too.
+- New code run read-only over the same data: 307 sessions, `msgIn` total 46, `msgOut` total 260 (259 hand-backs + 1 `to:"main"`), 0 activity.
+
+Privacy: the message text sits in `origin.body`, `origin.name`, `message.content`, `attachment.prompt`, the enqueue `content`, the `SendMessage` input (`message`, `summary`, `content`, `recipient`) and `toolUseResult.message`. None leaves `extractSignals`: a signal holds a key (record uuid, tool_use id or timestamp), the sender agent id (regex-checked) and a timestamp, and the agent gets two numbers. `to` is only compared with `"main"`. Tests: `units.test.ts` (no fake body in the signals), `monitor.test.ts` (no `secret` in events or snapshot).
+
+## 11z. Session ↔ session messages: peer links (v54, verified 2026-10-16, Claude Code 2.1.289, Windows 11, keys / ids / timestamps only)
+
+Plan `.planning/PLAN-v54-main-agent-messaging.md` §6 P0 (owner ran two `claude` sessions A and B and had them `SendMessage` each other; only the record structure was read), research §3.1 / §4 / §5.
+
+Verified on disk:
+
+| Side | Source | Fields read |
+|---|---|---|
+| Registry | `sessions/<pid>.json` `messagingSocketPath` (`\\.\pipe\LOCAL\cc-msg-…`, 54 chars), `name` | path → `sockKey` only (≤ 300 chars, else none) |
+| Sender | `assistant` `tool_use` `SendMessage` (`input.to` = session name, or the raw `uds:…` address when replying) → `user` `toolUseResult {success, message, display, msg_id}` (`msg_id` = UUID) | `success === true`, `msg_id` (`^[A-Za-z0-9_-]{8,64}$`); a result with `pin` / `resumedAgentId` is a send to a subagent (§11y) and is skipped. The transcript is main's or a subagent's: that agent becomes `lastAgentId` |
+| Receiver, idle | `queue-operation enqueue` (`<cross-session-message from="uds:<path>" [hop-chain=…] from-name="…" from-mode="…">`) → `dequeue` → `user` `isMeta:true, turnOrigin:"peer", promptSource:"system", origin {kind:"peer", from:"uds:<path>", msg_id, name, fromMode, hopChain?, body}` | `origin.kind`, `origin.from` (prefix `uds:` only), `origin.msg_id`, `uuid`, `timestamp` |
+| Receiver, busy | not seen yet; by analogy with hand-backs (§11y a) an `attachment queued_command` with the same `origin` | same, key `source_uuid` |
+
+- `from` without `uds:` is **exactly** the sender's `messagingSocketPath` (Windows does not percent-encode; the collector still runs `decodeURIComponent`, keeping the raw text when it is malformed). `msg_id` on the sender equals `origin.msg_id` on the receiver, both directions. Sender result and receiver enqueue were < 10 ms apart; the receiver's delivery record 36–67 ms after the sender's result on the two real messages.
+- Counted from the **receiver** only: one `user` / queued delivery record = one message; the enqueue is ignored (same rule as §11y). Peer messages are read from main transcripts only (they are addressed to the session).
+- `bridge:` / `did:` / `unknown` senders, held / refused deliveries and `notify_when_idle` are P5 (not read).
+
+Collector:
+
+- `registry.ts` `socketKey(path)` = sha256(lower-cased path) → 16 hex; `RegistryRecord.sockKey`.
+- `transcript.ts` signals `peer_in {fromKey, msgId?, dedupeKey, at}` (`fromKey` = `socketKey(decode(from without uds:))`, `dedupeKey` = record `uuid` / `source_uuid` / `@<timestamp>`), `peer_sent {msgId, at}`.
+- `tracker.ts` queues them per sync (`drainPeers`: inbound from the main transcript with `live = !catchUp`; sent from main and every subagent transcript with the agent id).
+- `peers.ts` `PeerLinkStore`: sender terminal = live tracker whose `record.sockKey` = `fromKey` (an ended one if no live one), else the terminal that wrote the matching `peer_sent`. Link id `a < b ? a>b : b>a` (string compare, same as web `peerLinkId`), `kind: 'message'`, `ab` / `ba` per direction, `firstAt` / `lastAt` / `lastDir` / `lastAgentId` (sender's agent from `peer_sent`, else `<terminal>:main`). Dedupe by `msg_id`, else receiver + `dedupeKey`. A live message whose `peer_sent` is not in yet waits up to 2 s (the two transcripts are read by different syncs), then counts with the main agent. A sender that cannot be resolved stays pending until the end of the reconcile pass, then is dropped (one-sided messages are P5). A message whose sender resolves to the receiver itself is ignored. Messages older than the TTL are skipped; a link is removed (`link.removed`) after `CCM_PEER_TTL_MIN` (60) minutes without a message or when either terminal is forgotten (stale TTL / dismiss).
+- `monitor.ts`: drains each tracker after a sync, `flush()` after every live sync, `flush(true)` + `prune()` at the end of each reconcile (catch-up messages are resolved once every tracker of the first pass is known). Each live message adds activity `peer.message {terminalId: sender, agentId, data.title: sender name, data.to: receiver name}` (alias or registry title, never `origin.name` / `from-name`). Catch-up builds links with no activity.
+- `store.ts`: snapshot `peerLinks`, events `link.created` / `link.updated` (field patch, folded per id in a batch like agents) / `link.removed`.
+- Demo: `node scripts/demo-fixture.mjs --peers=N` gives every fake session a socket path, seeds N messages (both sides, empty body; ~30 % sent from a subagent) and keeps sending one now and then while it runs.
 
 ## 12. Open items
 

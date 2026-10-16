@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { CompactFlow } from '../lib/compactHandoff'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PtyPreset } from '@ccm/shared'
+import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type PtyPreset } from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
@@ -21,6 +21,7 @@ import {
 } from '../lib/splitLayout'
 import type { SavedLayout } from '../lib/projects'
 import { dirKey } from './favorites'
+import { openedLinkId, usePeersStore } from './peers'
 
 export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
@@ -87,6 +88,7 @@ export interface Pane {
   prefill?: string
   prefillSubmit?: boolean
   compact?: CompactFlow
+  openedBy?: string
   state: PaneState
   exitCode?: number
   error?: string
@@ -112,6 +114,7 @@ const zoomOf = (t: Partial<Tab>, root: LayoutNode): string | undefined => {
 }
 
 export const CLOSED_MAX = 10
+export const OPENED_NOTE_MS = 120_000
 
 export interface ClosedPane {
   key: string
@@ -123,6 +126,7 @@ export interface ClosedPane {
   path?: string
   line?: number
   name: string
+  openedBy?: string
 }
 
 export interface ClosedAnchor {
@@ -331,6 +335,7 @@ interface SavedPane extends ViewFields {
   agentSessionId?: string
   ranCommand?: boolean
   command?: string
+  openedBy?: string
 }
 
 interface Saved {
@@ -350,7 +355,14 @@ function loadSaved(): Saved {
     const panes = list
       .map((p) => cleanPane(p))
       .filter((p): p is SavedPane => !!p && (!isTerm(p) || !!p.sessionId))
-      .map((p) => ({ ...p, resume: agentId(p.resume), agentSessionId: agentId(p.agentSessionId), ranCommand: p.ranCommand === true || undefined, command: typeof p.command === 'string' ? p.command.slice(0, 300) : undefined }))
+      .map((p) => ({
+        ...p,
+        resume: agentId(p.resume),
+        agentSessionId: agentId(p.agentSessionId),
+        ranCommand: p.ranCommand === true || undefined,
+        command: typeof p.command === 'string' ? p.command.slice(0, 300) : undefined,
+        openedBy: typeof p.openedBy === 'string' && p.openedBy && p.openedBy !== p.key ? p.openedBy.slice(0, 64) : undefined,
+      }))
     const known = new Set(panes.map((p) => p.key))
     const rawTabs = Array.isArray(raw) ? panes.map((p) => ({ key: `t${p.key}`, root: { pane: p.key }, focus: p.key })) : (raw.tabs ?? [])
     const tabs: Tab[] = []
@@ -392,7 +404,7 @@ function fallbackName(p: Pane): string {
 
 function closedPane(p: Pane, name: string): ClosedPane {
   const resume = isTerm(p) && p.preset !== 'shell' ? agentId(p.agentSessionId ?? p.resume) : undefined
-  return { key: p.key, ...viewOf(p), preset: p.preset, cwd: resume ? p.cwd : workCwd(p), resume, name }
+  return { key: p.key, ...viewOf(p), preset: p.preset, cwd: resume ? p.cwd : workCwd(p), resume, name, ...(p.openedBy ? { openedBy: p.openedBy } : {}) }
 }
 
 export type InsertRequest = { id: number; paneKey: string; text: string; image?: undefined } | { id: number; paneKey: string; image: true; text?: undefined }
@@ -433,7 +445,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     () => {
       const kept = panes.value.filter((p) => !isTerm(p) || (p.sessionId && p.state !== 'gone'))
       const data: Saved = {
-        panes: kept.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, sessionId: p.sessionId, resume: p.resume, agentSessionId: p.agentSessionId, ranCommand: p.ranCommand, command: p.command, ...viewOf(p) })),
+        panes: kept.map((p) => ({
+          key: p.key,
+          preset: p.preset,
+          cwd: p.cwd,
+          sessionId: p.sessionId,
+          resume: p.resume,
+          agentSessionId: p.agentSessionId,
+          ranCommand: p.ranCommand,
+          command: p.command,
+          openedBy: p.openedBy,
+          ...viewOf(p),
+        })),
         tabs: tabs.value,
         active: activeKey.value,
       }
@@ -454,7 +477,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     { deep: true },
   )
 
-  type AgentOpen = Pick<Pane, 'openTicket' | 'prefill'>
+  type AgentOpen = Pick<Pane, 'openTicket' | 'prefill' | 'openedBy'>
 
   function addPane(preset: PtyPreset, cwd?: string, resume?: string, extra: AgentOpen = {}): Pane {
     const id = resume && preset !== 'shell' && isAgentSessionId(resume) ? resume : undefined
@@ -661,14 +684,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
       if (opts.liveElsewhere?.(resume)) return { ok: false, error: 'live' }
     }
+    const caller = typeof req.from === 'string' && req.from ? panes.value.find((p) => isTerm(p) && p.sessionId === req.from) : undefined
     const extra: AgentOpen = {
       openTicket: typeof req.id === 'string' && req.id ? req.id : undefined,
       prefill: req.preset === 'shell' ? undefined : cleanPanePrompt(req.prompt),
+      ...(caller ? { openedBy: caller.key } : {}),
     }
-    const caller = typeof req.from === 'string' && req.from ? panes.value.find((p) => isTerm(p) && p.sessionId === req.from) : undefined
     const callerTab = caller ? tabOf(caller.key) : undefined
-    if (!caller || !callerTab) return { ok: true, paneKey: joinProject(addPane(req.preset, req.cwd, resume, extra)).key }
-    const pane = addPane(req.preset, req.cwd, resume, extra)
+    if (!caller || !callerTab) return { ok: true, paneKey: markOpened(joinProject(addPane(req.preset, req.cwd, resume, extra))).key }
+    const pane = markOpened(addPane(req.preset, req.cwd, resume, extra))
     const size = canvasSize.value
     const spot = size.w && size.h ? dockSpot(callerTab.root, caller.key, size) : null
     if (spot) {
@@ -677,6 +701,49 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: tabProject(callerTab, paneOf) ?? req.cwd })
     return { ok: true, paneKey: pane.key }
   }
+
+  const freshOpened = new Map<string, number>()
+
+  function markOpened(pane: Pane): Pane {
+    if (pane.openedBy) freshOpened.set(pane.key, Date.now())
+    return pane
+  }
+
+  const peers = usePeersStore()
+  let openedSince = new Map<string, string>()
+  const openedPairs = computed(() => {
+    const out: Array<{ pane: string; id: string; a: string; b: string }> = []
+    for (const p of panes.value) {
+      if (!p.openedBy || !p.terminalId) continue
+      const by = paneOf(p.openedBy)
+      if (!by?.terminalId || by.terminalId === p.terminalId) continue
+      const id = openedLinkId(by.terminalId, p.terminalId)
+      if (!out.some((e) => e.id === id)) out.push({ pane: p.key, id, a: by.terminalId, b: p.terminalId })
+    }
+    return out
+  })
+
+  watch(
+    () => openedPairs.value.map((e) => `${e.pane}:${e.id}`).join('|'),
+    () => {
+      const at = Date.now()
+      const iso = new Date(at).toISOString()
+      const since = new Map<string, string>()
+      const entries = openedPairs.value.map((e) => {
+        const first = openedSince.get(e.id) ?? iso
+        since.set(e.id, first)
+        const link: PeerLink = { id: e.id, kind: 'opened', a: e.a, b: e.b, ab: 1, ba: 0, firstAt: first, lastAt: first, lastDir: 'ab' }
+        return { pane: e.pane, link }
+      })
+      openedSince = since
+      const loud = new Set(entries.filter((e) => at - (freshOpened.get(e.pane) ?? -Infinity) < OPENED_NOTE_MS).map((e) => e.pane))
+      for (const e of entries) freshOpened.delete(e.pane)
+      for (const [key, t0] of freshOpened) if (at - t0 >= OPENED_NOTE_MS) freshOpened.delete(key)
+      peers.setOpened(entries.filter((e) => !loud.has(e.pane)).map((e) => e.link), true)
+      if (loud.size) peers.setOpened(entries.map((e) => e.link))
+    },
+    { immediate: true },
+  )
 
   /** Same folder as the target, next to it; same agent unless one is picked (Windows Terminal's "duplicate" split). */
   function split(targetKey: string, dir: SplitDir, spec?: PaneSpec): Pane | null {
@@ -937,7 +1004,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const from: string[] = []
     const make = (c: ClosedPane): Pane | null => {
       if (c.resume && panes.value.some((p) => p.agentSessionId === c.resume && (p.state === 'running' || p.state === 'starting'))) return null
-      const pane = isTerm(c) ? addPane(c.preset, c.cwd, c.resume) : addView(viewOf(c), c.cwd)
+      const pane = isTerm(c) ? addPane(c.preset, c.cwd, c.resume, c.openedBy ? { openedBy: c.openedBy } : {}) : addView(viewOf(c), c.cwd)
       map.set(c.key, pane.key)
       from.push(c.key)
       return pane
@@ -960,6 +1027,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: item.project ?? pane.cwd })
       focus = pane.key
     }
+    for (const p of panes.value) if (p.openedBy && map.has(p.openedBy)) p.openedBy = map.get(p.openedBy)
     if (focus) activate(focus)
     return { keys: from.map((k) => map.get(k)!), from }
   }

@@ -63,6 +63,12 @@ function reopen(force = false): void {
   reveal.reopen(props.terminal)
 }
 
+const busy = computed(() => jumping.value || confirmReopen.value)
+const titleTip = computed(() =>
+  props.terminal.alias ? [title.value, t('terminal.originalName', { title: props.terminal.title })].join('\n') : title.value,
+)
+const renameTip = computed(() => (autoNamed.value ? [t('terminal.rename'), t('terminal.nameHintLong')].join('\n') : t('terminal.rename')))
+
 const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))
 
 const versionWarning = computed(() => {
@@ -108,18 +114,136 @@ function clearAlias(): void {
     {{ t('terminal.renameOffline') }}
   </p>
 
-  <div v-if="!editing" class="flex items-start gap-2">
+  <div v-if="!editing" class="flex min-w-0 items-center gap-1.5">
     <button
       type="button"
       class="min-w-0 flex-1 cursor-pointer truncate text-left text-base font-semibold after:absolute after:inset-0 after:rounded-card after:content-['']"
-      :title="title"
+      :title="titleTip"
       :aria-label="t('terminal.focus', { title })"
       :aria-pressed="focused"
       @click="ui.focusTerminal(terminal.id)"
     >
       {{ title }}
     </button>
-    <ProviderBadge v-if="codex" class="mt-1" :mode="terminal.entrypoint" />
+    <span class="relative flex shrink-0 items-center gap-1 self-stretch" data-card-state>
+      <Transition name="ccm-fade">
+        <SquareTerminal v-if="pane" :size="13" class="text-accent-ink" aria-hidden="true" />
+      </Transition>
+      <Transition name="ccm-fade">
+        <Pin v-if="pinned && !ended" :size="13" fill="currentColor" class="text-accent-ink" aria-hidden="true" />
+      </Transition>
+      <Transition name="ccm-fade">
+        <Star v-if="starred && terminal.cwd && !codex" :size="13" fill="currentColor" class="text-favorite" aria-hidden="true" />
+      </Transition>
+      <span
+        role="group"
+        :aria-label="t('sessionV53.actions')"
+        class="absolute top-1/2 right-0 z-10 flex -translate-y-1/2 items-center bg-surface pl-1 transition-opacity duration-(--ccm-dur-fast) ease-out-quint"
+        :class="busy ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100'"
+        data-card-actions
+      >
+        <button
+          v-if="terminal.alias"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :aria-label="t('terminal.renameReset', { title: terminal.title })"
+          :title="t('terminal.renameReset', { title: terminal.title })"
+          @click="clearAlias"
+        >
+          <RotateCcw :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-if="pane"
+          type="button"
+          class="ccm-btn-plain shrink-0 text-accent-ink!"
+          :aria-label="t('workspace.reopen.show')"
+          :title="t('workspace.reopen.show')"
+          @click="showInWorkspace"
+        >
+          <SquareTerminal :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-else-if="canReopen"
+          type="button"
+          class="ccm-btn-plain shrink-0 hover:text-accent-ink!"
+          :aria-label="t('workspace.reopen.action')"
+          :title="t('workspace.reopen.action')"
+          :aria-expanded="confirmReopen"
+          @click="reopen()"
+        >
+          <SquareTerminal :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-if="canJump && !pane"
+          type="button"
+          class="ccm-btn-plain shrink-0 hover:text-accent-ink! disabled:cursor-wait!"
+          :aria-label="t('terminal.jump', { title })"
+          :title="t('terminal.jumpTitle')"
+          :disabled="jumping"
+          @click="jump"
+        >
+          <LoaderCircle v-if="jumping" :size="15" class="animate-spin" aria-hidden="true" />
+          <AppWindow v-else :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-if="!ended"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :class="pinned ? 'text-accent-ink!' : ''"
+          :aria-label="pinLabel"
+          :aria-pressed="pinned"
+          :title="pinLabel"
+          @click="settings.togglePin(terminal.id)"
+        >
+          <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
+        </button>
+        <button
+          v-if="terminal.cwd && !codex"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :class="starred ? 'text-favorite!' : ''"
+          :aria-label="starLabel"
+          :aria-pressed="starred"
+          :title="starLabel"
+          @click="connection.toggleFavorite(terminal.id)"
+        >
+          <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
+        </button>
+        <button
+          v-if="!codex"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :class="terminal.note ? 'text-accent-ink!' : ''"
+          :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
+          :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
+          @click="emit('note')"
+        >
+          <StickyNote :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-if="!codex"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :aria-label="t('terminal.rename')"
+          :aria-describedby="autoNamed ? `name-hint-${terminal.id}` : undefined"
+          :title="renameTip"
+          @click="start(title, true)"
+        >
+          <Pencil :size="15" aria-hidden="true" />
+        </button>
+        <button
+          v-if="ended"
+          type="button"
+          class="ccm-btn-plain shrink-0 hover:text-st-error!"
+          :aria-label="t('terminal.dismiss', { title })"
+          :title="t('terminal.dismiss', { title })"
+          @click="connection.dismissEnded(terminal.id)"
+        >
+          <Trash2 :size="15" aria-hidden="true" />
+        </button>
+      </span>
+    </span>
+    <ProviderBadge v-if="codex" :mode="terminal.entrypoint" />
     <span
       v-if="terminal.kind && terminal.kind !== 'interactive'"
       class="shrink-0 rounded-inner bg-fill px-1.5 py-px font-mono text-2xs text-ink-muted"
@@ -127,108 +251,11 @@ function clearAlias(): void {
     >
       {{ terminal.kind }}
     </span>
-    <span v-if="versionWarning" class="shrink-0 pt-1 text-warning" :title="versionWarning" role="img" :aria-label="versionWarning">
+    <span v-if="versionWarning" class="shrink-0 text-warning" :title="versionWarning" role="img" :aria-label="versionWarning">
       <TriangleAlert :size="15" aria-hidden="true" />
     </span>
-    <button
-      v-if="terminal.alias"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :aria-label="t('terminal.renameReset', { title: terminal.title })"
-      :title="t('terminal.renameReset', { title: terminal.title })"
-      @click="clearAlias"
-    >
-      <RotateCcw :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-if="pane"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 text-accent-ink!"
-      :aria-label="t('workspace.reopen.show')"
-      :title="t('workspace.reopen.show')"
-      @click="showInWorkspace"
-    >
-      <SquareTerminal :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-else-if="canReopen"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent-ink!"
-      :aria-label="t('workspace.reopen.action')"
-      :title="t('workspace.reopen.action')"
-      :aria-expanded="confirmReopen"
-      @click="reopen()"
-    >
-      <SquareTerminal :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-if="canJump && !pane"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0 hover:text-accent-ink! disabled:cursor-wait!"
-      :aria-label="t('terminal.jump', { title })"
-      :title="t('terminal.jumpTitle')"
-      :disabled="jumping"
-      @click="jump"
-    >
-      <LoaderCircle v-if="jumping" :size="15" class="animate-spin" aria-hidden="true" />
-      <AppWindow v-else :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-if="!ended"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="pinned ? 'text-accent-ink!' : ''"
-      :aria-label="pinLabel"
-      :aria-pressed="pinned"
-      :title="pinLabel"
-      @click="settings.togglePin(terminal.id)"
-    >
-      <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
-    </button>
-    <button
-      v-if="terminal.cwd && !codex"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="starred ? 'text-favorite!' : ''"
-      :aria-label="starLabel"
-      :aria-pressed="starred"
-      :title="starLabel"
-      @click="connection.toggleFavorite(terminal.id)"
-    >
-      <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
-    </button>
-    <button
-      v-if="!codex"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 shrink-0"
-      :class="terminal.note ? 'text-accent-ink!' : ''"
-      :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-      :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-      @click="emit('note')"
-    >
-      <StickyNote :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-if="!codex"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 -mr-1 shrink-0"
-      :aria-label="t('terminal.rename')"
-      :title="t('terminal.rename')"
-      @click="start(title, true)"
-    >
-      <Pencil :size="15" aria-hidden="true" />
-    </button>
-    <button
-      v-if="ended"
-      type="button"
-      class="ccm-btn-plain relative z-10 -my-1 -mr-1 shrink-0 hover:text-st-error!"
-      :aria-label="t('terminal.dismiss', { title })"
-      :title="t('terminal.dismiss', { title })"
-      @click="connection.dismissEnded(terminal.id)"
-    >
-      <Trash2 :size="15" aria-hidden="true" />
-    </button>
   </div>
+  <span v-if="!editing && autoNamed" :id="`name-hint-${terminal.id}`" class="sr-only">{{ t('terminal.nameHintLong') }}</span>
   <p v-if="jumpError?.result === 'appOnly'" role="status" class="ccm-enter relative z-10 mt-1 inline-flex items-center gap-1 text-2xs text-ink-muted">
     <Info :size="12" class="shrink-0" aria-hidden="true" />{{ t('terminal.jumpError.appOnly') }}
   </p>
@@ -237,12 +264,6 @@ function clearAlias(): void {
   </p>
   <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
     {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openAppKey(openError.app)}`) }) }}
-  </p>
-  <p v-if="!editing && terminal.alias" class="mt-0.5 truncate text-2xs text-ink-faint" :title="terminal.title">
-    {{ t('terminal.originalName', { title: terminal.title }) }}
-  </p>
-  <p v-else-if="!editing && autoNamed" class="mt-0.5 truncate text-2xs text-ink-faint" :title="t('terminal.nameHintLong')">
-    {{ t('terminal.nameHint') }}
   </p>
   <div v-if="confirmReopen" class="relative z-10 mt-2 flex flex-col gap-2 rounded-inner bg-warning-soft p-2.5 text-xs text-ink" role="alertdialog" :aria-label="t('workspace.reopen.action')">
     <p class="flex gap-1.5"><TriangleAlert :size="14" class="mt-px shrink-0 text-warning" aria-hidden="true" />{{ t('workspace.reopen.liveWarning') }}</p>

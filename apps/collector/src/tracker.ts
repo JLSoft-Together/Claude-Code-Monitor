@@ -13,6 +13,7 @@ import {
   type TerminalSession,
   type ToolSpan,
 } from '@ccm/shared'
+import type { PeerInbound, PeerSent } from './peers'
 import type { RegistryRecord } from './registry'
 import { JsonlTailer, type LineFilter } from './tailer'
 import { SPAN_RETENTION_MS, ToolSpanLog } from './tool-spans'
@@ -73,6 +74,16 @@ const SIGNAL_TYPES = ['assistant"', 'user"', 'system"', 'permission-mode"', 'que
 const USER_TYPE = Buffer.from('"type":"user"')
 const NOTIFICATION_TAG = Buffer.from('<task-notification>')
 const TOOL_USE_ID_KEY = Buffer.from('"tool_use_id":"')
+const QUEUED_COMMAND_TYPE = [Buffer.from('queued_command"')]
+const MESSAGE_KINDS = [Buffer.from('"kind":"coordinator"'), Buffer.from('"kind":"peer"')]
+
+const hasMessageKind = (line: Buffer): boolean => MESSAGE_KINDS.some((k) => line.indexOf(k) !== -1)
+
+function addKey(map: Map<string, Set<string>>, agentId: string, key: string): void {
+  let keys = map.get(agentId)
+  if (!keys) map.set(agentId, (keys = new Set()))
+  keys.add(key)
+}
 
 function hasTypeValue(line: Buffer, values: Buffer[]): boolean {
   let at = line.indexOf(TYPE_KEY)
@@ -90,6 +101,7 @@ function hasTypeValue(line: Buffer, values: Buffer[]): boolean {
  */
 export const signalLineFilter: LineFilter = (line) => {
   if (hasTypeValue(line, SIGNAL_TYPES)) return undefined
+  if (hasMessageKind(line) && hasTypeValue(line, QUEUED_COMMAND_TYPE)) return undefined
   const at = line.lastIndexOf(BRANCH_KEY)
   if (at === -1) return null
   const from = at + BRANCH_KEY.length
@@ -187,11 +199,14 @@ export class SessionTracker {
   private notifications = new Map<string, { status: string; at?: string }>()
   private foregroundResults = new Map<string, { isError: boolean; at?: string }>()
   private agentToolUses = new Set<string>()
+  private readonly msgIn = new Map<string, Set<string>>()
+  private readonly msgOut = new Map<string, Set<string>>()
   private syncing: Promise<ActivityDraft[]> | null = null
   private syncAgain = false
   private plan: SyncPlan = { all: false, unresolved: false, files: new Set() }
   private readonly spans: ToolSpanLog
   private pendingSpans: ToolSpan[] = []
+  private pendingPeers: { inbound: PeerInbound[]; sent: PeerSent[] } = { inbound: [], sent: [] }
 
   constructor(
     readonly terminalId: string,
@@ -207,6 +222,12 @@ export class SessionTracker {
   drainSpans(): ToolSpan[] {
     const out = this.pendingSpans
     this.pendingSpans = []
+    return out
+  }
+
+  drainPeers(): { inbound: PeerInbound[]; sent: PeerSent[] } {
+    const out = this.pendingPeers
+    this.pendingPeers = { inbound: [], sent: [] }
     return out
   }
 
@@ -249,6 +270,8 @@ export class SessionTracker {
     this.notifications.clear()
     this.foregroundResults.clear()
     this.agentToolUses.clear()
+    this.msgIn.clear()
+    this.msgOut.clear()
   }
 
   sync(catchUp: boolean, scope: SyncScope = {}): Promise<ActivityDraft[]> {
@@ -308,6 +331,8 @@ export class SessionTracker {
       (rec) => {
         const signals = extractSignals(rec)
         this.recordLinks(signals)
+        this.recordMessages(signals, entry.agentId)
+        this.recordPeers(signals, entry.agentId, catchUp, false)
         if (!lite) this.trackSpans(signals, entry.agentId, catchUp)
         if (!catchUp) this.toolActivity(signals, entry.state, entry.agentId, activity)
         entry.state.apply(signals)
@@ -332,13 +357,15 @@ export class SessionTracker {
 
   private readonly liteFilter: LineFilter = (line, end, size) => {
     if (end > size - LITE_TAIL_BYTES || line.indexOf(USER_TYPE) === -1) return signalLineFilter(line, end, size)
-    if (line.indexOf(NOTIFICATION_TAG) !== -1) return undefined
+    if (line.indexOf(NOTIFICATION_TAG) !== -1 || hasMessageKind(line)) return undefined
     for (const id of toolUseIdsOf(line)) if (this.agentToolUses.has(id)) return undefined
     return null
   }
 
   private applyMain(signals: Signal[], catchUp: boolean, activity: ActivityDraft[]): void {
     this.recordLinks(signals)
+    this.recordMessages(signals)
+    this.recordPeers(signals, this.mainAgentId, catchUp, true)
     this.trackSpans(signals, this.mainAgentId, catchUp)
     if (!catchUp) {
       this.toolActivity(signals, this.main, this.mainAgentId, activity)
@@ -402,6 +429,23 @@ export class SessionTracker {
       }
       if (s.k === 'task_notification' && s.toolUseId) {
         this.notifications.set(s.toolUseId, { status: s.status, at: s.at })
+      }
+    }
+  }
+
+  private recordMessages(signals: Signal[], agentId?: string): void {
+    for (const s of signals) {
+      if (s.k === 'handback') addKey(this.msgOut, s.from, s.key)
+      else if (agentId && s.k === 'coordinator_msg') addKey(this.msgIn, agentId, s.key)
+      else if (agentId && s.k === 'send_main') addKey(this.msgOut, agentId, s.key)
+    }
+  }
+
+  private recordPeers(signals: Signal[], agentId: string, catchUp: boolean, main: boolean): void {
+    for (const s of signals) {
+      if (s.k === 'peer_sent') this.pendingPeers.sent.push({ terminalId: this.terminalId, agentId, msgId: s.msgId, at: s.at })
+      else if (main && s.k === 'peer_in') {
+        this.pendingPeers.inbound.push({ receiver: this.terminalId, fromKey: s.fromKey, msgId: s.msgId, dedupeKey: s.dedupeKey, at: s.at, live: !catchUp })
       }
     }
   }
@@ -575,6 +619,8 @@ export class SessionTracker {
       const parentAgentId = e.meta.parentAgentId
       const parentId = parentAgentId && parentAgentId !== e.agentId && this.subagents.has(parentAgentId) ? parentAgentId : mainId
       const status: AgentStatus = this.ended && !e.resolved ? 'unknown' : e.status
+      const msgIn = this.msgIn.get(e.agentId)?.size
+      const msgOut = this.msgOut.get(e.agentId)?.size
       agents.push({
         id: e.agentId,
         parentId,
@@ -597,6 +643,8 @@ export class SessionTracker {
         cacheReadTokens: tokens?.cacheRead,
         totalTokens: tokens ? tokens.input + tokens.output : undefined,
         ...this.contextOf(e.state, e.state.model ?? e.meta.model),
+        ...(msgIn ? { msgIn } : {}),
+        ...(msgOut ? { msgOut } : {}),
       })
     }
     return agents

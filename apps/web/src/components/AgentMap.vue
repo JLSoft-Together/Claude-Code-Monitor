@@ -1,20 +1,47 @@
 <script setup lang="ts">
 import ArtImage from './ArtImage.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { VueFlow, useVueFlow, type Edge, type Node } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Edge, type GraphNode, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { ChartGantt, ChevronDown, ChevronUp, Eye, EyeOff, LayoutGrid, Maximize, Minus, Network, PanelLeft, PanelRight, Plus, Search, X } from 'lucide-vue-next'
-import type { Agent } from '@ccm/shared'
+import {
+  ArrowDown,
+  ArrowDownLeft,
+  ArrowDownRight,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowUpLeft,
+  ArrowUpRight,
+  ChartGantt,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  LayoutGrid,
+  Mail,
+  Maximize,
+  Minus,
+  Network,
+  PanelLeft,
+  PanelRight,
+  Plus,
+  Search,
+  X,
+} from 'lucide-vue-next'
+import type { Agent, PeerLink } from '@ccm/shared'
 import { useAgentsStore } from '../stores/agents'
+import { useConnectionStore } from '../stores/connection'
+import { otherEnd, peerLinkId, usePeersStore, type PeerPulse } from '../stores/peers'
 import { useTerminalsStore } from '../stores/terminals'
-import { useSettingsStore } from '../stores/settings'
 import { useUiStore, type MapView } from '../stores/ui'
 import { useAgentActions } from '../composables/useAgentActions'
+import { MAP_RUNNERS, PEER_MAP, usePeerName, type PeerEdgeData, type PeerLane, type PeerMapContext, type RunnerBudget } from '../composables/useMapNode'
 import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
-import { columnsFor, computeLayout, treeOrder, visibleAgents } from '../lib/layout'
-import { canvasMenu, nodeMenu, type CanvasAction, type NodeAction } from '../lib/mapMenu'
-import { buildNav, childCounts, hideCollapsed, navigate, NAV_KEYS, type MapNav, type MapNodeContext, type NavKey } from '../lib/mapNav'
+import { dustOutAll } from '../lib/dust'
+import { isFinished, MAIN_HEIGHT, MAIN_WIDTH, peerPath, peerSlots, pickLayout, trayId, trayTerminal, treeOrder, visibleAgents, type Box, type Point } from '../lib/layout'
+import { canvasMenu, nodeMenu, peerTarget, type CanvasAction, type NodeAction } from '../lib/mapMenu'
+import { buildNav, childCounts, hideCollapsed, navigate, NAV_KEYS, treeParent, type MapNav, type MapNodeContext, type NavKey, type TrayState } from '../lib/mapNav'
 import { agentName, searchText } from '../lib/mapText'
 import type { MenuEntry } from '../lib/menu'
 import { motionMs, nextMapIsSwitch, reducedMotion } from '../lib/motion'
@@ -23,7 +50,11 @@ import { isTyping, keyCombo } from '../lib/shortcuts'
 import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import ContextMenu from './ui/ContextMenu.vue'
-import AgentNode from './AgentNode.vue'
+import DoneTray from './DoneTray.vue'
+import MainNode from './MainNode.vue'
+import PeerEdge from './PeerEdge.vue'
+import SubPill from './SubPill.vue'
+import TreeEdge from './TreeEdge.vue'
 import KeyHint from './KeyHint.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ToolTimeline from './ToolTimeline.vue'
@@ -33,12 +64,30 @@ const { t } = useI18n()
 const agents = useAgentsStore()
 const terminals = useTerminalsStore()
 const ui = useUiStore()
-const settings = useSettingsStore()
 
 const scoped = !!props.terminalId
 const FLOW_ID = scoped ? `agent-map-${props.terminalId}` : 'agent-map'
-const { addNodes, removeNodes, getNodes, findNode, fitView, getViewport, setViewport, setCenter, zoomIn, zoomOut, updateNode, onNodeClick, onNodeContextMenu, onNodeDragStop, onPaneClick, onPaneContextMenu, onNodesInitialized } =
-  useVueFlow(FLOW_ID)
+const {
+  addNodes,
+  removeNodes,
+  getNodes,
+  findNode,
+  fitView,
+  getViewport,
+  setViewport,
+  setCenter,
+  zoomIn,
+  zoomOut,
+  updateNode,
+  onNodeClick,
+  onNodeContextMenu,
+  onNodeDragStop,
+  onPaneClick,
+  onPaneContextMenu,
+  onNodesInitialized,
+  viewport,
+  dimensions,
+} = useVueFlow(FLOW_ID)
 const reveal = useRevealInWorkspace()
 
 const canvas = ref<HTMLElement | null>(null)
@@ -52,12 +101,69 @@ const highlighted = computed(() => (ui.selectedAgentId ? agents.lineage(ui.selec
 provide('ccm-highlight', highlighted)
 
 const source = computed(() => (props.terminalId ? (agents.byTerminal[props.terminalId] ?? []) : agents.list))
-const finished = computed(() => visibleAgents(source.value, settings.hideFinished))
+const sourceByTerminal = computed(() => {
+  const out: Record<string, Agent[]> = {}
+  for (const a of source.value) (out[a.terminalId] ??= []).push(a)
+  return out
+})
+
+const LINGER_MS = 1400
+const lingering = ref<ReadonlySet<string>>(new Set())
+const lingerTimers = new Map<string, number>()
+function linger(id: string): void {
+  if (!motionMs(LINGER_MS)) return
+  window.clearTimeout(lingerTimers.get(id))
+  lingering.value = new Set([...lingering.value, id])
+  lingerTimers.set(
+    id,
+    window.setTimeout(() => {
+      lingerTimers.delete(id)
+      const next = new Set(lingering.value)
+      next.delete(id)
+      lingering.value = next
+    }, LINGER_MS),
+  )
+}
+
+const byCompletion = (a: Agent, b: Agent) => (a.completedAt ?? a.updatedAt ?? '').localeCompare(b.completedAt ?? b.updatedAt ?? '')
+
+const finished = computed(() => {
+  const visible = new Set<string>()
+  const trays: Record<string, TrayState> = {}
+  for (const [tid, list] of Object.entries(sourceByTerminal.value)) {
+    const open = ui.openTrays.has(tid)
+    for (const id of visibleAgents(list, !open).visible) visible.add(id)
+    if (!open) {
+      for (const id of lingering.value) {
+        let cur: Agent | undefined = agents.byId[id]
+        while (cur && cur.terminalId === tid && !visible.has(cur.id)) {
+          visible.add(cur.id)
+          cur = cur.parentId ? agents.byId[cur.parentId] : undefined
+        }
+      }
+    }
+    const done = list.filter(isFinished).sort(byCompletion)
+    if (done.length) trays[tid] = { open, finished: done, hidden: done.filter((a) => !visible.has(a.id)) }
+  }
+  return { visible, trays }
+})
+const trays = computed(() => finished.value.trays)
+provide('ccm-map-trays', trays)
+const hiddenTotal = computed(() => Object.values(trays.value).reduce((n, s) => n + s.hidden.length, 0))
+const allTraysOpen = computed(() => {
+  const ids = Object.keys(trays.value)
+  return ids.length > 0 && ids.every((tid) => ui.openTrays.has(tid))
+})
+function toggleAllTrays(): void {
+  ui.setOpenTrays(allTraysOpen.value ? [] : Object.keys(trays.value))
+  void nextTick(() => ui.requestFit())
+}
+
 // Text copies and find walk this list: folded subtrees still count, hidden finished subagents do not.
 const finishedList = computed(() => source.value.filter((a) => finished.value.visible.has(a.id)))
 const folding = computed(() => hideCollapsed(finishedList.value, ui.collapsedAgents))
 const childMap = computed(() => childCounts(finishedList.value))
-const visibility = computed(() => ({ visible: folding.value.visible, hidden: finished.value.hidden }))
+const visibility = computed(() => ({ visible: folding.value.visible }))
 const shownList = computed(() => source.value.filter((a) => visibility.value.visible.has(a.id)))
 const shownByTerminal = computed(() => {
   const out: Record<string, typeof agents.list> = {}
@@ -68,6 +174,61 @@ const shownByTerminal = computed(() => {
   }
   return out
 })
+const trayIds = computed(() =>
+  Object.entries(trays.value)
+    .filter(([tid, s]) => {
+      const main = shownByTerminal.value[tid]?.find((a) => a.role === 'main')
+      return !!main && !ui.collapsedAgents.has(main.id) && (s.open ? s.finished.length : s.hidden.length) > 0
+    })
+    .map(([tid]) => tid),
+)
+
+const edgeParent = computed(() => {
+  const out = new Map<string, string>()
+  for (const list of Object.values(shownByTerminal.value)) {
+    const ids = new Set(list.map((a) => a.id))
+    const main = list.find((a) => a.role === 'main')
+    for (const a of list) {
+      const p = treeParent(a, ids, main?.id)
+      if (p) out.set(a.id, p)
+    }
+  }
+  return out
+})
+
+type Pulse = { n: number; dir: 'down' | 'up' }
+const pulses = ref<Record<string, Pulse>>({})
+let pulseSeq = 0
+function pulse(edgeId: string, dir: Pulse['dir']): void {
+  pulses.value = { ...pulses.value, [edgeId]: { n: ++pulseSeq, dir } }
+}
+
+const HANDBACK_MS = 60_000
+const SAME_UP_MS = 1500
+const handedBack = new Map<string, number>()
+const upAt = new Map<string, number>()
+
+let lastStatus = new Map<string, string>()
+watch(
+  () => source.value.filter((a) => a.role !== 'main').map((a) => `${a.id}\u0000${a.status}`),
+  (rows) => {
+    const next = new Map(rows.map((r) => r.split('\u0000') as [string, string]))
+    for (const [id, status] of next) {
+      const prev = lastStatus.get(id)
+      if (!prev || prev === status || prev === 'completed' || prev === 'cancelled') continue
+      if (status !== 'completed' && status !== 'cancelled') continue
+      const parent = edgeParent.value.get(id)
+      const handed = performance.now() - (handedBack.get(id) ?? -Infinity) < HANDBACK_MS
+      if (parent && !handed) {
+        upAt.set(id, performance.now())
+        pulse(`${parent}->${id}`, 'up')
+      }
+      linger(id)
+    }
+    lastStatus = next
+  },
+  { immediate: true },
+)
 
 const terminalOrder = computed(() =>
   [...terminals.list].filter((x) => !props.terminalId || x.id === props.terminalId).sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '') || a.id.localeCompare(b.id)),
@@ -80,33 +241,98 @@ const structureKey = computed(() =>
       .map((a) => `${a.id}>${a.parentId ?? ''}@${a.terminalId}:${a.startedAt ?? ''}`)
       .sort()
       .join('|'),
+    trayIds.value.join(','),
   ].join('#'),
 )
 
+const FIT_TOP = 64
+const FIT_PADDING = { top: `${FIT_TOP}px`, bottom: '28px', x: '36px' } as const
+const FOCUS_PADDING = { top: '72px', bottom: '12%', x: '12%' } as const
+const GLYPH = { x: 19, y: 15 }
+const DOT = { x: 16, y: 14, step: 12, max: 11 }
+let perRow: number | undefined
+let lastPlaced = new Map<string, Point>()
+const openedTrays = new Set<string>()
+
+watch(
+  () => ui.openTrays,
+  (now, before) => {
+    for (const tid of now) if (!before?.has(tid)) openedTrays.add(tid)
+  },
+)
+
+function trayDot(tid: string, placed: Map<string, Point>): Point | null {
+  const tray = placed.get(trayId(tid))
+  if (!tray) return null
+  const n = Math.max(0, Math.min((trays.value[tid]?.hidden.length ?? 0) - 1, DOT.max))
+  return { x: tray.x + DOT.x + n * DOT.step, y: tray.y + DOT.y }
+}
+
+function offsetFrom(from: Point, to: Point): Record<string, string> {
+  return { '--ccm-to-x': `${Math.round(to.x - from.x - GLYPH.x)}px`, '--ccm-to-y': `${Math.round(to.y - from.y - GLYPH.y)}px` }
+}
+
 function syncNodes(fit = false): void {
-  const placed = computeLayout({
-    terminals: terminalOrder.value.map((x) => x.id),
-    agentsByTerminal: shownByTerminal.value,
-    perRow: columnsFor(canvas.value?.clientWidth ?? 900),
-    sizes: ui.nodeSizes,
-  })
-  const wanted = new Set(shownList.value.map((a) => a.id))
+  const box = canvas.value
+  const terminalIds = terminalOrder.value.map((x) => x.id)
+  const picked = pickLayout(
+    {
+      terminals: terminalIds,
+      agentsByTerminal: shownByTerminal.value,
+      trays: Object.fromEntries(trayIds.value.map((tid) => [tid, true])),
+      sizes: ui.nodeSizes,
+    },
+    { width: box?.clientWidth || 900, height: box?.clientHeight || 600 },
+    perRow,
+  )
+  perRow = picked.perRow
+  const placed = picked.result.positions
+  if (!scoped) {
+    for (const tid of terminalIds) {
+      const list = shownByTerminal.value[tid]
+      const main = list?.find((a) => a.role === 'main')
+      const saved = main ? ui.nodePos[main.id] : undefined
+      const at = main ? placed.get(main.id) : undefined
+      if (!list || !saved || !at) continue
+      const dx = saved.x - at.x
+      const dy = saved.y - at.y
+      for (const id of [...list.map((a) => a.id), trayId(tid)]) {
+        const p = placed.get(id)
+        if (p) placed.set(id, { x: p.x + dx, y: p.y + dy })
+      }
+    }
+  }
+  lastPlaced = placed
+  const wanted = new Map<string, Node>()
+  for (const a of shownList.value) wanted.set(a.id, { id: a.id, type: a.role === 'main' ? 'main' : 'sub', position: { x: 0, y: 0 }, data: { agentId: a.id }, draggable: true, selectable: false })
+  for (const tid of trayIds.value) wanted.set(trayId(tid), { id: trayId(tid), type: 'tray', position: { x: 0, y: 0 }, data: { terminalId: tid }, draggable: false, selectable: false })
   const current = new Map(getNodes.value.map((n) => [n.id, n]))
 
-  retireNodes([...current.keys()].filter((id) => !wanted.has(id)))
+  retireNodes(
+    [...current.keys()].filter((id) => !wanted.has(id)),
+    placed,
+  )
 
   const fresh: Node[] = []
-  for (const id of wanted) {
-    const position = (scoped ? undefined : ui.nodePos[id]) ?? placed.get(id)
+  for (const [id, spec] of wanted) {
+    const position = (scoped || spec.type === 'tray' ? undefined : ui.nodePos[id]) ?? placed.get(id)
     if (!position) continue
     const node = current.get(id)
     if (node && leaving.has(id)) keepNode(id)
     if (!node) {
-      fresh.push({ id, type: 'agent', position: { ...position }, data: { agentId: id }, draggable: true, selectable: false })
+      const agent = agents.byId[id]
+      const from = agent && isFinished(agent) && openedTrays.has(agent.terminalId) ? trayDot(agent.terminalId, placed) : null
+      if (from && motionMs(1)) {
+        fresh.push({ ...spec, position: { ...position }, class: 'ccm-node-from-tray', style: offsetFrom(position, from) })
+        window.setTimeout(() => findNode(id) && !leaving.has(id) && updateNode(id, { class: '', style: {} }), FROM_TRAY_MS)
+      } else {
+        fresh.push({ ...spec, position: { ...position } })
+      }
     } else if (node.position.x !== position.x || node.position.y !== position.y) {
       updateNode(id, { position: { ...position } })
     }
   }
+  openedTrays.clear()
   if (fresh.length) addNodes(fresh)
   prunePicked()
   applyPicked()
@@ -122,32 +348,60 @@ function syncNodes(fit = false): void {
 
 // A node that goes away fades out first; one that comes back meanwhile keeps its place.
 const NODE_EXIT_MS = 150
+const TO_TRAY_MS = 560
+const FROM_TRAY_MS = 460
 const leaving = new Map<string, number>()
-function retireNodes(ids: string[]): void {
-  const fresh = ids.filter((id) => !leaving.has(id))
+const dusting = new Set<string>()
+function retireNodes(ids: string[], placed: Map<string, Point>): void {
+  const fresh = ids.filter((id) => !leaving.has(id) && !dusting.has(id))
   if (!fresh.length) return
   if (!motionMs(NODE_EXIT_MS)) return removeNodes(fresh)
+  const gone: string[] = []
   for (const id of fresh) {
-    updateNode(id, { class: 'ccm-node-leaving' })
-    leaving.set(
-      id,
-      window.setTimeout(() => {
-        leaving.delete(id)
-        removeNodes([id])
-      }, NODE_EXIT_MS),
-    )
+    const agent = agents.byId[id]
+    if (!agent && !trayTerminal(id)) {
+      gone.push(id)
+      continue
+    }
+    const node = findNode(id)
+    const to = agent && node && isFinished(agent) ? trayDot(agent.terminalId, placed) : null
+    if (to && node) later(id, TO_TRAY_MS, { class: 'ccm-node-to-tray', style: offsetFrom(node.position, to) })
+    else later(id, NODE_EXIT_MS, { class: 'ccm-node-leaving' })
   }
+  if (gone.length) void turnToDust(gone)
+}
+function later(id: string, ms: number, look: Partial<Node>): void {
+  updateNode(id, look)
+  leaving.set(
+    id,
+    window.setTimeout(() => {
+      leaving.delete(id)
+      removeNodes([id])
+    }, ms),
+  )
+}
+async function turnToDust(ids: string[]): Promise<void> {
+  for (const id of ids) dusting.add(id)
+  const boxes = ids.map((id) => nodeBox(id))
+  const live = boxes.filter((el): el is HTMLElement => !!el)
+  const ok = await dustOutAll(live).catch(() => live.map(() => false))
+  for (const id of ids) dusting.delete(id)
+  const failed = ids.filter((_, i) => !boxes[i] || !ok[live.indexOf(boxes[i]!)])
+  removeNodes(ids.filter((id) => !failed.includes(id)))
+  for (const id of failed) later(id, NODE_EXIT_MS, { class: 'ccm-node-leaving' })
+  if (ids.some((id) => agents.byId[id])) syncNodes(false)
 }
 function keepNode(id: string): void {
   window.clearTimeout(leaving.get(id))
   leaving.delete(id)
-  updateNode(id, { class: '' })
+  updateNode(id, { class: '', style: {} })
 }
 
 // Re-layouts glide nodes to their new slots; off for the first placement so the map does not fly in from 0,0.
 const nodeMotion = ref(false)
 onBeforeUnmount(() => {
   for (const timer of leaving.values()) window.clearTimeout(timer)
+  for (const timer of lingerTimers.values()) window.clearTimeout(timer)
 })
 
 function isPicked(agentId: string): boolean {
@@ -182,14 +436,37 @@ watch(picked, applyPicked)
 const MIN_AUTO_ZOOM = 0.6
 const EDGE_PAD = 24
 
+function flowBox(n: GraphNode): Box {
+  return { x: n.computedPosition.x, y: n.computedPosition.y, w: n.dimensions.width || MAIN_WIDTH, h: n.dimensions.height || MAIN_HEIGHT }
+}
+
+function arcClearance(): number {
+  const nodes = getNodes.value
+  if (!nodes.length || !peerEdges.value.length) return 0
+  const top = Math.min(...nodes.map((n) => n.computedPosition.y))
+  let peak = top
+  for (const e of peerEdges.value) {
+    const a = findNode(e.source)
+    const b = findNode(e.target)
+    if (!a || !b) continue
+    const arc = peerPath(flowBox(a), flowBox(b), peerSlotMap.value.get(e.id))
+    if (arc.sameRow) peak = Math.min(peak, arc.mid.y)
+  }
+  return Math.max(0, Math.ceil(top - peak))
+}
+
+function fitPadding() {
+  return { ...FIT_PADDING, top: `${FIT_TOP + Math.ceil(arcClearance() * 1.1)}px` as const }
+}
+
 async function autoFit(duration = 0): Promise<void> {
-  await fitView({ padding: 0.2, duration, maxZoom: 1.1 })
+  await fitView({ padding: fitPadding(), duration, maxZoom: 1.1 })
   if (getViewport().zoom >= MIN_AUTO_ZOOM) return
   const nodes = getNodes.value
   if (!nodes.length) return
   const minX = Math.min(...nodes.map((n) => n.position.x))
   const minY = Math.min(...nodes.map((n) => n.position.y))
-  await setViewport({ x: EDGE_PAD - minX * MIN_AUTO_ZOOM, y: EDGE_PAD - minY * MIN_AUTO_ZOOM, zoom: MIN_AUTO_ZOOM }, { duration })
+  await setViewport({ x: EDGE_PAD - minX * MIN_AUTO_ZOOM, y: KEEP_CLEAR + EDGE_PAD / 2 + (arcClearance() - minY) * MIN_AUTO_ZOOM, zoom: MIN_AUTO_ZOOM }, { duration })
 }
 
 const nodeIds = computed(() => new Set(getNodes.value.map((n) => n.id)))
@@ -212,8 +489,14 @@ function trackEdges(ids: string[]): void {
   }
   const born = ids.filter((id) => !knownEdges!.has(id))
   knownEdges = new Set(ids)
+  const stale = Object.keys(pulses.value).filter((id) => !knownEdges!.has(id))
+  if (stale.length) pulses.value = Object.fromEntries(Object.entries(pulses.value).filter(([id]) => knownEdges!.has(id)))
   if (!born.length) return
   freshEdges.value = new Set([...freshEdges.value, ...born])
+  for (const id of born) {
+    const target = agents.byId[id.slice(id.indexOf('->') + 2)]
+    if (target && !isFinished(target)) pulse(id, 'down')
+  }
   void nextTick(() => requestAnimationFrame(() => measureEdges(born)))
   window.setTimeout(() => {
     const next = new Set(freshEdges.value)
@@ -222,25 +505,408 @@ function trackEdges(ids: string[]): void {
   }, EDGE_DRAW_MS)
 }
 
-const edges = computed<Edge[]>(() =>
-  shownList.value
-    .filter((a) => a.parentId && visibility.value.visible.has(a.parentId) && nodeIds.value.has(a.id) && nodeIds.value.has(a.parentId))
-    .map((a) => ({
-      id: `${a.parentId}->${a.id}`,
-      source: a.parentId!,
-      target: a.id,
-      type: 'smoothstep',
+const connection = useConnectionStore()
+let lastMsg = new Map<string, { agent: Agent; i: number; o: number }>()
+watch(
+  () => source.value.filter((a) => a.role !== 'main').map((a) => ({ agent: a, i: a.msgIn ?? 0, o: a.msgOut ?? 0 })),
+  (rows) => {
+    const next = new Map(rows.map((r) => [r.agent.id, r]))
+    if (connection.sessionsLoading) {
+      lastMsg = next
+      return
+    }
+    for (const [id, r] of next) {
+      const prev = lastMsg.get(id)
+      if (!prev || prev.agent !== r.agent) continue
+      const up = r.o > prev.o
+      if (!up && r.i <= prev.i) continue
+      const parent = edgeParent.value.get(id)
+      if (!parent || !nodeIds.value.has(parent) || !nodeIds.value.has(id)) continue
+      if (up) {
+        const at = performance.now()
+        handedBack.set(id, at)
+        if (at - (upAt.get(id) ?? -Infinity) < SAME_UP_MS) continue
+        upAt.set(id, at)
+      }
+      pulse(`${parent}->${id}`, up ? 'up' : 'down')
+    }
+    lastMsg = next
+    for (const map of [handedBack, upAt]) for (const id of map.keys()) if (!next.has(id)) map.delete(id)
+  },
+  { immediate: true },
+)
+
+const peers = usePeersStore()
+const nameOf = usePeerName()
+
+const MAX_RUNNERS = 6
+let runnerCount = 0
+const runners: RunnerBudget = {
+  take: () => {
+    if (runnerCount >= MAX_RUNNERS) return false
+    runnerCount++
+    return true
+  },
+  give: () => {
+    runnerCount = Math.max(0, runnerCount - 1)
+  },
+}
+provide(MAP_RUNNERS, runners)
+
+function mainNodeOf(tid: string): string | null {
+  const main = shownByTerminal.value[tid]?.find((a) => a.role === 'main')
+  return main && nodeIds.value.has(main.id) ? main.id : null
+}
+
+type PeerSpec = { id: string; source: string; target: string; data: PeerEdgeData }
+const peerEdgeId = (linkId: string) => `peer:${linkId}`
+
+const peerWanted = computed(() => {
+  const out = new Map<string, PeerSpec>()
+  if (scoped) return out
+  const byPair = new Map<string, PeerSpec>()
+  const opened: PeerLink[] = []
+  for (const l of peers.warm) {
+    if (l.kind === 'opened') {
+      opened.push(l)
+      continue
+    }
+    const source = mainNodeOf(l.a)
+    const target = mainNodeOf(l.b)
+    if (!source || !target || source === target) continue
+    const spec: PeerSpec = { id: peerEdgeId(l.id), source, target, data: { linkId: l.id, kind: 'message', a: l.a, b: l.b } }
+    out.set(spec.id, spec)
+    byPair.set(peerLinkId(l.a, l.b), spec)
+  }
+  for (const l of opened) {
+    const source = mainNodeOf(l.a)
+    const target = mainNodeOf(l.b)
+    if (!source || !target || source === target) continue
+    const message = byPair.get(peerLinkId(l.a, l.b))
+    if (message) {
+      message.data = { ...message.data, opened: { by: l.a, to: l.b } }
+      continue
+    }
+    const spec: PeerSpec = { id: peerEdgeId(l.id), source, target, data: { linkId: l.id, kind: 'opened', a: l.a, b: l.b } }
+    out.set(spec.id, spec)
+  }
+  return out
+})
+
+const PEER_FADE_MS = 300
+const peerFading = shallowRef<ReadonlyMap<string, PeerSpec>>(new Map())
+const peerFadeTimers = new Map<string, number>()
+let peerShown: ReadonlyMap<string, PeerSpec> = new Map()
+watch(
+  peerWanted,
+  (wanted) => {
+    const fading = new Map(peerFading.value)
+    for (const [id, spec] of peerShown) {
+      if (wanted.has(id) || fading.has(id)) continue
+      fading.set(id, spec)
+      peerFadeTimers.set(
+        id,
+        window.setTimeout(() => {
+          peerFadeTimers.delete(id)
+          const next = new Map(peerFading.value)
+          next.delete(id)
+          peerFading.value = next
+        }, PEER_FADE_MS),
+      )
+    }
+    for (const id of wanted.keys()) {
+      if (!fading.delete(id)) continue
+      window.clearTimeout(peerFadeTimers.get(id))
+      peerFadeTimers.delete(id)
+    }
+    peerFading.value = fading
+    peerShown = wanted
+  },
+  { immediate: true },
+)
+
+const peerEdges = computed<Edge[]>(() => {
+  const all = new Map(peerFading.value)
+  for (const [id, spec] of peerWanted.value) all.set(id, spec)
+  const out: Edge[] = []
+  for (const spec of all.values()) {
+    if (!nodeIds.value.has(spec.source) || !nodeIds.value.has(spec.target)) continue
+    const a = nameOf(spec.data.a)
+    const b = nameOf(spec.data.b)
+    out.push({
+      id: spec.id,
+      source: spec.source,
+      target: spec.target,
+      type: 'peer',
+      class: peerWanted.value.has(spec.id) ? undefined : 'ccm-peer-leaving',
+      selectable: false,
+      ariaLabel: spec.data.kind === 'opened' ? t('peer.activityOpened', { from: a, to: b }) : t('peerMap.edgeLabel', { a, b }),
+      data: spec.data,
+    })
+  }
+  return out
+})
+
+const peerSlotMap = computed(() => {
+  const ends = peerEdges.value.map((e) => ({ id: e.id, a: e.source, b: e.target }))
+  const boxes = new Map<string, Box>()
+  for (const e of ends) {
+    for (const id of [e.a, e.b]) {
+      if (boxes.has(id)) continue
+      const n = findNode(id)
+      if (n) boxes.set(id, flowBox(n))
+    }
+  }
+  return peerSlots(ends, boxes)
+})
+
+const rings = shallowRef<Readonly<Record<string, number>>>({})
+function ringCard(tid: string): void {
+  rings.value = { ...rings.value, [tid]: (rings.value[tid] ?? 0) + 1 }
+}
+
+const FLIGHT_WAIT_MS = 600
+type QueuedFlight = { lane: PeerLane; n: number; to: string; timer: number }
+const flyers = new Map<string, (lane: PeerLane, n: number) => void>()
+const queuedFlights = new Map<string, QueuedFlight[]>()
+function queueFlight(edgeId: string, lane: PeerLane, n: number, to: string): void {
+  const entry: QueuedFlight = { lane, n, to, timer: 0 }
+  entry.timer = window.setTimeout(() => {
+    const rest = (queuedFlights.get(edgeId) ?? []).filter((q) => q !== entry)
+    if (rest.length) queuedFlights.set(edgeId, rest)
+    else queuedFlights.delete(edgeId)
+    ringCard(to)
+  }, FLIGHT_WAIT_MS)
+  queuedFlights.set(edgeId, [...(queuedFlights.get(edgeId) ?? []), entry])
+}
+
+const peerMapCtx: PeerMapContext = {
+  scoped,
+  rings,
+  slots: peerSlotMap,
+  listen(edgeId, fly) {
+    flyers.set(edgeId, fly)
+    const queued = queuedFlights.get(edgeId)
+    if (queued) {
+      queuedFlights.delete(edgeId)
+      for (const q of queued) {
+        window.clearTimeout(q.timer)
+        fly(q.lane, q.n)
+      }
+    }
+    return () => {
+      if (flyers.get(edgeId) === fly) flyers.delete(edgeId)
+    }
+  },
+  landed: ringCard,
+  goTo: goToPeer,
+}
+provide(PEER_MAP, peerMapCtx)
+
+const LIVE_MS = 10_000
+type LiveItem = { from: string; to: string; n: number }
+const liveText = ref('')
+const liveBuffer = new Map<string, LiveItem>()
+let liveTimer = 0
+function say(items: LiveItem[]): void {
+  const text = items.map((x) => t('peer.live', { from: nameOf(x.from), to: nameOf(x.to), n: x.n }, x.n)).join(' · ')
+  liveText.value = ''
+  void nextTick(() => (liveText.value = text))
+}
+function flushLive(): void {
+  liveTimer = 0
+  if (!liveBuffer.size) return
+  const items = [...liveBuffer.values()]
+  liveBuffer.clear()
+  say(items)
+  liveTimer = window.setTimeout(flushLive, LIVE_MS)
+}
+function announce(from: string, to: string, n: number): void {
+  if (!liveTimer) {
+    say([{ from, to, n }])
+    liveTimer = window.setTimeout(flushLive, LIVE_MS)
+    return
+  }
+  const key = `${from}>${to}`
+  const cur = liveBuffer.get(key)
+  if (cur) cur.n += n
+  else liveBuffer.set(key, { from, to, n })
+}
+
+const CAPSULE_MS = 6000
+const CAPSULE_MAX = 3
+const SCREEN_MARGIN = 16
+type Capsule = { key: number; from: string; to: string; node: string }
+const capsules = ref<Capsule[]>([])
+const capsuleTimers = new Map<number, number>()
+let capsuleSeq = 0
+const ARROWS: Record<string, Component> = {
+  '-1,-1': ArrowUpLeft,
+  '0,-1': ArrowUp,
+  '1,-1': ArrowUpRight,
+  '-1,0': ArrowLeft,
+  '1,0': ArrowRight,
+  '-1,1': ArrowDownLeft,
+  '0,1': ArrowDown,
+  '1,1': ArrowDownRight,
+}
+
+function screenCenter(id: string): Point | null {
+  const n = findNode(id)
+  if (!n) return null
+  const { x, y, zoom } = viewport.value
+  return {
+    x: (n.computedPosition.x + (n.dimensions.width || MAIN_WIDTH) / 2) * zoom + x,
+    y: (n.computedPosition.y + (n.dimensions.height || MAIN_HEIGHT) / 2) * zoom + y,
+  }
+}
+
+function onScreen(p: Point): boolean {
+  const { width, height } = dimensions.value
+  if (!width || !height) return true
+  return p.x >= SCREEN_MARGIN && p.x <= width - SCREEN_MARGIN && p.y >= KEEP_CLEAR && p.y <= height - SCREEN_MARGIN
+}
+
+function dismissCapsule(key: number): void {
+  window.clearTimeout(capsuleTimers.get(key))
+  capsuleTimers.delete(key)
+  capsules.value = capsules.value.filter((c) => c.key !== key)
+}
+
+function offerCapsule(from: string, to: string, node: string): void {
+  const at = screenCenter(node)
+  if (!at || onScreen(at)) return
+  const fromNode = mainNodeOf(from)
+  const fromAt = fromNode ? screenCenter(fromNode) : null
+  if (fromAt && !onScreen(fromAt)) return
+  for (const c of capsules.value) if (c.to === to) dismissCapsule(c.key)
+  const key = ++capsuleSeq
+  capsules.value = [...capsules.value, { key, from, to, node }].slice(-CAPSULE_MAX)
+  capsuleTimers.set(
+    key,
+    window.setTimeout(() => dismissCapsule(key), CAPSULE_MS),
+  )
+}
+
+const capsuleViews = computed(() => {
+  const { width, height } = dimensions.value
+  return capsules.value.flatMap((c) => {
+    const at = screenCenter(c.node)
+    if (!at || onScreen(at)) return []
+    const dx = at.x < SCREEN_MARGIN ? -1 : at.x > width - SCREEN_MARGIN ? 1 : 0
+    const dy = at.y < KEEP_CLEAR ? -1 : at.y > height - SCREEN_MARGIN ? 1 : 0
+    const left = dx < 0 ? 12 : dx > 0 ? width - 12 : Math.min(Math.max(at.x, width * 0.2), width * 0.8)
+    const top = dy < 0 ? KEEP_CLEAR : dy > 0 ? height - 12 : Math.min(Math.max(at.y, KEEP_CLEAR + 16), height - 28)
+    const tx = dx < 0 ? '0' : dx > 0 ? '-100%' : '-50%'
+    const ty = dy < 0 ? '0' : dy > 0 ? '-100%' : '-50%'
+    return [
+      {
+        key: c.key,
+        to: c.to,
+        icon: ARROWS[`${dx},${dy}`] ?? ArrowUp,
+        text: t('peer.received', { name: nameOf(c.from) }),
+        label: t('peerMap.capsuleLabel', { from: nameOf(c.from), to: nameOf(c.to) }),
+        style: { left: `${left}px`, top: `${top}px`, transform: `translate(${tx}, ${ty})` },
+      },
+    ]
+  })
+})
+
+let peerSeen = peers.pulses.at(-1)?.key ?? 0
+watch(
+  () => peers.pulses,
+  (list) => {
+    const fresh = list.filter((p) => p.key > peerSeen)
+    if (!fresh.length) return
+    peerSeen = fresh.at(-1)!.key
+    for (const p of fresh) onPeerPulse(p)
+  },
+)
+
+function onPeerPulse(p: PeerPulse): void {
+  if (p.kind !== 'message') return
+  if (scoped && p.to !== props.terminalId && p.from !== props.terminalId) return
+  announce(p.from, p.to, p.n)
+  if (ui.mapView !== 'map') return
+  const toNode = mainNodeOf(p.to)
+  if (!toNode) return
+  const edge = peerWanted.value.get(peerEdgeId(p.linkId))
+  if (edge) {
+    const lane: PeerLane = p.from === edge.data.a ? 'ab' : 'ba'
+    const fly = flyers.get(edge.id)
+    if (fly) fly(lane, p.n)
+    else queueFlight(edge.id, lane, p.n, p.to)
+  } else {
+    ringCard(p.to)
+  }
+  offerCapsule(p.from, p.to, toNode)
+}
+
+function goToPeer(tid: string): void {
+  for (const c of capsules.value) if (c.to === tid) dismissCapsule(c.key)
+  const id = mainNodeOf(tid)
+  if (!id) {
+    ui.focusTerminal(tid)
+    return
+  }
+  cursorId.value = id
+  ui.revealTerminal(tid)
+  const node = findNode(id)
+  if (node) {
+    void setCenter(node.computedPosition.x + (node.dimensions.width || MAIN_WIDTH) / 2, node.computedPosition.y + (node.dimensions.height || MAIN_HEIGHT) / 2, {
+      zoom: Math.max(getViewport().zoom, MIN_AUTO_ZOOM),
+      duration: motionMs(300),
+    })
+  }
+  void nextTick(() => nodeBox(id)?.focus({ preventScroll: true }))
+}
+
+function peerTargets(tid: string): { terminalId: string; name: string }[] {
+  const ids = new Set<string>()
+  for (const l of peers.linksOf(tid)) {
+    const other = otherEnd(l, tid)
+    if (other && other !== tid && terminals.byId[other]) ids.add(other)
+  }
+  return [...ids].map((id) => ({ terminalId: id, name: nameOf(id) }))
+}
+
+onBeforeUnmount(() => {
+  for (const timer of peerFadeTimers.values()) window.clearTimeout(timer)
+  for (const list of queuedFlights.values()) for (const q of list) window.clearTimeout(q.timer)
+  for (const timer of capsuleTimers.values()) window.clearTimeout(timer)
+  window.clearTimeout(liveTimer)
+})
+
+const edges = computed<Edge[]>(() => {
+  const out: Edge[] = [...peerEdges.value]
+  for (const [id, parent] of edgeParent.value) {
+    const a = agents.byId[id]
+    if (!a || !nodeIds.value.has(id) || !nodeIds.value.has(parent)) continue
+    const eid = `${parent}->${id}`
+    out.push({
+      id: eid,
+      source: parent,
+      target: id,
+      type: 'tree',
       class:
-        [a.status === 'working' ? 'ccm-edge-hot' : '', a.provider === 'codex' ? 'ccm-edge-codex' : '', freshEdges.value.has(`${a.parentId}->${a.id}`) ? 'ccm-edge-new' : '']
+        [a.status === 'working' ? 'ccm-edge-hot' : '', a.provider === 'codex' ? 'ccm-edge-codex' : '', freshEdges.value.has(eid) ? 'ccm-edge-new' : '']
           .join(' ')
           .trim() || undefined,
       selectable: false,
-      pathOptions: { borderRadius: 6 },
-    })),
-)
+      data: { pulse: pulses.value[eid] },
+    })
+  }
+  for (const tid of trayIds.value) {
+    const main = shownByTerminal.value[tid]?.find((a) => a.role === 'main')
+    const tray = trayId(tid)
+    if (!main || !nodeIds.value.has(main.id) || !nodeIds.value.has(tray)) continue
+    out.push({ id: `${main.id}->${tray}`, source: main.id, target: tray, type: 'tree', class: 'ccm-edge-tray', selectable: false })
+  }
+  return out
+})
 
 watch(
-  () => edges.value.map((e) => e.id),
+  () => edges.value.filter((e) => e.type !== 'peer').map((e) => e.id),
   (ids) => trackEdges(ids),
   { immediate: true },
 )
@@ -248,10 +914,6 @@ watch(
 // First sync waits for <VueFlow> to mount: nodes added during setup are dropped when it initializes (remount after a tab switch).
 onMounted(() => syncNodes(false))
 watch(structureKey, () => syncNodes(false))
-watch(
-  () => settings.hideFinished,
-  () => void nextTick(() => syncNodes(true)),
-)
 watch(
   () => ui.nodeResized,
   () => syncNodes(false),
@@ -271,7 +933,7 @@ watch(
 )
 watch(
   () => ui.fitRequest,
-  () => void fitView({ padding: 0.2, duration: motionMs(250), maxZoom: 1.1 }),
+  () => void fitView({ padding: fitPadding(), duration: motionMs(250), maxZoom: 1.1 }),
 )
 watch(
   () => ui.focusRequest,
@@ -279,7 +941,7 @@ watch(
     const id = ui.focusedTerminalId
     if (!id) return
     const ids = (shownByTerminal.value[id] ?? []).map((a) => a.id)
-    if (ids.length) void fitView({ nodes: ids, padding: 0.35, duration: motionMs(300), maxZoom: 1.1 })
+    if (ids.length) void fitView({ nodes: [...ids, ...(trayIds.value.includes(id) ? [trayId(id)] : [])], padding: FOCUS_PADDING, duration: motionMs(300), maxZoom: 1.1 })
   },
 )
 
@@ -326,13 +988,17 @@ watch(
 const cursorId = ref<string | null>(null)
 let navCache: { key: string; nav: MapNav } | null = null
 function currentNav(): MapNav {
-  if (navCache?.key !== structureKey.value) navCache = { key: structureKey.value, nav: buildNav(terminalOrder.value.map((x) => x.id), shownByTerminal.value) }
+  if (navCache?.key !== structureKey.value) navCache = { key: structureKey.value, nav: buildNav(terminalOrder.value.map((x) => x.id), shownByTerminal.value, trayIds.value) }
   return navCache.nav
 }
-const tabStop = computed(() => (cursorId.value && visibility.value.visible.has(cursorId.value) ? cursorId.value : (currentNav().columns[0]?.[0] ?? null)))
+const isTrayShown = (id: string) => {
+  const tid = trayTerminal(id)
+  return !!tid && trayIds.value.includes(tid)
+}
+const tabStop = computed(() => (cursorId.value && (visibility.value.visible.has(cursorId.value) || isTrayShown(cursorId.value)) ? cursorId.value : (currentNav().columns[0]?.[0] ?? null)))
 
 function nodeBox(id: string): HTMLElement | null {
-  return canvas.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] [data-agent-node]`) ?? null
+  return canvas.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] :is([data-agent-node], [data-tray-node])`) ?? null
 }
 
 const KEEP_CLEAR = 56
@@ -352,7 +1018,7 @@ function ensureVisible(id: string): void {
 
 function moveCursor(id: string): void {
   cursorId.value = id
-  if (ui.selectedAgentId && ui.selectedAgentId !== id) ui.selectAgent(id)
+  if (ui.selectedAgentId && ui.selectedAgentId !== id && agents.byId[id]) ui.selectAgent(id)
   void nextTick(() => {
     nodeBox(id)?.focus({ preventScroll: true })
     ensureVisible(id)
@@ -365,7 +1031,7 @@ function onCanvasFocusIn(e: FocusEvent): void {
 }
 
 watch(
-  () => cursorId.value && !visibility.value.visible.has(cursorId.value),
+  () => cursorId.value && !visibility.value.visible.has(cursorId.value) && !isTrayShown(cursorId.value),
   (lost) => {
     if (lost) cursorId.value = null
   },
@@ -500,6 +1166,12 @@ function copyFocused(id: string): void {
 }
 
 onNodeClick(({ node, event }) => {
+  const tray = trayTerminal(node.id)
+  if (tray) {
+    cursorId.value = node.id
+    ui.toggleTray(tray)
+    return
+  }
   // A drag that selected text in the node ends in a click; it must not toggle the details.
   const sel = window.getSelection()
   if (sel && !sel.isCollapsed && (event.target as Node | null) && nodeBox(node.id)?.contains(sel.anchorNode)) return
@@ -522,7 +1194,7 @@ const menuEntries = computed<MenuEntry[]>(() => {
   const m = menu.value
   if (!m) return []
   if (m.kind === 'canvas')
-    return canvasMenu({ hasNodes: hasNodes.value, anyCollapsed: ui.collapsedAgents.size > 0, anyParent: childMap.value.size > 0, hideFinished: settings.hideFinished }, t, isMac)
+    return canvasMenu({ hasNodes: hasNodes.value, anyCollapsed: ui.collapsedAgents.size > 0, anyParent: childMap.value.size > 0, hideFinished: !allTraysOpen.value }, t, isMac)
   const a = agents.byId[m.agentId]
   return nodeMenu(
     {
@@ -532,6 +1204,7 @@ const menuEntries = computed<MenuEntry[]>(() => {
       collapsed: ui.collapsedAgents.has(m.agentId),
       picked: a && picked.value.has(a.terminalId) ? picked.value.size : 0,
       detailsOpen: ui.selectedAgentId === m.agentId,
+      peers: a?.role === 'main' ? peerTargets(a.terminalId) : undefined,
     },
     t,
     isMac,
@@ -608,7 +1281,7 @@ function runCanvas(action: CanvasAction): void {
       ui.collapsedAgents = new Set(childMap.value.keys())
       break
     case 'toggle-finished':
-      settings.toggleHideFinished()
+      toggleAllTrays()
       break
     case 'copy-map':
       void copyText(sessionsText(sessionsOrder.value), 'map')
@@ -622,7 +1295,12 @@ function runCanvas(action: CanvasAction): void {
 function onMenuPick(id: string): void {
   const m = menu.value
   if (!m) return
-  if (m.kind === 'canvas') runCanvas(id as CanvasAction)
+  if (m.kind === 'canvas') {
+    runCanvas(id as CanvasAction)
+    return
+  }
+  const peer = peerTarget(id)
+  if (peer) goToPeer(peer)
   else runNode(id as NodeAction, m.agentId)
 }
 
@@ -637,6 +1315,18 @@ function onCanvasKey(e: KeyboardEvent): void {
     return
   }
   if (!id) return
+  const tray = trayTerminal(id)
+  if (tray) {
+    if ((e.key === 'Enter' || e.key === ' ') && !mod) {
+      e.preventDefault()
+      ui.toggleTray(tray)
+    } else if (NAV_KEYS.includes(e.key) && !mod && !e.altKey) {
+      e.preventDefault()
+      const next = navigate(currentNav(), id, e.key as NavKey)
+      if (next) moveCursor(next)
+    }
+    return
+  }
   if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
     e.preventDefault()
     keyMenuAt = performance.now()
@@ -700,7 +1390,8 @@ onPaneClick(() => {
 })
 onNodeDragStop(({ nodes }) => {
   if (scoped) return
-  for (const n of nodes) ui.setNodePos(n.id, n.position)
+  for (const n of nodes) if (!trayTerminal(n.id)) ui.setNodePos(n.id, n.position)
+  syncNodes(false)
 })
 
 const TOOL = 'ccm-btn-plain ccm-press text-xs'
@@ -725,8 +1416,8 @@ const views = computed(() => [
     <h2 :id="`${FLOW_ID}-title`" class="sr-only">{{ t('map.title') }}</h2>
     <div
       ref="canvas"
-      class="relative min-h-0 flex-1 overflow-hidden bg-surface"
-      :class="nodeMotion ? 'ccm-map-motion' : ''"
+      class="relative min-h-0 flex-1 overflow-hidden"
+      :class="[nodeMotion ? 'ccm-map-motion' : '', ui.mapView === 'map' ? 'bg-canvas' : 'bg-surface']"
       role="region"
       :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
       @keydown="onCanvasKey"
@@ -747,15 +1438,44 @@ const views = computed(() => [
         :zoom-on-double-click="false"
         :delete-key-code="null"
         :selection-key-code="null"
-        :default-edge-options="{ type: 'smoothstep' }"
+        :default-edge-options="{ type: 'tree' }"
         class="h-full w-full"
       >
         <Background :gap="18" :size="1" pattern-color="var(--ccm-flow-dot)" />
-        <template #node-agent="nodeProps">
-          <AgentNode :id="nodeProps.id" :data="nodeProps.data" :picked="nodeProps.selected" />
+        <template #node-main="nodeProps">
+          <MainNode :id="nodeProps.id" :data="nodeProps.data" :picked="nodeProps.selected" />
+        </template>
+        <template #node-sub="nodeProps">
+          <SubPill :id="nodeProps.id" :data="nodeProps.data" :picked="nodeProps.selected" />
+        </template>
+        <template #node-tray="nodeProps">
+          <DoneTray :id="nodeProps.id" :data="nodeProps.data" />
+        </template>
+        <template #edge-tree="edgeProps">
+          <TreeEdge v-bind="edgeProps" />
+        </template>
+        <template #edge-peer="edgeProps">
+          <PeerEdge v-bind="edgeProps" />
         </template>
       </VueFlow>
       <p :id="`${FLOW_ID}-keys`" class="sr-only">{{ t('map.node.keys', NODE_KEYS) }}</p>
+      <p class="sr-only" aria-live="polite" data-peer-live>{{ liveText }}</p>
+      <TransitionGroup v-if="ui.mapView === 'map'" name="ccm-peer-capsule" tag="div" class="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+        <div v-for="c in capsuleViews" :key="c.key" class="absolute" :style="c.style">
+          <button
+            type="button"
+            class="ccm-press pointer-events-auto inline-flex h-7 max-w-64 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-xs text-ink shadow-pop transition-colors hover:bg-raised"
+            :aria-label="c.label"
+            :title="c.label"
+            data-peer-capsule
+            @click="goToPeer(c.to)"
+          >
+            <Mail :size="13" class="shrink-0 text-peer" aria-hidden="true" />
+            <span class="truncate">{{ c.text }}</span>
+            <component :is="c.icon" :size="13" class="shrink-0 text-ink-muted" aria-hidden="true" />
+          </button>
+        </div>
+      </TransitionGroup>
       <ContextMenu
         v-if="menu"
         :at="menu.at"
@@ -859,14 +1579,14 @@ const views = computed(() => [
             <button
               type="button"
               :class="TOOL"
-              :aria-pressed="settings.hideFinished"
-              :aria-label="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-              :title="settings.hideFinished ? t('map.showFinished') : t('map.hideFinished')"
-              :disabled="!hasNodes"
-              @click="settings.toggleHideFinished()"
+              :aria-pressed="allTraysOpen"
+              :aria-label="allTraysOpen ? t('mapV53.tray.closeAll') : t('mapV53.tray.openAll')"
+              :title="allTraysOpen ? t('mapV53.tray.closeAll') : t('mapV53.tray.openAll')"
+              :disabled="!Object.keys(trays).length"
+              @click="toggleAllTrays()"
             >
-              <component :is="settings.hideFinished ? EyeOff : Eye" :size="16" aria-hidden="true" />
-              <span v-if="settings.hideFinished && visibility.hidden > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: visibility.hidden }) }}</span>
+              <component :is="allTraysOpen ? Eye : EyeOff" :size="16" aria-hidden="true" />
+              <span v-if="!allTraysOpen && hiddenTotal > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: hiddenTotal }) }}</span>
             </button>
             <button
               v-for="c in controls"
@@ -901,3 +1621,26 @@ const views = computed(() => [
     </div>
   </section>
 </template>
+
+<style>
+.ccm-peer-capsule-enter-active {
+  transition:
+    opacity var(--ccm-dur-base) var(--ease-out-quint),
+    scale var(--ccm-dur-base) var(--ease-spring);
+}
+.ccm-peer-capsule-leave-active {
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-peer-capsule-enter-from {
+  opacity: 0;
+  scale: 0.85;
+}
+.ccm-peer-capsule-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccm-peer-capsule-enter-from {
+    scale: 1;
+  }
+}
+</style>

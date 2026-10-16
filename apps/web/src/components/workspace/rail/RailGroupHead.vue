@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, LoaderCircle, X } from 'lucide-vue-next'
-import { usePaneInfo } from '../../../composables/usePaneInfo'
+import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
 import { stateWord, type RailGroup, type RailState } from '../../../lib/rail/railModel'
@@ -23,7 +23,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
-const { activityOf } = usePaneInfo()
+const { activityOf, peerView } = usePaneInfo()
 const isStop = useRailTabStop()
 const stop = computed(() => (isStop(props.group.key) ? 0 : -1))
 
@@ -37,12 +37,14 @@ const word = computed(() => {
   return w.n === undefined ? t(w.key) : t(w.key, { n: w.n }, w.n)
 })
 const leadPane = computed(() => (props.group.state === 'working' && props.group.lead ? workspace.panes.find((p) => p.key === props.group.lead) : undefined))
-const activity = computed(() => (leadPane.value ? activityOf(leadPane.value) : null))
+const peer = computed(() => (props.group.peer ? peerView(props.group.peer) : null))
+const activity = computed(() => (leadPane.value && !peer.value ? activityOf(leadPane.value) : null))
 const tool = computed(() => activity.value?.tool ?? null)
-const line = computed(() => tool.value ?? word.value)
+const line = computed(() => peer.value?.text ?? tool.value ?? word.value)
 const elapsed = computed(() => (activity.value?.since ? duration(activity.value.since, clock.value) : null))
 const tail = computed(() => (elapsed.value ? t('workspace.activity.tool', { tool: '', time: elapsed.value }) : ''))
-const spoken = computed(() => (tool.value ? `${tool.value} (${word.value})` : word.value))
+const spoken = computed(() => (peer.value ? `${peer.value.label} (${word.value})` : tool.value ? `${tool.value} (${word.value})` : word.value))
+const sweep = usePeerSweep(() => (props.group.folded ? props.group.peer : null))
 const panes = computed(() => t('workspace.railGroup.panes', { n: props.group.count }, props.group.count))
 const lit = computed(() => props.group.focused && (props.group.folded || !props.group.paneKeys.includes(workspace.activeKey ?? '')))
 const activePane = computed(() => (props.group.tabActive && props.group.paneKeys.includes(workspace.activeKey ?? '') ? workspace.activeKey : null))
@@ -82,6 +84,7 @@ watch(
     @contextmenu.prevent.stop="emit('menu', group, $event)"
   >
     <span v-if="flashKey" :key="flashKey" class="ccm-flash pointer-events-none absolute inset-0 rounded-inner" :class="FLASH[group.state]" aria-hidden="true" />
+    <span v-if="sweep" :key="sweep" class="ccm-peer-sweep absolute top-1.5 bottom-1.5 left-[3px] w-0.5" aria-hidden="true" data-rail-peer-sweep />
     <span class="ccm-rail-stem pointer-events-none absolute bottom-0 left-[27px] top-[calc(50%+7px)] w-px bg-line" :data-folded="group.folded ? '' : undefined" aria-hidden="true" />
     <button
       v-if="!renaming"
@@ -119,12 +122,15 @@ watch(
       </span>
       <span
         class="flex h-4 min-w-0 items-center text-2xs font-normal transition-[opacity,translate] duration-(--ccm-dur-base) ease-out-quint"
-        :class="[group.folded ? '' : '-translate-y-1 opacity-0', TONE[group.state] ?? (lit ? 'text-accent-ink' : 'text-ink-muted')]"
+        :class="[group.folded ? '' : '-translate-y-1 opacity-0', TONE[group.state] ?? (lit ? 'text-accent-ink' : peer ? 'text-ink' : 'text-ink-muted')]"
         :aria-hidden="group.folded ? undefined : 'true'"
       >
         <span class="relative min-w-0 overflow-hidden">
           <Transition name="ccm-rail-word" @before-leave="unstamp">
-            <span :key="line" class="block truncate" data-rail-group-line>{{ line }}<span v-if="tool" class="sr-only"> ({{ word }})</span></span>
+            <span v-if="peer" :key="`p:${line}`" class="block truncate" data-rail-group-line :data-rail-peer="group.peer?.dir"
+              ><component :is="peer.glyph" :size="12" class="mr-1 inline-block align-[-2px]" :class="peer.tone" aria-hidden="true" />{{ line }}</span
+            >
+            <span v-else :key="line" class="block truncate" data-rail-group-line>{{ line }}<span v-if="tool" class="sr-only"> ({{ word }})</span></span>
           </Transition>
         </span>
         <Transition name="ccm-fade">

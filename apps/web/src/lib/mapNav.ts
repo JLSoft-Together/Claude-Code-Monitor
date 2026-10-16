@@ -1,6 +1,6 @@
 import type { Agent } from '@ccm/shared'
 import type { Ref } from 'vue'
-import { treeOrder } from './layout'
+import { trayId, treeOrder } from './layout'
 
 export interface MapNav {
   /** One column per session, top to bottom as the map stacks it (main first, then subagents in tree order). */
@@ -17,7 +17,7 @@ export function treeParent(agent: Agent, ids: Set<string>, mainId: string | unde
   return mainId && mainId !== agent.id ? mainId : null
 }
 
-export function buildNav(terminalIds: string[], byTerminal: Record<string, Agent[]>): MapNav {
+export function buildNav(terminalIds: string[], byTerminal: Record<string, Agent[]>, trays: readonly string[] = []): MapNav {
   const nav: MapNav = { columns: [], parent: new Map(), firstChild: new Map(), where: new Map() }
   for (const terminalId of terminalIds) {
     const agents = byTerminal[terminalId]
@@ -34,6 +34,10 @@ export function buildNav(terminalIds: string[], byTerminal: Record<string, Agent
       column.push(agent.id)
       nav.parent.set(agent.id, p)
       if (p && !nav.firstChild.has(p)) nav.firstChild.set(p, agent.id)
+    }
+    if (main && trays.includes(terminalId)) {
+      column.push(trayId(terminalId))
+      nav.parent.set(trayId(terminalId), main.id)
     }
     const c = nav.columns.length
     column.forEach((id, i) => nav.where.set(id, [c, i]))
@@ -132,4 +136,10 @@ export interface MapNodeContext {
   hiddenUnder: Readonly<Ref<ReadonlyMap<string, number>>>
   collapsed: Readonly<Ref<ReadonlySet<string>>>
   toggleFold: (id: string) => void
+}
+
+export interface TrayState {
+  open: boolean
+  finished: Agent[]
+  hidden: Agent[]
 }

@@ -10,6 +10,7 @@ export interface CollectorConfig {
   host: string
   port: number
   staleTtlMs: number
+  peerTtlMs?: number
   reconcileMs: number
   processVerifyMs: number
   activityLimit: number
@@ -48,6 +49,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJ
     host: '127.0.0.1',
     port: intFromEnv(env.CCM_PORT, 4317),
     staleTtlMs: intFromEnv(env.CCM_STALE_TTL_MIN, 120) * 60_000,
+    peerTtlMs: intFromEnv(env.CCM_PEER_TTL_MIN, 60) * 60_000,
     reconcileMs: 5_000,
     processVerifyMs: 60_000,
     activityLimit: 1000,

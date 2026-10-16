@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, ChevronRight, Ellipsis, Folder, FolderOpen, GitBranch, Plus, X } from 'lucide-vue-next'
+import { BellRing, ChevronRight, Ellipsis, Folder, FolderOpen, GitBranch, Mail, Plus, X } from 'lucide-vue-next'
+import { usePaneInfo } from '../../../composables/usePaneInfo'
 import { useRailTabStop } from '../../../composables/useRail'
 import { onDustLeave } from '../../../lib/dust'
 import { motionMs, pinLeaving } from '../../../lib/motion'
@@ -61,6 +62,8 @@ const headDir = computed(() => (props.cluster.checkouts.find((k) => k.active) ??
 const showCheckouts = computed(() => showsCheckouts(props.cluster))
 const isStop = useRailTabStop()
 const headStop = computed(() => (isStop(headId(props.cluster.key)) ? 0 : -1))
+const { peerView } = usePaneInfo()
+const news = computed(() => (props.collapsed && props.cluster.peer ? peerView(props.cluster.peer).label : null))
 
 function checkoutLabel(k: RailCheckout): string {
   return k.branch ?? (k.path ? folderName(k.path) : '')
@@ -138,6 +141,11 @@ const HEAD_BTN =
         </button>
       </h3>
       <span role="group" class="flex shrink-0 items-center gap-0.5" :aria-label="t('workspace.rail.menu.label', { name })">
+        <Transition name="ccm-fade">
+          <span v-if="news" class="inline-flex size-4 shrink-0 items-center justify-center text-peer" :title="news" data-rail-cluster-peer>
+            <Mail :size="11" aria-hidden="true" /><span class="sr-only">{{ news }}</span>
+          </span>
+        </Transition>
         <span
           v-if="cluster.needs"
           class="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 text-2xs font-semibold tabular"

@@ -5,6 +5,7 @@ import en from '../i18n/en'
 import vi from '../i18n/vi'
 import { boxes, leaves } from '../lib/splitLayout'
 import type { PaneOpenResult, PtyPreset } from '@ccm/shared'
+import { openedLinkId, usePeersStore } from './peers'
 import { primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
@@ -726,5 +727,99 @@ describe('reopen closed panes', () => {
     ws.update(again.key, { state: 'running' })
     expect(ws.reopenClosed()).toEqual({ keys: [], from: [] })
     expect(ws.panes).toHaveLength(1)
+  })
+})
+
+describe('opened by another pane', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  const keyOf = (r: PaneOpenResult): string => (r.ok ? r.paneKey : '')
+
+  function opened(ws: ReturnType<typeof useWorkspaceStore>) {
+    ws.canvasSize = { w: 1600, h: 900 }
+    const a = ws.open('claude', 'C:/work/app')
+    ws.update(a.key, { sessionId: 'host-a', state: 'running' })
+    const b = keyOf(ws.openFromAgent({ id: 't1', from: 'host-a', preset: 'claude', cwd: 'C:/work/app' }))
+    ws.update(b, { sessionId: 'host-b', state: 'running' })
+    return { a: a.key, b }
+  }
+
+  it('remembers the calling pane, never for a deeplink', () => {
+    const ws = useWorkspaceStore()
+    const { a, b } = opened(ws)
+    expect(ws.panes.find((p) => p.key === b)!.openedBy).toBe(a)
+    const deeplink = keyOf(ws.openFromAgent({ id: 't2', preset: 'claude', cwd: 'C:/work/app' }))
+    expect(ws.panes.find((p) => p.key === deeplink)!.openedBy).toBeUndefined()
+    const lost = keyOf(ws.openFromAgent({ id: 't3', from: 'host-gone', preset: 'claude', cwd: 'C:/work/app' }))
+    expect(ws.panes.find((p) => p.key === lost)!.openedBy).toBeUndefined()
+  })
+
+  it('links the two sessions once both are known and tells the opened pane once', async () => {
+    const ws = useWorkspaceStore()
+    const peers = usePeersStore()
+    const { a, b } = opened(ws)
+    await nextTick()
+    expect(peers.list).toHaveLength(0)
+    ws.update(a, { terminalId: 'ta' })
+    await nextTick()
+    expect(peers.list).toHaveLength(0)
+    ws.update(b, { terminalId: 'tb' })
+    await nextTick()
+    expect(peers.list).toEqual([expect.objectContaining({ id: openedLinkId('ta', 'tb'), kind: 'opened', a: 'ta', b: 'tb', ab: 1, ba: 0, lastDir: 'ab' })])
+    expect(peers.recentOf('tb')).toMatchObject({ dir: 'in', kind: 'opened', others: ['ta'] })
+    expect(peers.roleOf('ta').opened).toEqual(['tb'])
+    expect(peers.pulses).toHaveLength(1)
+    ws.update(a, { focusedAt: 1 })
+    ws.update(b, { terminalId: 'tb' })
+    await nextTick()
+    expect(peers.pulses).toHaveLength(1)
+  })
+
+  it('keeps the link quiet after a reload', async () => {
+    const ws = useWorkspaceStore()
+    const { a, b } = opened(ws)
+    await nextTick()
+    expect(JSON.parse(sessionStorage.getItem('ccm.workspace.panes')!).panes.find((p: { key: string }) => p.key === b).openedBy).toBe(a)
+    expect(localStorage.getItem('ccm.workspace.last')).not.toContain('openedBy')
+
+    setActivePinia(createPinia())
+    const next = useWorkspaceStore()
+    const peers = usePeersStore()
+    expect(next.panes.find((p) => p.key === b)!.openedBy).toBe(a)
+    next.update(a, { terminalId: 'ta' })
+    next.update(b, { terminalId: 'tb' })
+    await nextTick()
+    expect(peers.list.map((l) => l.id)).toEqual([openedLinkId('ta', 'tb')])
+    expect(peers.recentOf('tb')).toBeNull()
+    expect(peers.pulses).toHaveLength(0)
+  })
+
+  it('drops the link with a closed pane and brings it back, quietly, on undo', async () => {
+    const ws = useWorkspaceStore()
+    const peers = usePeersStore()
+    const { a, b } = opened(ws)
+    ws.update(a, { terminalId: 'ta' })
+    ws.update(b, { terminalId: 'tb' })
+    await nextTick()
+    const pulses = peers.pulses.length
+    ws.requestClose([a], () => false)
+    await nextTick()
+    expect(peers.list).toHaveLength(0)
+    expect(ws.panes.find((p) => p.key === b)!.openedBy).toBe(a)
+    const back = ws.reopenClosed()!
+    const opener = back.keys[0]!
+    expect(ws.panes.find((p) => p.key === b)!.openedBy).toBe(opener)
+    ws.update(opener, { terminalId: 'ta2' })
+    await nextTick()
+    expect(peers.list.map((l) => l.id)).toEqual([openedLinkId('ta2', 'tb')])
+    expect(peers.pulses).toHaveLength(pulses)
+
+    ws.requestClose([b], () => false)
+    const again = ws.reopenClosed()!
+    expect(ws.panes.find((p) => p.key === again.keys[0])!.openedBy).toBe(opener)
   })
 })

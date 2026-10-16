@@ -35,6 +35,7 @@ Source: color audit 2026-10-14. Apple macOS system colors as reference. Tokens l
 | agent-shell | = ink-muted | = ink-muted | systemGray | Shell glyph | — |
 | agent-browser | #0071a4 | #64d2ff | systemCyan | Browser glyph | — |
 | agent-file | #7f6545 | #b59469 | systemBrown | File glyph | — |
+| peer / peer-soft | #a83279 / /.10 | #ff7ac6 / /.16 | systemPink-ish magenta (v54) | main ↔ main messages only: ✉ glyph, flying envelope, one-shot ring on the receiving card, one-shot 2px sweep, peer arc while a message flies | text (use ink), static relations (ink-faint), status, large fills |
 | series-input/output/write/read | cat-1..4 | cat-1..4 | dataviz | token-type series only | models, providers |
 | model-1..8 | cat rotated (5,6,8,1,2,3,4,7 → never = series/codex in same view) | | dataviz | Usage › Models | — |
 | diff-add / diff-add-soft | #1f7a35 / green/.15 | #30d158 / green/.18 | systemGreen | `+N`, added lines | status |

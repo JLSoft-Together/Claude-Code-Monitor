@@ -23,6 +23,12 @@ import v52Pane from './workspace-v52-pane'
 import v52Tabs from './workspace-v52-tabs'
 import v52Rail from './workspace-v52-rail'
 import v52Mission from './workspace-v52-mission'
+import monitorV53 from './monitor-v53'
+import sessionV53 from './session-v53'
+import usageV53 from './usage-v53'
+import peerV54 from './peer-v54'
+import peerMapV54 from './peer-map-v54'
+import peerWsV54 from './peer-ws-v54'
 
 export default {
   ...v25.en,
@@ -32,6 +38,12 @@ export default {
   ...layout.en,
   ...fwp.en,
   ...fileEditor.en,
+  ...monitorV53.en,
+  ...sessionV53.en,
+  ...usageV53.en,
+  ...peerV54.en,
+  ...peerMapV54.en,
+  ...peerWsV54.en,
   app: {
     title: 'GolAIm',
     skipToContent: 'Skip to content',
@@ -277,7 +289,6 @@ export default {
     renameReset: 'Go back to the original name ({title})',
     renameOffline: 'Collector offline — name not saved. Try again when it reconnects.',
     originalName: 'Original name: {title}',
-    nameHint: 'Auto-named · rename with the pencil or /rename',
     nameHintLong: 'Claude named this session after its folder. Rename it here, run /rename <name> inside Claude, or start Claude with claude -n "<name>".',
   },
   agent: {
@@ -410,11 +421,6 @@ export default {
   usage: {
     vs: { today: 'vs yesterday', '7d': 'vs previous 7 days', '30d': 'vs previous 30 days', all: '' },
     vsTitle: 'Compared with {from} to {to}, same filters',
-    hitRate: 'Cache read rate',
-    hitShort: 'Cache read',
-    hitTitle: 'Share of prompt tokens served from cache: cache read / (input + cache write + cache read). Higher is cheaper.',
-    hitDelta: '{pts} pts',
-    title: 'Token usage',
     subtitle: 'Read from Claude Code transcripts on this machine. Counts per API message, split by token type and model.',
     rangeLabel: 'Time range',
     metricLabel: 'Measure',
@@ -430,35 +436,17 @@ export default {
     empty: 'No token usage recorded yet.',
     emptyHint: 'Usage appears after Claude Code answers its first message.',
     footnote: 'Cost is an API-list-price estimate (prices checked {date}), not your bill — subscription plans are charged differently.',
-    totalTokens: 'Total tokens',
-    messages: '{n} messages',
-    modelCount: '{n} models',
-    share: '{pct} of total',
-    estimatedCost: 'Estimated cost',
-    costNote: 'at API list prices',
     unpriced: '{n} messages from models without a known price',
     series: { input: 'Input', output: 'Output', cacheWrite: 'Cache write', cacheRead: 'Cache read' },
-    daily: 'Per day',
     chartSummary: '{days} days · {total} · busiest {peak}',
-    toggleSeries: 'Show or hide this series',
     showTable: 'Show as table',
     showChart: 'Show as chart',
     total: 'Total',
     day: 'Day',
-    byModel: 'By model',
-    byModelHint: 'Select a model to filter the whole page.',
     noRows: 'Nothing in this range.',
     cost: 'Est. cost',
     clearFilter: 'Clear model filter',
     filterBy: 'Filter by {name}',
-    byProject: 'By project',
-    byProjectHint: 'Working folder of each session. Sort by any column, search, filter by drive; pick a row to filter the page.',
-    otherProjects: '{n} other projects',
-    live: 'Live sessions',
-    liveHint: 'Tokens of the current conversation in each running terminal, main agent plus subagents.',
-    session: 'Session',
-    liveInput: 'Input + cache write',
-    agentCount: '{n} agents',
   },
   panel: {
     pin: 'Pin as a column',
