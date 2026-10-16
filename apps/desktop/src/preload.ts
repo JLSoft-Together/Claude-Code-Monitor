@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
     }
   },
   captureGuest: (webContentsId: number): Promise<unknown> => ipcRenderer.invoke('ccm:capture-guest', webContentsId),
+  captureRect: (rect: { x: number; y: number; width: number; height: number }): Promise<unknown> => ipcRenderer.invoke('ccm:capture-rect', rect),
   projectRoot: (dir: string, remembered?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:project-root', dir, remembered === true),
   scripts: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:scripts', dir),
   layoutsList: (project: string): Promise<unknown> => ipcRenderer.invoke('ccm:layouts-list', project),

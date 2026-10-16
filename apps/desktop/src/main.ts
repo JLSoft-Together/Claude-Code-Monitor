@@ -33,6 +33,7 @@ import { defaultSpawner } from './run/proc'
 import { RunManager } from './run/sessions'
 import { PtySupervisor } from './pty/supervisor'
 import { paneOpenResult, parseOpenLink, realDir, takeLinkSlot, type OpenLink } from './openLink'
+import { dustSize } from './capture'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
@@ -703,6 +704,22 @@ async function ready(): Promise<void> {
       saveAppearance({ look, background: look.canvas })
     }
     return true
+  })
+  ipcMain.handle('ccm:capture-rect', async (event, rect: unknown) => {
+    const r = rect as { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null
+    if (!isAppFrame(event) || !r || ![r.x, r.y, r.width, r.height].every((n) => typeof n === 'number' && Number.isFinite(n))) return null
+    const zoom = event.sender.getZoomFactor()
+    const [x, y, width, height] = [r.x, r.y, r.width, r.height].map((n) => Math.round((n as number) * zoom)) as [number, number, number, number]
+    if (width < 1 || height < 1 || width * height > 4_000_000) return null
+    try {
+      const image = await event.sender.capturePage({ x: Math.max(0, x), y: Math.max(0, y), width, height })
+      if (image.isEmpty()) return null
+      const size = image.getSize()
+      const css = dustSize(width, height, size)
+      return (css.width < size.width || css.height < size.height ? image.resize({ ...css, quality: 'good' }) : image).toPNG()
+    } catch {
+      return null
+    }
   })
   ipcMain.handle('ccm:zoom', (event, action: unknown) => {
     if (!isAppFrame(event)) return null

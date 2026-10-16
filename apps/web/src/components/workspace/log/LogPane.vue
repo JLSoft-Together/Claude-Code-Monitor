@@ -395,7 +395,7 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
 
 <template>
   <section ref="rootEl" class="flex min-h-0 min-w-0 flex-col bg-surface" :aria-label="t('workspace.log.title')" data-log-pane>
-    <div class="flex h-9 shrink-0 items-center gap-1 border-b border-line px-2">
+    <div class="@container flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2 select-none" data-pane-head>
       <span class="min-w-0 truncate text-xs font-semibold text-ink" :title="log.root.value ?? cwd">{{ t('workspace.log.title') }}</span>
       <span class="flex-1" />
       <slot name="end" />

@@ -143,6 +143,9 @@
   --ccm-dur-fast: 150ms;
   --ccm-dur-base: 220ms;
   --ccm-dur-slow: 300ms;
+  --ccm-dur-emph: 520ms;
+  --ccm-dur-signal: 900ms;
+  --ccm-stagger: 28ms;
 
   /* Light status inks use Apple's high-contrast variants (text must clear 4.5:1). */
   --ccm-working: #c93400;
@@ -512,6 +515,11 @@ body {
   outline: none;
 }
 
+[data-menu-panel]:focus-visible,
+[data-menu-panel] [role='menuitem']:focus-visible {
+  outline: none;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: var(--ccm-dur-base);
@@ -536,7 +544,7 @@ body {
 }
 
 .ccm-enter {
-  animation: ccm-enter 240ms var(--ease-out-quint) both;
+  animation: ccm-enter var(--ccm-dur-base) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-pop {
@@ -547,7 +555,7 @@ body {
 }
 
 .ccm-pop {
-  animation: ccm-pop 240ms var(--ease-out-quint) both;
+  animation: ccm-pop var(--ccm-dur-base) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-flash {
@@ -566,7 +574,7 @@ body {
   border-radius: inherit;
   border: 2px solid currentColor;
   pointer-events: none;
-  animation: ccm-flash 900ms var(--ease-out-quint) forwards;
+  animation: ccm-flash var(--ccm-dur-signal) var(--ease-out-quint) forwards;
 }
 
 @keyframes ccm-breathe {
@@ -598,7 +606,7 @@ body {
 .ccm-grow {
   transform-box: fill-box;
   transform-origin: bottom;
-  animation: ccm-grow 520ms var(--ease-out-quint) both;
+  animation: ccm-grow var(--ccm-dur-emph) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-grow-x {
@@ -609,7 +617,7 @@ body {
 
 .ccm-grow-x {
   transform-origin: left;
-  animation: ccm-grow-x 480ms var(--ease-out-quint) both;
+  animation: ccm-grow-x var(--ccm-dur-emph) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-highlight {
@@ -647,7 +655,7 @@ body {
 
 .ccm-tick {
   display: inline-block;
-  animation: ccm-tick 320ms var(--ease-out-quint) both;
+  animation: ccm-tick var(--ccm-dur-slow) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-pulse {
@@ -739,7 +747,7 @@ body {
 .ccm-quota-shine {
   background-color: color-mix(in srgb, var(--ccm-surface) 55%, transparent);
   transform: translateX(300%);
-  animation: ccm-quota-shine 900ms 150ms var(--ease-out-quint) both;
+  animation: ccm-quota-shine var(--ccm-dur-signal) 150ms var(--ease-out-quint) both;
 }
 
 @keyframes ccm-token-glow {
@@ -750,7 +758,7 @@ body {
 }
 
 .ccm-token-glow {
-  animation: ccm-token-glow 900ms var(--ease-out-quint);
+  animation: ccm-token-glow var(--ccm-dur-signal) var(--ease-out-quint);
 }
 
 /* Each combo update re-keys the badge, so the pop replays while the total grows. */
@@ -962,7 +970,7 @@ body {
   transform-origin: var(--ccm-origin, top right);
   transition:
     opacity var(--ccm-dur-fast) var(--ease-out-quint),
-    scale var(--ccm-dur-base) var(--ease-spring);
+    scale var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-menu-leave-active {
   pointer-events: none;
@@ -982,7 +990,7 @@ body {
   transition: opacity var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-dialog-enter-active .ccm-sheet {
-  transition: scale var(--ccm-dur-base) var(--ease-spring);
+  transition: scale var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-dialog-leave-active {
   pointer-events: none;
@@ -1016,7 +1024,7 @@ body {
 .ccm-sheet-enter-active {
   transition:
     opacity var(--ccm-dur-base) var(--ease-out-quint),
-    scale var(--ccm-dur-base) var(--ease-spring);
+    scale var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-sheet-leave-active {
   pointer-events: none;
@@ -1084,7 +1092,7 @@ body {
 /* new edge draws from parent to child; AgentMap sets --ccm-edge-len to the path length, the fallback keeps it hidden until then */
 .vue-flow__edge.ccm-edge-new .vue-flow__edge-path {
   stroke-dasharray: var(--ccm-edge-len, 1000);
-  animation: ccm-edge-draw 650ms var(--ease-out-quint) both;
+  animation: ccm-edge-draw var(--ccm-dur-emph) var(--ease-out-quint) both;
 }
 
 @keyframes ccm-edge-draw {
@@ -1136,11 +1144,19 @@ body {
   object-position: left top;
 }
 
+::view-transition-group(ccm-dust),
+::view-transition-new(ccm-dust) {
+  animation: none;
+}
+::view-transition-old(ccm-dust) {
+  display: none;
+}
+
 /* Workspace tabs (TransitionGroup name="ccm-tab"); WorkspaceView pins a leaving tab where it stood. */
 .ccm-tab-enter-active {
   transition:
     opacity var(--ccm-dur-base) var(--ease-out-quint),
-    scale var(--ccm-dur-base) var(--ease-spring);
+    scale var(--ccm-dur-base) var(--ease-out-quint);
 }
 .ccm-tab-leave-active {
   position: absolute;
@@ -1156,6 +1172,29 @@ body {
 }
 .ccm-tab-move {
   transition: transform var(--ccm-dur-base) var(--ease-out-quint);
+}
+
+.ccm-tabstrip {
+  scrollbar-width: none;
+}
+.ccm-tabstrip::-webkit-scrollbar {
+  display: none;
+}
+.ccm-tabstrip[data-fade-start],
+.ccm-tabstrip[data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--ccm-tabstrip-fade-start, 0px),
+    black calc(100% - var(--ccm-tabstrip-fade-end, 0px)),
+    transparent
+  );
+}
+.ccm-tabstrip[data-fade-start] {
+  --ccm-tabstrip-fade-start: 24px;
+}
+.ccm-tabstrip[data-fade-end] {
+  --ccm-tabstrip-fade-end: 24px;
 }
 
 .vue-flow__handle {
@@ -1175,8 +1214,8 @@ body {
 .ccm-flip-enter-active,
 .ccm-flip-leave-active {
   transition:
-    transform 340ms var(--ease-out-quint),
-    opacity 340ms var(--ease-out-quint);
+    transform var(--ccm-dur-slow) var(--ease-out-quint),
+    opacity var(--ccm-dur-slow) var(--ease-out-quint);
   backface-visibility: hidden;
 }
 .ccm-flip-leave-active {
@@ -1196,8 +1235,8 @@ body {
 .ccm-title-char {
   display: inline-block;
   white-space: pre;
-  animation: ccm-title-in 520ms var(--ease-out-quint) both;
-  animation-delay: calc(var(--i) * 28ms);
+  animation: ccm-title-in var(--ccm-dur-emph) var(--ease-out-quint) both;
+  animation-delay: calc(var(--i) * var(--ccm-stagger));
 }
 .ccm-caret {
   animation: ccm-caret 1.1s step-end infinite;
@@ -1227,7 +1266,7 @@ body {
 }
 
 .ccm-title:hover .ccm-title-char {
-  animation: ccm-title-wave 600ms var(--ease-out-quint) both;
+  animation: ccm-title-wave var(--ccm-dur-emph) var(--ease-out-quint) both;
   animation-delay: calc(var(--i) * 22ms);
 }
 @keyframes ccm-title-wave {
@@ -1238,5 +1277,106 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ccm-title:hover .ccm-title-char {
     animation: none;
+  }
+}
+
+.ccm-rail-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-rail-fold > * {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  transition:
+    transform var(--ccm-dur-base) var(--ease-out-quint) calc(var(--fold-i, 0) * var(--ccm-stagger)),
+    opacity var(--ccm-dur-base) var(--ease-out-quint) calc(var(--fold-i, 0) * var(--ccm-stagger));
+}
+.ccm-rail-fold[data-folded] {
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--ccm-dur-fast) var(--ease-exit) 40ms;
+}
+.ccm-rail-fold[data-folded] > * {
+  transform: translateY(-8px) scale(0.98);
+  opacity: 0;
+  transition:
+    transform var(--ccm-dur-fast) var(--ease-exit),
+    opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+
+.ccm-rail-chevron {
+  transition: transform var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-rail-chevron[data-folded] {
+  transform: rotate(-90deg);
+}
+
+.ccm-rail-stem {
+  transform-origin: top;
+  transition:
+    transform var(--ccm-dur-base) var(--ease-out-quint),
+    opacity var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-rail-stem[data-folded] {
+  transform: scaleY(0);
+  opacity: 0;
+  transition:
+    transform var(--ccm-dur-fast) var(--ease-exit),
+    opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+
+.ccm-glyph-pane {
+  transition:
+    x var(--ccm-dur-base) var(--ease-out-quint),
+    y var(--ccm-dur-base) var(--ease-out-quint),
+    width var(--ccm-dur-base) var(--ease-out-quint),
+    height var(--ccm-dur-base) var(--ease-out-quint);
+}
+
+.ccm-rail-bar {
+  position: absolute;
+  left: 3px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ccm-working);
+  pointer-events: none;
+  animation: ccm-breathe 2.2s ease-in-out infinite;
+}
+
+.ccm-rail-word-enter-active {
+  transition: opacity var(--ccm-dur-fast) var(--ease-out-quint);
+}
+.ccm-rail-word-leave-active {
+  position: absolute;
+  inset: 0 0 auto 0;
+  transition: opacity var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-rail-word-enter-from,
+.ccm-rail-word-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ccm-rail-fold,
+  .ccm-rail-fold[data-folded],
+  .ccm-rail-fold > *,
+  .ccm-rail-fold[data-folded] > *,
+  .ccm-rail-chevron,
+  .ccm-rail-stem,
+  .ccm-rail-stem[data-folded],
+  .ccm-glyph-pane,
+  .ccm-rail-word-enter-active,
+  .ccm-rail-word-leave-active {
+    transition: none;
+  }
+  .ccm-rail-fold[data-folded] > * {
+    transform: none;
+  }
+  .ccm-rail-bar {
+    animation: none;
+    opacity: 0.85;
   }
 }

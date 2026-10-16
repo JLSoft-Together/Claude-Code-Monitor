@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, ArrowRight, Bug, ExternalLink, FolderOpen, Globe, MonitorSmartphone, RotateCw, Send, X, Zap, ZapOff } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Bug, Check, ExternalLink, FolderOpen, Globe, MonitorSmartphone, RotateCw, Send, X, Zap, ZapOff } from 'lucide-vue-next'
 import type { HandoffAction } from '../../lib/agentHandoff'
 import type { DeviceId } from '../../lib/browserDevices'
+import type { MenuEntry } from '../../lib/menu'
 import DeviceMenu from './DeviceMenu.vue'
 import HandoffMenu from './HandoffMenu.vue'
+import PaneMore from './PaneMore.vue'
 
 const props = defineProps<{
   address: string
@@ -94,18 +96,54 @@ function onKey(e: KeyboardEvent): void {
 
 const deviceAnchor = ref<DOMRect | null>(null)
 const deviceButton = ref<HTMLButtonElement | null>(null)
-const toggleDevices = (): void => {
-  deviceAnchor.value = deviceAnchor.value ? null : (deviceButton.value?.getBoundingClientRect() ?? null)
+const deviceTrigger = ref<HTMLElement | null>(null)
+const toggleDevices = (from?: HTMLElement): void => {
+  const el = from ?? deviceButton.value
+  deviceTrigger.value = el
+  deviceAnchor.value = deviceAnchor.value ? null : (el?.getBoundingClientRect() ?? null)
 }
 
 const handoffAnchor = ref<DOMRect | null>(null)
 const handoffButton = ref<HTMLButtonElement | null>(null)
-const toggleHandoff = (): void => {
-  handoffAnchor.value = handoffAnchor.value ? null : (handoffButton.value?.getBoundingClientRect() ?? null)
+const handoffTrigger = ref<HTMLElement | null>(null)
+const toggleHandoff = (from?: HTMLElement): void => {
+  const el = from ?? handoffButton.value
+  handoffTrigger.value = el
+  handoffAnchor.value = handoffAnchor.value ? null : (el?.getBoundingClientRect() ?? null)
 }
 function pickHandoff(action: HandoffAction): void {
-  const rect = handoffButton.value?.getBoundingClientRect()
+  const rect = (handoffTrigger.value ?? handoffButton.value)?.getBoundingClientRect()
   if (rect) emit('handoff', action, rect)
+}
+
+const headMore = computed<MenuEntry[]>(() => {
+  const out: MenuEntry[] = [
+    { id: 'back', label: t('workspace.browser.back'), icon: ArrowLeft, disabled: !props.canBack },
+    { id: 'forward', label: t('workspace.browser.forward'), icon: ArrowRight, disabled: !props.canForward },
+    props.loading ? { id: 'reload', label: t('workspace.browser.stop'), icon: X } : { id: 'reload', label: t('workspace.browser.reload'), icon: RotateCw },
+    { separator: true },
+    { id: 'device', label: t('workspace.browser.deviceMenu'), hint: props.zoom !== 100 ? `${props.zoom}%` : undefined, icon: MonitorSmartphone },
+  ]
+  if (props.liveAvailable) out.push({ id: 'live', label: t('workspace.browser.liveReload'), hint: props.live ? t('workspace.browser.liveReloadOn') : t('workspace.browser.liveReloadOff'), icon: props.live ? Check : Zap })
+  if (props.canHandoff) out.push({ id: 'handoff', label: handoffLabel.value, icon: Send })
+  out.push({ separator: true })
+  out.push({ id: 'openFile', label: t('workspace.browser.openFile'), icon: FolderOpen })
+  out.push({ id: 'external', label: t('workspace.browser.openExternal'), icon: ExternalLink })
+  out.push({ id: 'devtools', label: t('workspace.browser.devtools'), icon: Bug })
+  return out
+})
+
+function pickHead(id: string, anchor: HTMLElement): void {
+  if (id === 'back') emit('back')
+  else if (id === 'forward') emit('forward')
+  else if (id === 'reload' && props.loading) emit('stop')
+  else if (id === 'reload') emit('reload')
+  else if (id === 'device') toggleDevices(anchor)
+  else if (id === 'live') emit('live')
+  else if (id === 'handoff') toggleHandoff(anchor)
+  else if (id === 'openFile') emit('openFile')
+  else if (id === 'external') emit('external')
+  else if (id === 'devtools') emit('devtools')
 }
 
 const handoffLabel = computed(() => {
@@ -113,28 +151,55 @@ const handoffLabel = computed(() => {
   return n ? `${t('workspace.handoff.menu')} (${t('workspace.handoff.consoleHint', { n }, n)})` : t('workspace.handoff.menu')
 })
 
-defineExpose({ handoffButton })
+const handoffFocus = computed(() => handoffTrigger.value ?? handoffButton.value)
+
+defineExpose({ handoffButton: handoffFocus })
 </script>
 
 <template>
-  <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-1.5" role="toolbar" :aria-label="t('workspace.browser.toolbar')">
-    <button type="button" class="ccm-btn-plain shrink-0" :disabled="!canBack" :title="t('workspace.browser.back')" :aria-label="t('workspace.browser.back')" @click="emit('back')">
+  <div class="ccm-material @container flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-1.5" role="toolbar" :aria-label="t('workspace.browser.toolbar')" data-pane-head>
+    <button
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[340px]:hidden"
+      :disabled="!canBack"
+      :title="t('workspace.browser.back')"
+      :aria-label="t('workspace.browser.back')"
+      data-more="back"
+      @click="emit('back')"
+    >
       <ArrowLeft :size="15" aria-hidden="true" />
     </button>
-    <button type="button" class="ccm-btn-plain shrink-0" :disabled="!canForward" :title="t('workspace.browser.forward')" :aria-label="t('workspace.browser.forward')" @click="emit('forward')">
+    <button
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[440px]:hidden"
+      :disabled="!canForward"
+      :title="t('workspace.browser.forward')"
+      :aria-label="t('workspace.browser.forward')"
+      data-more="forward"
+      @click="emit('forward')"
+    >
       <ArrowRight :size="15" aria-hidden="true" />
     </button>
     <button
       v-if="loading"
       type="button"
-      class="ccm-btn-plain shrink-0"
+      class="ccm-btn-plain shrink-0 @max-[340px]:hidden"
       :title="t('workspace.browser.stop')"
       :aria-label="t('workspace.browser.stop')"
+      data-more="reload"
       @click="emit('stop')"
     >
       <X :size="15" aria-hidden="true" />
     </button>
-    <button v-else type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.browser.reload')" :aria-label="t('workspace.browser.reload')" @click="emit('reload')">
+    <button
+      v-else
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[340px]:hidden"
+      :title="t('workspace.browser.reload')"
+      :aria-label="t('workspace.browser.reload')"
+      data-more="reload"
+      @click="emit('reload')"
+    >
       <RotateCw :size="14" aria-hidden="true" />
     </button>
 
@@ -165,12 +230,13 @@ defineExpose({ handoffButton })
     <button
       ref="deviceButton"
       type="button"
-      class="ccm-btn-plain shrink-0 gap-1 text-xs"
+      class="ccm-btn-plain shrink-0 gap-1 text-xs @max-[440px]:hidden"
       :title="t('workspace.browser.deviceMenu')"
       :aria-label="t('workspace.browser.deviceMenu')"
       aria-haspopup="menu"
       :aria-expanded="!!deviceAnchor"
-      @click="toggleDevices"
+      data-more="device"
+      @click="toggleDevices()"
     >
       <MonitorSmartphone :size="15" aria-hidden="true" />
       <span v-if="zoom !== 100" class="tabular">{{ zoom }}%</span>
@@ -181,7 +247,7 @@ defineExpose({ handoffButton })
       :device="device"
       :rotated="rotated"
       :zoom="zoom"
-      :trigger="deviceButton"
+      :trigger="deviceTrigger"
       @device="(id) => emit('device', id)"
       @rotate="emit('rotate')"
       @zoom="(z) => emit('zoom', z)"
@@ -190,35 +256,58 @@ defineExpose({ handoffButton })
     <button
       v-if="liveAvailable"
       type="button"
-      class="ccm-btn-plain shrink-0"
+      class="ccm-btn-plain shrink-0 @max-[440px]:hidden"
       :aria-pressed="live"
       :title="live ? t('workspace.browser.liveReloadOn') : t('workspace.browser.liveReloadOff')"
       :aria-label="t('workspace.browser.liveReload')"
+      data-more="live"
       @click="emit('live')"
     >
       <Zap v-if="live" :size="14" aria-hidden="true" />
       <ZapOff v-else :size="14" aria-hidden="true" />
     </button>
-    <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.browser.openFile')" :aria-label="t('workspace.browser.openFile')" @click="emit('openFile')">
+    <button
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
+      :title="t('workspace.browser.openFile')"
+      :aria-label="t('workspace.browser.openFile')"
+      data-more="openFile"
+      @click="emit('openFile')"
+    >
       <FolderOpen :size="14" aria-hidden="true" />
     </button>
-    <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.browser.openExternal')" :aria-label="t('workspace.browser.openExternal')" @click="emit('external')">
+    <button
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
+      :title="t('workspace.browser.openExternal')"
+      :aria-label="t('workspace.browser.openExternal')"
+      data-more="external"
+      @click="emit('external')"
+    >
       <ExternalLink :size="14" aria-hidden="true" />
     </button>
-    <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.browser.devtools')" :aria-label="t('workspace.browser.devtools')" @click="emit('devtools')">
+    <button
+      type="button"
+      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
+      :title="t('workspace.browser.devtools')"
+      :aria-label="t('workspace.browser.devtools')"
+      data-more="devtools"
+      @click="emit('devtools')"
+    >
       <Bug :size="14" aria-hidden="true" />
     </button>
     <button
       v-if="canHandoff"
       ref="handoffButton"
       type="button"
-      class="ccm-btn-plain shrink-0 gap-1 text-xs"
+      class="ccm-btn-plain shrink-0 gap-1 text-xs @max-[340px]:hidden"
       :title="t('workspace.handoff.menu')"
       :aria-label="handoffLabel"
       aria-haspopup="menu"
       :aria-expanded="!!handoffAnchor"
       :aria-pressed="picking || undefined"
-      @click="toggleHandoff"
+      data-more="handoff"
+      @click="toggleHandoff()"
     >
       <Send :size="14" aria-hidden="true" />
       <span v-if="consoleCount" class="tabular text-2xs" aria-hidden="true">{{ consoleCount }}</span>
@@ -227,10 +316,11 @@ defineExpose({ handoffButton })
       v-if="handoffAnchor"
       :anchor="handoffAnchor"
       :console-count="consoleCount ?? 0"
-      :trigger="handoffButton"
+      :trigger="handoffTrigger"
       @pick="pickHandoff"
       @close="handoffAnchor = null"
     />
+    <PaneMore class="hidden @max-[560px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
     <slot name="end" />
   </div>
 </template>

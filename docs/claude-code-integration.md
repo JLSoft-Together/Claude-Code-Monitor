@@ -544,6 +544,16 @@ Plan `.planning/PLAN-v49-workspace-open-api.md`. Before v49 an agent asked to "o
 
 **Deeplink path.** `agent-monitor://open?agent=claude|codex|shell&cwd=<absolute folder>[&resume=<session uuid>]` for callers outside the app (Claude in another terminal, scripts): `resume` (claude / codex, bare UUID only, else the link is ignored) reopens an unfinished session with `claude --resume` / `codex resume` (cwd must be its project folder); no prompt or name is read from the link (any web page can create one), the folder must be absolute (Windows: with a drive letter), local and existing (`apps/desktop/src/openLink.ts`). **No confirmation** (owner decision 2026-10-16, after being told any web page can fire the link): links are queued one at a time and capped at 10 per minute (`takeLinkSlot`), more are dropped. What still protects a folder a page picks: Claude Code asks its own "trust this folder?" before loading a new folder's project settings / hooks, and a shell pane only runs the user's profile. Registered for packaged builds only: Windows via `setAsDefaultProtocolClient`, macOS via `protocols` in `electron-builder.yml` + `open-url` (queued until boot). From Git Bash: `cmd //c start "" "agent-monitor://open?agent=claude&cwd=D:%5Cwork%5Capp"`; macOS: `open "agent-monitor://open?cwd=/Users/me/app"`.
 
+## 11x. Compact from the context menu: handoff → `/compact` → resume (v51, desktop only, 2026-10-16)
+
+Plan `.planning/PLAN-v51-compact-handoff.md`. Owner decision: the menu item **Compact…** (rail row, strip tab, Mission Control tile of a Claude / Codex pane) **sends** one prompt (bracketed paste, then `\r` 200 ms later) asking the agent to write a handoff to `<session cwd>/.planning/HANDOFF-YYYY-MM-DD-HHmm.md` and stop. This is the only place the app submits text to an agent, and only on the owner's click while the effective status is `idle` (disabled while working, while `waiting` on a permission or question — typed text would land in that dialog — and when the pane is not linked).
+
+- Slash commands are TUI input: the model cannot run `/compact` / `/clear` itself. When the agent went `working` → `idle` and the file exists (`readFile` kind `text`; `missing` keeps waiting), the app **types** `/compact` (raw keys, so the slash menu opens on it) without Enter.
+- Compaction is detected from `TerminalSession.compactions` (transcript `system/compact_boundary`, Codex rollout compaction) growing past the value at that step; then "Read `<file>` and continue." is prefilled (no Enter) and the flow ends. A compaction the owner runs by hand at any step ends it the same way.
+- The flow is runtime state on the pane (`Pane.compact`), never persisted; closing / exiting the pane drops it, the menu offers **Cancel compact** meanwhile.
+- v52: the pane header also offers the same action as a chip ("Context 82% · Compact…") once the main agent's context reaches `CONTEXT_THRESHOLDS.warning` and the flow could start (`compactState` `ready`). It is only a shortcut to the menu item: nothing is sent until the owner clicks it.
+- v52 undo close (`reopenClosed`): a closed Claude / Codex pane comes back with `--resume <agentSessionId>`, the same path as v49 `resume`; a session already running in another pane is not reopened twice.
+
 ## 12. Open items
 
 | Item | State |

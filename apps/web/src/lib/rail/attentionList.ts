@@ -27,6 +27,7 @@ export function buildAttentionList(clusters: readonly RailCluster[]): AttentionL
       for (const r of k.rows) {
         if (needsUser(r.state))
           entries.push({ paneKey: r.paneKey, tabKey: r.tabKey, state: r.state as 'failed' | 'asked', first: r.task ?? r.ordinal, agent: r.agent, place: c.name, branch: k.branch, run: r.run, since: r.since })
+        else if (r.state === 'subagents') footer.working++
         else if (r.state === 'working' || r.state === 'done' || r.state === 'ended') footer[r.state]++
         else footer.idle++
       }

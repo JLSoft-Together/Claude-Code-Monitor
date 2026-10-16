@@ -67,6 +67,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const keyHints = ref(read('ccm.keyHints') !== '0')
   const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const minimap = ref(read('ccm.minimap') !== '0')
+  const dimInactive = ref(read('ccm.workspace.dim') === '1')
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
@@ -90,6 +91,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(keyHints, (value) => persist('ccm.keyHints', value ? '1' : '0'))
   watch(breakReminder, (value) => persist('ccm.breakReminder', value ? '1' : '0'))
   watch(minimap, (value) => persist('ccm.minimap', value ? '1' : '0'))
+  watch(dimInactive, (value) => persist('ccm.workspace.dim', value ? '1' : '0'))
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
   watch(dailyBudget, (value) => persist('ccm.budget', String(value)))
@@ -208,6 +210,7 @@ export const useSettingsStore = defineStore('settings', () => {
     hideTools,
     keyHints,
     minimap,
+    dimInactive,
     pinned,
     activityPageSize,
     dailyBudget,

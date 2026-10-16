@@ -1,4 +1,4 @@
-import { computed, effectScope, ref } from 'vue'
+import { computed, effectScope, inject, ref, type InjectionKey } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TerminalSession } from '@ccm/shared'
 import { hasRun } from '../lib/desktop'
@@ -23,10 +23,16 @@ function createRail() {
   const { factsOf } = useProjectRoots()
   if (hasRun) void run.ensure()
 
-  const railSession = (s: TerminalSession): RailSession => ({ status: s.status, title: displayTitle(s), branch: s.gitBranch ?? undefined, since: s.statusSince ?? undefined })
+  const railSession = (s: TerminalSession, subagents: number): RailSession => ({
+    status: s.status,
+    title: displayTitle(s),
+    branch: s.gitBranch ?? undefined,
+    since: s.statusSince ?? undefined,
+    subagents,
+  })
   const sessionOf = (pane: Pane): RailSession | undefined => {
     const s = info.sessionOf(pane)
-    return s ? railSession(s) : undefined
+    return s ? railSession(s, info.subagentsOf(pane)) : undefined
   }
   const runOf = (pane: Pane): RunBadge | null => (hasRun && pane.kind === 'run' && pane.cwd ? runBadge(run.sessionsFor(pane.cwd)) : null)
 
@@ -38,6 +44,7 @@ function createRail() {
       sessionOf,
       factsOf,
       labelOf: (p) => (isTerm(p) && p.preset === 'shell' && !info.sessionOf(p) ? (shellTitle(p) ?? info.labelOf(p)) : info.labelOf(p)),
+      tabTitleOf: (tab) => info.tabTitle(tab),
       agentLabel: (p) => (p === 'shell' ? t('workspace.preset.shell') : t(`provider.${p}`)),
       runOf,
       history: workspace.recentDirs,
@@ -52,7 +59,25 @@ function createRail() {
     saveRailOrder(next)
   }
 
-  return { clusters, order, move, runOf }
+  const tabClusters = computed(() => new Map(clusters.value.flatMap((c) => c.tabKeys.map((k) => [k, c.key] as const))))
+  const clusterOfTab = (tabKey: string): string | undefined => tabClusters.value.get(tabKey)
+  const sameProject = (a: string, b: string): boolean => !!clusterOfTab(a) && clusterOfTab(a) === clusterOfTab(b)
+  const tabTitleOf = (tabKey: string): string => {
+    const tab = workspace.tabs.find((x) => x.key === tabKey)
+    return tab ? info.tabTitle(tab) : ''
+  }
+  const projectTabs = (tabKey: string): Array<{ key: string; title: string }> => {
+    const cluster = clusters.value.find((c) => c.key === clusterOfTab(tabKey))
+    return (cluster?.tabKeys ?? []).filter((k) => k !== tabKey).map((k) => ({ key: k, title: tabTitleOf(k) }))
+  }
+
+  return { clusters, order, move, runOf, clusterOfTab, sameProject, tabTitleOf, projectTabs }
+}
+
+export const RAIL_TAB_STOP: InjectionKey<(id: string) => boolean> = Symbol('railTabStop')
+
+export function useRailTabStop(): (id: string) => boolean {
+  return inject(RAIL_TAB_STOP, () => true)
 }
 
 let shared: ReturnType<typeof createRail> | undefined

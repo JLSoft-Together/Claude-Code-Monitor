@@ -167,7 +167,7 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
 </script>
 
 <template>
-  <div ref="bar" class="flex min-w-0 flex-1 items-center gap-1" role="toolbar" :aria-label="t('run.toolbar')">
+  <div ref="bar" class="@container flex min-w-0 flex-1 items-center gap-1" role="toolbar" :aria-label="t('run.toolbar')">
     <div class="relative min-w-0 shrink">
       <button
         type="button"
@@ -271,11 +271,11 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
         </div>
       </Transition>
     </div>
-    <button v-if="config?.type !== 'custom'" type="button" class="ccm-btn-plain shrink-0" :title="t('run.device.refresh')" :aria-label="t('run.device.refresh')" @click="run.refreshDevices()">
+    <button v-if="config?.type !== 'custom'" type="button" class="ccm-btn-plain shrink-0 @max-[320px]:hidden" :title="t('run.device.refresh')" :aria-label="t('run.device.refresh')" @click="run.refreshDevices()">
       <RefreshCw :size="13" aria-hidden="true" />
     </button>
 
-    <span class="mx-0.5 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+    <span class="mx-0.5 h-4 w-px shrink-0 bg-line @max-[320px]:hidden" aria-hidden="true" />
 
     <button
       type="button"
@@ -315,7 +315,7 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
     >
       <RotateCw :size="14" aria-hidden="true" />
     </button>
-    <button type="button" class="ccm-btn-plain shrink-0" :disabled="!devtools" :title="t('run.action.devtools')" :aria-label="t('run.action.devtools')" data-run-devtools @click="openDevtools">
+    <button type="button" class="ccm-btn-plain shrink-0 @max-[280px]:hidden" :disabled="!devtools" :title="t('run.action.devtools')" :aria-label="t('run.action.devtools')" data-run-devtools @click="openDevtools">
       <Gauge :size="14" aria-hidden="true" />
     </button>
   </div>

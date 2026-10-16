@@ -13,6 +13,16 @@ import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
 import mapV47 from './map-v47'
 import v48 from './workspace-v48'
+import v50 from './workspace-v50'
+import v50Rail from './workspace-v50-rail'
+import v50Tabs from './workspace-v50-tabs'
+import v50Mission from './workspace-v50-mission'
+import v51 from './workspace-v51'
+import v52 from './workspace-v52'
+import v52Pane from './workspace-v52-pane'
+import v52Tabs from './workspace-v52-tabs'
+import v52Rail from './workspace-v52-rail'
+import v52Mission from './workspace-v52-mission'
 
 export default {
   ...v25.en,
@@ -42,6 +52,16 @@ export default {
     ...log.en,
     ...rail.en,
     ...v48.en.workspace,
+    ...v50.en,
+    ...v50Rail.en,
+    ...v50Tabs.en,
+    ...v50Mission.en,
+    ...v51.en,
+    ...v52.en,
+    ...v52Pane.en,
+    ...v52Tabs.en,
+    ...v52Rail.en,
+    ...v52Mission.en,
     tabs: 'Terminals',
     newLabel: 'New terminal or tab',
     close: 'Close terminal',
@@ -496,8 +516,11 @@ export default {
       wsSplitRight: 'Split the pane to the right',
       wsSplitDown: 'Split the pane downward',
       wsClose: 'Close the focused pane',
+      wsReopen: 'Reopen the last closed pane or tab',
+      wsZoom: 'Zoom the focused pane to fill the tab, or show all panes again',
       wsAttention: 'Jump to the next pane that needs you',
       wsCycle: 'Next tab of this project (add Shift to go back)',
+      wsMoveTab: 'Move the tab left / right',
       wsTab: 'Tab 1–9 of this project',
       wsMission: 'Mission Control: every tab of every project',
       wsFocus: 'Move focus to the pane beside it',

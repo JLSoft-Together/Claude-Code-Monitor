@@ -17,8 +17,12 @@ export type WorkspaceAction =
   | { t: 'explorer' }
   /** Mission Control: every tab of every project (⇧⌘O / Ctrl+Shift+O). */
   | { t: 'mission' }
+  | { t: 'moveTab'; step: 1 | -1 }
+  | { t: 'zoom' }
+  | { t: 'reopen' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
+const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
 
 /**
  * Windows Terminal's defaults (iTerm / Terminal.app on macOS), matched on `code` so Vietnamese IMEs and other
@@ -31,6 +35,8 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (mac) {
     if (!meta || ctrl) return null
     if (code === 'KeyT' && !shift && !alt) return { t: 'newTab' }
+    if (code === 'KeyT' && shift && !alt) return { t: 'reopen' }
+    if (code === 'Enter' && shift && !alt) return { t: 'zoom' }
     if (code === 'KeyA' && shift && !alt) return { t: 'attention' }
     if (code === 'KeyD' && !alt) return { t: 'split', dir: shift ? 'col' : 'row' }
     if (code === 'KeyW' && !shift && !alt) return { t: 'closePane' }
@@ -38,6 +44,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyE' && shift && !alt) return { t: 'explorer' }
     if (code === 'KeyO' && shift && !alt) return { t: 'mission' }
     if ((code === 'BracketLeft' || code === 'BracketRight') && shift && !alt) return { t: 'cycleTab', step: code === 'BracketRight' ? 1 : -1 }
+    if (PAGES[code] && shift && !alt) return { t: 'moveTab', step: PAGES[code]! }
     if (digit && !shift && !alt) return { t: 'tab', index: Number(digit[1]) - 1 }
     if (alt && ARROWS[code] && multiPane) return { t: shift ? 'swap' : 'focus', dir: ARROWS[code]! }
     return null
@@ -45,10 +52,13 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (meta) return null
   if (ctrl && shift && !alt && code === 'KeyT') return { t: 'newTab' }
   if (ctrl && shift && !alt && code === 'KeyW') return { t: 'closePane' }
+  if (ctrl && shift && !alt && code === 'KeyZ') return { t: 'reopen' }
+  if (ctrl && shift && !alt && code === 'Enter') return { t: 'zoom' }
   if (ctrl && shift && !alt && code === 'KeyA') return { t: 'attention' }
   if (ctrl && shift && !alt && code === 'KeyP') return { t: 'quickOpen' }
   if (ctrl && shift && !alt && code === 'KeyE') return { t: 'explorer' }
   if (ctrl && shift && !alt && code === 'KeyO') return { t: 'mission' }
+  if (ctrl && shift && !alt && PAGES[code]) return { t: 'moveTab', step: PAGES[code]! }
   if (alt && shift && !ctrl) {
     if (code === 'KeyD') return { t: 'split' }
     if (code === 'Equal' || code === 'NumpadAdd') return { t: 'split', dir: 'row' }

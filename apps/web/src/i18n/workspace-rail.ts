@@ -2,7 +2,7 @@
 const en = {
   rail: {
     title: 'Projects',
-    state: { failed: 'Failed', asked: 'Needs you', ended: 'Ended', working: 'Working', done: 'Finished', starting: 'Starting…', idle: 'Ready' },
+    state: { failed: 'Failed', asked: 'Needs you', ended: 'Ended', working: 'Working', subagents: 'Waiting on subagents', done: 'Finished', starting: 'Starting…', idle: 'Ready' },
     needs: '{n} needs you | {n} need you',
     worktree: 'worktree',
     folder: 'folder',
@@ -25,8 +25,6 @@ const en = {
     mission: {
       title: 'Mission Control',
       open: 'Mission Control ({keys})',
-      shelf: 'Projects and tabs',
-      windows: 'Panes of {name}',
       enter: 'Open {name}',
       empty: 'No output yet',
       panes: '{n} pane | {n} panes',
@@ -76,7 +74,7 @@ const en = {
 const vi: typeof en = {
   rail: {
     title: 'Dự án',
-    state: { failed: 'Lỗi', asked: 'Cần bạn', ended: 'Đã kết thúc', working: 'Đang chạy', done: 'Đã xong', starting: 'Đang khởi động…', idle: 'Sẵn sàng' },
+    state: { failed: 'Lỗi', asked: 'Cần bạn', ended: 'Đã kết thúc', working: 'Đang chạy', subagents: 'Chờ subagent', done: 'Đã xong', starting: 'Đang khởi động…', idle: 'Sẵn sàng' },
     needs: '{n} cần bạn | {n} cần bạn',
     worktree: 'worktree',
     folder: 'thư mục',
@@ -99,8 +97,6 @@ const vi: typeof en = {
     mission: {
       title: 'Mission Control',
       open: 'Mission Control ({keys})',
-      shelf: 'Dự án và tab',
-      windows: 'Các pane của {name}',
       enter: 'Mở {name}',
       empty: 'Chưa có output',
       panes: '{n} pane | {n} pane',

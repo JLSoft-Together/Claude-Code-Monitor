@@ -24,8 +24,10 @@ import {
   type ChangeEntry,
   type ChangesError,
 } from '../../lib/preview'
+import type { MenuEntry } from '../../lib/menu'
 import DiffView from './DiffView.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
+import PaneMore from './PaneMore.vue'
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
 const emit = defineEmits<{
@@ -579,6 +581,26 @@ const lang = computed(() => (selectedEntry.value ? grammarFor(undefined, selecte
 const countsLabel = (e: ChangeEntry): string => t('workspace.changes.counts', { added: e.added ?? 0, removed: e.removed ?? 0 })
 const rowTabIndex = (key: string): number => (cursor.value ? (cursor.value === key ? 0 : -1) : key === visibleKeys.value[0] ? 0 : -1)
 const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-xs text-ink outline-none hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent'
+
+const headMore = computed<MenuEntry[]>(() => {
+  const out: MenuEntry[] = [
+    { id: 'tree', label: t('workspace.diff.tree'), icon: treeMode.value ? Check : ListTree },
+    { id: 'layout:inline', label: t('workspace.changes.inline'), icon: opts.value.layout === 'inline' ? Check : undefined },
+    { id: 'layout:split', label: t('workspace.changes.split'), icon: opts.value.layout === 'split' ? Check : undefined },
+    { separator: true },
+  ]
+  if (hasLog && repoRoot.value) out.push({ id: 'log', label: t('workspace.log.open'), icon: GitGraph })
+  out.push({ id: 'refresh', label: t('workspace.changes.refresh'), icon: RotateCw })
+  return out
+})
+
+function pickHead(id: string): void {
+  if (id === 'tree') treeMode.value = !treeMode.value
+  else if (id === 'layout:inline') setOpt('layout', 'inline')
+  else if (id === 'layout:split') setOpt('layout', 'split')
+  else if (id === 'log' && repoRoot.value) emit('log', repoRoot.value)
+  else if (id === 'refresh') void loadStatus()
+}
 </script>
 
 <template>
@@ -589,10 +611,10 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
     :aria-label="t('workspace.changes.title')"
     @keydown="onKey"
   >
-    <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2" role="toolbar" :aria-label="t('workspace.changes.toolbar')">
+    <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2 select-none" role="toolbar" :aria-label="t('workspace.changes.toolbar')" data-pane-head>
       <GitCompare :size="15" class="mr-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
-      <span class="shrink-0 text-xs font-semibold text-ink">{{ t('workspace.changes.title') }}</span>
-      <span v-if="entries.length" class="shrink-0 rounded-full bg-fill px-1.5 text-2xs tabular text-ink-muted">{{ entries.length }}</span>
+      <span class="shrink-0 text-xs font-semibold text-ink @max-[560px]:sr-only">{{ t('workspace.changes.title') }}</span>
+      <span v-if="entries.length" class="shrink-0 rounded-full bg-fill px-1.5 text-2xs tabular text-ink-muted @max-[300px]:hidden">{{ entries.length }}</span>
       <span v-if="branch" class="ml-1 hidden min-w-0 items-center gap-1 truncate text-2xs text-ink-faint @md:inline-flex" :title="repoRoot ?? cwd">
         <GitBranch :size="12" class="shrink-0" aria-hidden="true" />
         <span class="truncate">{{ branch }}</span>
@@ -600,16 +622,17 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
       <span class="min-w-0 flex-1" />
       <button
         type="button"
-        class="ccm-btn-plain shrink-0"
+        class="ccm-btn-plain shrink-0 @max-[440px]:hidden"
         :aria-pressed="treeMode"
         :title="`${t('workspace.diff.listMode')}: ${treeMode ? t('workspace.diff.tree') : t('workspace.diff.flat')}`"
         :aria-label="t('workspace.diff.tree')"
         data-changes-tree
+        data-more="tree"
         @click="treeMode = !treeMode"
       >
         <ListTree :size="14" aria-hidden="true" />
       </button>
-      <div class="flex shrink-0 rounded-inner bg-fill p-0.5" role="radiogroup" :aria-label="t('workspace.changes.layout')">
+      <div class="flex shrink-0 rounded-inner bg-fill p-0.5 @max-[440px]:hidden" role="radiogroup" :aria-label="t('workspace.changes.layout')" data-more="layout">
         <button
           v-for="v in ['inline', 'split'] as const"
           :key="v"
@@ -627,7 +650,7 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
         <button
           ref="optionsButton"
           type="button"
-          class="ccm-btn-plain"
+          class="ccm-btn-plain @max-[300px]:min-w-6 @max-[300px]:px-1"
           aria-haspopup="menu"
           :aria-expanded="optionsOpen"
           :title="`${t('workspace.diff.options')} (${optionsKeys})`"
@@ -739,12 +762,29 @@ const MENU_ROW = 'flex h-7 w-full cursor-pointer items-center gap-2 rounded-inne
           </div>
         </Transition>
       </div>
-      <button v-if="hasLog && repoRoot" type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.log.open')" :aria-label="t('workspace.log.open')" data-changes-log @click="emit('log', repoRoot)">
+      <button
+        v-if="hasLog && repoRoot"
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
+        :title="t('workspace.log.open')"
+        :aria-label="t('workspace.log.open')"
+        data-changes-log
+        data-more="log"
+        @click="emit('log', repoRoot)"
+      >
         <GitGraph :size="14" aria-hidden="true" />
       </button>
-      <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.changes.refresh')" :aria-label="t('workspace.changes.refresh')" @click="loadStatus">
+      <button
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
+        :title="t('workspace.changes.refresh')"
+        :aria-label="t('workspace.changes.refresh')"
+        data-more="refresh"
+        @click="loadStatus"
+      >
         <RotateCw :size="14" aria-hidden="true" />
       </button>
+      <PaneMore class="hidden @max-[560px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
       <slot name="end" />
     </div>
 

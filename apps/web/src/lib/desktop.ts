@@ -88,6 +88,7 @@ interface DesktopBridge {
   onFocus?: (handler: (terminalId: string) => boolean) => void
   onSelect?: (handler: (terminalId: string) => void) => void
   onPaneOpen?: (handler: (req: PaneOpenRequest) => PaneOpenResult | Promise<PaneOpenResult>) => void
+  captureRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<Uint8Array | null>
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>
   watch?: (root: string) => Promise<boolean>

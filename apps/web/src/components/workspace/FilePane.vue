@@ -30,6 +30,8 @@ import FlutterPreviewPanel from './FlutterPreviewPanel.vue'
 import { hasFlutterPreview, inFlutterProject, isDartFile } from '../../lib/flutterPreview'
 import { nextStacked } from '../../lib/sideWidth'
 import { desktop } from '../../lib/desktop'
+import type { MenuEntry } from '../../lib/menu'
+import PaneMore from './PaneMore.vue'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
@@ -857,43 +859,97 @@ onBeforeUnmount(() => {
 })
 
 const lineCount = computed(() => lines.value.length)
+
+const headMore = computed<MenuEntry[]>(() => {
+  const out: MenuEntry[] = []
+  const text = view.value?.kind === 'text'
+  if (changes.blocks.value.length && changes.ok.value) out.push({ id: 'diff', label: t('workspace.gutter.showDiff'), hint: t('workspace.gutter.summary', changeTotals.value), icon: GitCompare })
+  if (isXmlPreview.value) for (const m of layoutModes.value) out.push({ id: `layout:${m.value}`, label: m.label, icon: layoutMode.value === m.value ? Check : m.icon })
+  if (isDart.value && fwpProject.value) out.push({ id: 'fwp', label: t('fwp.toggle'), icon: fwpOpen.value ? Check : Smartphone })
+  if (markdown.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
+  if (text) {
+    out.push({ id: 'wrap', label: t('workspace.viewer.wrap'), icon: wrap.value ? Check : TextWrap, disabled: !showSource.value })
+    out.push({ id: 'find', label: t('workspace.viewer.find'), icon: Search, shortcut: isMac ? '⌘F' : 'Ctrl+F' })
+  }
+  if (canEdit.value) {
+    out.push({ separator: true })
+    if (dirty.value || editing.value) out.push({ id: 'save', label: t('editor.save'), icon: Save, shortcut: saveKey, disabled: !dirty.value || saving.value })
+    if (editing.value) out.push({ id: 'edit', label: t('editor.done'), hint: t('editor.doneHint'), icon: Check })
+    else out.push({ id: 'edit', label: t('editor.edit'), hint: block.value ? t(`editor.readOnly.${block.value}`) : undefined, icon: Pencil })
+  }
+  out.push({ separator: true })
+  out.push({ id: 'copy', label: t('workspace.viewer.copyPath'), icon: Copy })
+  out.push({ id: 'reveal', label: isMac ? t('workspace.viewer.revealMac') : t('workspace.viewer.reveal'), icon: FolderOpen })
+  out.push({ id: 'openEditor', label: t('workspace.viewer.openEditor'), icon: SquarePen })
+  return out
+})
+
+function pickHead(id: string): void {
+  if (id === 'diff') showDiff()
+  else if (id.startsWith('layout:')) layoutMode.value = id.slice('layout:'.length) as LayoutMode
+  else if (id === 'fwp') fwpOpen.value = !fwpOpen.value
+  else if (id === 'md') mdPreview.value = !mdPreview.value
+  else if (id === 'wrap') wrap.value = !wrap.value
+  else if (id === 'find') {
+    if (editing.value) editor.value?.openFind()
+    else if (findOpen.value) closeFind()
+    else void openFind()
+  } else if (id === 'save') void save()
+  else if (id === 'edit') {
+    if (editing.value) finishEdit()
+    else void startEdit()
+  } else if (id === 'copy') void copyPath()
+  else if (id === 'reveal') revealPath(view.value?.path ?? props.path)
+  else if (id === 'openEditor') void openInApp()
+}
 </script>
 
 <template>
   <section ref="root" tabindex="-1" class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-well shadow-card outline-none" :aria-label="t('workspace.viewer.title')">
-    <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-2" role="toolbar" :aria-label="t('workspace.viewer.toolbar')">
-      <FileText :size="15" class="mr-1 shrink-0 text-agent-file" aria-hidden="true" />
-      <span class="shrink-0 truncate text-xs font-semibold text-ink" :title="view?.path ?? path">{{ name }}</span>
+    <div class="ccm-material @container flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-2 select-none" role="toolbar" :aria-label="t('workspace.viewer.toolbar')" data-pane-head>
+      <FileText :size="15" class="mr-1 shrink-0 text-agent-file @max-[300px]:mr-0" aria-hidden="true" />
+      <span class="min-w-0 truncate text-xs font-semibold text-ink" :title="view?.path ?? path">{{ name }}</span>
       <span v-if="dirty" class="ml-1 shrink-0 text-xs leading-none text-warning" :title="t('editor.unsaved')" data-file-dirty>
         <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>
       </span>
-      <span class="ml-1.5 min-w-0 flex-1 truncate text-2xs text-ink-faint" dir="rtl" :title="view?.path ?? path">
+      <span class="ml-1.5 min-w-0 flex-1 truncate text-2xs text-ink-faint @max-[420px]:invisible" dir="rtl" :title="view?.path ?? path">
         <bdi>{{ dirOf(view?.path ?? path) }}</bdi>
       </span>
-      <span v-if="view?.kind === 'text' && !markdown" class="hidden shrink-0 px-1.5 text-2xs tabular text-ink-faint sm:inline">{{ t('workspace.viewer.lines', lineCount) }}</span>
+      <span v-if="view?.kind === 'text' && !markdown" class="hidden shrink-0 px-1.5 text-2xs tabular text-ink-faint @2xl:inline">{{ t('workspace.viewer.lines', lineCount) }}</span>
 
       <button
         v-if="changes.blocks.value.length && changes.ok.value"
         type="button"
-        class="ccm-btn-plain shrink-0 gap-1 text-2xs tabular"
+        class="ccm-btn-plain shrink-0 gap-1 text-2xs tabular @max-[480px]:hidden"
         :title="`${t('workspace.gutter.showDiff')} — ${t('workspace.gutter.summary', changeTotals)}`"
         :aria-label="`${t('workspace.gutter.showDiff')}, ${t('workspace.gutter.summary', changeTotals)}`"
         data-file-show-diff
+        data-more="diff"
         @click="showDiff"
       >
         <GitCompare :size="14" class="text-diff-mod" aria-hidden="true" />
         <span v-if="changeTotals.added" class="text-diff-add">+{{ changeTotals.added }}</span>
         <span v-if="changeTotals.removed" class="text-diff-del">−{{ changeTotals.removed }}</span>
       </button>
-      <SegmentedControl v-if="isXmlPreview" v-model="layoutMode" class="mx-1 shrink-0" :options="layoutModes" :label="t('layout.mode.label')" icon-only data-layout-mode />
+      <SegmentedControl
+        v-if="isXmlPreview"
+        v-model="layoutMode"
+        class="mx-1 shrink-0 @max-[480px]:hidden"
+        :options="layoutModes"
+        :label="t('layout.mode.label')"
+        icon-only
+        data-layout-mode
+        data-more="layout"
+      />
       <button
         v-if="isDart && fwpProject"
         type="button"
-        class="ccm-btn-plain shrink-0"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
         :aria-pressed="fwpOpen"
         :title="t('fwp.toggle')"
         :aria-label="t('fwp.toggle')"
         data-fwp-toggle
+        data-more="fwp"
         @click="fwpOpen = !fwpOpen"
       >
         <Smartphone :size="14" aria-hidden="true" />
@@ -901,11 +957,12 @@ const lineCount = computed(() => lines.value.length)
       <template v-if="markdown">
         <button
           type="button"
-          class="ccm-btn-plain shrink-0"
+          class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
           :aria-pressed="mdPreview"
           :disabled="editing"
           :title="mdPreview ? t('workspace.viewer.source') : t('workspace.viewer.preview')"
           :aria-label="t('workspace.viewer.mdMode')"
+          data-more="md"
           @click="mdPreview = !mdPreview"
         >
           <Eye v-if="mdPreview" :size="14" aria-hidden="true" />
@@ -915,11 +972,12 @@ const lineCount = computed(() => lines.value.length)
       <button
         v-if="view?.kind === 'text'"
         type="button"
-        class="ccm-btn-plain shrink-0"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
         :aria-pressed="wrap"
         :disabled="!showSource"
         :title="t('workspace.viewer.wrap')"
         :aria-label="t('workspace.viewer.wrap')"
+        data-more="wrap"
         @click="wrap = !wrap"
       >
         <TextWrap :size="14" aria-hidden="true" />
@@ -927,66 +985,93 @@ const lineCount = computed(() => lines.value.length)
       <button
         v-if="view?.kind === 'text'"
         type="button"
-        class="ccm-btn-plain shrink-0"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
         :aria-pressed="findOpen"
         :title="`${t('workspace.viewer.find')} (${isMac ? '⌘F' : 'Ctrl+F'})`"
         :aria-label="t('workspace.viewer.find')"
+        data-more="find"
         @click="editing ? editor?.openFind() : findOpen ? closeFind() : openFind()"
       >
         <Search :size="14" aria-hidden="true" />
       </button>
       <template v-if="canEdit">
-        <span class="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+        <span class="mx-1 h-4 w-px shrink-0 bg-line @max-[360px]:hidden" aria-hidden="true" />
         <span v-if="saving" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-ink-muted" role="status">
-          <LoaderCircle :size="13" class="animate-spin" aria-hidden="true" />{{ t('editor.saving') }}
+          <LoaderCircle :size="13" class="animate-spin" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.saving') }}</span>
         </span>
         <span v-else-if="savedFlash" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-success" role="status" data-file-saved>
-          <Check :size="13" aria-hidden="true" />{{ t('editor.saved') }}
+          <Check :size="13" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.saved') }}</span>
         </span>
         <button
           v-if="dirty || editing"
           type="button"
-          class="ccm-btn-plain shrink-0"
+          class="ccm-btn-plain shrink-0 @max-[360px]:hidden"
           :disabled="!dirty || saving"
           :title="t('editor.saveHint', { key: saveKey })"
           :aria-label="t('editor.save')"
           data-file-save
+          data-more="save"
           @click="save()"
         >
           <Save :size="14" aria-hidden="true" />
         </button>
-        <button v-if="editing" type="button" class="ccm-btn-plain shrink-0 gap-1 text-2xs" :title="t('editor.doneHint')" data-file-done @click="finishEdit">
-          <Check :size="14" aria-hidden="true" />{{ t('editor.done') }}
+        <button
+          v-if="editing"
+          type="button"
+          class="ccm-btn-plain shrink-0 gap-1 text-2xs @max-[360px]:hidden"
+          :title="t('editor.doneHint')"
+          data-file-done
+          data-more="edit"
+          @click="finishEdit"
+        >
+          <Check :size="14" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.done') }}</span>
         </button>
         <button
           v-else
           type="button"
-          class="ccm-btn-plain shrink-0 gap-1 text-2xs"
+          class="ccm-btn-plain shrink-0 gap-1 text-2xs @max-[360px]:hidden"
           :aria-disabled="!!block"
           :title="block ? t(`editor.readOnly.${block}`) : t('editor.editHint')"
           data-file-edit
+          data-more="edit"
           @click="startEdit"
         >
-          <Pencil :size="14" aria-hidden="true" />{{ t('editor.edit') }}
+          <Pencil :size="14" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.edit') }}</span>
         </button>
       </template>
-      <span class="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
-      <button type="button" class="ccm-btn-plain shrink-0" :title="copied ? t('workspace.viewer.copied') : t('workspace.viewer.copyPath')" :aria-label="t('workspace.viewer.copyPath')" @click="copyPath">
+      <span class="mx-1 h-4 w-px shrink-0 bg-line @max-[600px]:hidden" aria-hidden="true" />
+      <button
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
+        :title="copied ? t('workspace.viewer.copied') : t('workspace.viewer.copyPath')"
+        :aria-label="t('workspace.viewer.copyPath')"
+        data-more="copy"
+        @click="copyPath"
+      >
         <Check v-if="copied" :size="14" class="text-success" aria-hidden="true" />
         <Copy v-else :size="14" aria-hidden="true" />
       </button>
       <button
         type="button"
-        class="ccm-btn-plain shrink-0"
+        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
         :title="isMac ? t('workspace.viewer.revealMac') : t('workspace.viewer.reveal')"
         :aria-label="isMac ? t('workspace.viewer.revealMac') : t('workspace.viewer.reveal')"
+        data-more="reveal"
         @click="revealPath(view?.path ?? path)"
       >
         <FolderOpen :size="14" aria-hidden="true" />
       </button>
-      <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.viewer.openEditor')" :aria-label="t('workspace.viewer.openEditor')" @click="openInApp">
+      <button
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
+        :title="t('workspace.viewer.openEditor')"
+        :aria-label="t('workspace.viewer.openEditor')"
+        data-more="openEditor"
+        @click="openInApp"
+      >
         <SquarePen :size="14" aria-hidden="true" />
       </button>
+      <PaneMore class="hidden @max-[600px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
       <slot name="end" />
     </div>
 

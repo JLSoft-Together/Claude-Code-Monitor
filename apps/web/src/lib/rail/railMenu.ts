@@ -1,3 +1,4 @@
+import { compactEntry, type CompactState } from '../compactHandoff'
 import type { MenuEntry } from '../menu'
 
 const M = 'workspace.rail.menu.'
@@ -75,6 +76,8 @@ export interface RowMenuCtx {
   linked: boolean
   /** Other panes in the same tab. */
   others: number
+  targets: Array<{ key: string; title: string }>
+  compact?: CompactState | null
 }
 
 const splitKids = (dir: 'row' | 'col', t: T): MenuEntry[] =>
@@ -88,16 +91,39 @@ export function rowMenu(ctx: RowMenuCtx, t: T): MenuEntry[] {
     { id: 'split-right', label: t(`${M}splitRight`), children: splitKids('row', t) },
     { id: 'split-down', label: t(`${M}splitDown`), children: splitKids('col', t) },
     { separator: true },
+    { id: 'rename-tab', label: t('workspace.railGroup.renameTab'), shortcut: 'F2' },
+    {
+      id: 'move-to',
+      label: t('workspace.tabActions.moveTo'),
+      disabled: !ctx.targets.length,
+      hint: ctx.targets.length ? undefined : t('workspace.tabActions.noTargets'),
+      children: ctx.targets.length ? ctx.targets.map((x) => ({ id: `move-to:${x.key}`, label: x.title })) : undefined,
+    },
+    { id: 'move-out', label: t('workspace.tabActions.moveOut'), disabled: ctx.tabRow || ctx.others === 0 },
+    { separator: true },
     { id: 'copy-cwd', label: t(`${M}copyCwd`), disabled: !ctx.cwd },
   ]
   if (ctx.explorer) entries.push({ id: 'explorer', label: t(`${M}showExplorer`), disabled: !ctx.cwd })
   if (ctx.agent) entries.push({ id: 'monitor', label: t(`${M}showInMonitor`), disabled: !ctx.linked, hint: ctx.linked ? undefined : t(`${M}notLinked`) })
+  const compact = compactEntry(ctx.compact, t)
+  if (compact.length) entries.push({ separator: true }, ...compact)
   entries.push(
     { separator: true },
     { id: 'close', label: t(`${M}${ctx.tabRow ? 'closeTab' : 'close'}`) },
     { id: 'close-others', label: t(`${M}closeOthers`), disabled: ctx.tabRow || ctx.others === 0 },
   )
   return entries
+}
+
+export function groupMenu(ctx: { folded: boolean }, t: T): MenuEntry[] {
+  return [
+    { id: 'open', label: t('workspace.tabActions.open') },
+    { id: 'rename', label: t('workspace.tabActions.rename'), shortcut: 'F2' },
+    ctx.folded ? { id: 'unfold', label: t('workspace.tabActions.unfold'), shortcut: '→' } : { id: 'fold', label: t('workspace.tabActions.fold'), shortcut: '←' },
+    { id: 'ungroup', label: t('workspace.tabActions.ungroup') },
+    { separator: true },
+    { id: 'close', label: t('workspace.tabActions.close') },
+  ]
 }
 
 /** Right-click on the rail's empty space. */

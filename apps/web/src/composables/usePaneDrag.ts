@@ -1,8 +1,9 @@
 import { onBeforeUnmount, ref, shallowRef, type Ref } from 'vue'
 import { dropTargetAt, type Edge, type Rect } from '../lib/splitLayout'
+import { caretAt, slotMoves, stripSlot, type StripItem } from '../lib/tabStrip'
 
 export type PaneDragSource = { kind: 'pane'; key: string } | { kind: 'tab'; key: string }
-export type PaneDropAction = { kind: 'dock'; key: string; edge: Edge } | { kind: 'swap'; key: string } | { kind: 'newTab' }
+export type PaneDropAction = { kind: 'dock'; key: string; edge: Edge } | { kind: 'swap'; key: string } | { kind: 'newTab' } | { kind: 'reorder'; slot: number }
 
 /** Drop preview in canvas pixels; a swap (no `edge`) covers the whole target pane. */
 export interface PaneDropPreview {
@@ -17,14 +18,18 @@ interface Options {
   canvas: Ref<HTMLElement | null>
   /** Row holding the tabs: a pane dropped there gets a tab of its own. */
   strip: Ref<HTMLElement | null>
+  tabList?: Ref<HTMLElement | null>
   /** Source under a pointerdown target, or null when it must not start a drag. */
   sourceAt(target: HTMLElement): PaneDragSource | null
+  canDock?(source: PaneDragSource): boolean
   /** Hold to swap instead of dock (Ctrl, ⌘ on macOS). */
   swapKey(e: { ctrlKey: boolean; metaKey: boolean }): boolean
   onDrop(source: PaneDragSource, action: PaneDropAction): void
 }
 
 const THRESHOLD = 5
+const TAB_GAP = 4
+const STRIP_SLACK = 4
 // Text, links and controls in a header keep their own pointer behaviour.
 const NO_DRAG = 'button, a, input, select, textarea, [contenteditable], [data-no-drag]'
 
@@ -35,9 +40,11 @@ export function usePaneDrag(opts: Options) {
   const toStrip = ref(false)
   const pointer = ref({ x: 0, y: 0 })
   const swapping = ref(false)
+  const caret = ref<number | null>(null)
 
   let start: { x: number; y: number; id: number; src: PaneDragSource; el: HTMLElement } | null = null
   let rects = new Map<string, Rect>()
+  let items: StripItem[] = []
   let action: PaneDropAction | null = null
   let last = { x: 0, y: 0 }
 
@@ -66,10 +73,27 @@ export function usePaneDrag(opts: Options) {
     }
   }
 
+  function measureTabs(): void {
+    items = []
+    for (const el of opts.tabList?.value?.querySelectorAll<HTMLElement>('[data-tab-item]') ?? []) {
+      if (!el.classList.contains('ccm-tab-leave-active') && el.dataset.tabItem) items.push({ key: el.dataset.tabItem, left: el.offsetLeft, width: el.offsetWidth })
+    }
+  }
+
+  function reorderAt(key: string, x: number): void {
+    const list = opts.tabList?.value
+    if (!list) return
+    const slot = stripSlot(items, x - list.getBoundingClientRect().left + list.scrollLeft)
+    if (!slotMoves(items.map((it) => it.key), key, slot)) return
+    action = { kind: 'reorder', slot }
+    caret.value = caretAt(items, slot, TAB_GAP)
+  }
+
   function begin(): void {
     if (!start) return
     source.value = start.src
     measure()
+    if (start.src.kind === 'tab') measureTabs()
     window.getSelection()?.removeAllRanges()
     try {
       // Browser panes (webview) and xterm would otherwise take the pointer as it passes over them.
@@ -85,6 +109,7 @@ export function usePaneDrag(opts: Options) {
     action = null
     preview.value = null
     toStrip.value = false
+    caret.value = null
     if (!src || !box) return
     const strip = opts.strip.value?.getBoundingClientRect()
     if (src.kind === 'pane' && strip && x >= strip.left && x <= strip.right && y >= strip.top && y <= strip.bottom) {
@@ -92,6 +117,11 @@ export function usePaneDrag(opts: Options) {
       toStrip.value = true
       return
     }
+    if (src.kind === 'tab' && strip && x >= strip.left && x <= strip.right && y <= strip.bottom + STRIP_SLACK) {
+      reorderAt(src.key, x)
+      return
+    }
+    if (opts.canDock && !opts.canDock(src)) return
     const hit = dropTargetAt(rects, x, y, src.kind === 'pane' ? src.key : null)
     if (!hit) return
     const r = rects.get(hit.key)!
@@ -142,7 +172,9 @@ export function usePaneDrag(opts: Options) {
     source.value = null
     preview.value = null
     toStrip.value = false
+    caret.value = null
     swapping.value = false
+    items = []
     if (!src) return
     // The pointerup turns into a click on the tab or header: swallow that one.
     const swallow = (ev: Event): void => ev.stopPropagation()
@@ -172,5 +204,5 @@ export function usePaneDrag(opts: Options) {
   }
 
   onBeforeUnmount(() => finish(false))
-  return { source, preview, toStrip, pointer, swapping, onDown }
+  return { source, preview, toStrip, pointer, swapping, caret, onDown }
 }

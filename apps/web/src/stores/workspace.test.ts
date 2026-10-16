@@ -511,3 +511,220 @@ describe('panes opened by an agent', () => {
     expect(restored.prefill).toBeUndefined()
   })
 })
+
+describe('pane zoom', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  function pair(ws: ReturnType<typeof useWorkspaceStore>) {
+    const a = ws.open('shell', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    return { a, b, tab: ws.tabOf(a.key)! }
+  }
+
+  it('zooms only a pane of a split tab and toggles back', () => {
+    const ws = useWorkspaceStore()
+    const lone = ws.open('shell', 'C:/lone', undefined, { tab: true })
+    expect(ws.toggleZoom(lone.key)).toBe(false)
+    expect(ws.tabOf(lone.key)!.zoom).toBeUndefined()
+    const { a, tab } = pair(ws)
+    expect(ws.toggleZoom(a.key)).toBe(true)
+    expect(tab.zoom).toBe(a.key)
+    expect(tab.focus).toBe(a.key)
+    expect(ws.activeKey).toBe(a.key)
+    expect(ws.toggleZoom(a.key)).toBe(false)
+    expect(tab.zoom).toBeUndefined()
+    ws.toggleZoom(a.key)
+    ws.clearZoom(tab.key)
+    expect(tab.zoom).toBeUndefined()
+  })
+
+  it('unzooms when another pane of that tab takes focus, not for other tabs', () => {
+    const ws = useWorkspaceStore()
+    const { a, b, tab } = pair(ws)
+    const other = ws.open('shell', 'C:/other', undefined, { tab: true })
+    ws.toggleZoom(a.key)
+    ws.activate(a.key)
+    expect(tab.zoom).toBe(a.key)
+    ws.activate(other.key)
+    expect(tab.zoom).toBe(a.key)
+    ws.activateTab(tab.key)
+    expect(ws.activeKey).toBe(a.key)
+    ws.activate(b.key)
+    expect(tab.zoom).toBeUndefined()
+  })
+
+  it('unzooms when the layout of the tab changes', () => {
+    const ws = useWorkspaceStore()
+    const { a, b, tab } = pair(ws)
+    const steps: Array<() => void> = [
+      () => ws.split(a.key, 'col'),
+      () => ws.swapPanes(a.key, b.key),
+      () => ws.movePane(b.key, a.key, 'left'),
+      () => ws.remove(ws.panes.at(-1)!.key),
+    ]
+    for (const step of steps) {
+      ws.toggleZoom(a.key)
+      expect(tab.zoom).toBe(a.key)
+      step()
+      expect(tab.zoom).toBeUndefined()
+    }
+    ws.toggleZoom(a.key)
+    ws.detachPane(b.key)
+    expect(ws.tabOf(a.key)!.zoom).toBeUndefined()
+  })
+
+  it('keeps a saved zoom only when it is one of the tab panes', () => {
+    const tabs = [
+      { key: 't1', root: { dir: 'row', ratio: 0.5, a: { pane: 'p1' }, b: { pane: 'p2' } }, focus: 'p2', zoom: 'p1' },
+      { key: 't2', root: { dir: 'row', ratio: 0.5, a: { pane: 'p3' }, b: { pane: 'p4' } }, focus: 'p3', zoom: 'gone' },
+    ]
+    const panes = ['p1', 'p2', 'p3', 'p4'].map((key) => ({ key, preset: 'shell', kind: 'browser', url: '' }))
+    sessionStorage.setItem('ccm.workspace.panes', JSON.stringify({ panes, tabs, active: 'p1' }))
+    const ws = useWorkspaceStore()
+    expect(ws.tabs[0]!.zoom).toBe('p1')
+    expect(ws.tabs[0]!.focus).toBe('p1')
+    expect(ws.tabs[1]!.zoom).toBeUndefined()
+  })
+})
+
+describe('reopen closed panes', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  const id = '0d6f6a52-1b2c-4d3e-8f90-123456789abc'
+  const never = (): boolean => false
+
+  it('brings a whole tab back where it was, with its layout, name and agent session', () => {
+    const ws = useWorkspaceStore()
+    const claude = ws.open('claude', 'C:/app')
+    ws.update(claude.key, { agentSessionId: id, state: 'running' })
+    const shell = ws.split(claude.key, 'col', { kind: 'term', preset: 'shell' })!
+    ws.update(shell.key, { liveCwd: 'C:/app/web' })
+    const tab = ws.tabOf(claude.key)!
+    ws.renameTab(tab.key, 'Build')
+    ws.open('shell', 'C:/other', undefined, { tab: true })
+    ws.setClosedNamer((p) => `name:${p.preset}`)
+    ws.requestClose([claude.key, shell.key], never)
+    expect(ws.tabs).toHaveLength(1)
+    expect(ws.closedStack).toHaveLength(1)
+    expect(ws.closedStack[0]!.tabs[0]!.panes.map((p) => p.name)).toEqual(['name:claude', 'name:shell'])
+
+    const res = ws.reopenClosed()!
+    expect(res.from).toEqual([claude.key, shell.key])
+    expect(ws.tabs).toHaveLength(2)
+    const back = ws.tabs[0]!
+    expect(back.name).toBe('Build')
+    expect(back.project).toBe('C:/app')
+    expect(back.root).toEqual({ dir: 'col', ratio: 0.5, a: { pane: res.keys[0] }, b: { pane: res.keys[1] } })
+    expect(ws.panes.find((p) => p.key === res.keys[0])).toMatchObject({ preset: 'claude', cwd: 'C:/app', resume: id, agentSessionId: id, state: 'starting' })
+    const fresh = ws.panes.find((p) => p.key === res.keys[1])!
+    expect(fresh).toMatchObject({ preset: 'shell', cwd: 'C:/app/web' })
+    expect(fresh.resume).toBeUndefined()
+    expect(ws.activeKey).toBe(res.keys[1])
+    expect(ws.closedStack).toHaveLength(0)
+    expect(ws.reopenClosed()).toBeNull()
+  })
+
+  it('puts a pane back beside its sibling, on the same side', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('shell', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    ws.setRatio(ws.tabOf(a.key)!.key, '', 0.3)
+    ws.requestClose([a.key], never)
+    expect(ws.closedStack[0]!.loose[0]!.anchor).toMatchObject({ siblingKey: b.key, dir: 'row', side: 'a', ratio: 0.3 })
+    const first = ws.reopenClosed()!
+    expect(ws.tabs).toHaveLength(1)
+    expect(ws.tabs[0]!.root).toEqual({ dir: 'row', ratio: 0.3, a: { pane: first.keys[0] }, b: { pane: b.key } })
+
+    const c = ws.split(b.key, 'col')!
+    ws.requestClose([c.key], never)
+    const second = ws.reopenClosed()!
+    expect(leaves(ws.tabs[0]!.root)).toEqual([first.keys[0], b.key, second.keys[0]])
+    expect(ws.tabs[0]!.root).toMatchObject({ b: { dir: 'col', a: { pane: b.key }, b: { pane: second.keys[0] } } })
+    expect(ws.activeKey).toBe(second.keys[0])
+  })
+
+  it('rebuilds several panes closed together from one tab exactly', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('shell', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    const c = ws.split(b.key, 'col')!
+    const before = JSON.parse(JSON.stringify(ws.tabs[0]!.root))
+    ws.requestClose([b.key, c.key], never)
+    expect(ws.tabs[0]!.root).toEqual({ pane: a.key })
+    const res = ws.reopenClosed()!
+    const map = new Map(res.from.map((k, i) => [k, res.keys[i]!]))
+    const remap = (n: { pane?: string; a?: unknown; b?: unknown }): unknown =>
+      n.pane ? { pane: map.get(n.pane) ?? n.pane } : { ...n, a: remap(n.a as object), b: remap(n.b as object) }
+    expect(ws.tabs[0]!.root).toEqual(remap(before))
+  })
+
+  it('opens a tab of its own when the sibling is gone', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('shell', 'C:/app')
+    const b = ws.split(a.key, 'row')!
+    ws.requestClose([a.key], never)
+    ws.remove(b.key)
+    const res = ws.reopenClosed()!
+    expect(ws.tabs).toHaveLength(1)
+    expect(ws.tabs[0]!.root).toEqual({ pane: res.keys[0] })
+    expect(ws.tabs[0]!.project).toBe('C:/app')
+  })
+
+  it('reopens viewers with their url, file and line', () => {
+    const ws = useWorkspaceStore()
+    const page = ws.openBrowser('http://localhost:5173/')
+    const file = ws.split(page.key, 'row', { kind: 'file', path: 'C:/app/a.ts', line: 7 })!
+    ws.requestClose([page.key, file.key], never)
+    const res = ws.reopenClosed()!
+    expect(res.keys.map((k) => ws.panes.find((p) => p.key === k)).map((p) => [p?.kind, p?.url ?? p?.path, p?.line])).toEqual([
+      ['browser', 'http://localhost:5173/', undefined],
+      ['file', 'C:/app/a.ts', 7],
+    ])
+  })
+
+  it('records user closes only, after a confirm, never on cancel or for dropped panes', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('shell', 'C:/app', undefined, { tab: true })
+    const b = ws.open('shell', 'C:/b', undefined, { tab: true })
+    const c = ws.open('shell', 'C:/c', undefined, { tab: true })
+    ws.remove(a.key)
+    ws.requestClose([b.key], never, { record: false })
+    expect(ws.closedStack).toHaveLength(0)
+    ws.requestClose([c.key], () => true)
+    expect(ws.pendingClose).toEqual([c.key])
+    ws.cancelClose()
+    expect(ws.closedStack).toHaveLength(0)
+    ws.requestClose([c.key], () => true)
+    ws.confirmClose()
+    expect(ws.closedStack).toHaveLength(1)
+    expect(ws.panes).toHaveLength(0)
+  })
+
+  it('keeps the last ten closes', () => {
+    const ws = useWorkspaceStore()
+    const keys = Array.from({ length: 12 }, (_, i) => ws.open('shell', `C:/p${i}`, undefined, { tab: true }).key)
+    for (const k of keys) ws.requestClose([k], never)
+    expect(ws.closedStack).toHaveLength(10)
+    expect(ws.closedStack[0]!.tabs[0]!.panes[0]!.cwd).toBe('C:/p2')
+    expect(ws.reopenClosed()!.from).toEqual([keys[11]])
+  })
+
+  it('does not start a second pane for an agent session that is open again', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:/app')
+    ws.update(a.key, { agentSessionId: id, state: 'running' })
+    ws.requestClose([a.key], never)
+    const again = ws.resumeSession('claude', 'C:/app', id)
+    ws.update(again.key, { state: 'running' })
+    expect(ws.reopenClosed()).toEqual({ keys: [], from: [] })
+    expect(ws.panes).toHaveLength(1)
+  })
+})

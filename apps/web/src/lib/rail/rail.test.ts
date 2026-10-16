@@ -4,9 +4,9 @@ import { useWorkspaceStore, type Pane } from '../../stores/workspace'
 import { lastRows, registerSnapshot, snapshotOf } from '../paneSnapshots'
 import { buildAttentionList } from './attentionList'
 import { avatarInitials } from './avatars'
-import { flipTransform, missionShelf } from './mission'
+import { flipTransform } from './mission'
 import { projectTabKeys, spaceIndexes, spaceLabel } from './spaces'
-import { buildRail, paneState, rowLines, runState, type RailInput, type RailSession } from './railModel'
+import { buildRail, groupState, headId, paneState, railItems, rowId, rowLines, runState, showsCheckouts, stateWord, tabStopOf, treeIds, type RailInput, type RailSession } from './railModel'
 import { applyOrder, MAX_RAIL_ORDER, pinAt } from './railOrder'
 import { mainCheckout, repoFacts } from './repo'
 
@@ -56,7 +56,7 @@ describe('repo facts', () => {
 
 describe('rail state', () => {
   const pane = (over: Partial<Pane>): Pane => ({ key: 'p', preset: 'claude', state: 'running', ...over })
-  const s = (status: RailSession['status']): RailSession => ({ status, title: 'x' })
+  const s = (status: RailSession['status'], subagents = 0): RailSession => ({ status, title: 'x', subagents })
 
   it('reads latched attention and failures before live phase', () => {
     expect(paneState(pane({ state: 'error' }), s('working'))).toBe('failed')
@@ -67,6 +67,31 @@ describe('rail state', () => {
     expect(paneState(pane({ attention: 'done' }), s('idle'))).toBe('done')
     expect(paneState(pane({ state: 'starting' }), undefined)).toBe('starting')
     expect(paneState(pane({}), undefined)).toBe('idle')
+  })
+
+  it('waits on subagents when the main agent is idle but subagents still run', () => {
+    expect(paneState(pane({}), s('idle', 2))).toBe('subagents')
+    expect(paneState(pane({ attention: 'done' }), s('idle', 1))).toBe('subagents')
+    expect(paneState(pane({}), s('working', 2))).toBe('working')
+    expect(paneState(pane({}), s('waiting', 2))).toBe('asked')
+    expect(paneState(pane({ attention: 'done' }), s('idle', 0))).toBe('done')
+  })
+
+  it('names subagent states without guessing a word for the others', () => {
+    expect(stateWord('subagents', 2)).toEqual({ key: 'workspace.subagentState.waiting', n: 2 })
+    expect(stateWord('working', 1)).toEqual({ key: 'workspace.subagentState.working', n: 1 })
+    expect(stateWord('working', 0)).toEqual({ key: 'workspace.rail.state.working' })
+    expect(stateWord('done', 3)).toEqual({ key: 'workspace.rail.state.done' })
+  })
+
+  it('aggregates a group: failed > asked > working | subagents > starting > done > ended > idle', () => {
+    expect(groupState(['idle', 'working', 'asked'])).toBe('asked')
+    expect(groupState(['done', 'failed', 'asked'])).toBe('failed')
+    expect(groupState(['idle', 'subagents', 'starting'])).toBe('subagents')
+    expect(groupState(['working', 'subagents'])).toBe('working')
+    expect(groupState(['ended', 'done', 'idle'])).toBe('done')
+    expect(groupState(['idle', 'ended'])).toBe('ended')
+    expect(groupState([])).toBe('idle')
   })
 
   it('maps run badges: building / running work, a failed run needs you', () => {
@@ -109,7 +134,7 @@ describe('buildRail', () => {
     const ws = useWorkspaceStore()
     ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    const rows = buildRail(input({ sessionOf: () => ({ status: 'idle', title: 'Fix login' }) }))[0]!.checkouts[0]!.rows
+    const rows = buildRail(input({ sessionOf: () => ({ status: 'idle', title: 'Fix login', subagents: 0 }) }))[0]!.checkouts[0]!.rows
     expect(rows.map((r) => [r.task, r.ordinal])).toEqual([
       ['Fix login', 'Claude'],
       ['Fix login', 'Claude 2'],
@@ -175,6 +200,227 @@ describe('buildRail', () => {
     const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
     ws.update(a.key, { cwd: 'D:\\notes', liveCwd: 'D:\\notes' })
     expect(buildRail(input())[0]!.name).toBe('app')
+  })
+})
+
+describe('rail groups', () => {
+  it('groups a tab with two or more terminal / run panes, shells included', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const sh = ws.split(a.key, 'row', { kind: 'term', preset: 'shell' })!
+    const k = buildRail(input())[0]!.checkouts[0]!
+    const tabKey = ws.tabOf(a.key)!.key
+    expect(k.rows.map((r) => [r.paneKey, r.kind, r.group])).toEqual([
+      [a.key, 'agent', `group:${tabKey}`],
+      [sh.key, 'shell', `group:${tabKey}`],
+    ])
+    expect(k.groups).toMatchObject([{ key: `group:${tabKey}`, tabKey, title: 'Shell', count: 2, folded: false, tabActive: true, focused: true, paneKeys: [a.key, sh.key] }])
+    expect(railItems(k).map((i) => i.key)).toEqual([`group:${tabKey}`, a.key, sh.key])
+  })
+
+  it('draws a shell member as its title over "Shell · state"', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const sh = ws.split(a.key, 'row', { kind: 'term', preset: 'shell' })!
+    ws.update(sh.key, { command: 'npm run dev' })
+    const row = buildRail(input())[0]!.checkouts[0]!.rows.find((r) => r.paneKey === sh.key)!
+    expect(rowLines(row, 'Ready')).toEqual({ first: 'npm run dev', second: 'Shell · Ready' })
+    expect(rowLines({ ...row, task: 'Shell' }, 'Ready')).toEqual({ first: 'Shell', second: 'Ready' })
+  })
+
+  it('keeps single tabs as before: an agent beside a browser, a lone shell as a tab row', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.split(a.key, 'row', { kind: 'browser', url: 'https://example.com' })
+    ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    const k = buildRail(input())[0]!.checkouts[0]!
+    expect(k.groups).toEqual([])
+    expect(k.rows.map((r) => [r.kind, r.group, r.key.startsWith('tab:')])).toEqual([
+      ['agent', null, false],
+      ['other', null, true],
+    ])
+  })
+
+  it('shows a tab name on a single agent row and on a tab row, and titles groups', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    const c = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.split(c.key, 'row')
+    ws.renameTab(ws.tabOf(a.key)!.key, 'Login bug')
+    ws.renameTab(ws.tabOf(b.key)!.key, 'Dev server')
+    ws.renameTab(ws.tabOf(c.key)!.key, 'Review')
+    const k = buildRail(input({ sessionOf: () => ({ status: 'idle', title: 'Fix login', subagents: 0 }) }))[0]!.checkouts[0]!
+    const lines = k.rows.map((r) => rowLines(r, 'Ready').first)
+    expect(lines.slice(0, 2)).toEqual(['Login bug', 'Dev server'])
+    expect(lines.slice(2)).toEqual(['Fix login', 'Fix login'])
+    expect(k.groups.map((g) => [g.title, g.named])).toEqual([['Review', true]])
+  })
+
+  it('titles an unnamed group by its tab title callback', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.split(a.key, 'col')
+    const k = buildRail(input({ tabTitleOf: () => 'Fix login' }))[0]!.checkouts[0]!
+    expect(k.groups[0]!.title).toBe('Fix login')
+    expect(k.groups[0]!.named).toBe(false)
+  })
+
+  it('aggregates member states, sums subagents and keeps needs counted per member', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.split(a.key, 'row')!
+    const sh = ws.split(b.key, 'col', { kind: 'term', preset: 'shell' })!
+    for (const p of [a, b, sh]) ws.update(p.key, { state: 'running' })
+    ws.update(b.key, { attention: 'waiting' })
+    const sessions: Record<string, RailSession> = {
+      [a.key]: { status: 'idle', title: 'A', subagents: 2 },
+      [b.key]: { status: 'waiting', title: 'B', subagents: 1 },
+    }
+    const rail = buildRail(input({ sessionOf: (p) => sessions[p.key] }))
+    const k = rail[0]!.checkouts[0]!
+    expect(k.rows.map((r) => r.state)).toEqual(['subagents', 'asked', 'idle'])
+    expect(k.groups[0]).toMatchObject({ state: 'asked', subagents: 3, count: 3 })
+    expect(rail[0]!.needs).toBe(1)
+  })
+
+  it('carries the folded flag and marks the group focused while the active pane is inside', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.split(a.key, 'row')
+    const tabKey = ws.tabOf(a.key)!.key
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.setFolded(tabKey, true)
+    const g = buildRail(input())[0]!.checkouts[0]!.groups[0]!
+    expect(g).toMatchObject({ folded: true, tabActive: false, focused: false })
+    ws.activateTab(tabKey)
+    expect(buildRail(input())[0]!.checkouts[0]!.groups[0]).toMatchObject({ tabActive: true, focused: true })
+  })
+
+  it('leads a group with the member longest in the group state', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.split(a.key, 'row')!
+    const sh = ws.split(b.key, 'col', { kind: 'term', preset: 'shell' })!
+    for (const p of [a, b, sh]) ws.update(p.key, { state: 'running' })
+    const sessions: Record<string, RailSession> = {
+      [a.key]: { status: 'working', title: 'A', since: '2026-10-16T10:05:00Z', subagents: 0 },
+      [b.key]: { status: 'working', title: 'B', since: '2026-10-16T10:00:00Z', subagents: 0 },
+    }
+    const g = buildRail(input({ sessionOf: (p) => sessions[p.key] }))[0]!.checkouts[0]!.groups[0]!
+    expect(g).toMatchObject({ state: 'working', lead: b.key })
+    const idle = buildRail(input())[0]!.checkouts[0]!.groups[0]!
+    expect(idle.state).toBe('idle')
+    expect(idle.paneKeys).toContain(idle.lead)
+  })
+
+  it('counts subagent waits as working in the needs-you footer', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.update(a.key, { state: 'running' })
+    const list = buildAttentionList(buildRail(input({ sessionOf: () => ({ status: 'idle', title: 'A', subagents: 1 }) })))
+    expect(list.footer.working).toBe(1)
+    expect(list.footer.idle).toBe(0)
+  })
+})
+
+describe('row twins', () => {
+  const firsts = (over: Partial<RailInput> = {}) =>
+    buildRail(input(over)).flatMap((c) => c.checkouts.map((k) => k.rows.map((r) => rowLines(r, 'Ready').first)))
+
+  it('numbers rows of one checkout that would read the same, in open order', () => {
+    const ws = useWorkspaceStore()
+    for (let i = 0; i < 3; i++) ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    expect(firsts()).toEqual([['Shell', 'Shell 2', 'Shell 3']])
+  })
+
+  it('skips a number another row already shows', () => {
+    const ws = useWorkspaceStore()
+    ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    ws.renameTab(ws.tabOf(b.key)!.key, 'Shell 2')
+    expect(firsts()).toEqual([['Shell', 'Shell 2', 'Shell 3']])
+  })
+
+  it('names shells running one command by their live folder when those differ', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const api = ws.split(a.key, 'row', { kind: 'term', preset: 'shell' })!
+    const web = ws.split(api.key, 'col', { kind: 'term', preset: 'shell' })!
+    ws.update(api.key, { command: 'npm run dev', liveCwd: 'C:\\work\\app\\api' })
+    ws.update(web.key, { command: 'npm run dev', liveCwd: 'C:\\work\\app\\web' })
+    expect(firsts()).toEqual([['Claude', 'npm run dev · api', 'npm run dev · web']])
+  })
+
+  it('falls back to numbers when the folders match, and keeps the line-2 ordinal for agents', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const s1 = ws.split(a.key, 'row', { kind: 'term', preset: 'shell' })!
+    const s2 = ws.split(s1.key, 'col', { kind: 'term', preset: 'shell' })!
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    for (const p of [s1, s2]) ws.update(p.key, { command: 'npm test' })
+    const rows = buildRail(input({ sessionOf: (p) => (p.preset === 'claude' ? { status: 'idle', title: 'Fix login', subagents: 0 } : undefined) }))[0]!.checkouts[0]!.rows
+    expect(rows.map((r) => rowLines(r, 'Ready'))).toEqual([
+      { first: 'Fix login', second: 'Claude · Ready' },
+      { first: 'npm test', second: 'Shell · Ready' },
+      { first: 'npm test 2', second: 'Shell · Ready' },
+      { first: 'Fix login', second: 'Claude 2 · Ready' },
+    ])
+  })
+
+  it('numbers within a checkout only', () => {
+    const ws = useWorkspaceStore()
+    ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('shell', 'C:\\work\\app-wt\\feat', undefined, { tab: true })
+    expect(firsts()).toEqual([['Shell'], ['Shell']])
+  })
+})
+
+describe('tree tab stop', () => {
+  it('lists visible items in screen order, skipping collapsed projects and folded members', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.split(a.key, 'row')!
+    const tabKey = ws.tabOf(a.key)!.key
+    const n = ws.open('shell', 'D:\\notes', undefined, { tab: true })
+    const rail = buildRail(input())
+    const notes = rail[1]!.checkouts[0]!.rows[0]!.key
+    expect(treeIds(rail, () => false)).toEqual([headId(rail[0]!.key), `group:${tabKey}`, rowId(a.key), rowId(b.key), headId(rail[1]!.key), rowId(notes)])
+    ws.setFolded(tabKey, true)
+    expect(treeIds(buildRail(input()), (k) => k === rail[1]!.key)).toEqual([headId(rail[0]!.key), `group:${tabKey}`, headId(rail[1]!.key)])
+    expect(notes).toBe(`tab:${ws.tabOf(n.key)!.key}`)
+  })
+
+  it('keeps the last focused item, else the focused pane, its folded group, or the first item', () => {
+    const ws = useWorkspaceStore()
+    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    const b = ws.split(a.key, 'row')!
+    const tabKey = ws.tabOf(a.key)!.key
+    const open = () => false
+    let rail = buildRail(input())
+    expect(tabStopOf(rail, open, rowId(a.key))).toBe(rowId(a.key))
+    expect(tabStopOf(rail, open, 'row:gone')).toBe(rowId(b.key))
+    ws.setFolded(tabKey, true)
+    rail = buildRail(input())
+    expect(tabStopOf(rail, open, rowId(a.key))).toBe(`group:${tabKey}`)
+    expect(tabStopOf(rail, () => true, null)).toBe(headId(rail[0]!.key))
+    expect(tabStopOf([], open, null)).toBeNull()
+  })
+})
+
+describe('checkout lines', () => {
+  it('skip a lone plain folder but show branches, worktrees and remembered projects', () => {
+    const ws = useWorkspaceStore()
+    ws.open('shell', 'D:\\notes', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\app-wt\\feat', undefined, { tab: true })
+    const rail = buildRail(input({ history: ['E:\\old'] }))
+    expect(rail.map((c) => [c.name, showsCheckouts(c)])).toEqual([
+      ['notes', false],
+      ['app', true],
+      ['old', true],
+    ])
   })
 })
 
@@ -274,40 +520,6 @@ describe('pane snapshots', () => {
 })
 
 describe('mission control', () => {
-  const paneOf = (k: string) => useWorkspaceStore().panes.find((p) => p.key === k)
-  it('shelves every project with its spaces and windows, unscoped', () => {
-    const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    ws.split(a.key, 'row')
-    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    ws.open('shell', 'D:\\notes', undefined, { tab: true })
-    const shelf = missionShelf(buildRail(input()), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
-    expect(shelf.map((g) => [g.name, g.spaces.length])).toEqual([
-      ['app', 2],
-      ['notes', 1],
-    ])
-    expect(shelf[0]!.spaces[0]!.windows).toHaveLength(2)
-    expect(shelf[0]!.spaces.map((s) => s.label)).toEqual(['app 1', 'app 2'])
-    expect(shelf[1]!.spaces[0]!.current).toBe(true)
-  })
-
-  it('carries a run pane state into its window', () => {
-    const ws = useWorkspaceStore()
-    const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    const r = ws.split(a.key, 'row', { kind: 'run' })!
-    const shelf = missionShelf(buildRail(input({ runOf: () => 'busy' })), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
-    expect(shelf[0]!.spaces[0]!.windows.find((w) => w.paneKey === r.key)).toMatchObject({ state: 'working', run: 'busy' })
-  })
-
-  it('numbers spaces by the primary pane folder for tabs saved before v38', () => {
-    const ws = useWorkspaceStore()
-    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
-    for (const tab of ws.tabs) tab.project = undefined
-    const shelf = missionShelf(buildRail(input()), ws.tabs, ws.activeTab!.key, () => 'app', (k) => k, paneOf)
-    expect(shelf[0]!.spaces.map((s) => s.label)).toEqual(['app 1', 'app 2'])
-  })
-
   it('maps a window rect onto a pane rect with translate + scale', () => {
     expect(flipTransform({ left: 0, top: 0, width: 100, height: 50 }, { left: 10, top: 20, width: 200, height: 100 })).toBe('translate(10px, 20px) scale(2, 2)')
   })
@@ -322,7 +534,10 @@ describe('needs-you list', () => {
     ws.update(a.key, { attention: 'waiting', state: 'running' })
     ws.update(b.key, { state: 'error' })
     ws.update(c.key, { state: 'running' })
-    const sessions: Record<string, RailSession> = { [a.key]: { status: 'waiting', title: 'A', since: '2026-10-15T10:00:00Z' }, [c.key]: { status: 'working', title: 'C' } }
+    const sessions: Record<string, RailSession> = {
+      [a.key]: { status: 'waiting', title: 'A', since: '2026-10-15T10:00:00Z', subagents: 0 },
+      [c.key]: { status: 'working', title: 'C', subagents: 0 },
+    }
     const list = buildAttentionList(buildRail(input({ sessionOf: (p) => sessions[p.key] })))
     expect(list.entries.map((e) => [e.paneKey, e.state])).toEqual([
       [b.key, 'failed'],

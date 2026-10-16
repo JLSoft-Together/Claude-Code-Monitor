@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ChevronRight } from 'lucide-vue-next'
 import { isSeparator, menuPosition, submenuPosition, type MenuAction, type MenuEntry, type Rect } from '../../lib/menu'
+import { openedByKey } from '../../lib/inputModality'
 
 /** Right-click menu: one level of submenus, keyboard (↑↓ Home End → ← Enter Esc), outside click / scroll / blur / resize close it. */
 const props = defineProps<{ at: Rect; entries: MenuEntry[]; label: string; trigger?: HTMLElement | null }>()
@@ -15,6 +16,7 @@ const mainH = ref(0)
 const subH = ref(0)
 const openId = ref<string | null>(null)
 const subRow = ref<Rect | null>(null)
+const byKey = openedByKey()
 
 const openEntry = computed(() => props.entries.find((e): e is MenuAction => !isSeparator(e) && e.id === openId.value) ?? null)
 const mainStyle = computed(() => {
@@ -71,6 +73,13 @@ function hover(e: MenuAction, row: HTMLElement, level: 'main' | 'sub'): void {
   if (level !== 'main') return
   if (e.children && !e.disabled) void openSub(e, row, false)
   else if (openId.value) closeSub(false)
+}
+
+function leave(level: 'main' | 'sub', panel: HTMLElement): void {
+  const at = document.activeElement as HTMLElement | null
+  if (!at || at === panel || !panel.contains(at)) return
+  if (level === 'main' && openId.value && at.dataset.menuId === openId.value) return
+  panel.focus({ preventScroll: true })
 }
 
 function find(level: 'main' | 'sub', id: string | undefined): MenuAction | null {
@@ -144,7 +153,8 @@ onMounted(async () => {
   await nextTick()
   mainH.value = main.value?.offsetHeight ?? 0
   await nextTick()
-  items(main.value)[0]?.focus({ preventScroll: true })
+  if (byKey) items(main.value)[0]?.focus({ preventScroll: true })
+  else main.value?.focus({ preventScroll: true })
 })
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onOutside, true)
@@ -173,13 +183,16 @@ const ICON = 'shrink-0 text-ink-muted group-focus:text-on-accent group-aria-disa
       v-for="p in panels"
       :key="p.level"
       :ref="(el) => setPanel(p.level, el)"
-      class="ccm-menu ccm-scroll fixed z-50 flex max-h-[calc(100vh-16px)] flex-col overflow-y-auto p-1"
+      class="ccm-menu ccm-scroll fixed z-50 flex max-h-[calc(100vh-16px)] flex-col overflow-y-auto p-1 outline-none"
       :style="p.style"
       role="menu"
+      tabindex="-1"
       :aria-label="p.level === 'main' ? label : openEntry?.label"
+      data-menu-panel
       :data-context-menu="p.level === 'main' ? '' : undefined"
       :data-context-submenu="p.level === 'sub' ? '' : undefined"
       @keydown="onKey($event, p.level)"
+      @pointerleave="leave(p.level, $event.currentTarget as HTMLElement)"
       @contextmenu.prevent
     >
       <template v-for="(e, i) in p.entries" :key="isSeparator(e) ? `sep-${i}` : e.id">

@@ -176,15 +176,26 @@ function sessionLabel(s: RunSession): string {
 
 <template>
   <section class="@container flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-surface shadow-card outline-none" tabindex="-1" :aria-label="t('run.titleIn', { name: baseName(root) })" data-run-pane>
-    <div class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2">
+    <div
+      class="ccm-material flex h-9 min-w-0 shrink-0 items-center gap-1 border-b border-line px-2 select-none @max-[480px]:h-auto @max-[480px]:min-h-9 @max-[480px]:flex-wrap @max-[480px]:gap-y-1 @max-[480px]:py-1"
+      data-pane-head
+    >
       <CirclePlay :size="15" class="mr-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
       <span class="hidden shrink-0 text-xs font-semibold text-ink @md:inline">{{ t('run.title') }}</span>
-      <RunBar v-if="runnable" :root="root" :blocked="envIssues.length > 0" @edit-configs="configsOpen = true" @toolchain="toolchainOpen = true" />
+      <RunBar
+        v-if="runnable"
+        class="@max-[480px]:order-last @max-[480px]:basis-full"
+        :root="root"
+        :blocked="envIssues.length > 0"
+        @edit-configs="configsOpen = true"
+        @toolchain="toolchainOpen = true"
+      />
       <span v-else class="min-w-0 flex-1 truncate text-2xs text-ink-faint" :title="root">{{ baseName(root) }}</span>
       <span v-if="env?.kind === 'flutter' && env.version" class="hidden shrink-0 items-center gap-1 text-2xs text-ink-faint @lg:inline-flex" :title="env.sdk ?? undefined">
         {{ t('run.flutter', { version: env.version }) }}
         <span v-if="env.fvm" class="rounded-full bg-fill px-1.5 text-ink-muted">{{ t('run.fvm') }}</span>
       </span>
+      <span v-if="runnable" class="hidden min-w-0 flex-1 @max-[480px]:block" aria-hidden="true" />
       <slot name="end" />
     </div>
 

@@ -1,5 +1,7 @@
 import { onBeforeUnmount, watch } from 'vue'
 import { PtyConnection } from '../lib/ptyClient'
+import { effectiveStatus, runningSubagents } from '../lib/subagents'
+import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -14,6 +16,7 @@ const SETTLE_MS = 4_000
 export function useWorkspaceLinks(viewShown: () => boolean): void {
   const workspace = useWorkspaceStore()
   const terminals = useTerminalsStore()
+  const agents = useAgentsStore()
   // An agent's parent chain is fixed at birth, so one settled answer per terminal is final.
   const resolved = new Set<string>()
   const firstSeen = new Map<string, number>()
@@ -81,9 +84,14 @@ export function useWorkspaceLinks(viewShown: () => boolean): void {
   const seen = (key: string): boolean =>
     viewShown() && workspace.activeKey === key && document.visibilityState === 'visible' && document.hasFocus()
   watch(
-    () => workspace.panes.map((p) => [p.key, p.terminalId ? terminals.byId[p.terminalId]?.status : undefined] as const),
+    () =>
+      workspace.panes.map((p) => {
+        const term = p.terminalId ? terminals.byId[p.terminalId] : undefined
+        const running = term ? runningSubagents(agents.byTerminal[term.id]) : 0
+        return [p.key, term ? effectiveStatus(term.status, running) : undefined, running] as const
+      }),
     (now, before) => {
-      const prev = new Map(before)
+      const prev = new Map(before.map(([key, status]) => [key, status]))
       for (const [key, status] of now) {
         const was = prev.get(key)
         if (!was || was === status || seen(key)) continue

@@ -39,6 +39,14 @@ function close(refocus: boolean): void {
   if (refocus) trigger?.focus()
 }
 
+const FLYOUT_ID = 'ccm-rail-flyout'
+
+function onFocusOut(e: FocusEvent): void {
+  const to = e.relatedTarget as Element | null
+  if (!to || flyout.value?.contains(to) || open.value?.trigger.contains(to) || to.closest('[role=menu], .ccm-menu')) return
+  close(false)
+}
+
 function onOutside(e: PointerEvent): void {
   const target = e.target as Element
   // Menus the flyout opens are teleported too: clicks in them keep it open.
@@ -88,8 +96,9 @@ function label(c: RailCluster): string {
       :class="c.active ? 'bg-accent-soft text-accent-ink ring-1 ring-focus' : 'bg-fill text-ink-muted hover:bg-fill-strong hover:text-ink'"
       :title="[c.root ?? nameOf(c), c.needs ? t('workspace.rail.needs', { n: c.needs }, c.needs) : ''].filter(Boolean).join('\n')"
       :aria-label="label(c)"
-      aria-haspopup="true"
+      aria-haspopup="dialog"
       :aria-expanded="open?.key === c.key"
+      :aria-controls="open?.key === c.key ? FLYOUT_ID : undefined"
       :data-rail-avatar="c.key"
       @click="show(c, $event)"
     >
@@ -109,6 +118,7 @@ function label(c: RailCluster): string {
       <Transition name="ccm-menu" @before-leave="retireOverlay">
         <div
           v-if="open"
+          :id="FLYOUT_ID"
           ref="flyout"
           class="ccm-menu fixed z-40 flex max-h-[min(70vh,520px)] w-[272px] flex-col [--ccm-origin:top_left]"
           :style="{ top: `${open.top}px`, left: `${open.left}px` }"
@@ -116,6 +126,7 @@ function label(c: RailCluster): string {
           :aria-label="nameOf(live.find((c) => c.key === open!.key) ?? live[0]!)"
           data-rail-flyout
           @keydown.esc.stop="close(true)"
+          @focusout="onFocusOut"
         >
           <WorkspaceSidebar v-bind="$attrs" :only="open.key" flat class="min-h-0 flex-1" />
         </div>

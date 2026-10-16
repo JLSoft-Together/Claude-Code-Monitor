@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { findAction, isSeparator, type MenuEntry } from '../menu'
-import { emptyMenu, isMenuKey, projectMenu, rowMenu, type ProjectMenuCtx, type RowMenuCtx } from './railMenu'
+import { emptyMenu, groupMenu, isMenuKey, projectMenu, rowMenu, type ProjectMenuCtx, type RowMenuCtx } from './railMenu'
 
 const t = (k: string) => k.split('.').pop()!
 const ids = (e: MenuEntry[]) => e.map((x) => (isSeparator(x) ? '-' : x.id))
@@ -11,7 +11,9 @@ const project = (p: Partial<ProjectMenuCtx> = {}): ProjectMenuCtx => ({
   viewers: { file: true, changes: true, log: true }, scripts: true, run: true,
   layouts: [], explorer: true, reveal: true, canUp: true, canDown: true, collapsed: false, ...p,
 })
-const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({ tabRow: false, cwd: 'C:\\r\\alpha', explorer: true, agent: true, linked: true, others: 1, ...p })
+const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({
+  tabRow: false, cwd: 'C:\\r\\alpha', explorer: true, agent: true, linked: true, others: 1, targets: [{ key: 't2', title: 'Review' }], ...p,
+})
 
 describe('projectMenu', () => {
   it('lists the project actions in order', () => {
@@ -69,7 +71,9 @@ describe('projectMenu', () => {
 describe('rowMenu', () => {
   it('lists the row actions with split presets', () => {
     const m = rowMenu(row(), t)
-    expect(ids(m)).toEqual(['focus', '-', 'split-right', 'split-down', '-', 'copy-cwd', 'explorer', 'monitor', '-', 'close', 'close-others'])
+    expect(ids(m)).toEqual([
+      'focus', '-', 'split-right', 'split-down', '-', 'rename-tab', 'move-to', 'move-out', '-', 'copy-cwd', 'explorer', 'monitor', '-', 'close', 'close-others',
+    ])
     expect(kids(m, 'split-right')).toEqual(['split:row:claude', 'split:row:codex', 'split:row:shell', 'split:row:browser'])
     expect(kids(m, 'split-down')[0]).toBe('split:col:claude')
   })
@@ -84,10 +88,38 @@ describe('rowMenu', () => {
     expect(findAction(rowMenu(row({ others: 0 }), t), 'close-others')?.disabled).toBe(true)
     expect(findAction(rowMenu(row(), t), 'close-others')?.disabled).toBeFalsy()
   })
+  it('moves a pane to another tab of the project, or out to a tab of its own', () => {
+    const m = rowMenu(row({ targets: [{ key: 't2', title: 'Review' }, { key: 't3', title: 'Shell' }] }), t)
+    expect(kids(m, 'move-to')).toEqual(['move-to:t2', 'move-to:t3'])
+    expect(findAction(m, 'move-to:t2')?.label).toBe('Review')
+    expect(findAction(m, 'move-out')?.disabled).toBeFalsy()
+    expect(findAction(m, 'rename-tab')).toMatchObject({ label: 'renameTab', shortcut: 'F2' })
+  })
+  it('no other tab: Move to tab disabled with a reason; a lone pane cannot move out', () => {
+    const m = rowMenu(row({ targets: [], others: 0 }), t)
+    expect(findAction(m, 'move-to')).toMatchObject({ disabled: true, hint: 'noTargets' })
+    expect(findAction(m, 'move-to')?.children).toBeUndefined()
+    expect(findAction(m, 'move-out')?.disabled).toBe(true)
+    expect(findAction(rowMenu(row({ tabRow: true, others: 2 }), t), 'move-out')?.disabled).toBe(true)
+  })
   it('no cwd: copy and Explorer disabled', () => {
     const m = rowMenu(row({ cwd: null }), t)
     expect(findAction(m, 'copy-cwd')?.disabled).toBe(true)
     expect(findAction(m, 'explorer')?.disabled).toBe(true)
+  })
+})
+
+describe('groupMenu', () => {
+  it('lists open, rename, fold, ungroup, then close', () => {
+    expect(ids(groupMenu({ folded: false }, t))).toEqual(['open', 'rename', 'fold', 'ungroup', '-', 'close'])
+    expect(ids(groupMenu({ folded: true }, t))).toEqual(['open', 'rename', 'unfold', 'ungroup', '-', 'close'])
+  })
+  it('labels come from the shared tab actions', () => {
+    const m = groupMenu({ folded: true }, t)
+    expect(findAction(m, 'unfold')).toMatchObject({ label: 'unfold', shortcut: '→' })
+    expect(findAction(m, 'rename')).toMatchObject({ label: 'rename', shortcut: 'F2' })
+    expect(findAction(m, 'close')?.label).toBe('close')
+    expect(findAction(groupMenu({ folded: false }, t), 'fold')?.shortcut).toBe('←')
   })
 })
 
@@ -103,5 +135,15 @@ describe('emptyMenu / isMenuKey', () => {
     expect(k('F10', { shiftKey: true })).toBe(true)
     expect(k('F10')).toBe(false)
     expect(k('F10', { shiftKey: true, ctrlKey: true })).toBe(false)
+  })
+})
+
+describe('row menu compact', () => {
+  it('adds Compact before the close actions for agent rows, disabled with a reason when busy', () => {
+    const ready = rowMenu(row({ compact: 'ready' }), t)
+    expect(ids(ready).slice(-5)).toEqual(['-', 'compact', '-', 'close', 'close-others'])
+    expect(findAction(rowMenu(row({ compact: 'busy' }), t), 'compact')).toMatchObject({ disabled: true, hint: 'busy' })
+    expect(ids(rowMenu(row({ compact: 'running' }), t))).toContain('compact-cancel')
+    expect(ids(rowMenu(row(), t))).not.toContain('compact')
   })
 })

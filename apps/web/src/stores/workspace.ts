@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
+import type { CompactFlow } from '../lib/compactHandoff'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PtyPreset } from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
   isLayout,
+  isLeaf,
   leaves,
   movePane as moveLeaf,
   neighbor,
@@ -83,6 +85,8 @@ export interface Pane {
   pendingCommand?: string
   openTicket?: string
   prefill?: string
+  prefillSubmit?: boolean
+  compact?: CompactFlow
   state: PaneState
   exitCode?: number
   error?: string
@@ -95,6 +99,99 @@ export interface Tab {
   focus: string
   /** Folder the tab was opened for: fixed for the tab's life, a `cd` never moves it. Missing = home / saved before v38. */
   project?: string
+  name?: string
+  folded?: boolean
+  zoom?: string
+}
+
+export const TAB_NAME_MAX = 60
+
+const zoomOf = (t: Partial<Tab>, root: LayoutNode): string | undefined => {
+  const keys = leaves(root)
+  return typeof t.zoom === 'string' && keys.length > 1 && keys.includes(t.zoom) ? t.zoom : undefined
+}
+
+export const CLOSED_MAX = 10
+
+export interface ClosedPane {
+  key: string
+  kind?: PaneKind
+  preset: PtyPreset
+  cwd?: string
+  resume?: string
+  url?: string
+  path?: string
+  line?: number
+  name: string
+}
+
+export interface ClosedAnchor {
+  siblingKey: string
+  group: string[]
+  dir: SplitDir
+  side: 'a' | 'b'
+  ratio: number
+}
+
+export interface ClosedTab {
+  root: LayoutNode
+  focus: string
+  name?: string
+  project?: string
+  index: number
+  panes: ClosedPane[]
+}
+
+export interface ClosedLoose {
+  pane: ClosedPane
+  anchor: ClosedAnchor | null
+  project?: string
+}
+
+export interface ClosedEntry {
+  id: number
+  at: number
+  tabs: ClosedTab[]
+  loose: ClosedLoose[]
+}
+
+export const closedPanes = (e: ClosedEntry): ClosedPane[] => [...e.tabs.flatMap((t) => t.panes), ...e.loose.map((l) => l.pane)]
+
+const copyTree = (n: LayoutNode): LayoutNode => (isLeaf(n) ? { pane: n.pane } : { dir: n.dir, ratio: n.ratio, a: copyTree(n.a), b: copyTree(n.b) })
+
+const remapTree = (n: LayoutNode, map: ReadonlyMap<string, string>): LayoutNode =>
+  isLeaf(n) ? { pane: map.get(n.pane) ?? n.pane } : { dir: n.dir, ratio: n.ratio, a: remapTree(n.a, map), b: remapTree(n.b, map) }
+
+export function anchorOf(root: LayoutNode, key: string): ClosedAnchor | null {
+  if (isLeaf(root)) return null
+  for (const side of ['a', 'b'] as const) {
+    const child = root[side]
+    if (!isLeaf(child) || child.pane !== key) continue
+    const group = leaves(root[side === 'a' ? 'b' : 'a'])
+    return { siblingKey: side === 'a' ? group[0]! : group[group.length - 1]!, group, dir: root.dir, side, ratio: root.ratio }
+  }
+  return anchorOf(root.a, key) ?? anchorOf(root.b, key)
+}
+
+function wrapGroup(n: LayoutNode, want: ReadonlySet<string>, wrap: (n: LayoutNode) => LayoutNode): LayoutNode | null {
+  const keys = leaves(n)
+  if (keys.length === want.size && keys.every((k) => want.has(k))) return wrap(n)
+  if (isLeaf(n) || !keys.some((k) => want.has(k))) return null
+  const a = wrapGroup(n.a, want, wrap)
+  if (a) return { ...n, a }
+  const b = wrapGroup(n.b, want, wrap)
+  return b ? { ...n, b } : null
+}
+
+export const cleanTabName = (v: unknown): string | undefined =>
+  typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, TAB_NAME_MAX) || undefined : undefined
+
+const tabExtras = (t: Partial<Tab>): Pick<Tab, 'name' | 'folded'> => ({ name: cleanTabName(t.name), folded: t.folded === true || undefined })
+
+export function tabTitle(tab: Tab, paneOf: (key: string) => Pane | undefined, titleOf: (pane: Pane) => string): string {
+  if (tab.name) return tab.name
+  const primary = paneOf(primaryPaneKey(tab.root, paneOf))
+  return primary ? titleOf(primary) : ''
 }
 
 const STORAGE_KEY = 'ccm.workspace.panes'
@@ -189,7 +286,10 @@ function loadLast(): LastWorkspace | null {
     const known = new Set(panes.map((p) => p.key))
     const tabs = raw.tabs
       .filter((t) => t && isLayout(t.root) && leaves(t.root).every((k) => known.has(k)))
-      .map((t) => ({ key: String(t.key), root: t.root, focus: String(t.focus), project: isAbs(t.project) ? t.project : undefined }))
+      .map((t) => {
+        const zoom = zoomOf(t, t.root)
+        return { key: String(t.key), root: t.root, focus: zoom ?? String(t.focus), project: isAbs(t.project) ? t.project : undefined, ...tabExtras(t), zoom }
+      })
     return tabs.length ? { at: String(raw.at ?? ''), panes, tabs } : null
   } catch {
     return null
@@ -260,7 +360,15 @@ function loadSaved(): Saved {
       for (const key of leaves(tab.root)) if (!known.has(key)) root = root && removeLeaf(root, key)
       if (!root) continue
       const left = leaves(root)
-      tabs.push({ key: tab.key, root, focus: left.includes(tab.focus) ? tab.focus : left[0]!, project: isAbs((tab as Partial<Tab>).project) ? (tab as Tab).project : undefined })
+      const zoom = zoomOf(tab as Partial<Tab>, root)
+      tabs.push({
+        key: tab.key,
+        root,
+        focus: zoom ?? (left.includes(tab.focus) ? tab.focus : left[0]!),
+        project: isAbs((tab as Partial<Tab>).project) ? (tab as Tab).project : undefined,
+        ...tabExtras(tab as Partial<Tab>),
+        zoom,
+      })
     }
     const placed = new Set(tabs.flatMap((t) => leaves(t.root)))
     return { panes: panes.filter((p) => placed.has(p.key)), tabs, active: Array.isArray(raw) ? null : (raw.active ?? null) }
@@ -270,6 +378,22 @@ function loadSaved(): Saved {
 }
 
 const agentId = (v: unknown): string | undefined => (typeof v === 'string' && isAgentSessionId(v) ? v : undefined)
+
+function baseOf(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i >= 0 ? p.slice(i + 1) : p
+}
+
+function fallbackName(p: Pane): string {
+  if (p.kind === 'file') return baseOf(p.path ?? '') || 'file'
+  if (p.kind === 'browser') return p.title || p.url || 'browser'
+  return isTerm(p) ? p.preset : (p.kind ?? 'pane')
+}
+
+function closedPane(p: Pane, name: string): ClosedPane {
+  const resume = isTerm(p) && p.preset !== 'shell' ? agentId(p.agentSessionId ?? p.resume) : undefined
+  return { key: p.key, ...viewOf(p), preset: p.preset, cwd: resume ? p.cwd : workCwd(p), resume, name }
+}
 
 export type InsertRequest = { id: number; paneKey: string; text: string; image?: undefined } | { id: number; paneKey: string; image: true; text?: undefined }
 
@@ -294,12 +418,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(preset, (p) => writeLocal(PRESET_KEY, p))
 
   const tabOf = (paneKey: string): Tab | undefined => tabs.value.find((t) => leaves(t.root).includes(paneKey))
+  const startTab = activeKey.value ? tabOf(activeKey.value) : undefined
+  if (startTab?.zoom && startTab.zoom !== activeKey.value) startTab.zoom = undefined
   const active = computed(() => panes.value.find((p) => p.key === activeKey.value) ?? null)
   const activeTab = computed(() => (activeKey.value ? tabOf(activeKey.value) : undefined) ?? null)
   const paneByTerminal = computed(() => new Map(panes.value.filter((p) => p.terminalId).map((p) => [p.terminalId!, p])))
   const attentionPanes = computed(() => panes.value.filter((p) => p.attention))
   /** Panes waiting on a yes before they (and their agents) are killed. */
   const pendingClose = ref<string[] | null>(null)
+  let pendingQuiet = false
 
   watch(
     [panes, tabs, activeKey],
@@ -361,11 +488,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   type Placement = { key: string; dir: SplitDir }
 
+  const unzoom = (tab: Tab | undefined): void => {
+    if (tab?.zoom) tab.zoom = undefined
+  }
+
   function placeNew(pane: Pane, split?: Placement): void {
     const tab = split ? tabOf(split.key) : undefined
     if (tab && split) {
       tab.root = splitLeaf(tab.root, split.key, pane.key, split.dir)
       tab.focus = pane.key
+      unzoom(tab)
     } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: pane.cwd })
     activate(pane.key)
   }
@@ -510,6 +642,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (tab && spot) {
       tab.root = splitLeaf(tab.root, spot.key, pane.key, spot.dir)
       tab.focus = pane.key
+      unzoom(tab)
     } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: pane.cwd })
     activate(pane.key)
     return pane
@@ -540,6 +673,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const spot = size.w && size.h ? dockSpot(callerTab.root, caller.key, size) : null
     if (spot) {
       callerTab.root = splitLeaf(callerTab.root, spot.key, pane.key, spot.dir)
+      unzoom(callerTab)
     } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: tabProject(callerTab, paneOf) ?? req.cwd })
     return { ok: true, paneKey: pane.key }
   }
@@ -552,6 +686,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const pane = addSpec(spec ?? { kind: 'term', preset: isTerm(target) ? target.preset : preset.value }, workCwd(target))
     tab.root = splitLeaf(tab.root, targetKey, pane.key, dir)
     tab.focus = pane.key
+    unzoom(tab)
     activate(pane.key)
     return pane
   }
@@ -637,13 +772,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const keys = new Map<string, string>()
     for (const p of snap.panes) keys.set(p.key, (isTerm(p) ? addPane(p.preset, p.cwd, p.resume) : addView(viewOf(p), p.cwd)).key)
     const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
-    for (const tab of snap.tabs)
+    for (const tab of snap.tabs) {
+      const zoom = tab.zoom ? keys.get(tab.zoom) : undefined
       tabs.value.push({
         key: newKey('t'),
         root: remap(tab.root),
-        focus: keys.get(tab.focus) ?? keys.get(leaves(tab.root)[0]!)!,
+        focus: zoom ?? keys.get(tab.focus) ?? keys.get(leaves(tab.root)[0]!)!,
         project: tab.project ?? snap.panes.find((p) => p.key === leaves(tab.root)[0])?.cwd,
+        ...tabExtras(tab),
+        zoom,
       })
+    }
     activeKey.value = tabs.value[0]?.focus ?? null
   }
 
@@ -665,6 +804,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const t =tabs.value.findIndex((tab) => leaves(tab.root).includes(key))
     const tab = tabs.value[t]
     if (!tab) return
+    unzoom(tab)
     const root = removeLeaf(tab.root, key)
     if (root) {
       tab.root = root
@@ -684,6 +824,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function activate(key: string): void {
     const tab = tabOf(key)
     if (!tab) return
+    if (tab.zoom !== key) unzoom(tab)
     tab.focus = key
     activeKey.value = key
     const pane = panes.value.find((p) => p.key === key)
@@ -702,20 +843,141 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   /** Closes right away unless a pane still runs something worth asking about (`busy`). */
-  function requestClose(keys: string[], busy: (pane: Pane) => boolean): void {
+  function requestClose(keys: string[], busy: (pane: Pane) => boolean, opts: { record?: boolean } = {}): void {
     const list = keys.map((k) => panes.value.find((p) => p.key === k)).filter((p): p is Pane => !!p)
-    if (list.some(busy)) pendingClose.value = list.map((p) => p.key)
-    else for (const p of list) remove(p.key)
+    if (list.some(busy)) {
+      pendingClose.value = list.map((p) => p.key)
+      pendingQuiet = opts.record === false
+      return
+    }
+    if (opts.record !== false) recordClosed(list.map((p) => p.key))
+    for (const p of list) remove(p.key)
   }
 
   function confirmClose(): void {
     const keys = pendingClose.value ?? []
     pendingClose.value = null
+    if (!pendingQuiet) recordClosed(keys)
+    pendingQuiet = false
     for (const k of keys) remove(k)
   }
 
   function cancelClose(): void {
     pendingClose.value = null
+    pendingQuiet = false
+  }
+
+  const closedStack = shallowRef<ClosedEntry[]>([])
+  let closedSeq = 0
+  let closedNamer: ((pane: Pane) => string) | null = null
+
+  function setClosedNamer(nameOf: ((pane: Pane) => string) | null): void {
+    closedNamer = nameOf
+  }
+
+  function nameFor(pane: Pane, nameOf?: (pane: Pane) => string): string {
+    try {
+      return (nameOf ?? closedNamer ?? fallbackName)(pane) || fallbackName(pane)
+    } catch {
+      return fallbackName(pane)
+    }
+  }
+
+  function recordClosed(keys: readonly string[], nameOf?: (pane: Pane) => string): ClosedEntry | null {
+    const gone = new Set(keys.filter((k) => paneOf(k)))
+    if (!gone.size) return null
+    const entry: ClosedEntry = { id: ++closedSeq, at: Date.now(), tabs: [], loose: [] }
+    const snap = (k: string): ClosedPane => {
+      const pane = paneOf(k)!
+      return closedPane(pane, nameFor(pane, nameOf))
+    }
+    tabs.value.forEach((tab, index) => {
+      const all = leaves(tab.root)
+      const mine = all.filter((k) => gone.has(k))
+      if (!mine.length) return
+      if (mine.length === all.length) {
+        entry.tabs.push({ root: copyTree(tab.root), focus: tab.focus, name: tab.name, project: tab.project, index, panes: all.map(snap) })
+        return
+      }
+      let root: LayoutNode | null = copyTree(tab.root)
+      for (const k of mine) {
+        entry.loose.push({ pane: snap(k), anchor: root && anchorOf(root, k), project: tab.project })
+        root = root && removeLeaf(root, k)
+      }
+    })
+    if (!entry.tabs.length && !entry.loose.length) return null
+    closedStack.value = [...closedStack.value, entry].slice(-CLOSED_MAX)
+    return entry
+  }
+
+  function placeBack(paneKey: string, anchor: ClosedAnchor, map: ReadonlyMap<string, string>): boolean {
+    const group = anchor.group.map((k) => map.get(k) ?? k)
+    const sibling = map.get(anchor.siblingKey) ?? anchor.siblingKey
+    const host = tabOf(sibling) ?? group.map((k) => tabOf(k)).find((t): t is Tab => !!t)
+    if (!host) return false
+    const leaf: LayoutNode = { pane: paneKey }
+    const wrap = (n: LayoutNode): LayoutNode => ({ dir: anchor.dir, ratio: anchor.ratio, a: anchor.side === 'a' ? leaf : n, b: anchor.side === 'a' ? n : leaf })
+    const exact = wrapGroup(host.root, new Set(group), wrap)
+    if (exact) host.root = exact
+    else {
+      const at = [sibling, ...group].find((k) => tabOf(k) === host)!
+      const edge: Edge = anchor.dir === 'row' ? (anchor.side === 'a' ? 'left' : 'right') : anchor.side === 'a' ? 'top' : 'bottom'
+      host.root = dockTree(host.root, at, leaf, edge)
+    }
+    host.focus = paneKey
+    unzoom(host)
+    return true
+  }
+
+  function reopenClosed(): { keys: string[]; from: string[] } | null {
+    const entry = closedStack.value.at(-1)
+    if (!entry) return null
+    closedStack.value = closedStack.value.slice(0, -1)
+    const map = new Map<string, string>()
+    const from: string[] = []
+    const make = (c: ClosedPane): Pane | null => {
+      if (c.resume && panes.value.some((p) => p.agentSessionId === c.resume && (p.state === 'running' || p.state === 'starting'))) return null
+      const pane = isTerm(c) ? addPane(c.preset, c.cwd, c.resume) : addView(viewOf(c), c.cwd)
+      map.set(c.key, pane.key)
+      from.push(c.key)
+      return pane
+    }
+    let focus: string | undefined
+    for (const tab of entry.tabs) {
+      for (const c of tab.panes) make(c)
+      let root: LayoutNode | null = tab.root
+      for (const k of leaves(tab.root)) if (!map.has(k)) root = root && removeLeaf(root, k)
+      if (!root) continue
+      const mapped = remapTree(root, map)
+      const first = map.get(tab.focus) ?? leaves(mapped)[0]!
+      tabs.value.splice(Math.min(tab.index, tabs.value.length), 0, { key: newKey('t'), root: mapped, focus: first, project: tab.project, name: tab.name })
+      focus ??= first
+    }
+    for (const item of [...entry.loose].reverse()) {
+      const pane = make(item.pane)
+      if (!pane) continue
+      if (!item.anchor || !placeBack(pane.key, item.anchor, map))
+        tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: item.project ?? pane.cwd })
+      focus = pane.key
+    }
+    if (focus) activate(focus)
+    return { keys: from.map((k) => map.get(k)!), from }
+  }
+
+  function toggleZoom(paneKey: string): boolean {
+    const tab = tabOf(paneKey)
+    if (!tab) return false
+    if (tab.zoom === paneKey || leaves(tab.root).length < 2) {
+      unzoom(tab)
+      return false
+    }
+    activate(paneKey)
+    tab.zoom = paneKey
+    return true
+  }
+
+  function clearZoom(tabKey: string): void {
+    unzoom(tabs.value.find((t) => t.key === tabKey))
   }
 
   /** v42: an edited file pane stops being the Explorer preview slot (a single click must not replace it). */
@@ -773,6 +1035,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const i = tabs.value.findIndex((t) => leaves(t.root).includes(key))
     const tab = tabs.value[i]
     if (!tab) return false
+    unzoom(tab)
     const root = removeLeaf(tab.root, key)
     if (!root) tabs.value.splice(i, 1)
     else {
@@ -787,6 +1050,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const to = tabOf(target)
     const from = tabOf(src)
     if (!to || !from || src === target) return
+    unzoom(from)
+    unzoom(to)
     if (from === to) to.root = moveLeaf(to.root, src, target, edge)
     else {
       unplace(src)
@@ -799,6 +1064,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function swapPanes(a: string, b: string): void {
     const tab = tabOf(a)
     if (!tab || tab !== tabOf(b)) return
+    unzoom(tab)
     tab.root = swapLeaves(tab.root, a, b)
     activate(a)
   }
@@ -809,6 +1075,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const src = tabs.value[i]
     const to = tabOf(target)
     if (!src || !to || src === to) return
+    unzoom(to)
     to.root = dockTree(to.root, target, src.root, edge)
     tabs.value.splice(i, 1)
     activate(src.focus)
@@ -823,6 +1090,41 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const at = tabs.value.indexOf(from)
     tabs.value.splice(at + 1, 0, { key: newKey('t'), root: { pane: key }, focus: key, project: from.project ?? pane.cwd })
     activate(key)
+  }
+
+  function renameTab(tabKey: string, name: string): void {
+    const tab = tabs.value.find((t) => t.key === tabKey)
+    if (tab) tab.name = cleanTabName(name)
+  }
+
+  function moveTab(tabKey: string, to: number): void {
+    const from = tabs.value.findIndex((t) => t.key === tabKey)
+    if (from < 0) return
+    const at = Math.max(0, Math.min(to, tabs.value.length - 1))
+    if (at === from) return
+    const [tab] = tabs.value.splice(from, 1)
+    tabs.value.splice(at, 0, tab!)
+  }
+
+  function setFolded(tabKey: string, folded: boolean): void {
+    const tab = tabs.value.find((t) => t.key === tabKey)
+    if (tab) tab.folded = folded || undefined
+  }
+
+  function ungroup(tabKey: string): void {
+    const tab = tabs.value.find((t) => t.key === tabKey)
+    if (!tab) return
+    unzoom(tab)
+    const keep = activeKey.value
+    for (const key of leaves(tab.root).slice(1).reverse()) detachPane(key)
+    if (keep) activate(keep)
+  }
+
+  function movePaneToTab(paneKey: string, tabKey: string): void {
+    const target = tabs.value.find((t) => t.key === tabKey)
+    if (!target || tabOf(paneKey) === target) return
+    const spot = dockSpot(target.root, target.focus, canvasSize.value)
+    movePane(paneKey, spot?.key ?? target.focus, spot?.dir === 'col' ? 'bottom' : 'right')
   }
 
   /** The focused pane trades places with its neighbour on that side and keeps focus. */
@@ -879,6 +1181,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     requestClose,
     confirmClose,
     cancelClose,
+    closedStack,
+    setClosedNamer,
+    recordClosed,
+    reopenClosed,
+    toggleZoom,
+    clearZoom,
     setDirty,
     registerSaver,
     dirtyPanes,
@@ -903,6 +1211,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     swapWith,
     mergeTab,
     detachPane,
+    renameTab,
+    moveTab,
+    setFolded,
+    ungroup,
+    movePaneToTab,
     setRatio,
     remember,
     forget,

@@ -14,6 +14,16 @@ import fwp from './flutter-preview-v40'
 import fileEditor from './file-editor-v42'
 import mapV47 from './map-v47'
 import v48 from './workspace-v48'
+import v50 from './workspace-v50'
+import v50Rail from './workspace-v50-rail'
+import v50Tabs from './workspace-v50-tabs'
+import v50Mission from './workspace-v50-mission'
+import v51 from './workspace-v51'
+import v52 from './workspace-v52'
+import v52Pane from './workspace-v52-pane'
+import v52Tabs from './workspace-v52-tabs'
+import v52Rail from './workspace-v52-rail'
+import v52Mission from './workspace-v52-mission'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -43,6 +53,16 @@ const vi: typeof en = {
     ...log.vi,
     ...rail.vi,
     ...v48.vi.workspace,
+    ...v50.vi,
+    ...v50Rail.vi,
+    ...v50Tabs.vi,
+    ...v50Mission.vi,
+    ...v51.vi,
+    ...v52.vi,
+    ...v52Pane.vi,
+    ...v52Tabs.vi,
+    ...v52Rail.vi,
+    ...v52Mission.vi,
     tabs: 'Terminal',
     newLabel: 'Terminal hoặc tab mới',
     close: 'Đóng terminal',
@@ -497,8 +517,11 @@ const vi: typeof en = {
       wsSplitRight: 'Chia pane sang phải',
       wsSplitDown: 'Chia pane xuống dưới',
       wsClose: 'Đóng pane đang chọn',
+      wsReopen: 'Mở lại pane hoặc tab vừa đóng',
+      wsZoom: 'Phóng to pane đang chọn cho đầy tab, hoặc hiện lại mọi pane',
       wsAttention: 'Tới pane tiếp theo đang cần bạn',
       wsCycle: 'Tab kế tiếp của dự án này (thêm Shift để lùi)',
+      wsMoveTab: 'Chuyển tab sang trái / phải',
       wsTab: 'Tab 1–9 của dự án này',
       wsMission: 'Mission Control: mọi tab của mọi dự án',
       wsFocus: 'Chuyển sang pane bên cạnh',

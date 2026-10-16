@@ -29,6 +29,33 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('KeyO', { ctrlKey: true }), false, false)).toBeNull()
   })
 
+  it('Ctrl+Shift+PageUp/PageDown (⇧⌘ on macOS) moves the tab left / right', () => {
+    expect(workspaceAction(key('PageUp', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'moveTab', step: -1 })
+    expect(workspaceAction(key('PageDown', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'moveTab', step: 1 })
+    expect(workspaceAction(key('PageDown', { metaKey: true, shiftKey: true }), true, false)).toEqual({ t: 'moveTab', step: 1 })
+    expect(workspaceAction(key('PageUp', { ctrlKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('PageUp', { ctrlKey: true, shiftKey: true, altKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('PageUp', { metaKey: true }), true, false)).toBeNull()
+  })
+
+  it('Ctrl+Shift+Enter / Cmd+Shift+Enter zooms the pane', () => {
+    expect(workspaceAction(key('Enter', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'zoom' })
+    expect(workspaceAction(key('Enter', { metaKey: true, shiftKey: true }), true, true)).toEqual({ t: 'zoom' })
+    expect(workspaceAction(key('Enter', { shiftKey: true }), false, true)).toBeNull()
+    expect(workspaceAction(key('Enter', { ctrlKey: true }), false, true)).toBeNull()
+    expect(workspaceAction(key('Enter', { metaKey: true }), true, true)).toBeNull()
+    expect(workspaceAction(key('Enter', { ctrlKey: true, shiftKey: true }), true, true)).toBeNull()
+  })
+
+  it('reopens the last closed pane: Cmd+Shift+T on macOS, Ctrl+Shift+Z elsewhere', () => {
+    expect(workspaceAction(key('KeyT', { metaKey: true, shiftKey: true }), true, false)).toEqual({ t: 'reopen' })
+    expect(workspaceAction(key('KeyT', { metaKey: true }), true, false)).toEqual({ t: 'newTab' })
+    expect(workspaceAction(key('KeyZ', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'reopen' })
+    expect(workspaceAction(key('KeyT', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'newTab' })
+    expect(workspaceAction(key('KeyZ', { ctrlKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('KeyZ', { metaKey: true, shiftKey: true }), true, false)).toBeNull()
+  })
+
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })

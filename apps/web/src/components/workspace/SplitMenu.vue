@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PtyPreset } from '@ccm/shared'
 import { isMac } from '../../lib/platform'
+import { openedByKey } from '../../lib/inputModality'
 import { Globe } from 'lucide-vue-next'
 import type { SplitChoice } from '../../stores/workspace'
 import PresetIcon from './PresetIcon.vue'
@@ -16,6 +17,7 @@ const PRESETS: SplitChoice[] = ['claude', 'codex', 'shell', 'browser']
 const WIDTH = 220
 const root = ref<HTMLElement | null>(null)
 const items = ref<HTMLButtonElement[]>([])
+const byKey = openedByKey()
 
 const style = computed(() => {
   const left = Math.max(12, Math.min(props.anchor.right - WIDTH, window.innerWidth - WIDTH - 12))
@@ -42,7 +44,9 @@ function onKey(e: KeyboardEvent): void {
   e.preventDefault()
   const list = items.value
   const at = list.indexOf(document.activeElement as HTMLButtonElement)
-  const next = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : (at + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length
+  const down = e.key === 'ArrowDown'
+  const next =
+    e.key === 'Home' || (at < 0 && down) ? 0 : e.key === 'End' || at < 0 ? list.length - 1 : (at + (down ? 1 : -1) + list.length) % list.length
   list[next]?.focus()
 }
 
@@ -59,13 +63,24 @@ function onOutside(e: PointerEvent): void {
 onMounted(async () => {
   document.addEventListener('pointerdown', onOutside, true)
   await nextTick()
-  items.value[Math.max(0, props.current ? PRESETS.indexOf(props.current) : 0)]?.focus()
+  if (byKey) items.value[Math.max(0, props.current ? PRESETS.indexOf(props.current) : 0)]?.focus()
+  else root.value?.focus({ preventScroll: true })
 })
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, true))
 </script>
 
 <template>
-  <div ref="root" class="ccm-menu fixed z-50 flex flex-col p-1" :style="style" role="menu" :aria-label="title ?? t('workspace.splitMenu.title')" @keydown="onKey" @focusout="onFocusOut">
+  <div
+    ref="root"
+    class="ccm-menu fixed z-50 flex flex-col p-1 outline-none"
+    :style="style"
+    role="menu"
+    tabindex="-1"
+    data-menu-panel
+    :aria-label="title ?? t('workspace.splitMenu.title')"
+    @keydown="onKey"
+    @focusout="onFocusOut"
+  >
     <p class="px-2 pb-1 pt-1.5 text-2xs font-semibold text-ink-faint" aria-hidden="true">{{ title ?? t('workspace.splitMenu.title') }}</p>
     <button
       v-for="preset in PRESETS"
