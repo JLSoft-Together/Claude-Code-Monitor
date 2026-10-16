@@ -41,7 +41,7 @@ async function main() {
     const vars = await evaluate(`[getComputedStyle(document.documentElement).getPropertyValue('--font-mono'), getComputedStyle(document.body).fontFamily]`)
     check('code font sets --font-mono', /JetBrains Mono Variable/.test(vars[0]), vars[0])
     check('interface font reaches body text', /Inter Variable/.test(vars[1]), vars[1])
-    const loaded = await waitFor(`document.fonts.check("13px 'JetBrains Mono Variable'") && document.fonts.check("13px 'Inter Variable'") && [...document.fonts].some(f => f.family.includes('Inter') && f.status === 'loaded')`, 5000, 'fonts loaded').catch(() => false)
+    const loaded = await evaluate(`Promise.all(["13px 'JetBrains Mono Variable'", "13px 'Inter Variable'"].map((f) => document.fonts.load(f))).then((sets) => sets.every((s) => s.some((f) => f.status === 'loaded')))`).catch(() => false)
     check('bundled fonts load locally', !!loaded)
     check('picks persist', await evaluate(`localStorage.getItem('ccm.font.code') === 'jetbrains-mono' && localStorage.getItem('ccm.font.ui') === 'inter'`))
 

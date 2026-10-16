@@ -11,13 +11,14 @@ export type Panel = 'sessions' | 'activity'
 export type WindowResult = FocusWindowResult | 'offline'
 
 function initialView(): View {
+  const start: View = hasTerminals ? 'workspace' : 'monitor'
   try {
-    const v = localStorage.getItem('ccm.view')
-    if (v === 'workspace') return hasTerminals ? v : 'monitor'
-    if (v === 'extensions') return hasExtensions ? v : 'monitor'
-    return v === 'usage' || v === 'history' ? v : 'monitor'
+    const v = sessionStorage.getItem('ccm.view')
+    if (v === 'workspace') return start
+    if (v === 'extensions') return hasExtensions ? v : start
+    return v === 'monitor' || v === 'usage' || v === 'history' ? v : start
   } catch {
-    return 'monitor'
+    return start
   }
 }
 
@@ -222,7 +223,7 @@ export const useUiStore = defineStore('ui', () => {
 
   watch(view, (value) => {
     try {
-      localStorage.setItem('ccm.view', value)
+      sessionStorage.setItem('ccm.view', value)
     } catch {
       return
     }
