@@ -53,6 +53,12 @@ describe('failed', () => {
     expect(failed(res('remote: 403 Forbidden'))).toMatchObject({ error: 'auth' })
     expect(failed(res("fatal: couldn't find remote ref refs/heads/fix-403"))).toMatchObject({ error: 'failed' })
   })
+  it("maps GitHub's no-access 404 to auth", () => {
+    expect(failed(res("remote: Repository not found.\nfatal: repository 'https://github.com/o/r.git/' not found"))).toMatchObject({
+      error: 'auth',
+      detail: 'remote: Repository not found.',
+    })
+  })
   it('uses the fallback when nothing matches', () => {
     expect(failed(res('fatal: something else'))).toMatchObject({ error: 'failed' })
     expect(failed(res(' ! [rejected]        side -> side  (non-fast-forward)'))).toMatchObject({ error: 'non-ff' })

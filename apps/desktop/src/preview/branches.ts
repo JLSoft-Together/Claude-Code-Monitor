@@ -20,7 +20,7 @@ export function failed(res: GitExecResult, fallback: BranchOpError = 'failed'): 
     ? 'not-merged'
     : /already exists/i.test(s)
       ? 'exists'
-      : /Authentication failed|could not read Username|Permission denied|\b403\b.*(?:Forbidden|error)|returned error: 403/i.test(s)
+      : /Authentication failed|could not read Username|Permission denied|Repository not found|\b403\b.*(?:Forbidden|error)|returned error: 403/i.test(s)
         ? 'auth'
         : /non-fast-forward|Not possible to fast-forward|rejected/i.test(s)
           ? 'non-ff'
