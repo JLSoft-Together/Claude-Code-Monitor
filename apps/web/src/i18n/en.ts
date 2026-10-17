@@ -29,6 +29,7 @@ import usageV53 from './usage-v53'
 import peerV54 from './peer-v54'
 import peerMapV54 from './peer-map-v54'
 import peerWsV54 from './peer-ws-v54'
+import githubV58 from './github-v58'
 
 export default {
   ...v25.en,
@@ -44,6 +45,7 @@ export default {
   ...peerV54.en,
   ...peerMapV54.en,
   ...peerWsV54.en,
+  ...githubV58.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

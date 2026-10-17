@@ -19,6 +19,8 @@ import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
 import RunSdkSettings from './RunSdkSettings.vue'
+import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
+import { hasGitHub } from '../lib/github'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ThemePicker from './ui/ThemePicker.vue'
@@ -540,6 +542,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           </section>
 
           <RunSdkSettings v-if="hasRun && ui.settingsOpen" :open="ui.settingsOpen" />
+
+          <GitHubAccountsSettings v-if="hasGitHub && ui.settingsOpen" :open="ui.settingsOpen" />
 
           <section v-if="hasGrants" aria-labelledby="set-access" class="mt-6">
             <h3 id="set-access" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.access') }}</h3>
