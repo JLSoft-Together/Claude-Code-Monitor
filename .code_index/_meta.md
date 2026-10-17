@@ -87,7 +87,7 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 
 - XML preview without a Gradle model: `layout/sourceModel.ts`, `gradleGraph.ts`, `gradleCache.ts`, `autoCompile`; daemon `SampleData.kt`.
 - `FilePane` Ctrl/⌘+A scoped to the code (`isSelectAllKey`).
-- v49 agents open panes (PLAN-v49, docs §11w): PTY host `pty/mcp.ts` tool `open_session` (20 / pane / min, `OPEN_RATE_MAX`), `GOLAIM_*` env; deeplink `agent-monitor://open` (`openLink.ts`).
+- v49 agents open panes (PLAN-v49, docs §11w): PTY host `pty/mcp.ts` tool `open_session` (20 / pane / min, `OPEN_RATE_MAX`), `ORRERY_*` env; deeplink `agent-monitor://open` (`openLink.ts`).
 - v50 workspace groups (PLAN-v50): `RailGroup`, `Tab.name`, `lib/subagents.ts`, `lib/tabMenu.ts` / `tabStrip.ts`, Mission grid `MissionCard`, dust `lib/dust.ts` (opt-in `settings.dustEffect`) + desktop `capture.ts`.
 - v51 Compact handoff (PLAN-v51, docs §11x): `lib/compactHandoff.ts`, `composables/useCompact.ts`, `Pane.compact`.
 - v52 workspace polish (PLAN-v52): `usePaneInfo` state vocabulary, `PaneMore.vue`, `Tab.zoom`, undo close `closedStack` + `UndoToast.vue`, `DimToggle.vue`, `missionLayout.ts`, `lib/inputModality.ts`.
@@ -101,3 +101,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - Taskbar icon blank: dead Start Menu `.lnk` removed by `shortcuts.ts` `removeDeadShortcuts` (`main.ts` `removeStaleShortcuts`).
 - v53 Explorer in its own right panel: `WorkspaceView.vue` `explorerOpen` / `explorerWidth`, `SideResizer` `edge`, `sideWidth.ts` key params, `explorer.retryFailed`; `preview/ipc.ts` re-asks a fresh pane census before refusing.
 - v54 Git Push: `preview/branches.ts` `pushPreview` / `pushBranch`, shared `pushArgs` / `PushPreview`, `changes.ts` `parseStatusV2` ahead/behind; web `log/PushDialog.vue`, `LogRefsToolbar` push, `ExplorerChanges` `↑N`.
+- Rename GolAIm → Orrery (display, MCP server `orrery`, env `ORRERY_*`, `childEnv` also strips legacy `GOLAIM_*`, `LEGACY_EXES` + `GolAIm.exe`); orrery icon `make-icon.mjs` `FULL` / `SMALL` (≤ 32 px + tray), intro `pages.ts` `orbit` / `planet` / `.spin`.
