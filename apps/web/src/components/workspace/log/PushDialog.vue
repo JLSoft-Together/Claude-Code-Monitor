@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpFromLine, LoaderCircle, X } from 'lucide-vue-next'
-import { checkBranchName, pushArgs, type BranchOpResult, type PushPreview } from '@ccm/shared'
+import { ArrowUpFromLine, LoaderCircle, TriangleAlert, X } from 'lucide-vue-next'
+import { checkBranchName, pushArgs, type BranchOpResult, type GhAccount, type GhRepoAccount, type PushPreview } from '@ccm/shared'
 import { retireOverlay } from '../../../lib/motion'
+import { ghAccounts, ghRepoAccount, ghRepoAccountSet, hasGitHub } from '../../../lib/github'
 import { gitPush, gitPushPreview } from '../../../lib/preview'
+import { useUiStore } from '../../../stores/ui'
 import AppSelect from '../../AppSelect.vue'
 
 /** `ref` = `refs/heads/<local>` to push from the repo `root`. */
 const props = defineProps<{ request: { root: string; ref: string } | null }>()
 const emit = defineEmits<{ done: [res: BranchOpResult, name: string]; close: [] }>()
 const { t, locale } = useI18n()
+const ui = useUiStore()
 const L = (k: string, named?: Record<string, unknown>, plural?: number): string =>
   plural === undefined ? t(`workspace.log.branches.${k}`, named ?? {}) : t(`workspace.log.branches.${k}`, named ?? {}, plural)
 
@@ -22,8 +25,13 @@ const setUpstream = ref(false)
 const upstreamTouched = ref(false)
 const busy = ref(false)
 const failure = ref<string | null>(null)
+const authFailed = ref(false)
 const sheet = ref<HTMLElement | null>(null)
 const pushBtn = ref<HTMLButtonElement | null>(null)
+/** v58: GitHub account git uses for this repo + remote (null until known, or not a github.com https remote). */
+const account = shallowRef<GhRepoAccount | null>(null)
+const accountList = shallowRef<GhAccount[]>([])
+let accountSeq = 0
 let restoreFocus: HTMLElement | null = null
 let seq = 0
 let typing: ReturnType<typeof setTimeout> | undefined
@@ -40,6 +48,23 @@ const canPush = computed(() => current.value && check.value.ok && !loading.value
 const command = computed(() => (ok.value && check.value.ok ? `git ${pushArgs(ok.value.local, remote.value, branch.value, setUpstream.value).join(' ')}` : ''))
 const dateFmt = computed(() => new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }))
 const fullFmt = computed(() => new Intl.DateTimeFormat(locale.value, { dateStyle: 'full', timeStyle: 'medium' }))
+const gh = computed(() => (account.value?.github ? account.value : null))
+const accountOptions = computed(() => {
+  const g = gh.value
+  if (!g) return []
+  const auto = g.choice === 'auto' && g.account ? t('github.pick.autoAs', { login: g.account.login }) : t('github.pick.auto')
+  return [{ value: 'auto', label: auto }, ...accountList.value.map((a) => ({ value: a.id, label: a.login })), { value: 'system', label: t('github.pick.system') }]
+})
+/** Shown under the account picker: who cannot push to owner/repo. */
+const accountNote = computed(() => {
+  const g = gh.value
+  if (!g || g.choice === 'system') return null
+  const repo = `${g.owner}/${g.repo}`
+  if (!g.account) return g.access === 'none' ? t('github.note.nobody', { repo }) : null
+  if (g.access === 'none') return t('github.note.none', { login: g.account.login, repo })
+  if (g.access === 'read') return t('github.note.read', { login: g.account.login, repo })
+  return null
+})
 const previewError = computed(() => (preview.value && !preview.value.ok ? [L(`error.${preview.value.error}`, { name: branch.value }), preview.value.detail].filter(Boolean).join(' — ') : null))
 
 async function load(nextRemote?: string, nextBranch?: string): Promise<void> {
@@ -56,6 +81,30 @@ async function load(nextRemote?: string, nextBranch?: string): Promise<void> {
   if (nextRemote === undefined) remote.value = res.remote
   if (nextBranch === undefined) branch.value = res.branch
   if (!upstreamTouched.value) setUpstream.value = !res.hasUpstream
+  void loadAccount(req.root, res.remote)
+}
+
+async function loadAccount(root: string, r: string): Promise<void> {
+  if (!hasGitHub) return
+  const mine = ++accountSeq
+  const [list, acc] = await Promise.all([ghAccounts(), ghRepoAccount(root, r)])
+  if (mine !== accountSeq || props.request?.root !== root) return
+  accountList.value = list.ok ? list.accounts : []
+  account.value = acc
+}
+
+async function onAccount(choice: string): Promise<void> {
+  const req = props.request
+  if (!req) return
+  failure.value = null
+  await ghRepoAccountSet(req.root, choice)
+  await loadAccount(req.root, remote.value)
+}
+
+function manageAccounts(): void {
+  if (busy.value) return
+  emit('close')
+  ui.settingsOpen = true
 }
 
 watch(
@@ -70,11 +119,14 @@ watch(
     }
     restoreFocus = document.activeElement as HTMLElement | null
     preview.value = null
+    account.value = null
+    accountSeq++
     remote.value = ''
     branch.value = ''
     upstreamTouched.value = false
     busy.value = false
     failure.value = null
+    authFailed.value = false
     await load()
     await nextTick()
     ;(pushBtn.value && !pushBtn.value.disabled ? pushBtn.value : sheet.value?.querySelector<HTMLElement>('[data-push-cancel]'))?.focus()
@@ -105,6 +157,7 @@ async function submit(): Promise<void> {
   if (!req || !p || !canPush.value) return
   busy.value = true
   failure.value = null
+  authFailed.value = false
   const name = `${p.local} → ${target.value}`
   const res = await gitPush(req.root, req.ref, remote.value, branch.value, setUpstream.value)
   busy.value = false
@@ -112,6 +165,7 @@ async function submit(): Promise<void> {
   if (res.ok || res.error === 'cancelled') return emit('done', res, name)
   const text = res.error === 'non-ff' ? L('pushError.non-ff', { name: target.value }) : L(`error.${res.error}`, { name: target.value })
   failure.value = [text, res.detail].filter(Boolean).join(' — ')
+  authFailed.value = res.error === 'auth'
   void load(remote.value, branch.value)
 }
 
@@ -178,6 +232,18 @@ function trap(e: KeyboardEvent): void {
               <p id="log-push-problem" class="min-h-4 text-xs text-st-error" role="status">{{ problem ?? '' }}</p>
             </div>
 
+            <div v-if="gh && accountList.length" class="flex flex-col gap-1 px-4 pb-2" data-push-account>
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-xs font-medium text-ink-muted">{{ t('github.pick.label') }}</span>
+                <AppSelect :model-value="gh.choice" :options="accountOptions" :label="t('github.pick.label')" size="sm" class="min-w-0" data-push-account-select @update:model-value="(c) => onAccount(c as string)" />
+                <button type="button" class="ccm-btn-plain ml-auto shrink-0 text-xs" :disabled="busy" @click="manageAccounts">{{ t('github.manage') }}</button>
+              </div>
+              <p v-if="accountNote" class="flex min-w-0 items-start gap-1 text-2xs text-warning" data-push-account-note>
+                <TriangleAlert :size="11" class="mt-px shrink-0" aria-hidden="true" />
+                <span class="min-w-0">{{ accountNote }}</span>
+              </p>
+            </div>
+
             <div class="flex min-h-0 flex-1 flex-col gap-1.5 px-4 pb-2" :class="ok || remote ? '' : 'pt-3'">
               <div class="flex min-w-0 items-center gap-2 text-xs">
                 <span class="min-w-0 flex-1 truncate font-medium text-ink" role="status" data-push-count>
@@ -207,6 +273,10 @@ function trap(e: KeyboardEvent): void {
                 <span class="min-w-0 truncate">{{ L('setUpstream', { target }) }}</span>
               </label>
               <p v-if="failure" class="text-xs text-st-error" role="alert" data-push-failure>{{ failure }}</p>
+              <p v-if="authFailed && gh" class="flex min-w-0 items-center gap-2 text-2xs text-ink-muted" data-push-auth-hint>
+                <span class="min-w-0 flex-1">{{ accountList.length ? t('github.authHint.other') : t('github.authHint.add') }}</span>
+                <button type="button" class="ccm-btn shrink-0 text-xs" @click="manageAccounts">{{ t('github.manage') }}</button>
+              </p>
             </div>
 
             <footer class="flex flex-col gap-2 border-t border-line px-4 py-3">
