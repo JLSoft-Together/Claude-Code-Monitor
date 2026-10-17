@@ -106,6 +106,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 - `src/extensions/commands.ts` (pure): `mcpConfig`, `buildInstall` / `buildRemove` / `buildSource`, `showCommand` (secrets → ••••), list parsers. No page string may start with `-`.
 - `src/extensions/status.ts`: `claudeJsonFile`, `readConfigured` (names only), `listSkills`, `probePrereqs`.
 - `src/extensions/ipc.ts` `registerExtensionsIpc`: `ccm:ext-status|mcp|install|remove|source|login`; one mutation at a time, native confirm, `execFile` without shell, results `{ok}` / `{ok:false, code, detail}` with masked detail. Test `extensions.test.ts`; E2E `extensions.cjs`.
+- `src/github/accounts.ts` (v58) `GitHubAccounts`: token accounts sealed by `safeStorage` in `github-accounts.json`, `add` (`GET /user`), `remove` / `setDefault`, per-repo `choiceOf` / `setChoice`, `accessOf` (`GET /repos`, 10 min cache), `resolve` / `envFor`; `gitAuthEnv` (env config extraHeader + empty github.com helper). `src/github/ipc.ts` `registerGitHubIpc` → `ccm:gh-accounts|gh-account-add|gh-account-remove|gh-account-default` (remove after native confirm). Preview IPC: `ccm:gh-repo-account(-set)`, `authOf` → `GitAuth` for `pushBranch` / `fetchAll` / `updateBranch` / `runDelete`; `gitExec` `opts.env`. Plan `.planning/PLAN-v58-github-accounts.md`.
 
 ## Build & packaging
 
