@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import type { FwpEntry, FwpSnapshot } from '@ccm/shared'
 import type { SpawnSpec } from '../src/run/proc'
+import type { HostContext } from '../src/flutterPreview/host'
 import { FlutterPreviewService, type FlutterPreviewDeps } from '../src/flutterPreview/service'
 
 interface FakeChild extends ChildProcess {
@@ -35,7 +36,7 @@ function fakeChild(): FakeChild {
 const PUBSPEC = 'name: demo\ndependencies:\n  flutter:\n    sdk: flutter\n'
 const ENTRY: FwpEntry = { id: 'lib/a.dart#a', file: 'lib/a.dart', line: 1, symbol: 'a', label: 'a', call: 'a()' }
 
-function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside?: boolean } = {}) {
+function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside?: boolean; host?: HostContext } = {}) {
   const runs: FakeChild[] = [fakeChild()]
   const pubs: FakeChild[] = []
   let spawnedRuns = 0
@@ -73,6 +74,7 @@ function harness(opts: { sdk?: string | null; pubspec?: string | null; sdkInside
     sdkInside: () => opts.sdkInside === true,
     scan: async () => entries,
     readText: async () => (opts.pubspec === undefined ? PUBSPEC : opts.pubspec),
+    hostContext: async () => opts.host ?? {},
     writeHost: async (root, source) => {
       hosts.push(source)
       return { file: `${root}/.dart_tool/ccm_preview/main.dart`, changed: true }
@@ -200,6 +202,20 @@ describe('FlutterPreviewService', () => {
     expect(await starting).toEqual({ ok: false, error: { code: 'cancelled' } })
     expect(h.specs).toHaveLength(0)
     expect(h.service.get().state).toBe('stopped')
+  })
+
+  it('host wrappers from the project go into every host write and the log', async () => {
+    const h = harness({ host: { riverpod: 'package:flutter_riverpod/flutter_riverpod.dart', l10n: { uri: 'package:demo/l10n/app_localizations.dart', className: 'AppLocalizations' } } })
+    await h.service.start('/proj', 'emulator-5554')
+    expect(h.hosts[0]).toContain('ccm_riverpod.ProviderScope(')
+    expect(h.hosts[0]).toContain('ccm_l10n.AppLocalizations.localizationsDelegates')
+    expect(h.service.get().log).toContain('> preview wrappers: ProviderScope, AppLocalizations')
+    await started(h)
+    h.setEntries([...h.service.get().entries, { id: 'lib/b.dart#b', file: 'lib/b.dart', line: 1, symbol: 'b', label: 'b', call: 'b()' }])
+    h.save(['/proj/lib/b.dart'])
+    await tick()
+    expect(h.hosts.at(-1)).toContain('ccm_riverpod.ProviderScope(')
+    expect(h.hosts.at(-1)).toContain('p1.b()')
   })
 
   it('a scan failure after stop does not mark the session failed', async () => {

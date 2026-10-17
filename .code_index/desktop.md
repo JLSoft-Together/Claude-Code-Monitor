@@ -99,7 +99,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## Flutter widget preview (v40)
 
-- `src/flutterPreview/scan.ts` (`scanDartSource`, `scanProject`; v55 widget classes: `scanDartClasses`, `widgetNames` by-name `extends` chain to `WIDGET_BASES`, `classHit`, `isWebOnly`, per-file `fileCache` by mtime + size), `host.ts` (`writeHost` → `.dart_tool/ccm_preview/main.dart`, error marker + `_ErrorCard`), `service.ts` `FlutterPreviewService` (own `flutter run --machine` outside `RunManager`, lib watch → rescan + restart, `pubspec.yaml` → pub get, `gen` cancels stale starts), `ipc.ts` `ccm:fwp-scan|start|show|stop|get` + push `ccm:fwp-state`, `wire.ts`. Tests `fwp-*.test.ts`; E2E `flutter-preview.cjs`.
+- `src/flutterPreview/scan.ts` (`scanDartSource`, `scanProject`; v55 widget classes: `scanDartClasses`, `widgetNames` by-name `extends` chain to `WIDGET_BASES`, `classHit`, `isWebOnly`, per-file `fileCache` by mtime + size), `host.ts` (`writeHost` → `.dart_tool/ccm_preview/main.dart`, error marker + `_ErrorCard`; v57 `hostContext` → `HostContext` riverpod / gen-l10n, per-preview `ProviderScope` keyed by id + `MaterialApp` delegates), `service.ts` `FlutterPreviewService` (`live.host` read at start; own `flutter run --machine` outside `RunManager`, lib watch → rescan + restart, `pubspec.yaml` → pub get, `gen` cancels stale starts), `ipc.ts` `ccm:fwp-scan|start|show|stop|get` + push `ccm:fwp-state`, `wire.ts`. Tests `fwp-*.test.ts`; E2E `flutter-preview.cjs`.
 
 ## Extensions (v28, docs §11r)
 

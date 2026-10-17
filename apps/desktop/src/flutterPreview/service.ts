@@ -8,7 +8,7 @@ import { BadArgError } from '../run/resolve'
 import { findFlutterSdk, flutterSpawn, nodeEnvDeps, sdkInsideProject, sdkSettings, type FlutterEnvOpts, type FlutterSdkLookup } from '../run/flutter/env'
 import { createMachineClient, type MachineClient, type MachineReply } from '../run/flutter/machine'
 import { maskLog } from '../log-mask'
-import { ERROR_MARKER, hostSource, readPackage, SHOW_EXTENSION, writeHost } from './host'
+import { ERROR_MARKER, hostContext, hostSource, readPackage, SHOW_EXTENSION, writeHost, type HostContext } from './host'
 import { scanProject } from './scan'
 
 export interface FlutterPreviewDeps {
@@ -27,6 +27,7 @@ export interface FlutterPreviewDeps {
   sdkInside?: (sdk: string, root: string) => boolean
   scan?: (root: string) => Promise<FwpEntry[]>
   readText?: (file: string) => Promise<string | null>
+  hostContext?: (root: string, pubspec: string) => Promise<HostContext>
   writeHost?: (root: string, source: string) => Promise<{ file: string; changed: boolean }>
   stopTimeoutMs?: number
   logFlushMs?: number
@@ -46,6 +47,8 @@ interface Live {
   machine: MachineClient
   root: string
   pkg: string
+  /** Wrappers read at start; a `pubspec.yaml` change restarts the session, which reads them again. */
+  host: HostContext
   sdk: string
   deviceId: string
   flavor: string | null
@@ -110,9 +113,11 @@ export class FlutterPreviewService {
     const inside = this.deps.sdkInside ?? ((sdk: string, dir: string) => sdkInsideProject(sdk, dir, { env, platform, home }, nodeEnvDeps))
     if (found.source !== 'setting' && found.source !== 'project' && inside(found.sdk, root)) return this.fail({ code: 'fvm-local-unverified', detail: found.sdk })
     let hostFile: string
+    let host: HostContext
     try {
+      host = await (this.deps.hostContext ?? hostContext)(root, pubspec!)
       const entries = await (this.deps.scan ?? scanProject)(root)
-      hostFile = (await (this.deps.writeHost ?? writeHost)(root, hostSource(pkg.name, entries))).file
+      hostFile = (await (this.deps.writeHost ?? writeHost)(root, hostSource(pkg.name, entries, host))).file
       if (gen !== this.gen) return CANCELLED
       this.patch({ entries })
     } catch (e) {
@@ -121,6 +126,8 @@ export class FlutterPreviewService {
     }
     const args = ['run', '--machine', '-t', hostFile, '-d', deviceId, '--debug', ...(flavor ? ['--flavor', flavor] : [])]
     if (gen !== this.gen) return CANCELLED
+    const wrappers = [host.riverpod ? 'ProviderScope' : '', host.l10n?.className ?? ''].filter(Boolean)
+    if (wrappers.length) this.log(`> preview wrappers: ${wrappers.join(', ')}`)
     this.log(`> flutter ${args.join(' ')}`)
     let child: ChildProcess
     try {
@@ -137,6 +144,7 @@ export class FlutterPreviewService {
       machine,
       root,
       pkg: pkg.name,
+      host,
       sdk: found.sdk,
       deviceId,
       flavor: flavor || null,
@@ -316,7 +324,7 @@ export class FlutterPreviewService {
     let error: FwpError | null = null
     try {
       const entries = await (this.deps.scan ?? scanProject)(live.root)
-      await (this.deps.writeHost ?? writeHost)(live.root, hostSource(live.pkg, entries))
+      await (this.deps.writeHost ?? writeHost)(live.root, hostSource(live.pkg, entries, live.host))
       if (this.live === live) this.patch({ entries })
       const res = await live.machine.request('app.restart', { appId: live.appId, fullRestart: false, pause: false, reason: 'save' })
       const failed = replyError(res)
