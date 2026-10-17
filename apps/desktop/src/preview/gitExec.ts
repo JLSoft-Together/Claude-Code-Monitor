@@ -18,6 +18,8 @@ export interface GitExecOptions {
   timeoutMs?: number
   /** Kill the whole process tree on timeout: network commands leave `git-remote-https` behind on Windows otherwise. */
   killTree?: boolean
+  /** Extra env on top of ours, e.g. `gitAuthEnv` for a GitHub account. */
+  env?: Record<string, string>
 }
 
 let gitPath: string | null | undefined
@@ -37,7 +39,7 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
     try {
       child = spawn(file, [...GIT_CONFIG, '-C', cwd, ...args], {
         windowsHide: true,
-        env: { ...process.env, ...GIT_ENV },
+        env: { ...process.env, ...GIT_ENV, ...opts.env },
         stdio: ['pipe', 'pipe', 'pipe'],
         // POSIX killTree signals the process group (-pid); only a group leader has one. Pipes stay attached, no unref.
         detached: opts.killTree === true && process.platform !== 'win32',

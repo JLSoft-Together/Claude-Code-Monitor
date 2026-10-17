@@ -5,6 +5,11 @@ import { LOG_FORMAT, parseLog, REF } from './log'
 const LOCAL = { timeoutMs: 20_000 }
 const NET = { timeoutMs: 120_000, killTree: true }
 
+/** Env carrying a GitHub account's token for a remote (`GitHubAccounts.envFor`); undefined = git's own credentials. */
+export type GitAuth = (remote: string) => Promise<Record<string, string> | undefined>
+
+const net = async (auth: GitAuth | undefined, remote: string | undefined) => ({ ...NET, env: auth && remote ? await auth(remote) : undefined })
+
 /** First stderr line, with `user:token@` removed from URLs: git prints remote URLs it failed on. */
 export function sanitizeGitError(stderr: string): string {
   const line = stderr.split(/\r?\n/).find((l) => l.trim()) ?? ''
@@ -76,16 +81,18 @@ export async function deletePlan(
   return { ok: true, args: ['push', remote, '--delete', `refs/heads/${branch}`], remote: true, label: short }
 }
 
-export async function runDelete(root: string, args: string[]): Promise<BranchOpResult> {
-  const res = await execGit(root, args, args[0] === 'push' ? NET : LOCAL)
+export async function runDelete(root: string, args: string[], auth?: GitAuth): Promise<BranchOpResult> {
+  const res = await execGit(root, args, args[0] === 'push' ? await net(auth, args[1]) : LOCAL)
   return res.code === 0 ? { ok: true } : failed(res)
 }
 
 /** `git fetch --all` (no prune): new branches and commits from every remote. */
-export async function fetchAll(root: string): Promise<BranchOpResult> {
-  let res = await execGit(root, ['fetch', '--all', '--no-write-fetch-head'], NET)
+export async function fetchAll(root: string, auth?: GitAuth): Promise<BranchOpResult> {
+  const remotes = auth ? await listRemotes(root) : []
+  const opts = await net(auth, remotes.includes('origin') ? 'origin' : remotes[0])
+  let res = await execGit(root, ['fetch', '--all', '--no-write-fetch-head'], opts)
   // git < 2.29 has no --no-write-fetch-head.
-  if (res.code !== 0 && !res.timedOut && /unknown option.*no-write-fetch-head/i.test(res.stderr)) res = await execGit(root, ['fetch', '--all'], NET)
+  if (res.code !== 0 && !res.timedOut && /unknown option.*no-write-fetch-head/i.test(res.stderr)) res = await execGit(root, ['fetch', '--all'], opts)
   return res.code === 0 ? { ok: true } : failed(res)
 }
 
@@ -93,17 +100,25 @@ export async function fetchAll(root: string): Promise<BranchOpResult> {
  * Update Selected (fast-forward only): the current branch via `pull --ff-only`; another tracked local branch via
  * `fetch <remote> <branch>:refs/heads/<local>`, which git refuses when it is not a fast-forward.
  */
-export async function updateBranch(root: string, ref: unknown): Promise<BranchOpResult> {
+export async function updateBranch(root: string, ref: unknown, auth?: GitAuth): Promise<BranchOpResult> {
   if (!validRef(ref) || !ref.startsWith('refs/heads/')) return { ok: false, error: 'denied' }
   const local = ref.slice('refs/heads/'.length)
   const up = await execGit(root, ['for-each-ref', '--format=%(upstream:remotename)%1f%(upstream:remoteref)', ref], LOCAL)
   const [remote, remoteRef] = up.stdout.trim().split('\x1f')
   if (!remote || !remoteRef?.startsWith('refs/heads/')) return { ok: false, error: 'no-upstream' }
+  const opts = await net(auth, remote)
   const res =
     (await currentBranch(root)) === local
-      ? await execGit(root, ['pull', '--ff-only', '--no-rebase'], NET)
-      : await execGit(root, ['fetch', remote, `${remoteRef}:${ref}`], NET)
+      ? await execGit(root, ['pull', '--ff-only', '--no-rebase'], opts)
+      : await execGit(root, ['fetch', remote, `${remoteRef}:${ref}`], opts)
   return res.code === 0 ? { ok: true } : failed(res)
+}
+
+/** Fetch URL of `remote` after `insteadOf` rewrites, or null. */
+export async function remoteUrl(root: string, remote: unknown): Promise<string | null> {
+  if (typeof remote !== 'string' || !remote || remote.startsWith('-')) return null
+  const res = await execGit(root, ['remote', 'get-url', remote], LOCAL)
+  return res.code === 0 ? res.stdout.trim() || null : null
 }
 
 async function listRemotes(root: string): Promise<string[]> {
@@ -173,13 +188,13 @@ export function pushRejection(stdout: string): BranchOpResult | null {
 }
 
 /** `git push` of one local branch to `<remote>/<branch>` (argv from `pushArgs`); never forced. */
-export async function pushBranch(root: string, ref: unknown, remote: unknown, branch: unknown, setUpstream: unknown): Promise<BranchOpResult> {
+export async function pushBranch(root: string, ref: unknown, remote: unknown, branch: unknown, setUpstream: unknown, auth?: GitAuth): Promise<BranchOpResult> {
   const local = await localBranchOf(root, ref)
   if (!local) return { ok: false, error: 'denied' }
   const remotes = await listRemotes(root)
   if (!remotes.length) return { ok: false, error: 'no-remote' }
   if (typeof remote !== 'string' || !remotes.includes(remote) || !(await validBranchName(root, branch))) return { ok: false, error: 'invalid' }
-  const res = await execGit(root, pushArgs(local, remote, branch as string, setUpstream === true), NET)
+  const res = await execGit(root, pushArgs(local, remote, branch as string, setUpstream === true), await net(auth, remote))
   if (res.code === 0) return { ok: true }
   return (!res.timedOut && pushRejection(res.stdout)) || failed(res)
 }

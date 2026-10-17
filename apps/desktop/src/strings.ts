@@ -57,6 +57,9 @@ const en = {
   gitDeleteDetail: (commands: string[]) => `Orrery will run:\n\n${commands.join('\n')}\n\nCommits only on this branch can be lost.`,
   gitDeleteConfirm: 'Delete',
   gitDeleteCancel: 'Cancel',
+  ghRemoveTitle: (login: string) => `Remove GitHub account ${login}?`,
+  ghRemoveDetail: 'Orrery forgets its token. Repos that used it go back to automatic choice. The token stays valid on GitHub until you revoke it there.',
+  ghRemoveConfirm: 'Remove',
   statusLineTitle: 'Turn on the status line bridge?',
   statusLineDetail: (file: string, json: string, chained: boolean) =>
     `Orrery will set this in ${file}${chained ? ' (your current status line keeps running after the bridge)' : ''}:
@@ -144,6 +147,9 @@ const vi: typeof en = {
   gitDeleteDetail: (commands) => `Orrery sẽ chạy:\n\n${commands.join('\n')}\n\nCác commit chỉ có trên nhánh này có thể bị mất.`,
   gitDeleteConfirm: 'Xoá',
   gitDeleteCancel: 'Huỷ',
+  ghRemoveTitle: (login) => `Gỡ tài khoản GitHub ${login}?`,
+  ghRemoveDetail: 'Orrery sẽ quên token của tài khoản này. Các repo đang dùng nó quay về chế độ tự chọn. Token vẫn còn hiệu lực trên GitHub cho tới khi bạn thu hồi ở đó.',
+  ghRemoveConfirm: 'Gỡ',
   statusLineTitle: 'Bật status line bridge?',
   statusLineDetail: (file, json, chained) =>
     `Orrery sẽ ghi vào ${file}${chained ? ' (status line hiện tại của bạn vẫn chạy sau bridge)' : ''}:

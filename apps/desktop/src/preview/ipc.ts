@@ -10,10 +10,11 @@ import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { filesystemRoots, FullAccess, GrantStore } from './grants'
 import { FileListCache } from './listFiles'
-import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, runDelete, updateBranch } from './branches'
+import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, remoteUrl, runDelete, updateBranch, type GitAuth } from './branches'
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { existingDir } from '../pick-start'
+import type { GitHubAccounts } from '../github/accounts'
 import type { PreviewServer } from './server'
 import type { RootWatcher } from './watch'
 
@@ -73,6 +74,8 @@ export interface PreviewIpcDeps {
   fullAccess?: FullAccess
   /** Native yes/no before turning full access on; the page cannot enable it itself. */
   confirmFullAccess?: () => Promise<boolean>
+  /** GitHub accounts (Settings): push / fetch / pull of a github.com https remote use the repo's account token. */
+  github?: GitHubAccounts
 }
 
 export interface PreviewIpc {
@@ -86,7 +89,7 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
-  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push',
+  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
   'ccm:file-write',
 ]
@@ -359,6 +362,14 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
 
   const logRepo = async (event: IpcMainInvokeEvent, root: unknown): Promise<string | null> => (isAppFrame(event) ? repoOf(root) : null)
   const denied = { ok: false, error: 'denied' } as const
+  const authOf = (repo: string): GitAuth | undefined => {
+    const gh = deps.github
+    if (!gh) return undefined
+    return async (remote) => {
+      const url = await remoteUrl(repo, remote)
+      return url ? gh.envFor(repo, url) : undefined
+    }
+  }
 
   ipcMain.handle('ccm:log-page', async (event, req: unknown) => {
     const { root, query } = (req ?? {}) as { root?: unknown; query?: unknown }
@@ -393,21 +404,21 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const plan = await deletePlan(repo, ref, false)
     if (!plan.ok) return plan
     if (!(await deps.confirmGit({ title: plan.label, commands: [`git ${plan.args.join(' ')}`] }).catch(() => false))) return { ok: false, error: 'cancelled' }
-    const res = await runDelete(repo, plan.args)
+    const res = await runDelete(repo, plan.args, authOf(repo))
     if (res.ok || res.error !== 'not-merged' || plan.remote) return res
     const force = await deletePlan(repo, ref, true)
     if (!force.ok) return force
     if (!(await deps.confirmGit({ title: force.label, commands: [`git ${force.args.join(' ')}`], force: true }).catch(() => false))) return { ok: false, error: 'cancelled' }
-    return runDelete(repo, force.args)
+    return runDelete(repo, force.args, authOf(repo))
   })
   ipcMain.handle('ccm:git-fetch', async (event, root: unknown) => {
     const repo = await logRepo(event, root)
-    return repo ? fetchAll(repo) : denied
+    return repo ? fetchAll(repo, authOf(repo)) : denied
   })
   ipcMain.handle('ccm:git-branch-update', async (event, req: unknown) => {
     const { root, ref } = (req ?? {}) as { root?: unknown; ref?: unknown }
     const repo = await logRepo(event, root)
-    return repo ? updateBranch(repo, ref) : denied
+    return repo ? updateBranch(repo, ref, authOf(repo)) : denied
   })
   ipcMain.handle('ccm:git-push-preview', async (event, req: unknown) => {
     const { root, ref, remote, branch } = (req ?? {}) as { root?: unknown; ref?: unknown; remote?: unknown; branch?: unknown }
@@ -417,7 +428,19 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   ipcMain.handle('ccm:git-push', async (event, req: unknown) => {
     const { root, ref, remote, branch, setUpstream } = (req ?? {}) as { root?: unknown; ref?: unknown; remote?: unknown; branch?: unknown; setUpstream?: unknown }
     const repo = await logRepo(event, root)
-    return repo ? pushBranch(repo, ref, remote, branch, setUpstream) : denied
+    return repo ? pushBranch(repo, ref, remote, branch, setUpstream, authOf(repo)) : denied
+  })
+  ipcMain.handle('ccm:gh-repo-account', async (event, req: unknown) => {
+    const { root, remote } = (req ?? {}) as { root?: unknown; remote?: unknown }
+    const repo = await logRepo(event, root)
+    if (!repo || !deps.github) return { github: false }
+    const url = await remoteUrl(repo, remote)
+    return url ? deps.github.resolve(repo, url) : { github: false }
+  })
+  ipcMain.handle('ccm:gh-repo-account-set', async (event, req: unknown) => {
+    const { root, choice } = (req ?? {}) as { root?: unknown; choice?: unknown }
+    const repo = await logRepo(event, root)
+    return !!repo && !!deps.github && deps.github.setChoice(repo, choice)
   })
 
   ipcMain.handle('ccm:changes-discard', async (event, req: unknown) => {

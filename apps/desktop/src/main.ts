@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, safeStorage, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
 import { defaultDataDir } from '../../collector/src/datadir'
 import { HEX_COLOR, isZoomAction, nextZoom, parseLook, readAppearance, writeAppearance, zoomPercent, type Appearance } from './appearance'
 import { createAttention, type Attention } from './attention'
@@ -19,6 +19,8 @@ import { RootWatcher } from './preview/watch'
 import { FULL_ACCESS_FILE, FullAccess, GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { registerExtensionsIpc } from './extensions/ipc'
+import { GH_ACCOUNTS_FILE, GitHubAccounts } from './github/accounts'
+import { registerGitHubIpc } from './github/ipc'
 import { createAndroidRunner } from './run/android/runner'
 import { createAdbDevices } from './run/android/devices'
 import { createCustomRunner } from './run/custom'
@@ -81,6 +83,7 @@ const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
 let disposeExtensions: (() => void) | null = null
+let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let layoutIpc: LayoutIpc | null = null
@@ -164,6 +167,8 @@ function stopPreview(): Promise<void> {
   disposeLayouts = null
   disposeExtensions?.()
   disposeExtensions = null
+  disposeGitHub?.()
+  disposeGitHub = null
   disposeRun?.()
   disposeRun = null
   previewWatch.closeAll()
@@ -790,6 +795,28 @@ async function ready(): Promise<void> {
     return folder
   })
   await preview.start()
+  const github = new GitHubAccounts({
+    file: path.join(DATA_DIR, GH_ACCOUNTS_FILE),
+    crypt: { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) },
+    fetch: (url, init) => net.fetch(url, init),
+  })
+  disposeGitHub = registerGitHubIpc({
+    ipcMain,
+    isAppFrame,
+    store: github,
+    confirmRemove: async (event, login) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: t.ghRemoveTitle(login),
+        detail: t.ghRemoveDetail,
+        buttons: [t.ghRemoveConfirm, t.gitDeleteCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(BrowserWindow.fromWebContents(event.sender), opts)
+    },
+  })
   previewIpc = registerPreviewIpc({
     ipcMain,
     isAppFrame,
@@ -799,6 +826,7 @@ async function ready(): Promise<void> {
     dialog,
     getWindow: () => mainWindow,
     getRoots: paneRoots,
+    github,
     grants: new GrantStore(path.join(DATA_DIR, GRANTS_FILE)),
     fullAccess: new FullAccess(path.join(DATA_DIR, FULL_ACCESS_FILE)),
     confirmFullAccess: async () => {

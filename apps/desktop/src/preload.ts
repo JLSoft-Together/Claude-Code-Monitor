@@ -85,6 +85,12 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   gitPushPreview: (root: string, ref: string, remote?: string, branch?: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-push-preview', { root, ref, remote, branch }),
   gitPush: (root: string, ref: string, remote: string, branch: string, setUpstream: boolean): Promise<unknown> =>
     ipcRenderer.invoke('ccm:git-push', { root, ref, remote, branch, setUpstream }),
+  ghRepoAccount: (root: string, remote: string): Promise<unknown> => ipcRenderer.invoke('ccm:gh-repo-account', { root, remote }),
+  ghRepoAccountSet: (root: string, choice: string): Promise<unknown> => ipcRenderer.invoke('ccm:gh-repo-account-set', { root, choice }),
+  ghAccounts: (): Promise<unknown> => ipcRenderer.invoke('ccm:gh-accounts'),
+  ghAccountAdd: (token: string): Promise<unknown> => ipcRenderer.invoke('ccm:gh-account-add', token),
+  ghAccountRemove: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:gh-account-remove', id),
+  ghAccountDefault: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:gh-account-default', id),
   // `hunk` stays undefined (not null) for a whole-file discard: the handler branches on `hunk !== undefined`.
   changesDiscard: (root: string, path: string, hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-discard', { root, path, hunk }),
   changesWatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-watch', root),
