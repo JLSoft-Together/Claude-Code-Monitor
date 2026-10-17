@@ -89,6 +89,12 @@ function errorText(e: FwpError): string {
   return te(key) ? t(key, { detail: e.detail ?? '' }) : t('fwp.error.other', { code: e.code })
 }
 
+/** Second line: the symbol when the label hides it; for a widget class, the named constructor it is built with. */
+function symbolText(e: FwpEntry): string {
+  if (e.kind === 'class' && e.call && e.call !== `${e.symbol}()`) return e.call
+  return e.symbol.startsWith('?') || e.symbol === e.label ? '' : e.symbol
+}
+
 let scanSeq = 0
 async function rescan(): Promise<void> {
   const seq = ++scanSeq
@@ -206,7 +212,7 @@ watch(
     <div class="ccm-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
       <p v-if="scanning" class="flex items-center gap-2 p-4 text-xs text-ink-muted"><LoaderCircle :size="14" class="ccm-spin" aria-hidden="true" />{{ t('fwp.scanning') }}</p>
       <p v-else-if="!scan?.flutter" class="p-4 text-xs text-ink-muted" data-fwp-not-flutter>{{ t('fwp.notFlutter') }}</p>
-      <div v-else-if="!entries.length" class="flex max-w-md flex-col gap-1.5 p-4 text-xs" data-fwp-empty>
+      <div v-else-if="!groups.here.length && !groups.other.length" class="flex max-w-md flex-col gap-1.5 p-4 text-xs" data-fwp-empty>
         <p class="text-ink">{{ t('fwp.empty') }}</p>
         <p class="text-ink-faint">{{ t('fwp.emptyHint', { code: '@Preview()' }) }}</p>
       </div>
@@ -233,7 +239,7 @@ watch(
                   <span class="flex min-w-0 flex-1 flex-col">
                     <span class="truncate text-xs" :class="e.skipped ? 'text-ink-muted' : current === e.id ? 'font-semibold text-accent-ink' : 'text-ink'">{{ e.label }}</span>
                     <span class="truncate text-2xs text-ink-faint" :title="`${e.file}:${e.line}`">
-                      {{ group === 'other' ? `${e.file} · ` : '' }}{{ e.symbol.startsWith('?') ? '' : `${e.symbol} · ` }}{{ t('fwp.line', { line: e.line }) }}
+                      {{ group === 'other' ? `${e.file} · ` : '' }}{{ symbolText(e) ? `${symbolText(e)} · ` : '' }}{{ t('fwp.line', { line: e.line }) }}
                     </span>
                     <span v-if="e.skipped" class="text-2xs text-ink-muted" data-fwp-skipped>{{ t(`fwp.skipped.${e.skipped}`) }}</span>
                     <span v-else-if="failing.has(e.id)" class="text-2xs text-ink-muted" data-fwp-entry-error>{{ t('fwp.entryError') }}</span>

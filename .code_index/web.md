@@ -119,7 +119,7 @@ Invariants:
 
 - `lib/layoutPreview.ts` (types mirrored from desktop `layout/types.ts`, `DEVICE_PRESETS`, `hitTest`, `nodeForLine`, `stepView`, `compareConfigs`, `compareCellAt`, `modelChip`, `borrowedModel`, `renderScale`, `warmOnIntent`, `isLayoutXml` incl. shared `isLooseLayoutXml`), `LayoutPreview.vue` (device / theme / locale / density / zoom / compare / blueprint, model chip incl. source-only / prebuilt / compiling, staged waits), `LayoutBoxes.vue`.
 - `lib/drawablePreview.ts` + `DrawablePreview.vue` (v41). `FilePane` Code | Split | Design control shared by both.
-- Flutter widget preview (v40): `lib/flutterPreview.ts` (`previewDevice`, `failingEntries`, `inFlutterProject`) + `FlutterPreviewPanel.vue`.
+- Flutter widget preview (v40): `lib/flutterPreview.ts` (`previewDevice`, `failingEntries`, `inFlutterProject`, `groupEntries` keeps `kind: 'class'` under its own file only, v55) + `FlutterPreviewPanel.vue` (`symbolText`).
 
 ## Extensions (v28)
 

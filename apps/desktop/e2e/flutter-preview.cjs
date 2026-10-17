@@ -1,4 +1,5 @@
-// v40 Flutter widget preview: a .dart file of a pubspec project gets the toolbar toggle; the panel lists its @Preview functions.
+// v40 Flutter widget preview: a .dart file of a pubspec project gets the toolbar toggle; the panel lists its @Preview functions
+// and (v55) the widget classes of the open file.
 // Never runs flutter: Start is not clicked.
 const fs = require('node:fs')
 const os = require('node:os')
@@ -25,6 +26,12 @@ function fixture() {
     '@Preview()',
     'Widget needsTitle(String title) => Text(title);',
     '',
+    'class Banner2 extends StatelessWidget {',
+    '  const Banner2({super.key});',
+    '  @override',
+    "  Widget build(BuildContext context) => const Text('b');",
+    '}',
+    '',
   ].join('\n'))
   fs.writeFileSync(path.join(DIR, 'lib', 'widgets', 'card.dart'), [
     "import 'package:flutter/widget_previews.dart';",
@@ -35,6 +42,12 @@ function fixture() {
     '  const InfoCard({super.key});',
     '  @override',
     '  Widget build(BuildContext context) => const Card();',
+    '}',
+    '',
+    'class Tag extends StatelessWidget {',
+    '  const Tag({super.key});',
+    '  @override',
+    '  Widget build(BuildContext context) => const SizedBox();',
     '}',
     '',
   ].join('\n'))
@@ -58,7 +71,7 @@ async function run(app) {
 
   check('preload exposes the fwp bridge', await evaluate(`typeof window.ccmDesktop.fwpScan === 'function' && typeof window.ccmDesktop.onFwpState === 'function'`))
   const scan = await evaluate(`window.ccmDesktop.fwpScan(${JSON.stringify(A)})`)
-  check('scan finds the pubspec root and three entries', scan.flutter && scan.root?.toLowerCase() === DIR.toLowerCase() && scan.entries.length === 3, JSON.stringify(scan).slice(0, 300))
+  check('scan finds the pubspec root, three @Preview entries and two widget classes', scan.flutter && scan.root?.toLowerCase() === DIR.toLowerCase() && scan.entries.length === 5 && scan.entries.filter((e) => e.kind === 'class').length === 2, JSON.stringify(scan).slice(0, 300))
   const outside = await evaluate(`window.ccmDesktop.fwpScan(${JSON.stringify(os.homedir())})`)
   check('scan outside the allowed folders finds nothing', !outside.flutter && outside.root === null, JSON.stringify(outside))
   const idle = await evaluate(`window.ccmDesktop.fwpGet()`)
@@ -74,9 +87,10 @@ async function run(app) {
   check('a .dart file of a Flutter project shows the toggle', await evaluate(`!!document.querySelector('[data-fwp-toggle]')`))
   check('panel stays closed until toggled', await evaluate(`!document.querySelector('[data-fwp-panel]')`))
   await evaluate(`document.querySelector('[data-fwp-toggle]').click()`)
-  await waitFor(`${entries}.length === 3`, 10000, 'entries').catch(() => {})
+  await waitFor(`${entries}.length === 4`, 10000, 'entries').catch(() => {})
   const list = await evaluate(entries)
-  check('panel lists this file first, then the rest', JSON.stringify(list) === JSON.stringify(['lib/a.dart#primaryButton', 'lib/a.dart#needsTitle', 'lib/widgets/card.dart#InfoCard']), JSON.stringify(list))
+  check('panel lists this file first (classes too), then other @Preview only', JSON.stringify(list) === JSON.stringify(['lib/a.dart#primaryButton', 'lib/a.dart#needsTitle', 'lib/a.dart#Banner2', 'lib/widgets/card.dart#InfoCard']), JSON.stringify(list))
+  check('widget class of this file is pickable', await evaluate(`!document.querySelector('[data-fwp-entry="lib/a.dart#Banner2"]').disabled`))
   check('groups: this file / elsewhere', await evaluate(`!!document.querySelector('[data-fwp-group=here]') && !!document.querySelector('[data-fwp-group=other]')`))
   check('entry with required params is disabled with its reason', await evaluate(`(() => { const b = document.querySelector('[data-fwp-entry="lib/a.dart#needsTitle"]'); return b.disabled && !!b.querySelector('[data-fwp-skipped]') })()`))
   check('label from name:', await evaluate(`document.querySelector('[data-fwp-entry="lib/a.dart#primaryButton"]').textContent.includes('Primary button')`))

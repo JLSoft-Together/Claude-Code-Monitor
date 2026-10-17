@@ -1,7 +1,7 @@
 import type { BuildError } from './run'
 
-/** Flutter Widget Preview (v40): `@Preview` functions shown on a mobile device by a generated host app. */
-export type FwpSkipReason = 'private' | 'params' | 'unknown' | 'type' | 'part'
+/** Flutter Widget Preview (v40): `@Preview` functions shown on a mobile device by a generated host app; v55 adds widget classes without one. */
+export type FwpSkipReason = 'private' | 'params' | 'unknown' | 'type' | 'part' | 'ctor' | 'web'
 
 export interface FwpEntry {
   /** `<file>#<symbol>` */
@@ -13,6 +13,8 @@ export interface FwpEntry {
   label: string
   /** Dart call without the import alias: `fn()`, `X.fn()`, `X()`, `X.named()`. */
   call: string
+  /** `class`: a widget class found by its `extends` chain (v55), listed only for its own file; absent: an `@Preview` function. */
+  kind?: 'class'
   skipped?: FwpSkipReason
 }
 

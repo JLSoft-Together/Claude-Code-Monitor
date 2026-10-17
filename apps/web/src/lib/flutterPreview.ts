@@ -61,10 +61,14 @@ export function relativeTo(root: string, path: string): string | null {
   return p.slice(r.length + 1)
 }
 
+/** Widget classes (`kind: 'class'`) list only under their own file; `@Preview` entries list everywhere. */
 export function groupEntries(entries: readonly FwpEntry[], fileRel: string | null): { here: FwpEntry[]; other: FwpEntry[] } {
   const here: FwpEntry[] = []
   const other: FwpEntry[] = []
-  for (const e of entries) (fileRel !== null && e.file === fileRel ? here : other).push(e)
+  for (const e of entries) {
+    if (fileRel !== null && e.file === fileRel) here.push(e)
+    else if (e.kind !== 'class') other.push(e)
+  }
   return { here, other }
 }
 

@@ -10,6 +10,7 @@ export interface PreviewHit {
   symbol: string
   label: string
   call: string
+  kind?: 'class'
   skipped?: FwpSkipReason
 }
 
@@ -161,6 +162,8 @@ export function hasRequiredParams(params: string): boolean {
 }
 
 interface Scope {
+  /** Start of the declaration head (after the previous `;` / `}`). */
+  head: number
   open: number
   close: number
   className: string | null
@@ -179,7 +182,7 @@ function topScopes(masked: string): Scope[] {
       const end = close < 0 ? masked.length : close
       const head = masked.slice(segment, k)
       const m = /\b(?:class|mixin|enum|extension(?:\s+type)?)\s+(\w+)/.exec(head)
-      scopes.push({ open: k, close: end, className: m ? m[1]! : null })
+      scopes.push({ head: segment, open: k, close: end, className: m ? m[1]! : null })
       k = end
       segment = end
       continue
@@ -192,10 +195,11 @@ function topScopes(masked: string): Scope[] {
 const ANNOTATION = /@(?:[A-Za-z_]\w*\.)?Preview\s*\(/g
 const OTHER_ANNOTATION = /^@[A-Za-z_][\w.]*\s*/
 
-export function scanDartSource(src: string): PreviewHit[] {
-  const masked = maskDart(src)
+const PART_OF = /^\s*part\s+of\b/m
+
+export function scanDartSource(src: string, masked = maskDart(src)): PreviewHit[] {
   const scopes = topScopes(masked)
-  const part = /^\s*part\s+of\b/m.test(masked)
+  const part = PART_OF.test(masked)
   const hits: PreviewHit[] = []
   const seen = new Set<string>()
   ANNOTATION.lastIndex = 0
@@ -308,6 +312,123 @@ function memberDecl(masked: string, from: number, className: string): Decl | nul
   return { symbol, call: `${symbol}()` }
 }
 
+/** Flutter (and common package) base classes a project widget can extend. */
+export const WIDGET_BASES: readonly string[] = [
+  'Widget', 'StatelessWidget', 'StatefulWidget', 'InheritedWidget', 'InheritedNotifier', 'InheritedModel', 'InheritedTheme', 'ProxyWidget', 'ParentDataWidget',
+  'RenderObjectWidget', 'LeafRenderObjectWidget', 'SingleChildRenderObjectWidget', 'MultiChildRenderObjectWidget', 'ImplicitlyAnimatedWidget', 'AnimatedWidget',
+  'ConsumerWidget', 'ConsumerStatefulWidget', 'HookWidget', 'StatefulHookWidget', 'HookConsumerWidget', 'StatefulHookConsumerWidget',
+]
+
+export interface ClassCtor {
+  /** `X` or `X.named` */
+  name: string
+  required: boolean
+}
+
+export interface ClassDecl {
+  name: string
+  line: number
+  /** `extends` target without import prefix or type arguments. */
+  superName: string | null
+  /** `abstract` / `sealed`: never instantiated. */
+  abstract: boolean
+  ctors: ClassCtor[]
+}
+
+const CLASS_HEAD = /\b((?:(?:abstract|sealed|base|final|interface|mixin)\s+)*)class\s+([A-Za-z_$][\w$]*)/
+const EXTENDS = /^\s*extends\s+(?:[A-Za-z_]\w*\.)?([A-Za-z_$][\w$]*)/
+
+/** Start offsets of the members of a class body `{…}` (split at top-level `;` and after method bodies). */
+function memberStarts(masked: string, open: number, close: number): number[] {
+  const starts = [open + 1]
+  let depth = 0
+  for (let k = open + 1; k < close - 1; k++) {
+    const c = masked[k]
+    if (c === '(' || c === '[' || c === '{') depth++
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--
+      if (depth === 0 && c === '}') starts.push(k + 1)
+    } else if (c === ';' && depth === 0) starts.push(k + 1)
+  }
+  return starts
+}
+
+/** Top-level classes with their `extends` target and constructors; the caller decides which are widgets. */
+export function scanDartClasses(src: string, masked = maskDart(src)): ClassDecl[] {
+  const out: ClassDecl[] = []
+  for (const scope of topScopes(masked)) {
+    const head = masked.slice(scope.head, scope.open)
+    const m = CLASS_HEAD.exec(head)
+    if (!m) continue
+    let k = m.index + m[0].length
+    while (/\s/.test(head[k] ?? '')) k++
+    if (head[k] === '<') {
+      let angle = 0
+      for (; k < head.length; k++) {
+        if (head[k] === '<') angle++
+        else if (head[k] === '>' && --angle === 0) {
+          k++
+          break
+        }
+      }
+    }
+    const name = m[2]!
+    // Bounded at the closing `}` so a trailing blank member never reads the next declaration.
+    const body = masked.slice(0, scope.close - 1)
+    const ctors: ClassCtor[] = []
+    for (const at of memberStarts(masked, scope.open, scope.close)) {
+      const h = header(body, at)
+      if (h && (h.name === name || h.name.startsWith(name + '.'))) ctors.push({ name: h.name, required: hasRequiredParams(h.params) })
+    }
+    out.push({
+      name,
+      line: lineAt(src, scope.head + m.index),
+      superName: EXTENDS.exec(head.slice(k))?.[1] ?? null,
+      abstract: /\b(?:abstract|sealed)\s/.test(m[1]!),
+      ctors,
+    })
+  }
+  return out
+}
+
+/** Names of every class whose `extends` chain reaches a widget base, by name across the project. */
+export function widgetNames(decls: Iterable<ClassDecl>): Set<string> {
+  const widgets = new Set(WIDGET_BASES)
+  const list = [...decls]
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const d of list) {
+      if (!widgets.has(d.name) && d.superName && widgets.has(d.superName)) {
+        widgets.add(d.name)
+        grew = true
+      }
+    }
+  }
+  return widgets
+}
+
+/** Importing one of these into the mobile host is a compile error for the whole host. */
+const WEB_ONLY = /^\s*(?:import|export)\s+['"](?:dart:(?:html|js|js_util|js_interop|js_interop_unsafe|ui_web|indexed_db|svg|web_audio|web_gl)|package:web\/)/m
+
+export const isWebOnly = (src: string): boolean => WEB_ONLY.test(src)
+
+/** Entry for a widget class: unnamed constructor first, then the first public one without required parameters. */
+export function classHit(decl: ClassDecl, file: { part: boolean; web: boolean }, previews: readonly PreviewHit[]): PreviewHit | null {
+  const { name } = decl
+  if (decl.abstract) return null
+  // An `@Preview` on one of its constructors / static methods already lists it.
+  if (previews.some((h) => h.symbol === name || h.symbol.startsWith(name + '.'))) return null
+  const hit = (call: string, skipped?: FwpSkipReason): PreviewHit => ({ line: decl.line, symbol: name, label: name, call: skipped ? '' : call, kind: 'class', ...(skipped ? { skipped } : {}) })
+  if (file.part) return hit('', 'part')
+  if (isPrivate(name)) return hit('', 'private')
+  if (file.web) return hit('', 'web')
+  if (!decl.ctors.length) return hit(`${name}()`)
+  const pub = decl.ctors.filter((c) => !isPrivate(c.name))
+  if (!pub.length) return hit('', 'ctor')
+  const pick = pub.find((c) => c.name === name && !c.required) ?? pub.find((c) => !c.required)
+  return pick ? hit(`${pick.name}()`) : hit('', 'params')
+}
+
 const SKIP_DIR = (name: string): boolean => name.startsWith('.') || name === 'build'
 const SKIP_FILE = (name: string): boolean => !name.endsWith('.dart') || name.endsWith('.g.dart') || name.endsWith('.freezed.dart')
 /** `package:` import paths are emitted verbatim into the host. */
@@ -330,15 +451,57 @@ async function listDart(root: string): Promise<string[]> {
   return out
 }
 
+interface FileScan {
+  mtimeMs: number
+  size: number
+  hits: PreviewHit[]
+  classes: ClassDecl[]
+  part: boolean
+  web: boolean
+}
+
+/** Every save rescans the whole of lib/ (the extends chain crosses files); unchanged files come from here. */
+const fileCache = new Map<string, FileScan>()
+
+async function scanFile(abs: string): Promise<FileScan | null> {
+  const stat = await fs.stat(abs).catch(() => null)
+  if (!stat || stat.size > MAX_FILE_BYTES) return null
+  const old = fileCache.get(abs)
+  if (old && old.mtimeMs === stat.mtimeMs && old.size === stat.size) return old
+  const text = await fs.readFile(abs, 'utf8').catch(() => null)
+  if (text === null) return null
+  const preview = text.includes('Preview')
+  const classes = text.includes('class')
+  const masked = preview || classes ? maskDart(text) : ''
+  const scan: FileScan = {
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    hits: preview ? scanDartSource(text, masked) : [],
+    classes: classes ? scanDartClasses(text, masked) : [],
+    part: PART_OF.test(masked),
+    web: isWebOnly(text),
+  }
+  if (fileCache.size >= MAX_FILES * 2) fileCache.clear()
+  fileCache.set(abs, scan)
+  return scan
+}
+
 export async function scanProject(root: string): Promise<FwpEntry[]> {
-  const entries: FwpEntry[] = []
+  const files: Array<[string, FileScan]> = []
   for (const file of await listDart(root)) {
-    const abs = path.join(root, file)
-    const stat = await fs.stat(abs).catch(() => null)
-    if (!stat || stat.size > MAX_FILE_BYTES) continue
-    const text = await fs.readFile(abs, 'utf8').catch(() => '')
-    if (!text.includes('Preview')) continue
-    for (const hit of scanDartSource(text)) entries.push({ id: `${file}#${hit.symbol}`, file, ...hit })
+    const scan = await scanFile(path.join(root, file))
+    if (scan) files.push([file, scan])
+  }
+  const widgets = widgetNames(files.flatMap(([, s]) => s.classes))
+  const entries: FwpEntry[] = []
+  for (const [file, scan] of files) {
+    const hits = [...scan.hits]
+    for (const decl of scan.classes) {
+      const hit = widgets.has(decl.name) ? classHit(decl, scan, scan.hits) : null
+      if (hit) hits.push(hit)
+    }
+    hits.sort((a, b) => a.line - b.line)
+    for (const hit of hits) entries.push({ id: `${file}#${hit.symbol}`, file, ...hit })
   }
   return entries
 }

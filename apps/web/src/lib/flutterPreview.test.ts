@@ -25,6 +25,14 @@ describe('flutter preview helpers', () => {
     expect(groupEntries([entry('lib/a.dart', 'x')], null).other).toHaveLength(1)
   })
 
+  it('lists widget classes only under their own file', () => {
+    const cls = (file: string, symbol: string): FwpEntry => ({ ...entry(file, symbol), kind: 'class' })
+    const g = groupEntries([cls('lib/a.dart', 'A'), cls('lib/b.dart', 'B'), entry('lib/b.dart', 'y')], 'lib/a.dart')
+    expect(g.here.map((e) => e.symbol)).toEqual(['A'])
+    expect(g.other.map((e) => e.symbol)).toEqual(['y'])
+    expect(groupEntries([cls('lib/a.dart', 'A')], null).other).toEqual([])
+  })
+
   it('collects flavors from Flutter run configs', () => {
     const cfg = (flavor: string, type: RunConfig['type'] = 'flutter') => ({ type, flavor }) as unknown as RunConfig
     expect(flavorsFrom([cfg('prod'), cfg('dev'), cfg(''), cfg('dev'), cfg('x', 'android')])).toEqual(['dev', 'prod'])

@@ -1,4 +1,4 @@
-// Merged at the root of en.ts / vi.ts in v40: Flutter widget preview beside a .dart file.
+// Merged at the root of en.ts / vi.ts in v40: Flutter widget preview beside a .dart file (v55: widget classes too).
 const en = {
   fwp: {
     toggle: 'Widget preview',
@@ -29,10 +29,10 @@ const en = {
     refreshDevices: 'Refresh devices',
     thisFile: 'This file',
     otherFiles: 'Elsewhere in the project',
-    empty: "No {'@'}Preview functions found in lib/.",
-    emptyHint: "Add {code} above a function or constructor that takes no required parameters (Flutter 3.35 or newer, import 'package:flutter/widget_previews.dart').",
+    empty: "No widget classes in this file and no {'@'}Preview functions in lib/.",
+    emptyHint: "Widget classes of the open file show here on their own. For one that needs arguments, add {code} above a function that builds it (Flutter 3.35 or newer, import 'package:flutter/widget_previews.dart').",
     notFlutter: 'This file is not inside a Flutter project (no pubspec.yaml with a flutter dependency).',
-    scanning: "Looking for {'@'}Preview…",
+    scanning: 'Looking for widgets…',
     showing: 'Shown on the device',
     selected: 'Selected; shows when the preview is running',
     line: 'line {line}',
@@ -42,6 +42,8 @@ const en = {
       unknown: 'Not a top-level function, static method or constructor',
       type: 'Return type is not a widget (needs Widget or a widget class)',
       part: "In a 'part of' file: move the preview to the library file",
+      ctor: 'No public constructor',
+      web: 'Imports web-only libraries; the preview runs on a phone',
     },
     log: 'Output',
     error: {
@@ -98,10 +100,10 @@ const vi: typeof en = {
     refreshDevices: 'Làm mới thiết bị',
     thisFile: 'File này',
     otherFiles: 'Chỗ khác trong project',
-    empty: "Không tìm thấy hàm {'@'}Preview nào trong lib/.",
-    emptyHint: "Thêm {code} phía trên một hàm hoặc constructor không có tham số bắt buộc (Flutter 3.35 trở lên, import 'package:flutter/widget_previews.dart').",
+    empty: "File này không có class widget nào và lib/ không có hàm {'@'}Preview nào.",
+    emptyHint: "Class widget của file đang mở tự hiện ở đây. Class cần tham số thì thêm {code} phía trên một hàm dựng nó (Flutter 3.35 trở lên, import 'package:flutter/widget_previews.dart').",
     notFlutter: 'File này không nằm trong project Flutter (không có pubspec.yaml phụ thuộc flutter).',
-    scanning: "Đang tìm {'@'}Preview…",
+    scanning: 'Đang tìm widget…',
     showing: 'Đang hiện trên thiết bị',
     selected: 'Đã chọn; sẽ hiện khi bản xem trước chạy',
     line: 'dòng {line}',
@@ -111,6 +113,8 @@ const vi: typeof en = {
       unknown: 'Không phải hàm top-level, static method hay constructor',
       type: 'Kiểu trả về không phải widget (cần Widget hoặc class widget)',
       part: "Nằm trong file 'part of': chuyển preview sang file library",
+      ctor: 'Không có constructor public',
+      web: 'Import thư viện chỉ có trên web; bản xem trước chạy trên điện thoại',
     },
     log: 'Đầu ra',
     error: {

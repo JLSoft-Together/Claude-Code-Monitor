@@ -72,7 +72,7 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 - `gitlog.ts` — `LOG_PAGE`, `LogQuery` (`notRef`), `LogCommit`, refs / detail / contains results, `isHash`. Desktop IPC + web.
 - `gitBranch.ts` — `checkBranchName`, `BranchOpError`, `BranchOpResult`. Desktop + web.
 - `run.ts` — Run projects / envs / devices / configs, `RunState` + `isRunLive`, `RunEvent`, `RunStartRequest` / `RunResult`, `RUN_SHARED_DIR`. Desktop IPC + web.
-- `flutterPreview.ts` — `FwpEntry` / `FwpScanResult` / `FwpSnapshot` / `FwpError` / `FwpResult` (`ccm:fwp-*`). Desktop IPC + web.
+- `flutterPreview.ts` — `FwpEntry` (v55 `kind?: 'class'`, skip reasons `ctor` / `web`) / `FwpScanResult` / `FwpSnapshot` / `FwpError` / `FwpResult` (`ccm:fwp-*`). Desktop IPC + web.
 - `drawable.ts` — `drawableKind`, `drawableFolderKind`, `xmlRootName`, `DRAWABLE_ROOTS`. Desktop `layout/ipc.ts` + web `lib/drawablePreview.ts`.
 - `layoutXml.ts` — `isLayoutRootName`, `isLooseLayoutXml`. Desktop + web layout preview.
 - `entryName.ts` — `checkEntryName` (new file / folder names). Desktop `preview/explorer.ts` + web `CreateEntryDialog.vue`.

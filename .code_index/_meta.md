@@ -101,4 +101,5 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - Taskbar icon blank: dead Start Menu `.lnk` removed by `shortcuts.ts` `removeDeadShortcuts` (`main.ts` `removeStaleShortcuts`).
 - v53 Explorer in its own right panel: `WorkspaceView.vue` `explorerOpen` / `explorerWidth`, `SideResizer` `edge`, `sideWidth.ts` key params, `explorer.retryFailed`; `preview/ipc.ts` re-asks a fresh pane census before refusing.
 - v54 Git Push: `preview/branches.ts` `pushPreview` / `pushBranch`, shared `pushArgs` / `PushPreview`, `changes.ts` `parseStatusV2` ahead/behind; web `log/PushDialog.vue`, `LogRefsToolbar` push, `ExplorerChanges` `↑N`.
+- v55 Flutter preview lists widget classes of the open file without `@Preview`: `flutterPreview/scan.ts` `scanDartClasses` / `widgetNames` / `classHit`; shared `FwpEntry.kind`; web `groupEntries`. Plan `.planning/PLAN-v55-flutter-widget-classes.md`.
 - Rename GolAIm → Orrery (display, MCP server `orrery`, env `ORRERY_*`, `childEnv` also strips legacy `GOLAIM_*`, `LEGACY_EXES` + `GolAIm.exe`); orrery icon `make-icon.mjs` `FULL` / `SMALL` (≤ 32 px + tray), intro `pages.ts` `orbit` / `planet` / `.spin`.
