@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GitBranch, GitCompare, GitGraph, RotateCw } from 'lucide-vue-next'
+import { ArrowUpFromLine, GitBranch, GitCompare, GitGraph, RotateCw } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, groupChanges, isShowDiffKey, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
 import { setDragPath } from '../../lib/explorer/dragPath'
 import { isMac } from '../../lib/platform'
-import { baseName, hasLog, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
+import { baseName, hasLog, hasPush, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
 
 const props = defineProps<{ status: ChangesStatus | null; reading: boolean }>()
-const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string]; refresh: [] }>()
+const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string]; push: [root: string, branch: string]; refresh: [] }>()
 
 const { t } = useI18n()
 const listEl = ref<HTMLElement | null>(null)
@@ -58,6 +58,15 @@ function onKey(e: KeyboardEvent): void {
   e.preventDefault()
 }
 
+// Detached HEAD: `branch` is a short hash then, and there is no branch to push.
+const pushable = computed(() => (ok.value && hasPush && ok.value.branch && !/^[0-9a-f]{7}$/.test(ok.value.branch) ? ok.value : null))
+const pushTitle = computed(() => {
+  const s = pushable.value
+  if (!s) return ''
+  if (!s.upstream) return t('workspace.explorer.changesView.pushNoUpstream', { branch: s.branch })
+  return s.ahead ? t('workspace.explorer.changesView.pushAhead', { n: s.ahead, upstream: s.upstream }, s.ahead) : t('workspace.explorer.changesView.push')
+})
+
 const title = (e: ChangeEntry): string =>
   `${t(`workspace.changes.kind.${e.kind}`)}: ${e.origPath ? `${t('workspace.changes.renamedFrom', { path: e.origPath })} → ` : ''}${e.path}`
 </script>
@@ -67,6 +76,19 @@ const title = (e: ChangeEntry): string =>
     <div class="flex h-7 min-w-0 shrink-0 items-center gap-1 px-2 text-xs text-ink-muted">
       <GitBranch :size="12" class="shrink-0" aria-hidden="true" />
       <span class="min-w-0 flex-1 truncate" :title="ok?.root">{{ ok ? (ok.branch ?? t('workspace.explorer.changesView.noBranch')) : '' }}</span>
+      <button
+        v-if="pushable"
+        type="button"
+        class="inline-flex h-[18px] min-w-[18px] shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-[4px] px-0.5 hover:bg-fill-strong hover:text-ink"
+        :class="pushable.ahead ? 'text-accent-ink' : 'text-ink-faint'"
+        :title="pushTitle"
+        :aria-label="pushTitle"
+        data-explorer-push
+        @click="emit('push', pushable.root, pushable.branch!)"
+      >
+        <ArrowUpFromLine :size="12" aria-hidden="true" />
+        <span v-if="pushable.ahead" class="text-2xs font-medium tabular" aria-hidden="true">{{ pushable.ahead }}</span>
+      </button>
       <button
         v-if="ok"
         type="button"

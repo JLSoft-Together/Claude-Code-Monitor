@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { BranchOpResult } from '@ccm/shared'
 import { X } from 'lucide-vue-next'
 import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
@@ -12,6 +13,7 @@ import CreateEntryDialog from './CreateEntryDialog.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import ExplorerChanges from './ExplorerChanges.vue'
 import ExplorerTree from './ExplorerTree.vue'
+import PushDialog from './log/PushDialog.vue'
 
 const props = defineProps<{
   /** Project root of the focused pane; null keeps the last one. */
@@ -173,6 +175,13 @@ async function confirmTrash(): Promise<void> {
   if (row && (await explorer.trash(row.path))) emit('trashed', row.path)
 }
 
+const push = ref<{ root: string; ref: string } | null>(null)
+function pushed(res: BranchOpResult, name: string): void {
+  push.value = null
+  if (res.ok) explorer.status = { key: 'pushed', name, failed: false }
+  void changes.refresh()
+}
+
 const statusText = computed(() => {
   const s = explorer.status
   if (!s) return null
@@ -242,10 +251,12 @@ const statusText = computed(() => {
         @open="(p, keep) => emit('open', p, keep)"
         @open-diff="(r, p) => emit('openDiff', r, p)"
         @open-log="(r) => emit('openLog', r)"
+        @push="(r, b) => (push = { root: r, ref: `refs/heads/${b}` })"
         @refresh="changes.refresh()"
       />
     </template>
     <CreateEntryDialog :request="dialog" @create="submitEntry" @close="entryRequest = null" />
+    <PushDialog :request="push" @done="pushed" @close="push = null" />
     <DiscardConfirm
       v-if="pendingTrash"
       :title="t('workspace.explorer.trash.title', { name: pendingTrash.name, trash: trashName })"

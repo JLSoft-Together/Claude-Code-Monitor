@@ -52,6 +52,7 @@ const en = {
       missing: '“{name}” no longer exists.',
       busy: '“{name}” is in use. Stop the run or close the viewer using it, then try again.',
       copied: 'Copied: {name}',
+      pushed: 'Pushed {name}.',
       dismiss: 'Dismiss',
     },
     menu: {
@@ -92,6 +93,9 @@ const en = {
       truncated: 'Showing the first {n} changes',
       openDiff: 'Open in Changes tab',
       totals: '{added} lines added, {removed} removed',
+      push: 'Push…',
+      pushAhead: 'Push… ({n} commit ahead of {upstream}) | Push… ({n} commits ahead of {upstream})',
+      pushNoUpstream: 'Push… ({branch} has no upstream yet)',
     },
   },
 }
@@ -149,6 +153,7 @@ const vi: typeof en = {
       missing: '“{name}” không còn tồn tại.',
       busy: '“{name}” đang được dùng. Dừng run hoặc đóng trình xem đang mở nó rồi thử lại.',
       copied: 'Đã sao chép: {name}',
+      pushed: 'Đã push {name}.',
       dismiss: 'Đóng',
     },
     menu: {
@@ -189,6 +194,9 @@ const vi: typeof en = {
       truncated: 'Đang hiện {n} thay đổi đầu tiên',
       openDiff: 'Mở trong tab Thay đổi',
       totals: 'thêm {added} dòng, xoá {removed} dòng',
+      push: 'Push…',
+      pushAhead: 'Push… (đi trước {upstream} {n} commit) | Push… (đi trước {upstream} {n} commit)',
+      pushNoUpstream: 'Push… ({branch} chưa có upstream)',
     },
   },
 }
