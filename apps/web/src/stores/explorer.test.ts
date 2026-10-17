@@ -50,6 +50,21 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('explorer store', () => {
+  it('retries only the folders whose listing failed', async () => {
+    const s = useExplorerStore()
+    bridge.listDir.mockImplementation(async () => null)
+    s.setRoot(R)
+    await flush()
+    expect(s.state.errors.has(R)).toBe(true)
+    bridge.listDir.mockReset().mockImplementation(async (_root, dir) => fs[dir] ?? null)
+    await s.retryFailed()
+    expect(s.rows.map((r) => r.name)).toEqual(['repo', 'src', 'a.ts'])
+    expect(s.state.errors.size).toBe(0)
+    bridge.listDir.mockClear()
+    await s.retryFailed()
+    expect(bridge.listDir).not.toHaveBeenCalled()
+  })
+
   it('lists the root, expands lazily and keeps state per root', async () => {
     const s = useExplorerStore()
     s.setRoot(R)

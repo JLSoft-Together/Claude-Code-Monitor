@@ -47,6 +47,15 @@ onBeforeUnmount(() => explorer.detach())
 const changesActive = computed(() => props.visible)
 const changes = useExplorerChanges(toRef(explorer, 'root'), changesActive)
 
+// A root refused before its pane's PTY ran lists once retried; its git status was refused the same way.
+watch(
+  () => !!explorer.root && explorer.state.listings.has(explorer.root),
+  (listed) => {
+    const s = changes.status.value
+    if (listed && s && !s.ok && s.error === 'denied') changes.refresh()
+  },
+)
+
 // A plain folder has no Changes view.
 watch(changes.isRepo, (repo) => {
   if (!repo && explorer.view === 'changes') explorer.setView('files')

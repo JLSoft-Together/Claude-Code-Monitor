@@ -140,6 +140,11 @@ export const useExplorerStore = defineStore('explorer', () => {
     return Promise.all(openDirs.value.map(loadListing)).then(() => undefined)
   }
 
+  /** Lists again the open folders whose last read failed (a new terminal's folder is allowed once its PTY runs). */
+  function retryFailed(): Promise<void> {
+    return Promise.all(openDirs.value.filter((d) => state.value.errors.has(d)).map(loadListing)).then(() => undefined)
+  }
+
   function toggle(dir: string): void {
     if (root.value && dir === root.value) return toggleRoot()
     const expanded = toggleExpanded(state.value.expanded, dir)
@@ -269,6 +274,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     loadListing,
     ensureListing,
     refresh,
+    retryFailed,
     toggle,
     expand,
     toggleRoot,
