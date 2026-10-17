@@ -75,12 +75,13 @@ describe('presets', () => {
 
   it('keeps app and parent-agent variables out of the child', () => {
     const env = childEnv({ PATH: 'x', CCM_PTY_TOKEN: 't', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--x', CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_MESSAGING_TOKEN: 's', CLAUDE_CODE_USE_BEDROCK: '1' })
-    expect(Object.keys(env).sort()).toEqual(['CLAUDE_CODE_USE_BEDROCK', 'COLORTERM', 'PATH', 'TERM'])
+    expect(Object.keys(env).sort()).toEqual(['CLAUDE_CODE_USE_BEDROCK', 'COLORTERM', 'FORCE_HYPERLINK', 'PATH', 'TERM'])
+    expect(env.FORCE_HYPERLINK).toBe('1')
   })
 
   it('drops an inherited Orrery (or GolAIm) API and token', () => {
     const env = childEnv({ PATH: 'x', ORRERY_API: 'http://127.0.0.1:1', ORRERY_TOKEN: 't', orrery_mcp_config: '/x', GOLAIM_TOKEN: 'old', GOLAIMX: '1' })
-    expect(Object.keys(env).sort()).toEqual(['COLORTERM', 'GOLAIMX', 'PATH', 'TERM'])
+    expect(Object.keys(env).sort()).toEqual(['COLORTERM', 'FORCE_HYPERLINK', 'GOLAIMX', 'PATH', 'TERM'])
   })
 
   const uuid = '0b3c1f9e-1111-4222-8333-444455556666'

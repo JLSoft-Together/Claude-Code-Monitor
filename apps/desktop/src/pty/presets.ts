@@ -127,5 +127,7 @@ export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
   out.TERM = 'xterm-256color'
   out.COLORTERM = 'truecolor'
+  // Claude Code (supports-hyperlinks) then prints links as OSC 8, which survive its own line wrapping.
+  out.FORCE_HYPERLINK = '1'
   return out
 }

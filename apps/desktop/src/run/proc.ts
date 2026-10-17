@@ -24,6 +24,7 @@ export function runEnv(base: NodeJS.ProcessEnv, extra: Record<string, string> = 
   // Gradle/Flutter colour + progress bars would land in the log panel as escape garbage.
   delete env.TERM
   delete env.COLORTERM
+  delete env.FORCE_HYPERLINK
   return { ...env, NO_COLOR: '1' }
 }
 
