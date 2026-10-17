@@ -10,23 +10,33 @@ const BG = [22, 24, 29]
 const ACCENT = [232, 145, 90]
 const INK = [232, 230, 227]
 
-// Same geometry as scripts/assets/logo.svg (viewBox 1024). w = stroke width multiplier for the tray glyph.
-function shapes(w = 1) {
+// Circle centred at (cx, cy) as a round rect.
+const disc = (cx, cy, r) => [cx - r, cy - r, 2 * r, 2 * r, r]
+
+// Same geometry as scripts/assets/logo.svg (viewBox 1024): orbits, a gap of background around each planet, planets, sun.
+const FULL = {
+  rings: [[360, 36], [220, 36]],
+  planets: [[681, 371, 50, 82], [174, 635, 62, 96], [635, 850, 40, 70]],
+  sun: 96,
+}
+// 16–32 px and the tray glyph: one orbit, one planet, strokes doubled so they survive the downscale.
+const SMALL = {
+  rings: [[300, 80]],
+  planets: [[742, 319, 100, 156]],
+  sun: 130,
+}
+function shapes({ rings, planets, sun }) {
   return [
-    { kind: 'fill', color: INK, rect: [412, 176, 200, 168, 44] },
-    { kind: 'fill', color: ACCENT, cut: true, rect: [448, 240, 128, 36, 14] },
-    { kind: 'fill', color: INK, rect: [348, 368, 328, 288, 52] },
-    { kind: 'fill', color: INK, rect: [228, 384, 96, 236, 44] },
-    { kind: 'fill', color: INK, rect: [700, 384, 96, 236, 44] },
-    { kind: 'fill', color: INK, rect: [388, 680, 108, 168, 40] },
-    { kind: 'fill', color: INK, rect: [528, 680, 108, 168, 40] },
-    { kind: 'line', color: BG, cut: true, width: 32 * w, cap: 'round', lines: [[[430, 462], [492, 512], [430, 562]]] },
-    { kind: 'fill', color: BG, cut: true, rect: [520, 540, 92, 30, 10] },
+    ...rings.map(([r, width]) => ({ kind: 'ring', color: INK, width, rect: disc(512, 512, r) })),
+    ...planets.map(([x, y, , gap]) => ({ kind: 'fill', color: BG, cut: true, rect: disc(x, y, gap) })),
+    ...planets.map(([x, y, r]) => ({ kind: 'fill', color: INK, rect: disc(x, y, r) })),
+    { kind: 'fill', color: ACCENT, rect: disc(512, 512, sun) },
   ]
 }
-const LOGO = shapes()
-// Menu bar glyph for macOS: black silhouette on transparent, eye and chest prompt cut out, thicker prompt for 16 px.
-const GLYPH = shapes(1.4).map((s) => ({ ...s, color: s.cut ? null : [0, 0, 0] }))
+const LOGO = shapes(FULL)
+const LOGO_SMALL = shapes(SMALL)
+// Menu bar glyph for macOS: black silhouette on transparent, the gaps around the planet cut out.
+const GLYPH = LOGO_SMALL.map((s) => ({ ...s, color: s.cut ? null : [0, 0, 0] }))
 
 function sdRoundRect(x, y, [rx, ry, w, h, r]) {
   const qx = Math.abs(x - rx - w / 2) - (w / 2 - r)
@@ -64,7 +74,7 @@ function render(size, { inset = 0, radius = 0, glyph = false } = {}) {
   const ss = size <= 32 ? 6 : size <= 256 ? 4 : 2
   const [x0, span] = glyph ? [160, 704] : [0, 1024]
   const scale = span / (size - 2 * inset)
-  const strokes = glyph ? GLYPH : LOGO
+  const strokes = glyph ? GLYPH : size <= 32 ? LOGO_SMALL : LOGO
   const rgba = Buffer.alloc(size * size * 4)
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
