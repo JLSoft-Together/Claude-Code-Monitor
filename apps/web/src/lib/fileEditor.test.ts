@@ -130,12 +130,11 @@ describe('workspace store: dirty file panes', () => {
     setActivePinia(createPinia())
   })
 
-  it('a dirty pane leaves the preview slot and is never replaced by a single click', () => {
+  it('a dirty pane is never replaced by opening another file', () => {
     const ws = useWorkspaceStore()
-    const a = ws.openFile('/repo/a.ts', undefined, { cwd: '/repo', preview: true })
+    const a = ws.openFile('/repo/a.ts', undefined, { cwd: '/repo' })
     ws.setDirty(a.key, true)
-    expect(ws.panes.find((p) => p.key === a.key)?.preview).toBeUndefined()
-    const b = ws.openFile('/repo/b.ts', undefined, { cwd: '/repo', preview: true })
+    const b = ws.openFile('/repo/b.ts', undefined, { cwd: '/repo' })
     expect(b.key).not.toBe(a.key)
     expect(ws.panes.find((p) => p.key === a.key)?.path).toBe('/repo/a.ts')
     expect(ws.dirtyPanes.map((p) => p.key)).toEqual([a.key])

@@ -98,7 +98,7 @@ Invariants:
 
 - `lib/explorer/tree.ts` (`flattenTree`, `sortEntries`, `EXCLUDED_NAMES`, `movedPath`, `renamedPanePatches`, `trashedPaneKeys`), `reveal.ts`, `changesScheduler.ts`, `dragPath.ts` (`PATH_MIME`, drag to terminal), `contextMenu.ts` (`explorerMenu`, `explorerKey`). Shared `checkEntryName`.
 - `stores/explorer.ts` (per-root state, stale-reply guard, watch + re-list, `create` / `rename` / `trash`, `retryFailed` once a new pane's PTY runs), `composables/useExplorerChanges.ts`, `composables/useRunMarks.ts`.
-- `ExplorerPanel.vue` (Files | Changes, actions, `CreateEntryDialog.vue`), `ExplorerTree.vue` (windowed `role=tree`, git marks, run marks, layout warm-up on hover), `ExplorerChanges.vue`. Lives in its own right aside of `WorkspaceView` (`[data-explorer-panel]`, ⌘⇧E / Ctrl+Shift+E). Single click = preview viewer (`Pane.preview`), double click keeps it.
+- `ExplorerPanel.vue` (Files | Changes, actions, `CreateEntryDialog.vue`), `ExplorerTree.vue` (windowed `role=tree`, git marks, run marks, layout warm-up on hover), `ExplorerChanges.vue`. Lives in its own right aside of `WorkspaceView` (`[data-explorer-panel]`, ⌘⇧E / Ctrl+Shift+E). Every file opened gets its own viewer (no preview slot; reopening a file jumps to its viewer).
 
 ## Workspace — changes, diff, Git Log
 

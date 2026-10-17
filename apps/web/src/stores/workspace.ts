@@ -49,8 +49,6 @@ export interface Pane {
   /** File viewer: absolute path, opened at `line`. */
   path?: string
   line?: number
-  /** File viewer opened by a single click in the Explorer: the next single click replaces it. Runtime only. */
-  preview?: boolean
   /** File viewer (v42): editor buffer differs from the file on disk. Runtime only, never persisted. */
   dirty?: boolean
   /** Changes / Log: git toplevel once known; Changes: number of changed files. */
@@ -539,29 +537,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
-  /**
-   * One viewer per file: an open one jumps to `line` instead. `preview: true` (Explorer single click) reuses the
-   * window's preview viewer in place; `preview: false` (double click) keeps the viewer. Unset = a kept viewer.
-   */
-  function openFile(path: string, line?: number, opts: { cwd?: string; split?: Placement; preview?: boolean } = {}): Pane {
+  /** One viewer per file: an open one jumps to `line` instead; every other file gets a viewer of its own. */
+  function openFile(path: string, line?: number, opts: { cwd?: string; split?: Placement } = {}): Pane {
     const same = panes.value.find((p) => p.kind === 'file' && sameDir(p.path, path))
     if (same) {
       same.line = line
-      if (opts.preview === false) same.preview = undefined
       activate(same.key)
       return same
     }
-    // One preview slot per project: previewing in project B must not take over project A's tab.
-    const slot = opts.preview ? panes.value.find((p) => p.kind === 'file' && p.preview && !p.dirty && (!opts.cwd || sameDir(p.cwd, opts.cwd))) : undefined
-    if (slot) {
-      slot.path = path
-      slot.line = line
-      slot.cwd = opts.cwd ?? dirOfPath(path)
-      activate(slot.key)
-      return slot
-    }
     const pane = addView({ kind: 'file', path, line }, opts.cwd ?? dirOfPath(path))
-    if (opts.preview) pane.preview = true
     placeNew(pane, opts.split)
     return pane
   }
@@ -1048,12 +1032,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     unzoom(tabs.value.find((t) => t.key === tabKey))
   }
 
-  /** v42: an edited file pane stops being the Explorer preview slot (a single click must not replace it). */
   function setDirty(key: string, dirty: boolean): void {
     const pane = panes.value.find((p) => p.key === key)
     if (!pane || !!pane.dirty === dirty) return
     pane.dirty = dirty || undefined
-    if (dirty) pane.preview = undefined
   }
 
   /** Each mounted editor registers how to save its buffer; the close sheet and quit call them. Not reactive. */

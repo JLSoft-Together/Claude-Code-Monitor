@@ -132,27 +132,23 @@ describe('workspace viewer panes', () => {
   })
 })
 
-describe('explorer preview viewer', () => {
+describe('file viewers', () => {
   beforeEach(() => {
     localStorage.clear()
     sessionStorage.clear()
     setActivePinia(createPinia())
   })
 
-  it('a single click reuses one preview viewer in place; a double click keeps it', () => {
+  it('every file gets its own viewer; reopening one jumps to it', () => {
     const ws = useWorkspaceStore()
-    const a = ws.openFile('C:\repo\a.ts', undefined, { preview: true })
-    const b = ws.openFile('C:\repo\b.ts', undefined, { preview: true })
-    expect(b.key).toBe(a.key)
-    expect(b.path).toBe('C:\repo\b.ts')
-    expect(ws.tabs).toHaveLength(1)
-    ws.openFile('C:\repo\b.ts', undefined, { preview: false })
-    expect(b.preview).toBeUndefined()
-    const c = ws.openFile('C:\repo\c.ts', undefined, { preview: true })
-    expect(c.key).not.toBe(b.key)
-    expect(ws.tabs).toHaveLength(2)
-    expect(ws.openFile('C:\repo\b.ts', 3, { preview: true }).key).toBe(b.key)
-    expect(b.preview).toBeUndefined()
+    const a = ws.openFile('C:\repo\a.ts')
+    const b = ws.openFile('C:\repo\b.ts')
+    const c = ws.openFile('C:\repo\c.ts')
+    expect(new Set([a.key, b.key, c.key]).size).toBe(3)
+    expect(ws.panes.filter((p) => p.kind === 'file').map((p) => p.path)).toEqual(['C:\repo\a.ts', 'C:\repo\b.ts', 'C:\repo\c.ts'])
+    expect(ws.openFile('C:\repo\a.ts', 3).key).toBe(a.key)
+    expect(a.line).toBe(3)
+    expect(ws.activeKey).toBe(a.key)
   })
 })
 
@@ -241,13 +237,6 @@ describe('tab project', () => {
     expect(ws.activeKey).toBe(a.key)
   })
 
-  it('keeps one Explorer preview slot per project', () => {
-    const ws = useWorkspaceStore()
-    const a = ws.openFile('C:/a/x.ts', undefined, { cwd: 'C:/a', preview: true })
-    const b = ws.openFile('C:/b/y.ts', undefined, { cwd: 'C:/b', preview: true })
-    expect(b.key).not.toBe(a.key)
-    expect(ws.openFile('C:/a/z.ts', undefined, { cwd: 'C:/a', preview: true }).key).toBe(a.key)
-  })
 })
 
 describe('pane drag', () => {

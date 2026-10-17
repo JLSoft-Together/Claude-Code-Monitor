@@ -64,7 +64,7 @@ async function run(app) {
   await sleep(300)
   check('Copy Absolute Path reports the path', (await evaluate(`document.querySelector('[data-explorer] [role=status]')?.textContent ?? ''`)).includes('README.md'))
   // Rename with Shift+F6 while README.md is open in a kept viewer: the viewer follows.
-  await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, 'README.md'))}, undefined, { cwd: ${JSON.stringify(DIR)}, preview: false })`)
+  await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, 'README.md'))}, undefined, { cwd: ${JSON.stringify(DIR)} })`)
   await sleep(500)
   await evaluate(`if (!document.querySelector('[data-explorer-tree]')) document.querySelector('[data-explorer-toggle]').click()`)
   await waitFor(`!!(${rowSel('README.md')})`, 4000, 'row back').catch(() => {})
@@ -91,7 +91,7 @@ async function run(app) {
   await evaluate(`${rowSel('b.ts')}.focus()`)
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))`)
   await sleep(600)
-  check('Shift+Enter opens the file beside the active pane', (await evaluate(`${W}.panes.length`)) === before + 1 && (await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.path.endsWith('b.ts') && !p.preview)`)))
+  check('Shift+Enter opens the file beside the active pane', (await evaluate(`${W}.panes.length`)) === before + 1 && (await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.path.endsWith('b.ts'))`)))
   await shot('explorer-menu-02')
   // Renaming a folder moves the views inside it (file path, log cwd), never the shell.
   await evaluate(`${W}.openLog(${JSON.stringify(path.join(DIR, 'src'))})`)

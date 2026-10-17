@@ -453,17 +453,16 @@ const activeProject = computed(() => (workspace.active ? paneProject(workspace.a
 /** File shown by the focused viewer: the Explorer marks and reveals it. */
 const activeFile = computed(() => (workspace.active?.kind === 'file' ? (workspace.active.path ?? null) : null))
 
-/** Explorer click = preview viewer (the next click replaces it), double click = kept; the viewer stays in the project. */
-function openFromExplorer(path: string, keep: boolean): void {
+/** Every file opened from the Explorer gets its own viewer, kept in the project. */
+function openFromExplorer(path: string): void {
   const cwd = activeProject.value ?? undefined
-  if (keep) withViewTransition(() => workspace.openFile(path, undefined, { cwd, preview: false }))
-  else workspace.openFile(path, undefined, { cwd, preview: true })
+  withViewTransition(() => workspace.openFile(path, undefined, { cwd }))
 }
 
 function openSplitFromExplorer(path: string): void {
   const cwd = activeProject.value ?? undefined
   const key = workspace.activeKey
-  withViewTransition(() => workspace.openFile(path, undefined, key ? { cwd, split: { key, dir: 'row' }, preview: false } : { cwd, preview: false }))
+  withViewTransition(() => workspace.openFile(path, undefined, key ? { cwd, split: { key, dir: 'row' } } : { cwd }))
 }
 
 function onExplorerTrashed(path: string): void {
@@ -1831,7 +1830,7 @@ onBeforeUnmount(() => {
             <span
               :key="labelFlash[tab.key] ?? 0"
               class="-mx-0.5 min-w-0 truncate rounded-[4px] px-0.5 font-medium"
-              :class="[tabPrimary(tab)?.preview ? 'italic' : '', labelFlash[tab.key] ? 'ccm-highlight' : '']"
+              :class="labelFlash[tab.key] ? 'ccm-highlight' : ''"
               data-tab-label
             >{{ tabName(tab) }}</span>
             <Transition name="ccm-fade">

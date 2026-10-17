@@ -798,7 +798,7 @@ function onMarkdownClick(e: MouseEvent): void {
 watch(
   () => props.path,
   async () => {
-    // Only a rename moves a dirty pane (the preview slot skips dirty panes): keep the buffer, follow the new path.
+    // Only a rename moves a pane to another path: keep the dirty buffer, follow the new path.
     if (dirty.value) {
       const next = await readFile(props.path)
       if (next?.kind === 'text') view.value = { ...next, text: view.value?.text ?? next.text }

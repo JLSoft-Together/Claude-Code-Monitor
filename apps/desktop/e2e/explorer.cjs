@@ -63,20 +63,20 @@ async function run(app) {
   }
   await sleep(500)
 
-  // Expand src, single click = preview viewer replaced in place; double click keeps it.
+  // Expand src; every file clicked gets its own viewer.
   await evaluate(`${row('src')}.click()`)
   await waitFor(`${names}.includes('main.ts')`, 8000, 'src expanded')
   check('click a folder expands it lazily', await evaluate(`${names}.includes('lib') && ${names}.includes('main.ts')`))
   await evaluate(`${row('main.ts')}.click()`)
-  await waitFor(`${W}.panes.some((p) => p.kind === 'file' && p.preview)`, 8000, 'preview viewer')
+  await waitFor(`${W}.panes.some((p) => p.kind === 'file')`, 8000, 'file viewer')
   await evaluate(`${row('README.md')}.click()`)
   await sleep(400)
-  const files = await evaluate(`${W}.panes.filter((p) => p.kind === 'file').map((p) => [p.path, !!p.preview])`)
-  check('second single click replaces the preview viewer', files.length === 1 && /README\.md$/.test(files[0][0]) && files[0][1], JSON.stringify(files))
+  const files = await evaluate(`${W}.panes.filter((p) => p.kind === 'file').map((p) => p.path)`)
+  check('second click opens a second viewer', files.length === 2 && files.some((p) => /main\.ts$/.test(p)) && files.some((p) => /README\.md$/.test(p)), JSON.stringify(files))
   check('active file row is marked', await evaluate(`${row('README.md')}.getAttribute('aria-selected') === 'true'`))
   await evaluate(`${row('README.md')}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)
   await sleep(300)
-  check('double click keeps the viewer', await evaluate(`${W}.panes.filter((p) => p.kind === 'file').every((p) => !p.preview)`))
+  check('double click on an open file reuses its viewer', (await evaluate(`${W}.panes.filter((p) => p.kind === 'file').length`)) === 2)
   await shot('explorer-01-tree')
 
   // Keyboard: focus the tree, ArrowDown moves, ArrowRight expands lib.
@@ -87,7 +87,7 @@ async function run(app) {
   await waitFor(`${names}.includes('util.ts')`, 6000, 'lib expanded').catch(() => {})
   check('ArrowRight expands a folder', await evaluate(`${names}.includes('util.ts')`))
 
-  // New file in the focused folder (lib): dialog validates, creates, focuses, opens a preview.
+  // New file in the focused folder (lib): dialog validates, creates, focuses, opens a viewer.
   await evaluate(`document.querySelector('[data-explorer-new-file]').click()`)
   await waitFor(`!!document.querySelector('[data-create-name]')`, 5000, 'create dialog')
   check('create dialog names the target folder', /src\/lib/.test(await evaluate(`document.querySelector('[data-create-entry]').textContent`)))
@@ -102,7 +102,7 @@ async function run(app) {
   await waitFor(`${names}.includes('added.ts')`, 8000, 'created row').catch(() => {})
   check('new file exists on disk', fs.existsSync(path.join(DIR, 'src', 'lib', 'added.ts')))
   check('new row appears and takes focus', await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim() === 'added.ts'`), await evaluate(`document.activeElement?.querySelector('[data-row-name]')?.textContent.trim()`))
-  check('new file opens in the preview viewer', await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.preview && p.path.endsWith('added.ts'))`))
+  check('new file opens in a viewer', await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.path.endsWith('added.ts'))`))
 
   // A file created from outside the app shows up via the watcher.
   fs.writeFileSync(path.join(DIR, 'src', 'outside.ts'), 'export {}\n')
