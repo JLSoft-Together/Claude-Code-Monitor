@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clampSideWidth, nextStacked, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, SIDE_WIDTH_KEY, STAGE_MIN, writeSideWidth } from './sideWidth'
+import { clampSideWidth, EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY, nextStacked, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, SIDE_WIDTH_KEY, STAGE_MIN, writeSideWidth } from './sideWidth'
 
 describe('sidebar width', () => {
   beforeEach(() => localStorage.clear())
@@ -30,6 +30,13 @@ describe('sidebar width', () => {
     expect(readSideWidth()).toBe(333)
     localStorage.setItem(SIDE_WIDTH_KEY, '9999')
     expect(readSideWidth()).toBe(SIDE_MAX)
+  })
+
+  it('keeps the Explorer width under its own key and default', () => {
+    expect(readSideWidth(EXPLORER_WIDTH_KEY, EXPLORER_DEFAULT)).toBe(EXPLORER_DEFAULT)
+    writeSideWidth(410, EXPLORER_WIDTH_KEY)
+    expect(readSideWidth(EXPLORER_WIDTH_KEY, EXPLORER_DEFAULT)).toBe(410)
+    expect(readSideWidth()).toBe(SIDE_DEFAULT)
   })
 })
 

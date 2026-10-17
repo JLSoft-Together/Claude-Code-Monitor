@@ -2,12 +2,14 @@
 import { onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{ width: number; min: number; max: number; label: string }>()
+/** `edge`: which side of the panel the handle sits on; `left` (a right-hand panel) grows when dragged left. */
+const props = withDefaults(defineProps<{ width: number; min: number; max: number; label: string; edge?: 'left' | 'right' }>(), { edge: 'right' })
 const emit = defineEmits<{ resize: [px: number]; commit: []; reset: [] }>()
 const dragging = defineModel<boolean>('dragging', { default: false })
 
 const { t } = useI18n()
 const STEP = 16
+const sign = (): 1 | -1 => (props.edge === 'left' ? -1 : 1)
 let stop: (() => void) | null = null
 
 function start(e: PointerEvent): void {
@@ -18,7 +20,7 @@ function start(e: PointerEvent): void {
   const origin = e.clientX
   const from = props.width
   dragging.value = true
-  const move = (ev: PointerEvent): void => emit('resize', from + ev.clientX - origin)
+  const move = (ev: PointerEvent): void => emit('resize', from + sign() * (ev.clientX - origin))
   const detach = (): void => {
     handle.removeEventListener('pointermove', move)
     handle.removeEventListener('pointerup', end)
@@ -57,12 +59,13 @@ function set(px: number): void {
     :aria-valuenow="width"
     :aria-valuemin="min"
     :aria-valuemax="max"
-    class="group absolute inset-y-0 -right-3 z-20 flex w-3 cursor-col-resize touch-none items-center justify-center outline-none"
+    class="group absolute inset-y-0 z-20 flex w-3 cursor-col-resize touch-none items-center justify-center outline-none"
+    :class="edge === 'left' ? '-left-3' : '-right-3'"
     data-side-resizer
     @pointerdown.prevent="start"
     @dblclick="emit('reset')"
-    @keydown.left.prevent="set(width - STEP)"
-    @keydown.right.prevent="set(width + STEP)"
+    @keydown.left.prevent="set(width - sign() * STEP)"
+    @keydown.right.prevent="set(width + sign() * STEP)"
     @keydown.home.prevent="set(min)"
     @keydown.end.prevent="set(max)"
   >

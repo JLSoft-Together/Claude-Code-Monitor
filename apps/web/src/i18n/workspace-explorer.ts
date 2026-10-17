@@ -1,10 +1,8 @@
-// Merged into `workspace` of en.ts / vi.ts in v26: `explorer` (file tree + changes in the sidebar).
+// Merged into `workspace` of en.ts / vi.ts in v26: `explorer` (file tree + changes in the panel right of the stage).
 const en = {
   explorer: {
     title: 'Explorer',
-    sideViews: 'Sidebar view',
-    projects: 'Projects',
-    toggle: 'Show Explorer ({keys})',
+    toggle: 'Show or hide Explorer ({keys})',
     noRoot: 'Open a terminal in a project folder to browse its files.',
     unavailable: 'The file explorer needs the desktop app.',
     views: 'Explorer views',
@@ -101,9 +99,7 @@ const en = {
 const vi: typeof en = {
   explorer: {
     title: 'Explorer',
-    sideViews: 'Chế độ thanh bên',
-    projects: 'Dự án',
-    toggle: 'Hiện Explorer ({keys})',
+    toggle: 'Hiện hoặc ẩn Explorer ({keys})',
     noRoot: 'Mở terminal trong một thư mục dự án để duyệt file.',
     unavailable: 'Explorer cần ứng dụng desktop.',
     views: 'Chế độ Explorer',

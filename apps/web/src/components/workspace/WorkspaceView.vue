@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
@@ -59,13 +59,14 @@ import TabRenameInput from './TabRenameInput.vue'
 import UndoToast, { type UndoInfo } from './UndoToast.vue'
 import DimToggle from './DimToggle.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
-import { clampSideWidth, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
+import { clampSideWidth, EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
 import { hasRun } from '../../lib/desktop'
 import { latestPeer, type RailCluster } from '../../lib/rail/railModel'
 import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
 import { buildAttentionList } from '../../lib/rail/attentionList'
 import { useRail } from '../../composables/useRail'
 import { useRunStore } from '../../stores/run'
+import { useExplorerStore } from '../../stores/explorer'
 import { usePaneDrag, type PaneDragSource, type PaneDropAction } from '../../composables/usePaneDrag'
 
 /** The view is on screen: App hides it with v-show for other views and in compact mode. */
@@ -99,53 +100,69 @@ watch(sidebarOpen, (open) => {
   }
 })
 
-// Stored preference; what is drawn is clamped to the current window so a narrow window never hides the stage.
+/** File Explorer of the focused pane's project, in its own panel right of the stage. */
+const EXPLORER_KEY = 'ccm.workspace.explorerOpen'
+const explorerOpen = ref(readExplorerOpen())
+function readExplorerOpen(): boolean {
+  try {
+    return localStorage.getItem(EXPLORER_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+function toggleExplorer(): void {
+  withViewTransition(() => (explorerOpen.value = !explorerOpen.value))
+}
+// The panel is on screen from the start, so it can ask for a new terminal's folder before main allows it.
+const explorer = useExplorerStore()
+watch(
+  () => workspace.active?.state,
+  (state) => {
+    if (state === 'running' && explorerOpen.value) void explorer.retryFailed()
+  },
+)
+watch(explorerOpen, (open) => {
+  try {
+    localStorage.setItem(EXPLORER_KEY, open ? '1' : '0')
+  } catch {
+    // preference only
+  }
+})
+
+// Stored preferences; what is drawn is clamped to the current window so a narrow window never hides the stage.
+// The left panel leaves room for the Explorer at its minimum; the Explorer takes what the left panel left.
 const sideWidthPref = ref(readSideWidth())
+const explorerWidthPref = ref(readSideWidth(EXPLORER_WIDTH_KEY, EXPLORER_DEFAULT))
 const viewportW = ref(window.innerWidth)
-const sideWidth = computed(() => clampSideWidth(sideWidthPref.value, viewportW.value))
-const sideMax = computed(() => clampSideWidth(SIDE_MAX, viewportW.value))
+const sideRoom = computed(() => viewportW.value - (explorerOpen.value ? SIDE_MIN : 0))
+const sideWidth = computed(() => clampSideWidth(sideWidthPref.value, sideRoom.value))
+const sideMax = computed(() => clampSideWidth(SIDE_MAX, sideRoom.value))
+const explorerRoom = computed(() => viewportW.value - (sidebarOpen.value ? sideWidth.value : RAIL_COLUMN_W))
+const explorerWidth = computed(() => clampSideWidth(explorerWidthPref.value, explorerRoom.value))
+const explorerMax = computed(() => clampSideWidth(SIDE_MAX, explorerRoom.value))
 const sideDragging = ref(false)
+const explorerDragging = ref(false)
 function onViewportResize(): void {
   viewportW.value = window.innerWidth
 }
 function resizeSide(px: number): void {
-  sideWidthPref.value = clampSideWidth(px, viewportW.value)
+  sideWidthPref.value = clampSideWidth(px, sideRoom.value)
 }
 function resetSide(): void {
   sideWidthPref.value = SIDE_DEFAULT
   writeSideWidth(SIDE_DEFAULT)
 }
-
-/** What the sidebar shows: project groups or the file Explorer of the focused pane's project. */
-type SideView = 'projects' | 'explorer'
-const SIDE_VIEW_KEY = 'ccm.workspace.sideView'
-const SIDE_VIEWS: SideView[] = ['projects', 'explorer']
-const sideView = ref<SideView>(readSideView())
-function readSideView(): SideView {
-  try {
-    return localStorage.getItem(SIDE_VIEW_KEY) === 'explorer' ? 'explorer' : 'projects'
-  } catch {
-    return 'projects'
-  }
+function resizeExplorer(px: number): void {
+  explorerWidthPref.value = clampSideWidth(px, explorerRoom.value)
 }
-watch(sideView, (v) => {
-  try {
-    localStorage.setItem(SIDE_VIEW_KEY, v)
-  } catch {
-    // preference only
-  }
-})
-const sideTabs = ref<HTMLElement | null>(null)
-function onSideTabKey(e: KeyboardEvent): void {
-  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-  e.preventDefault()
-  sideView.value = sideView.value === 'projects' ? 'explorer' : 'projects'
-  sideTabs.value?.querySelector<HTMLElement>(`[data-side-view="${sideView.value}"]`)?.focus()
+function resetExplorer(): void {
+  explorerWidthPref.value = EXPLORER_DEFAULT
+  writeSideWidth(EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY)
 }
 
+// Opened without a view transition: the tree must exist on the next tick to take focus.
 async function showExplorer(): Promise<void> {
-  if (!sidebarOpen.value) toggleSidebar()
-  sideView.value = 'explorer'
+  explorerOpen.value = true
   await nextTick()
   ;(document.querySelector<HTMLElement>('[data-explorer-tree] [tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-explorer] [role="tab"][tabindex="0"]'))?.focus()
 }
@@ -1684,27 +1701,7 @@ onBeforeUnmount(() => {
       :style="{ width: `${sidebarOpen ? sideWidth : RAIL_COLUMN_W}px` }"
       data-tour="ws-sidebar"
     >
-      <div v-if="sidebarOpen" ref="sideTabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.sideViews')" @keydown="onSideTabKey">
-        <button
-          v-for="v in SIDE_VIEWS"
-          :key="v"
-          type="button"
-          role="tab"
-          :data-side-view="v"
-          :aria-selected="sideView === v"
-          :tabindex="sideView === v ? 0 : -1"
-          :title="v === 'explorer' ? t('workspace.explorer.toggle', { keys: shortcutText('wsExplorer', isMac) }) : undefined"
-          class="h-6 min-w-0 flex-1 cursor-pointer rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast)"
-          :class="sideView === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
-          @click="sideView = v"
-        >
-          {{ v === 'projects' ? t('workspace.explorer.projects') : t('workspace.explorer.title') }}
-        </button>
-      </div>
       <RailColumn v-if="!sidebarOpen" v-on="sideEvents" />
-      <div v-else-if="sideView === 'explorer'" class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
-        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" @open-split="openSplitFromExplorer" @terminal="(dir) => withViewTransition(() => workspace.open('shell', dir))" @run="(dir) => withViewTransition(() => workspace.openRun(dir))" @renamed="onExplorerRenamed" @trashed="onExplorerTrashed" />
-      </div>
       <WorkspaceSidebar v-else class="min-h-0 flex-1" :narrow="sideWidth < SIDE_NARROW" v-on="sideEvents" />
       <SideResizer
         v-if="sidebarOpen"
@@ -1720,7 +1717,7 @@ onBeforeUnmount(() => {
     </aside>
     <div
       class="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2"
-      :class="[sideDragging ? 'pointer-events-none' : '', dragSource ? 'cursor-grabbing select-none' : '']"
+      :class="[sideDragging || explorerDragging ? 'pointer-events-none' : '', dragSource ? 'cursor-grabbing select-none' : '']"
       @pointerdown="onDragDown"
     >
     <div v-if="workspace.tabs.length" class="flex min-w-0 items-center gap-2">
@@ -1967,6 +1964,17 @@ onBeforeUnmount(() => {
           </div>
         </Transition>
       </div>
+      <button
+        type="button"
+        class="ccm-btn-plain hidden shrink-0 md:inline-flex"
+        :aria-pressed="explorerOpen"
+        :title="t('workspace.explorer.toggle', { keys: shortcutText('wsExplorer', isMac) })"
+        :aria-label="t('workspace.explorer.toggle', { keys: shortcutText('wsExplorer', isMac) })"
+        data-explorer-toggle
+        @click="toggleExplorer"
+      >
+        <PanelRight :size="15" aria-hidden="true" />
+      </button>
     </div>
 
     <div v-if="!workspace.tabs.length" class="ccm-scroll flex min-h-0 flex-1 flex-col items-center overflow-y-auto py-6">
@@ -2187,6 +2195,28 @@ onBeforeUnmount(() => {
       <UndoToast :info="visible ? undoInfo : null" :keys="undoKeys" @undo="reopenLast" @dismiss="dismissUndo" />
     </div>
     </div>
+    <aside
+      v-if="workspace.tabs.length && explorerOpen"
+      class="relative hidden shrink-0 flex-col md:flex"
+      :class="explorerDragging ? 'select-none' : ''"
+      :style="{ width: `${explorerWidth}px` }"
+      data-explorer-panel
+    >
+      <div class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
+        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" @open-split="openSplitFromExplorer" @terminal="(dir) => withViewTransition(() => workspace.open('shell', dir))" @run="(dir) => withViewTransition(() => workspace.openRun(dir))" @renamed="onExplorerRenamed" @trashed="onExplorerTrashed" />
+      </div>
+      <SideResizer
+        v-model:dragging="explorerDragging"
+        edge="left"
+        :width="explorerWidth"
+        :min="SIDE_MIN"
+        :max="explorerMax"
+        :label="t('workspace.explorer.title')"
+        @resize="resizeExplorer"
+        @commit="writeSideWidth(explorerWidthPref, EXPLORER_WIDTH_KEY)"
+        @reset="resetExplorer"
+      />
+    </aside>
 
     <Teleport to="body">
       <div

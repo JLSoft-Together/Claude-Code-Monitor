@@ -1,8 +1,10 @@
-/** Workspace sidebar (Projects | Explorer) width, dragged with `SideResizer`. */
+/** Workspace side panels (Projects left, Explorer right) widths, dragged with `SideResizer`. */
 export const SIDE_WIDTH_KEY = 'ccm.workspace.sideWidth'
+export const EXPLORER_WIDTH_KEY = 'ccm.workspace.explorerWidth'
 export const SIDE_MIN = 200
 export const SIDE_MAX = 560
 export const SIDE_DEFAULT = 240
+export const EXPLORER_DEFAULT = 280
 /** Window width kept for the stage (tab strip + panes, page padding and gap included). */
 export const STAGE_MIN = 480
 
@@ -13,18 +15,18 @@ export function clampSideWidth(px: number, viewport = Infinity): number {
   return Math.round(Math.min(max, Math.max(SIDE_MIN, px)))
 }
 
-export function readSideWidth(): number {
+export function readSideWidth(key = SIDE_WIDTH_KEY, fallback = SIDE_DEFAULT): number {
   try {
-    const raw = Number(localStorage.getItem(SIDE_WIDTH_KEY))
-    return raw ? clampSideWidth(raw) : SIDE_DEFAULT
+    const raw = Number(localStorage.getItem(key))
+    return raw ? clampSideWidth(raw) : fallback
   } catch {
-    return SIDE_DEFAULT
+    return fallback
   }
 }
 
-export function writeSideWidth(px: number): void {
+export function writeSideWidth(px: number, key = SIDE_WIDTH_KEY): void {
   try {
-    localStorage.setItem(SIDE_WIDTH_KEY, String(Math.round(px)))
+    localStorage.setItem(key, String(Math.round(px)))
   } catch {
     // preference only
   }
