@@ -729,8 +729,6 @@ export default {
     notifyOff: 'Turn off notifications',
     language: 'Language',
     theme: 'Theme',
-    toDark: 'Switch to dark theme',
-    toLight: 'Switch to light theme',
     switchLanguage: 'Tiếng Việt',
   },
   effort: {

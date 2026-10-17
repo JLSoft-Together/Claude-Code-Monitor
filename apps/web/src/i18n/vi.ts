@@ -730,8 +730,6 @@ const vi: typeof en = {
     notifyOff: 'Tắt thông báo',
     language: 'Ngôn ngữ',
     theme: 'Giao diện',
-    toDark: 'Chuyển sang dark theme',
-    toLight: 'Chuyển sang light theme',
     switchLanguage: 'English',
   },
   effort: {

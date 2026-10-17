@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { modeOf } from '../lib/themes'
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Moon, Puzzle, Search, SquareTerminal, Sun } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Puzzle, Search, SquareTerminal } from 'lucide-vue-next'
 import { hasExtensions, hasTerminals } from '../lib/desktop'
 import { now, relativeTime } from '../lib/format'
 import { isMac } from '../lib/platform'
 import { formatKeys } from '../lib/shortcuts'
-import { withViewTransition } from '../lib/motion'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
@@ -62,12 +60,6 @@ const connectionTitle = computed(() =>
 
 const showClaudeLimits = computed(() => !!(extras.limits?.fiveHour || extras.limits?.sevenDay))
 const showCodexLimits = computed(() => !!(extras.codexLimits?.fiveHour || extras.codexLimits?.sevenDay))
-
-const isDark = computed(() => modeOf(settings.theme) === 'dark')
-
-function toggleTheme(): void {
-  withViewTransition(() => settings.toggleTheme())
-}
 
 function onTabKey(e: KeyboardEvent): void {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
@@ -191,24 +183,6 @@ function onTabKey(e: KeyboardEvent): void {
           >
             <Languages :size="16" aria-hidden="true" />
             <span>{{ settings.locale === 'en' ? 'VI' : 'EN' }}</span>
-          </button>
-          <button
-            type="button"
-            class="ccm-btn-plain hidden 2xl:inline-flex"
-            :aria-label="isDark ? t('settings.toLight') : t('settings.toDark')"
-            :title="isDark ? t('settings.toLight') : t('settings.toDark')"
-            @click="toggleTheme"
-          >
-            <Transition
-              mode="out-in"
-              enter-active-class="transition duration-(--ccm-dur-base) ease-spring"
-              enter-from-class="opacity-0 rotate-[-60deg] scale-75"
-              leave-active-class="transition duration-(--ccm-dur-fast) ease-exit"
-              leave-to-class="opacity-0 rotate-[60deg] scale-75"
-            >
-              <Sun v-if="isDark" key="sun" :size="16" aria-hidden="true" />
-              <Moon v-else key="moon" :size="16" aria-hidden="true" />
-            </Transition>
           </button>
           <SettingsMenu />
         </div>
