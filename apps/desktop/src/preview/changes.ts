@@ -22,7 +22,8 @@ export interface ChangeEntry {
 export type ChangesError = 'denied' | 'no-git' | 'not-repo' | 'failed' | 'conflict' | 'stale' | 'missing'
 
 export type ChangesStatus =
-  | { ok: true; root: string; branch: string | null; entries: ChangeEntry[]; truncated: boolean }
+  /** `upstream` / `ahead` / `behind`: from `# branch.upstream` / `# branch.ab` (0 without an upstream). */
+  | { ok: true; root: string; branch: string | null; upstream: string | null; ahead: number; behind: number; entries: ChangeEntry[]; truncated: boolean }
   | { ok: false; error: ChangesError }
 
 export type ChangesDiff =
@@ -84,11 +85,14 @@ export function diffArgs(opts: DiffOptions = {}): string[] {
 export const MAX_ENTRIES = 5000
 
 /** Parses `git status --porcelain=v2 -z [--branch]` output. */
-export function parseStatusV2(out: string): { branch: string | null; entries: ChangeEntry[] } {
+export function parseStatusV2(out: string): { branch: string | null; upstream: string | null; ahead: number; behind: number; entries: ChangeEntry[] } {
   const parts = out.split('\0')
   const entries: ChangeEntry[] = []
   let branch: string | null = null
   let oid: string | null = null
+  let upstream: string | null = null
+  let ahead = 0
+  let behind = 0
   for (let i = 0; i < parts.length; i++) {
     const rec = parts[i]!
     if (!rec) continue
@@ -98,6 +102,13 @@ export function parseStatusV2(out: string): { branch: string | null; entries: Ch
       if (head) branch = head[1] === '(detached)' ? null : head[1]!
       const id = /^# branch\.oid ([0-9a-f]+)$/.exec(rec)
       if (id) oid = id[1]!
+      const up = /^# branch\.upstream (.+)$/.exec(rec)
+      if (up) upstream = up[1]!
+      const ab = /^# branch\.ab \+(\d+) -(\d+)$/.exec(rec)
+      if (ab) {
+        ahead = Number(ab[1])
+        behind = Number(ab[2])
+      }
       continue
     }
     if (type === '?') {
@@ -122,7 +133,7 @@ export function parseStatusV2(out: string): { branch: string | null; entries: Ch
     }
   }
   if (!branch && oid) branch = oid.slice(0, 7)
-  return { branch, entries }
+  return { branch, upstream, ahead, behind, entries }
 }
 
 /** `git diff --numstat -z` → per path counts; renames report under the new path. */
@@ -264,7 +275,7 @@ export async function status(root: string): Promise<ChangesStatus> {
   }
   const untracked = entries.filter((e) => e.kind === 'untracked').slice(0, 300)
   await Promise.all(untracked.map(async (e) => Object.assign(e, await countLines(path.join(root, e.path)))))
-  return { ok: true, root, branch: parsed.branch, entries, truncated }
+  return { ok: true, root, branch: parsed.branch, upstream: parsed.upstream, ahead: parsed.ahead, behind: parsed.behind, entries, truncated }
 }
 
 async function entryFor(root: string, rel: string): Promise<ChangeEntry | null> {

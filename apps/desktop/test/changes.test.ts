@@ -18,6 +18,8 @@ describe('parsers', () => {
     const out = [
       '# branch.oid 0123456789abcdef',
       '# branch.head main',
+      '# branch.upstream origin/main',
+      '# branch.ab +2 -1',
       '1 .M N... 100644 100644 100644 aaa bbb src/a b.ts',
       '1 A. N... 000000 100644 100644 000 ccc new.ts',
       '1 .D N... 100644 100644 000000 ddd ddd gone.ts',
@@ -28,8 +30,9 @@ describe('parsers', () => {
       '! ignored.log',
       '',
     ].join('\0')
-    const { branch, entries } = parseStatusV2(out)
+    const { branch, upstream, ahead, behind, entries } = parseStatusV2(out)
     expect(branch).toBe('main')
+    expect({ upstream, ahead, behind }).toEqual({ upstream: 'origin/main', ahead: 2, behind: 1 })
     expect(entries.map((e) => [e.path, e.kind, e.staged])).toEqual([
       ['src/a b.ts', 'modified', false],
       ['new.ts', 'added', true],
