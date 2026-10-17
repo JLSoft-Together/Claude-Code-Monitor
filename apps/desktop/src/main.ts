@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
@@ -34,6 +34,7 @@ import { RunManager } from './run/sessions'
 import { PtySupervisor } from './pty/supervisor'
 import { paneOpenResult, parseOpenLink, realDir, takeLinkSlot, type OpenLink } from './openLink'
 import { dustSize } from './capture'
+import { removeDeadShortcuts } from './shortcuts'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { stringsFor, type Strings } from './strings'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
@@ -353,6 +354,18 @@ function repairLoginItem(): void {
     (exe) => app.getLoginItemSettings({ path: path.join(path.dirname(process.execPath), exe), args: ['--hidden'] }).openAtLogin,
   )
   if (stale) app.setLoginItemSettings({ ...loginOptions(), openAtLogin: true })
+}
+
+// The taskbar takes its icon from the Start Menu shortcut with our AUMID; one left by an old portable / renamed build
+// points at a deleted exe and blanks the icon.
+function removeStaleShortcuts(): void {
+  if (process.platform !== 'win32') return
+  removeDeadShortcuts(path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'), APP_ID, {
+    list: (dir) => readdirSync(dir),
+    read: (file) => shell.readShortcutLink(file),
+    exists: existsSync,
+    remove: (file) => rmSync(file),
+  })
 }
 
 const openAtLogin = (): boolean => app.isPackaged && app.getLoginItemSettings(loginOptions()).openAtLogin
@@ -954,6 +967,7 @@ async function ready(): Promise<void> {
     return { ok: true, path: res.filePath }
   })
   repairLoginItem()
+  removeStaleShortcuts()
   createTray()
   mainWindow = createMainWindow()
   await boot()
