@@ -20,7 +20,7 @@ const en = {
     bundled: 'Included with the app',
     notInstalled: 'Not installed',
     sampleCode: '0O 1lI () => != []',
-    sampleUi: 'GolAIm · Tiếng Việt',
+    sampleUi: 'Orrery · Tiếng Việt',
     choose: 'Choose {what}',
     licenses: 'Font licences',
     licensesHint: 'Open-licence fonts bundled in the app',
@@ -46,7 +46,7 @@ const en = {
     notify: {
       title: 'Desktop notifications',
       body: 'Know when an agent waits for you, finishes, or gets stuck.',
-      blocked: 'Blocked by the system. Allow notifications for GolAIm in the OS settings.',
+      blocked: 'Blocked by the system. Allow notifications for Orrery in the OS settings.',
     },
     toast: {
       title: 'System toasts',
@@ -92,7 +92,7 @@ const vi: typeof en = {
     bundled: 'Có sẵn trong app',
     notInstalled: 'Chưa cài trên máy',
     sampleCode: '0O 1lI () => != []',
-    sampleUi: 'GolAIm · Tiếng Việt',
+    sampleUi: 'Orrery · Tiếng Việt',
     choose: 'Chọn {what}',
     licenses: 'Giấy phép font',
     licensesHint: 'Các font giấy phép mở đi kèm app',
@@ -118,7 +118,7 @@ const vi: typeof en = {
     notify: {
       title: 'Thông báo desktop',
       body: 'Biết ngay khi agent chờ bạn, làm xong hoặc bị kẹt.',
-      blocked: 'Hệ thống đang chặn. Hãy cho phép thông báo của GolAIm trong cài đặt hệ điều hành.',
+      blocked: 'Hệ thống đang chặn. Hãy cho phép thông báo của Orrery trong cài đặt hệ điều hành.',
     },
     toast: {
       title: 'Toast hệ thống',

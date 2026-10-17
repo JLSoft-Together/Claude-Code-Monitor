@@ -45,7 +45,7 @@ export default {
   ...peerMapV54.en,
   ...peerWsV54.en,
   app: {
-    title: 'GolAIm',
+    title: 'Orrery',
     skipToContent: 'Skip to content',
   },
   nav: {
@@ -94,7 +94,7 @@ export default {
       error: 'Error',
       gone: 'Session ended',
       disconnected: 'Disconnected',
-      unavailable: 'Terminals run only in the GolAIm desktop app',
+      unavailable: 'Terminals run only in the Orrery desktop app',
     },
     error: {
       preset: 'Unknown launch preset',
@@ -104,7 +104,7 @@ export default {
     },
     empty: {
       title: 'No terminals yet',
-      body: 'Pick what to run and where. Terminals run inside GolAIm, so keystrokes never leave this machine.',
+      body: 'Pick what to run and where. Terminals run inside Orrery, so keystrokes never leave this machine.',
     },
     wt: {
       title: 'Worktrees',
@@ -140,7 +140,7 @@ export default {
       dismiss: 'Forget previous workspace',
     },
     reopen: {
-      action: 'Open in GolAIm',
+      action: 'Open in Orrery',
       show: 'Show in workspace',
       liveWarning: 'This session is still running in another terminal. Opening it here as well makes two instances write the same conversation.',
       confirm: 'Open anyway',
@@ -723,7 +723,7 @@ export default {
     notifyWaiting: 'When a session waits for you',
     notifyDone: 'When Claude finishes replying',
     notifyHint: 'Shown only while this tab is in the background. The tab title also shows how many sessions are waiting.',
-    notifyBlocked: 'Notifications are blocked. Allow GolAIm to send notifications in system settings, then turn them on again.',
+    notifyBlocked: 'Notifications are blocked. Allow Orrery to send notifications in system settings, then turn them on again.',
     notifyUnsupported: 'Notifications are not supported on this computer.',
     notifyOn: 'Turn on notifications',
     notifyOff: 'Turn off notifications',
@@ -906,7 +906,7 @@ export default {
     skip: 'Skip the guide',
     steps: {
       welcome: {
-        title: 'Welcome to GolAIm',
+        title: 'Welcome to Orrery',
         body: 'This page watches every Claude Code session running on this machine, plus the Codex CLI runs they start, and tells you which one needs you. It only reads local files: it never types into an agent, never calls an API and costs no tokens. Take a one-minute tour?',
       },
       tabs: {

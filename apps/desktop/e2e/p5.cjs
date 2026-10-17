@@ -45,11 +45,11 @@ async function boot(app) {
     // Reopen guard: a live external session asks first and never opens on Cancel.
     await app.evaluate(`${S}.get('ui').setView('monitor')`)
     await app.sleep(1500)
-    const reopenBtn = await app.evaluate(`!![...document.querySelectorAll('button')].find(b => b.title === 'Open in GolAIm')`)
+    const reopenBtn = await app.evaluate(`!![...document.querySelectorAll('button')].find(b => b.title === 'Open in Orrery')`)
     check('reopen button on external session', reopenBtn)
     if (reopenBtn) {
       const panesBefore = await app.evaluate(`${W}.panes.length`)
-      await app.evaluate(`[...document.querySelectorAll('button')].find(b => b.title === 'Open in GolAIm').click()`)
+      await app.evaluate(`[...document.querySelectorAll('button')].find(b => b.title === 'Open in Orrery').click()`)
       await app.sleep(300)
       const warn = await app.evaluate(`document.querySelector('[role=alertdialog]')?.innerText ?? ''`)
       check('live session shows two-writer warning', /still running/i.test(warn), warn.slice(0, 80))

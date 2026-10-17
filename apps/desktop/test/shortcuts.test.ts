@@ -26,14 +26,14 @@ describe('removeDeadShortcuts', () => {
   it('keeps live shortcuts, other apps and files that are not shortcuts', () => {
     const d = deps(
       {
-        'GolAIm.lnk': { target: 'C:/Apps/GolAIm.exe', appUserModelId: APP_ID },
+        'Orrery.lnk': { target: 'C:/Apps/Orrery.exe', appUserModelId: APP_ID },
         'Other.lnk': { target: 'C:/gone.exe', appUserModelId: 'com.other' },
         'NoId.lnk': { target: 'C:/gone.exe' },
         'Empty.lnk': { target: '', appUserModelId: APP_ID },
         'Broken.lnk': null,
         'readme.txt': { target: 'C:/gone.exe', appUserModelId: APP_ID },
       },
-      ['C:/Apps/GolAIm.exe'],
+      ['C:/Apps/Orrery.exe'],
     )
     expect(removeDeadShortcuts(DIR, APP_ID, d)).toEqual([])
     expect(d.removed).toEqual([])

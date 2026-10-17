@@ -23,7 +23,7 @@ import { isPidAlive } from './process'
 async function main(): Promise<void> {
   const config = loadConfig()
   if (!config.appKey && !config.dev) {
-    console.error('[collector] GolAIm runs inside its desktop app: npm run desktop (UI work: npm run dev).')
+    console.error('[collector] Orrery runs inside its desktop app: npm run desktop (UI work: npm run dev).')
     process.exit(1)
   }
   const store = new MonitorStore({ activityLimit: config.activityLimit, batchMs: config.batchMs })
@@ -248,7 +248,7 @@ main().catch((err: unknown) => {
   if (isPortInUse(err)) {
     const port = loadConfig().port
     console.error(
-      `[collector] port ${port} is already in use (another GolAIm, or another app: 4317 is also the OpenTelemetry OTLP/gRPC default). Quit it or set CCM_PORT.`,
+      `[collector] port ${port} is already in use (another Orrery, or another app: 4317 is also the OpenTelemetry OTLP/gRPC default). Quit it or set CCM_PORT.`,
     )
     process.exit(PORT_IN_USE_EXIT)
   }

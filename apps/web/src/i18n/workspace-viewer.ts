@@ -4,7 +4,7 @@ const en = {
     allow: 'Allow access to {folder}',
     allowAll: 'Allow access to every folder',
     onlyFolder: 'Only {folder}',
-    denied: 'GolAIm can only open files inside the folders of your open terminals, or folders you allowed.',
+    denied: 'Orrery can only open files inside the folders of your open terminals, or folders you allowed.',
     refused: 'Access was not allowed.',
   },
   browser: {
@@ -200,7 +200,7 @@ const vi: typeof en = {
     allow: 'Cho phép truy cập {folder}',
     allowAll: 'Cho phép truy cập mọi thư mục',
     onlyFolder: 'Chỉ thư mục {folder}',
-    denied: 'GolAIm chỉ mở được tệp trong thư mục của các terminal đang mở, hoặc thư mục bạn đã cho phép.',
+    denied: 'Orrery chỉ mở được tệp trong thư mục của các terminal đang mở, hoặc thư mục bạn đã cho phép.',
     refused: 'Chưa được cho phép truy cập.',
   },
   browser: {

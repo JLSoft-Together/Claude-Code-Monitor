@@ -37,7 +37,7 @@ describe('hostSource', () => {
     expect(src).not.toContain('_x')
     expect(src).toContain("registerExtension('ext.ccm.show'")
     expect(src).toContain('debugShowCheckedModeBanner: false')
-    expect(src).toContain('Select a widget in GolAIm')
+    expect(src).toContain('Select a widget in Orrery')
   })
 
   it('turns widget errors into an error card and a marker line', () => {

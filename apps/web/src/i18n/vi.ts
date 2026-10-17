@@ -46,7 +46,7 @@ const vi: typeof en = {
   ...peerMapV54.vi,
   ...peerWsV54.vi,
   app: {
-    title: 'GolAIm',
+    title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
   },
   nav: {
@@ -95,7 +95,7 @@ const vi: typeof en = {
       error: 'Lỗi',
       gone: 'Phiên đã kết thúc',
       disconnected: 'Mất kết nối',
-      unavailable: 'Terminal chỉ chạy trong app GolAIm',
+      unavailable: 'Terminal chỉ chạy trong app Orrery',
     },
     error: {
       preset: 'Preset khởi chạy không hợp lệ',
@@ -105,7 +105,7 @@ const vi: typeof en = {
     },
     empty: {
       title: 'Chưa có terminal nào',
-      body: 'Chọn chạy gì và ở đâu. Terminal chạy bên trong GolAIm, phím gõ không rời khỏi máy này.',
+      body: 'Chọn chạy gì và ở đâu. Terminal chạy bên trong Orrery, phím gõ không rời khỏi máy này.',
     },
     wt: {
       title: 'Worktree',
@@ -141,7 +141,7 @@ const vi: typeof en = {
       dismiss: 'Bỏ workspace trước',
     },
     reopen: {
-      action: 'Mở lại trong GolAIm',
+      action: 'Mở lại trong Orrery',
       show: 'Xem trong workspace',
       liveWarning: 'Session này vẫn đang chạy ở terminal khác. Mở thêm ở đây sẽ có hai bản cùng ghi một cuộc trò chuyện.',
       confirm: 'Vẫn mở',
@@ -724,7 +724,7 @@ const vi: typeof en = {
     notifyWaiting: 'Khi session chờ chủ nhân',
     notifyDone: 'Khi Claude trả lời xong',
     notifyHint: 'Chỉ hiện khi tab này không được mở trước mặt. Tiêu đề tab cũng hiện số session đang chờ.',
-    notifyBlocked: 'Thông báo đang bị chặn. Cho phép GolAIm gửi thông báo trong cài đặt hệ thống rồi bật lại.',
+    notifyBlocked: 'Thông báo đang bị chặn. Cho phép Orrery gửi thông báo trong cài đặt hệ thống rồi bật lại.',
     notifyUnsupported: 'Máy này không hỗ trợ thông báo.',
     notifyOn: 'Bật thông báo',
     notifyOff: 'Tắt thông báo',
@@ -907,7 +907,7 @@ const vi: typeof en = {
     skip: 'Bỏ qua hướng dẫn',
     steps: {
       welcome: {
-        title: 'Chào mừng tới GolAIm',
+        title: 'Chào mừng tới Orrery',
         body: 'Trang này theo dõi mọi session Claude Code đang chạy trên máy, cả các lần Codex CLI do chúng gọi, và cho biết session nào đang cần chủ nhân. Nó chỉ đọc file trên máy: không gõ gì vào agent, không gọi API, không tốn token. Xem nhanh một phút nhé?',
       },
       tabs: {

@@ -27,7 +27,7 @@ function agentCommand(preset: Exclude<PtyPreset, 'shell'>, win: boolean, resume?
   const base = resumed
     ? `claude --resume ${resume}`
     : `claude${isAgentSessionId(opts.sessionId) ? ` --session-id ${opts.sessionId}` : ''}${isPaneName(opts.name) ? ` -n '${opts.name}'` : ''}`
-  return opts.mcp ? `${base} --mcp-config ${win ? '$env:GOLAIM_MCP_CONFIG' : '"$GOLAIM_MCP_CONFIG"'}` : base
+  return opts.mcp ? `${base} --mcp-config ${win ? '$env:ORRERY_MCP_CONFIG' : '"$ORRERY_MCP_CONFIG"'}` : base
 }
 
 export interface AgentOptions {
@@ -39,7 +39,7 @@ export interface AgentOptions {
 export const isPaneName = (v: unknown): v is string => typeof v === 'string' && v.trim() === v && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(v)
 
 export const MCP_CONFIG_JSON = JSON.stringify({
-  mcpServers: { golaim: { type: 'http', url: '${GOLAIM_API}/mcp', headers: { Authorization: 'Bearer ${GOLAIM_TOKEN}' } } },
+  mcpServers: { orrery: { type: 'http', url: '${ORRERY_API}/mcp', headers: { Authorization: 'Bearer ${ORRERY_TOKEN}' } } },
 })
 
 /**
@@ -122,7 +122,7 @@ export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const [key, value] of Object.entries(env)) {
     const k = key.toUpperCase()
-    if (k.startsWith('CCM_') || k.startsWith('GOLAIM_') || k.startsWith('ELECTRON_') || k === 'NODE_OPTIONS' || AGENT_SESSION_VARS.has(k)) continue
+    if (k.startsWith('CCM_') || k.startsWith('ORRERY_') || k.startsWith('GOLAIM_') || k.startsWith('ELECTRON_') || k === 'NODE_OPTIONS' || AGENT_SESSION_VARS.has(k)) continue
     out[key] = value
   }
   out.TERM = 'xterm-256color'

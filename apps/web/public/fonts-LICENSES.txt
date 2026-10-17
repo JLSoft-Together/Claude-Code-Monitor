@@ -1,4 +1,4 @@
-Fonts bundled with Agent Monitor
+Fonts bundled with Orrery
 ================================
 
 JetBrains Mono (@fontsource-variable/jetbrains-mono): SIL Open Font License 1.1

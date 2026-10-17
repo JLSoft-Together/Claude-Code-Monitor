@@ -53,7 +53,7 @@ describe('parseOpenLink', () => {
   it('refuses another scheme or host', () => {
     expect(parseOpenLink(`agent-monitor://focus?cwd=${enc(POSIX)}`, 'darwin')).toBeNull()
     expect(parseOpenLink(`agent-monitor://snooze?cwd=${enc(POSIX)}`, 'darwin')).toBeNull()
-    expect(parseOpenLink(`golaim://open?cwd=${enc(POSIX)}`, 'darwin')).toBeNull()
+    expect(parseOpenLink(`orrery://open?cwd=${enc(POSIX)}`, 'darwin')).toBeNull()
     expect(parseOpenLink(`https://open/?cwd=${enc(POSIX)}`, 'darwin')).toBeNull()
     expect(parseOpenLink('not a url', 'darwin')).toBeNull()
   })

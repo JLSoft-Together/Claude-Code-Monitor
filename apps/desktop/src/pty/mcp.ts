@@ -13,12 +13,12 @@ export type OpenOutcome = { ok: true; preset: PtyPreset; cwd: string; sessionId?
 export const MCP_PROTOCOL_VERSION = '2025-06-18'
 
 export const MCP_INSTRUCTIONS =
-  'This server opens new Claude Code, Codex or shell sessions as panes in the GolAIm workspace; use open_session instead of launching terminal windows.'
+  'This server opens new Claude Code, Codex or shell sessions as panes in the Orrery workspace; use open_session instead of launching terminal windows.'
 
 export const OPEN_SESSION_TOOL = {
   name: 'open_session',
   description:
-    'Open a new Claude Code (default), Codex or shell session as a pane in the GolAIm workspace, next to the calling session. Use it instead of starting a terminal window (wt.exe, powershell, cmd start, Terminal.app, iTerm) whenever the user asks to open, start or spawn another session, agent or terminal.',
+    'Open a new Claude Code (default), Codex or shell session as a pane in the Orrery workspace, next to the calling session. Use it instead of starting a terminal window (wt.exe, powershell, cmd start, Terminal.app, iTerm) whenever the user asks to open, start or spawn another session, agent or terminal.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -33,23 +33,23 @@ export const OPEN_SESSION_TOOL = {
       resume: {
         type: 'string',
         description:
-          'Session id (UUID) of an earlier Claude Code or Codex session to continue instead of starting a new one; cwd must be the project folder of that session. If a GolAIm pane already runs it, that pane is shown instead.',
+          'Session id (UUID) of an earlier Claude Code or Codex session to continue instead of starting a new one; cwd must be the project folder of that session. If an Orrery pane already runs it, that pane is shown instead.',
       },
     },
     additionalProperties: false,
   },
-  annotations: { title: 'Open GolAIm session', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  annotations: { title: 'Open Orrery session', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 }
 
 const LABELS: Record<PtyPreset, string> = { claude: 'Claude Code', codex: 'Codex', shell: 'a shell' }
 
 const ERRORS: Record<PaneOpenError, string> = {
-  limit: 'GolAIm already runs 16 terminals; the user has to close one first.',
+  limit: 'Orrery already runs 16 terminals; the user has to close one first.',
   cwd: 'That folder does not exist or is not allowed; cwd must be an absolute path to an existing local folder.',
   rate: 'Too many sessions were opened from this pane in the last minute; wait before opening another one.',
-  unavailable: 'The GolAIm window is not ready to open a pane right now.',
+  unavailable: 'The Orrery window is not ready to open a pane right now.',
   preset: 'Unknown agent; use claude, codex or shell.',
-  failed: 'GolAIm could not open the pane.',
+  failed: 'Orrery could not open the pane.',
   resume: 'resume must be the UUID of a Claude Code or Codex session.',
   live: 'That session is still running in another terminal; it has to be closed there first, two instances would write into the same transcript.',
 }
@@ -60,8 +60,8 @@ export function openText(outcome: OpenOutcome): string {
   if (!outcome.ok) return `${ERRORS[outcome.error] ?? ERRORS.failed} Do not open an external terminal window instead unless the user asks for it.`
   const id = outcome.sessionId ? ` Session id: ${outcome.sessionId}.` : ''
   const prompt = outcome.prompt ? ' The prompt is waiting in its input box; the user presses Enter to send it.' : ''
-  if (outcome.resumed) return `Reopened ${LABELS[outcome.preset]} session ${outcome.sessionId} in ${outcome.cwd} as a GolAIm pane.${prompt}`
-  return `Opened ${LABELS[outcome.preset]} in ${outcome.cwd} as a new GolAIm pane next to this session.${id}${prompt}`
+  if (outcome.resumed) return `Reopened ${LABELS[outcome.preset]} session ${outcome.sessionId} in ${outcome.cwd} as an Orrery pane.${prompt}`
+  return `Opened ${LABELS[outcome.preset]} in ${outcome.cwd} as a new Orrery pane next to this session.${id}${prompt}`
 }
 
 export function toOpenResult(v: unknown): PaneOpenResult | null {
@@ -93,7 +93,7 @@ async function answer(msg: unknown, open: (args: OpenArgs) => Promise<OpenOutcom
       return ok({
         protocolVersion: typeof asked === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'golaim', version },
+        serverInfo: { name: 'orrery', version },
         instructions: MCP_INSTRUCTIONS,
       })
     }

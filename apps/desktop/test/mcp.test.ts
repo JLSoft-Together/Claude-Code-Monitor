@@ -13,7 +13,7 @@ describe('mcp json-rpc', () => {
     expect(res.json).toMatchObject({
       jsonrpc: '2.0',
       id: 1,
-      result: { protocolVersion: '2025-03-26', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'golaim', version: '2.6.0' } },
+      result: { protocolVersion: '2025-03-26', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'orrery', version: '2.6.0' } },
     })
     expect((res.json as { result: { instructions: string } }).result.instructions).toContain('open_session')
     const odd = await handleMcp({ jsonrpc: '2.0', id: 'a', method: 'initialize', params: { protocolVersion: 'latest' } }, never, '0')
@@ -50,7 +50,7 @@ describe('mcp json-rpc', () => {
     expect(Object.keys(tool.inputSchema.properties).sort()).toEqual(['agent', 'cwd', 'name', 'prompt', 'resume'])
     expect(tool.inputSchema.properties.agent.enum).toEqual(['claude', 'codex', 'shell'])
     expect(tool.inputSchema.properties.prompt.maxLength).toBe(8000)
-    expect(tool.annotations).toEqual({ title: 'Open GolAIm session', readOnlyHint: false, destructiveHint: false, openWorldHint: false })
+    expect(tool.annotations).toEqual({ title: 'Open Orrery session', readOnlyHint: false, destructiveHint: false, openWorldHint: false })
   })
 
   it('opens a session and describes it', async () => {
@@ -63,14 +63,14 @@ describe('mcp json-rpc', () => {
     expect(result.content).toEqual([
       {
         type: 'text',
-        text: `Opened Claude Code in D:\\work\\app as a new GolAIm pane next to this session. Session id: ${uuid}. The prompt is waiting in its input box; the user presses Enter to send it.`,
+        text: `Opened Claude Code in D:\\work\\app as a new Orrery pane next to this session. Session id: ${uuid}. The prompt is waiting in its input box; the user presses Enter to send it.`,
       },
     ])
     const shell = await handleMcp(call(5, 'open_session'), () => Promise.resolve({ ok: true, preset: 'shell', cwd: '/srv', prompt: false }), '0')
     expect(open).toHaveBeenCalledTimes(1)
-    expect((shell.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe('Opened a shell in /srv as a new GolAIm pane next to this session.')
+    expect((shell.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe('Opened a shell in /srv as a new Orrery pane next to this session.')
     const resumed = await handleMcp(call(8, 'open_session', { resume: uuid }), () => Promise.resolve({ ok: true, preset: 'codex', cwd: '/srv', sessionId: uuid, prompt: false, resumed: true }), '0')
-    expect((resumed.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe(`Reopened Codex session ${uuid} in /srv as a GolAIm pane.`)
+    expect((resumed.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe(`Reopened Codex session ${uuid} in /srv as an Orrery pane.`)
   })
 
   it('reports refusals as tool errors that discourage an external terminal', async () => {
@@ -128,7 +128,7 @@ describe('mcp gate', () => {
   })
 
   it('needs a well-formed bearer token', () => {
-    for (const authorization of [undefined, '', token, `Basic ${token}`, `Bearer ${token.toUpperCase()}`, `Bearer ${token}0`, `Bearer  ${token}`, 'Bearer ${GOLAIM_TOKEN}'])
+    for (const authorization of [undefined, '', token, `Basic ${token}`, `Bearer ${token.toUpperCase()}`, `Bearer ${token}0`, `Bearer  ${token}`, 'Bearer ${ORRERY_TOKEN}'])
       expect(mcpGate({ ...base, authorization }, 4500)).toEqual({ status: 401 })
   })
 })

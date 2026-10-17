@@ -46,11 +46,10 @@ describe('startup screen', () => {
   const t = stringsFor('en')
 
   it('splits the wordmark into one span per character with rising delays', () => {
-    const html = wordmark('GolAIm')
+    const html = wordmark('Orrery')
     const spans = [...html.matchAll(/style="--i:(\d+)"/g)].map((m) => Number(m[1]))
     expect(spans).toEqual([...Array(6).keys()])
     expect(wordmark('<b>')).not.toContain('<b>')
-    expect(html.match(/class="ai"/g)).toHaveLength(2)
   })
 
   it('uses the saved theme, else the OS colours, and respects reduced motion', () => {
@@ -58,7 +57,7 @@ describe('startup screen', () => {
     expect(themed).toContain('--canvas:#282a36')
     expect(themed).not.toContain('prefers-color-scheme')
     expect(themed).toContain('prefers-reduced-motion: reduce')
-    expect(themed).toContain('aria-label="GolAIm"')
+    expect(themed).toContain('aria-label="Orrery"')
     expect(themed).toContain('v2.4.0')
     const os = decode(loadingPage(t, null))
     expect(os).toContain('prefers-color-scheme: dark')

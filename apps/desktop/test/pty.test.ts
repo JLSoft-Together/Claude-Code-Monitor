@@ -78,8 +78,8 @@ describe('presets', () => {
     expect(Object.keys(env).sort()).toEqual(['CLAUDE_CODE_USE_BEDROCK', 'COLORTERM', 'PATH', 'TERM'])
   })
 
-  it('drops an inherited GolAIm API and token', () => {
-    const env = childEnv({ PATH: 'x', GOLAIM_API: 'http://127.0.0.1:1', GOLAIM_TOKEN: 't', golaim_mcp_config: '/x', GOLAIMX: '1' })
+  it('drops an inherited Orrery (or GolAIm) API and token', () => {
+    const env = childEnv({ PATH: 'x', ORRERY_API: 'http://127.0.0.1:1', ORRERY_TOKEN: 't', orrery_mcp_config: '/x', GOLAIM_TOKEN: 'old', GOLAIMX: '1' })
     expect(Object.keys(env).sort()).toEqual(['COLORTERM', 'GOLAIMX', 'PATH', 'TERM'])
   })
 
@@ -87,21 +87,21 @@ describe('presets', () => {
 
   it('starts a new claude with session id, name and the MCP config last on Windows', () => {
     const spec = presetCommand('claude', 'win32', { SystemRoot: 'C:\\Windows' }, undefined, undefined, { sessionId: uuid, name: 'Review bot', mcp: true })
-    expect(decodePs(spec.args[3]!)).toBe(`${PS_CWD_HOOK}; claude --session-id ${uuid} -n 'Review bot' --mcp-config $env:GOLAIM_MCP_CONFIG`)
+    expect(decodePs(spec.args[3]!)).toBe(`${PS_CWD_HOOK}; claude --session-id ${uuid} -n 'Review bot' --mcp-config $env:ORRERY_MCP_CONFIG`)
     const plain = presetCommand('claude', 'win32', {}, undefined, undefined, { sessionId: uuid })
     expect(decodePs(plain.args[3]!).endsWith(`; claude --session-id ${uuid}`)).toBe(true)
   })
 
   it('keeps the MCP config path in the env on posix', () => {
     const spec = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, undefined, undefined, { sessionId: uuid, name: 'Tầng 2', mcp: true })
-    expect(spec.args[3]).toBe(`claude --session-id ${uuid} -n 'Tầng 2' --mcp-config "$GOLAIM_MCP_CONFIG"; exec /bin/bash -l`)
+    expect(spec.args[3]).toBe(`claude --session-id ${uuid} -n 'Tầng 2' --mcp-config "$ORRERY_MCP_CONFIG"; exec /bin/bash -l`)
   })
 
   it('drops a bad name or session id and lets resume win', () => {
     const bad = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, undefined, undefined, { sessionId: 'nope', name: "a'b" })
     expect(bad.args[3]).toBe('claude; exec /bin/bash -l')
     const resumed = presetCommand('claude', 'linux', { SHELL: '/bin/bash' }, uuid, undefined, { sessionId: '11111111-2222-4333-8444-555566667777', name: 'x', mcp: true })
-    expect(resumed.args[3]).toBe(`claude --resume ${uuid} --mcp-config "$GOLAIM_MCP_CONFIG"; exec /bin/bash -l`)
+    expect(resumed.args[3]).toBe(`claude --resume ${uuid} --mcp-config "$ORRERY_MCP_CONFIG"; exec /bin/bash -l`)
     const codex = presetCommand('codex', 'win32', {}, undefined, undefined, { sessionId: uuid, name: 'x', mcp: true })
     expect(decodePs(codex.args[3]!).endsWith('; codex')).toBe(true)
     const shell = presetCommand('shell', 'win32', {}, undefined, undefined, { mcp: true })
@@ -115,7 +115,7 @@ describe('presets', () => {
 
   it('MCP config reads the API and token from the env', () => {
     expect(JSON.parse(MCP_CONFIG_JSON)).toEqual({
-      mcpServers: { golaim: { type: 'http', url: '${GOLAIM_API}/mcp', headers: { Authorization: 'Bearer ${GOLAIM_TOKEN}' } } },
+      mcpServers: { orrery: { type: 'http', url: '${ORRERY_API}/mcp', headers: { Authorization: 'Bearer ${ORRERY_TOKEN}' } } },
     })
   })
 })

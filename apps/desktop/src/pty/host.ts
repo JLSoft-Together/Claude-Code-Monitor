@@ -149,7 +149,7 @@ function flush(s: Session): void {
 function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket): Session {
   const token = randomBytes(32).toString('hex')
   const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY })
-  const env = { ...childEnv(process.env), ...spec.env, GOLAIM_API: `http://127.0.0.1:${PORT}`, GOLAIM_TOKEN: token, ...(MCP_READY ? { GOLAIM_MCP_CONFIG: MCP_FILE } : {}) }
+  const env = { ...childEnv(process.env), ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
   const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [] }
   proc.onData((d) => {

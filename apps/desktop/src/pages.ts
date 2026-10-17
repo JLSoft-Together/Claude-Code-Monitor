@@ -28,21 +28,21 @@ export function onAccent(hex: string): string {
 const vars = (l: Look): string =>
   `--canvas:${l.canvas}; --surface:${l.surface}; --ink:${l.ink}; --muted:${l.muted}; --faint:${l.faint}; --accent:${l.accent};` +
   ` --line:color-mix(in srgb, var(--ink) 12%, transparent); --accent-soft:color-mix(in srgb, var(--accent) 22%, transparent);` +
-  ` --on-accent:${onAccent(l.accent)}; --brand:${l.dark ? '#e8915a' : '#b45a26'}; --error:${l.dark ? '#ff453a' : '#d70015'}; color-scheme:${l.dark ? 'dark' : 'light'};`
+  ` --on-accent:${onAccent(l.accent)}; --error:${l.dark ? '#ff453a' : '#d70015'}; color-scheme:${l.dark ? 'dark' : 'light'};`
 
 const tokens = (look: Look | null | undefined): string =>
   look ? `:root { ${vars(look)} }` : `:root { ${vars(LIGHT)} }\n@media (prefers-color-scheme: dark) { :root { ${vars(DARK)} } }`
 
 /*
- * Startup intro, CSS only (this page has no script and no CSP of its own): the golem is built block by block (legs,
- * torso, arms, head), its ember eye lights up, the chest terminal types its prompt, then it settles above the wordmark
- * and blinks while the collector starts. Timings are offsets from page load.
+ * Startup intro, CSS only (this page has no script and no CSP of its own): the sun lights up, both orbits draw
+ * themselves, the planets land on them, then the orrery settles above the wordmark and the planets keep turning while
+ * the collector starts. Timings are offsets from page load.
  */
 // Reduced motion, and the error page (same mark, no intro): the finished mark, nothing moves.
 const still = (scope: string): string => `
-  ${scope} :is(.stage, .float, .mark, .ring, .part, .eye, .draw, .cursor, .word span, .bar, .status, .hint, .ver, body) { animation: none; }
-  ${scope} .draw { opacity: 1; stroke-dashoffset: 0; }
-  ${scope} :is(.part, .eye, .cursor) { opacity: 1; transform: none; }
+  ${scope} :is(.stage, .float, .mark, .ring, .part, .sun, .orbit, .spin, .word span, .bar, .status, .hint, .ver, body) { animation: none; }
+  ${scope} .orbit { opacity: 1; stroke-dashoffset: 0; }
+  ${scope} :is(.part, .sun) { opacity: 1; transform: none; }
   ${scope} .caret { animation: none; opacity: 0; }
   ${scope} .bar::after { animation: none; width: 100%; }`
 
@@ -62,14 +62,12 @@ main { width: 100%; max-width: 760px; display: grid; gap: 16px; justify-items: c
   box-shadow: 0 2px 4px rgb(0 0 0 / .18), 0 18px 48px rgb(0 0 0 / .18); animation: tile .5s cubic-bezier(.34,1.4,.64,1) both; }
 .ring { position: absolute; inset: 0; border-radius: var(--radius); border: 2px solid #E8915A; opacity: 0; pointer-events: none;
   animation: ring .8s cubic-bezier(.2,.8,.2,1) 1400ms forwards; }
+.sun { transform-box: fill-box; transform-origin: center; transform: scale(0);
+  animation: light .5s cubic-bezier(.34,1.45,.64,1) 250ms forwards, glow 3.6s ease-in-out 2600ms infinite; }
+.orbit { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .55s cubic-bezier(.65,0,.35,1) var(--at) forwards; }
 .part { transform-box: fill-box; transform-origin: center; opacity: 0; animation: place .42s cubic-bezier(.34,1.45,.64,1) var(--at) forwards; }
-.eye { transform-box: fill-box; transform-origin: center; transform: scaleX(0);
-  animation: light .26s cubic-bezier(.2,.8,.2,1) 1000ms forwards, wink 3.4s ease-in-out 2600ms infinite; }
-.draw { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .24s cubic-bezier(.65,0,.35,1) 1160ms forwards; }
-.cursor { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0);
-  animation: grow .14s ease-out 1380ms forwards, blink 1.05s steps(1) 1600ms infinite; }
+.spin { transform-box: view-box; transform-origin: 512px 512px; animation: spin var(--turn) linear 1600ms infinite; }
 .word { margin: 14px 0 0; font-size: var(--word); line-height: 1.15; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; display: flex; align-items: baseline; }
-.word .ai { color: var(--brand); }
 .word span { display: inline-block; white-space: pre; animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--text) + var(--i) * var(--step)); }
 .caret { width: 3px; height: .9em; margin-left: 4px; align-self: center; border-radius: 1.5px; background: var(--accent);
   animation: blink 1s steps(1) calc(var(--after) + 200ms) infinite both; }
@@ -86,9 +84,9 @@ main { width: 100%; max-width: 760px; display: grid; gap: 16px; justify-items: c
 @keyframes float { 0%, 100% { transform: none; } 50% { transform: translateY(calc(var(--mark) * -.045)); } }
 @keyframes place { from { opacity: 0; transform: var(--from); } 40% { opacity: 1; } to { opacity: 1; transform: none; } }
 @keyframes light { to { transform: none; } }
-@keyframes wink { 0%, 90%, 100% { transform: none; } 95% { transform: scaleY(.15); } }
+@keyframes glow { 0%, 100% { transform: none; } 50% { transform: scale(1.08); } }
 @keyframes draw { from { opacity: 1; } to { opacity: 1; stroke-dashoffset: 0; } }
-@keyframes grow { to { transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes ring { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
 @keyframes rise { from { opacity: 0; transform: translateY(.3em); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -112,19 +110,20 @@ pre { width: 100%; max-height: 260px; overflow: auto; margin: 0; padding: 12px; 
 // apps/web/public/favicon.svg, inline (data: pages cannot load app files), split into the parts the intro builds.
 const INK = '#E8E6E3'
 const BG = '#16181D'
-const part = (x: number, y: number, w: number, h: number, rx: number, at: number, from: string): string =>
-  `<rect class="part" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${INK}" style="--at:${at}ms; --from:${from}"/>`
+const orbit = (r: number, at: number): string =>
+  `<circle class="orbit" pathLength="1" cx="512" cy="512" r="${r}" stroke="${INK}" stroke-width="36" transform="rotate(-90 512 512)" style="--at:${at}ms"/>`
+// A planet sits in a gap of background cut into its orbit; both turn together.
+const planet = (x: number, y: number, r: number, gap: number, at: number, turn: number): string =>
+  `<g class="spin" style="--turn:${turn}s"><g class="part" style="--at:${at}ms; --from:scale(0)">` +
+  `<circle cx="${x}" cy="${y}" r="${gap}" fill="${BG}"/><circle cx="${x}" cy="${y}" r="${r}" fill="${INK}"/></g></g>`
 const MARK =
   `<div class="stage" aria-hidden="true"><div class="float"><svg class="mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none"><rect width="1024" height="1024" fill="${BG}"/>` +
-  part(388, 680, 108, 168, 40, 260, 'translateY(90px)') +
-  part(528, 680, 108, 168, 40, 330, 'translateY(90px)') +
-  part(348, 368, 328, 288, 52, 470, 'translateY(-120px) scaleY(.85)') +
-  part(228, 384, 96, 236, 44, 650, 'translateX(-80px) rotate(-14deg)') +
-  part(700, 384, 96, 236, 44, 650, 'translateX(80px) rotate(14deg)') +
-  part(412, 176, 200, 168, 44, 800, 'translateY(-110px)') +
-  `<rect class="eye" x="448" y="240" width="128" height="36" rx="14" fill="#E8915A"/>` +
-  `<path class="draw" pathLength="1" d="M430 462 492 512 430 562" stroke="${BG}" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>` +
-  `<rect class="cursor" x="520" y="540" width="92" height="30" rx="10" fill="${BG}"/>` +
+  orbit(220, 450) +
+  orbit(360, 620) +
+  planet(681, 371, 50, 82, 950, 18) +
+  planet(174, 635, 62, 96, 1060, 34) +
+  planet(635, 850, 40, 70, 1160, 34) +
+  `<circle class="sun" cx="512" cy="512" r="96" fill="#E8915A"/>` +
   `</svg><i class="ring"></i></div></div>`
 
 const page = (title: string, body: string, look?: Look | null, n = 0, intro = true): string =>
@@ -134,12 +133,7 @@ const page = (title: string, body: string, look?: Look | null, n = 0, intro = tr
 
 /** One span per character (code points, so an emoji or accented letter is not split); spaces stay spaces. */
 export function wordmark(text: string): string {
-  const chars = [...text]
-  // "GolAIm": in the system font a capital I reads as l, so the AI pair carries the brand colour.
-  const ai = chars.join('').indexOf('AI')
-  return chars
-    .map((ch, i) => `<span aria-hidden="true"${ai >= 0 && (i === ai || i === ai + 1) ? ' class="ai"' : ''} style="--i:${i}">${ch === ' ' ? ' ' : esc(ch)}</span>`)
-    .join('')
+  return [...text].map((ch, i) => `<span aria-hidden="true" style="--i:${i}">${ch === ' ' ? ' ' : esc(ch)}</span>`).join('')
 }
 
 export const loadingPage = (t: Strings, look?: Look | null, version?: string): string => {

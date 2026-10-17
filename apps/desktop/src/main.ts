@@ -40,7 +40,7 @@ import { stringsFor, type Strings } from './strings'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
 const APP_ID = 'dev.ccm.monitor'
-const LEGACY_EXES = ['Claude Code Monitor.exe', 'Agent Monitor.exe']
+const LEGACY_EXES = ['Claude Code Monitor.exe', 'Agent Monitor.exe', 'GolAIm.exe']
 const USER_DATA_DIR = 'Agent Monitor'
 const IS_MAC = process.platform === 'darwin'
 const PORT = Number.parseInt(process.env.CCM_PORT ?? '', 10) || 4317
@@ -699,7 +699,7 @@ async function ready(): Promise<void> {
     logFile: path.join(app.getPath('logs'), 'pty.log'),
     shellInitDir: path.join(DATA_DIR, 'shell-init'),
     onOpen: pageOpen,
-    mcpConfig: path.join(DATA_DIR, 'golaim-mcp.json'),
+    mcpConfig: path.join(DATA_DIR, 'orrery-mcp.json'),
   })
   // The token is the only gate on a shell; hand it out to top-level app frames only.
   // Any other process that grabbed the port serves its own page: no shell for it.
@@ -977,8 +977,9 @@ async function ready(): Promise<void> {
   if (first) void openLink(first)
 }
 
-// userData follows productName; pinned to the pre-GolAIm folder so the Chromium profile (ccm.* localStorage), window
-// bounds, appearance and the single-instance lock survive the rename. An explicit --user-data-dir (E2E) still wins.
+// userData follows productName; pinned to the Agent Monitor folder (the name before GolAIm and Orrery) so the Chromium
+// profile (ccm.* localStorage), window bounds, appearance and the single-instance lock survive renames. An explicit
+// --user-data-dir (E2E) still wins.
 if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', path.join(app.getPath('appData'), USER_DATA_DIR))
 
 if (!app.requestSingleInstanceLock()) {
@@ -1043,7 +1044,7 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(ready)
     .catch((err: unknown) => {
-      dialog.showErrorBox('GolAIm', err instanceof Error ? err.message : String(err))
+      dialog.showErrorBox('Orrery', err instanceof Error ? err.message : String(err))
       app.exit(1)
     })
 }

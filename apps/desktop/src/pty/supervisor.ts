@@ -55,7 +55,7 @@ export class PtySupervisor {
         ...(this.opts.mcpConfig ? { CCM_PTY_MCP_CONFIG: this.opts.mcpConfig } : {}),
       },
       stdio: 'pipe',
-      serviceName: 'GolAIm terminals',
+      serviceName: 'Orrery terminals',
     })
     const write = (buf: Buffer): void => void this.log?.write(buf)
     child.stdout?.on('data', write)

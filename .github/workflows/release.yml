@@ -34,4 +34,4 @@ jobs:
           NOTES: ${{ inputs.notes }}
         run: |
           printf '%s\n' "$NOTES" > notes.md
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "GolAIm $TAG" --notes-file notes.md dist/*.exe dist/*.dmg
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Orrery $TAG" --notes-file notes.md dist/*.exe dist/*.dmg

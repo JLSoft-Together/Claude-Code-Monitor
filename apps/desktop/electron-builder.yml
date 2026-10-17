@@ -1,6 +1,6 @@
 appId: dev.ccm.monitor
-productName: GolAIm
-copyright: GolAIm
+productName: Orrery
+copyright: Orrery
 directories:
   app: stage
   output: release
@@ -53,10 +53,10 @@ mac:
   identity: '-'
   hardenedRuntime: false
   protocols:
-    - name: GolAIm
+    - name: Orrery
       schemes: [agent-monitor]
 dmg:
-  artifactName: GolAIm-${version}-${arch}.${ext}
+  artifactName: Orrery-${version}-${arch}.${ext}
 win:
   icon: ../../scripts/assets/ccm.ico
   # koffi (native process table, collector/src/win-procs.ts): loader + the host's prebuilt only; macOS uses ps.
@@ -78,7 +78,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: GolAIm
-  artifactName: GolAIm-Setup-${version}.${ext}
+  shortcutName: Orrery
+  artifactName: Orrery-Setup-${version}.${ext}
 portable:
-  artifactName: GolAIm-Portable-${version}.${ext}
+  artifactName: Orrery-Portable-${version}.${ext}

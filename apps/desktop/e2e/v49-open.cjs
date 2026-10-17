@@ -68,21 +68,21 @@ const fireLink = (link) => {
     const envFile = path.join(IO, 'env.json')
     const callFile = path.join(IO, 'call.json')
     const line = [
-      `@{api=$env:GOLAIM_API; token=$env:GOLAIM_TOKEN; cfg=$env:GOLAIM_MCP_CONFIG; cfgOk=[bool](Test-Path $env:GOLAIM_MCP_CONFIG); ccm=@(Get-ChildItem Env: | Where-Object Name -like 'CCM_*').Count} | ConvertTo-Json | Set-Content -Encoding utf8 ${psq(envFile)}`,
+      `@{api=$env:ORRERY_API; token=$env:ORRERY_TOKEN; cfg=$env:ORRERY_MCP_CONFIG; cfgOk=[bool](Test-Path $env:ORRERY_MCP_CONFIG); ccm=@(Get-ChildItem Env: | Where-Object Name -like 'CCM_*').Count} | ConvertTo-Json | Set-Content -Encoding utf8 ${psq(envFile)}`,
       `$b = @{jsonrpc='2.0';id=1;method='tools/call';params=@{name='open_session';arguments=@{agent='claude';prompt='E2E prefill check';name='E2E Child'}}} | ConvertTo-Json -Depth 6 -Compress`,
-      `(Invoke-RestMethod -Method Post -Uri "$env:GOLAIM_API/mcp" -Headers @{Authorization="Bearer $env:GOLAIM_TOKEN"} -ContentType 'application/json' -Body $b) | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 ${psq(callFile)}`,
+      `(Invoke-RestMethod -Method Post -Uri "$env:ORRERY_API/mcp" -Headers @{Authorization="Bearer $env:ORRERY_TOKEN"} -ContentType 'application/json' -Body $b) | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 ${psq(callFile)}`,
     ].join('; ')
     await type(line)
     await key('Enter', 'Enter', 13)
 
     const env = await readJson(envFile)
     const port = Number(/^http:\/\/127\.0\.0\.1:(\d+)$/.exec(env.api ?? '')?.[1])
-    check('pane env GOLAIM_API is loopback', port > 0, env.api)
-    check('pane env GOLAIM_TOKEN is 64 hex', /^[0-9a-f]{64}$/.test(env.token ?? ''))
-    check('pane env GOLAIM_MCP_CONFIG written', env.cfgOk === true, env.cfg)
+    check('pane env ORRERY_API is loopback', port > 0, env.api)
+    check('pane env ORRERY_TOKEN is 64 hex', /^[0-9a-f]{64}$/.test(env.token ?? ''))
+    check('pane env ORRERY_MCP_CONFIG written', env.cfgOk === true, env.cfg)
     check('pane env has no CCM_* vars', env.ccm === 0, String(env.ccm))
     const cfg = JSON.parse(fs.readFileSync(env.cfg, 'utf8'))
-    check('mcp config uses env expansion', cfg.mcpServers?.golaim?.url === '${GOLAIM_API}/mcp' && cfg.mcpServers.golaim.headers?.Authorization === 'Bearer ${GOLAIM_TOKEN}')
+    check('mcp config uses env expansion', cfg.mcpServers?.orrery?.url === '${ORRERY_API}/mcp' && cfg.mcpServers.orrery.headers?.Authorization === 'Bearer ${ORRERY_TOKEN}')
 
     const res = await readJson(callFile, 30000)
     const out = res.result?.structuredContent
