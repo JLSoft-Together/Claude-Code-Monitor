@@ -11,7 +11,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { IBufferCell, IDisposable } from '@xterm/xterm'
 import type { PtyServerMessage } from '@ccm/shared'
 import { DevServerDetector, devUrlLabel, rememberDevUrl } from '../../lib/devServer'
-import { createFileLinkProvider, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
+import { createFileLinkProvider, inLinks, joinWrappedLinks, oscLinkUri, selectionText, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
 import { fontEntry, fontStack, SYSTEM_MONO } from '../../lib/fonts'
 import { duration, now, shortPath } from '../../lib/format'
 import type { MenuEntry } from '../../lib/menu'
@@ -75,6 +75,11 @@ const find = ref<InstanceType<typeof TermFind> | null>(null)
 const searchAddon = ref<SearchAddon | null>(null)
 const devUrls = ref<string[]>([])
 const linkHint = ref<string | undefined>(undefined)
+// OSC 8 links the program printed (newest last): a selection across a wrapped one copies as one line.
+const OSC_LINKS_MAX = 50
+const oscLinks: string[] = []
+// Full text of the link under the mouse; right-click copies it.
+let hoveredLink: string | null = null
 const dev = new DevServerDetector()
 const decoder = new TextDecoder('utf-8')
 // Bulk output (cat of a big file, replay) is never a dev server banner.
@@ -96,6 +101,62 @@ function feedDev(bytes: Uint8Array): void {
   if (!found.length) return
   devUrls.value = [...devUrls.value, ...found]
   for (const url of found) rememberDevUrl(cwd.value ?? '', url)
+}
+
+function rememberLink(uri: string | null): void {
+  if (!uri) return
+  const at = oscLinks.indexOf(uri)
+  if (at >= 0) oscLinks.splice(at, 1)
+  oscLinks.push(uri)
+  if (oscLinks.length > OSC_LINKS_MAX) oscLinks.shift()
+}
+
+function hoverLink(text: string): void {
+  hoveredLink = text
+  linkHint.value = t('workspace.open.linkHint', { key: isMac ? '⌘' : 'Ctrl' })
+}
+
+function leaveLink(): void {
+  hoveredLink = null
+  linkHint.value = undefined
+}
+
+function copyText(text: string): void {
+  void navigator.clipboard.writeText(text).catch(() => undefined)
+}
+
+function copySelection(): void {
+  if (!term) return
+  copyText(selectionText(term, oscLinks))
+  term.clearSelection()
+}
+
+// Edit menu / ⌘C reaching xterm's textarea: same text as the Ctrl+C path (xterm's own handler would copy the raw rows).
+function onCopy(e: ClipboardEvent): void {
+  if (!term?.hasSelection() || !e.clipboardData) return
+  e.preventDefault()
+  e.stopPropagation()
+  e.clipboardData.setData('text/plain', selectionText(term, oscLinks))
+}
+
+// OSC 52: full-screen TUIs (Claude Code /tui fullscreen) select with the mouse themselves and copy through the terminal. Write only; a read request ('?') is ignored.
+const OSC52_MAX = 1_000_000
+function onOsc52(data: string): boolean {
+  const b64 = data.slice(data.indexOf(';') + 1)
+  if (!b64 || b64 === '?' || b64.length > OSC52_MAX) return true
+  try {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+    copyText(joinWrappedLinks(new TextDecoder().decode(bytes), inLinks(oscLinks)))
+  } catch {
+    // not base64
+  }
+  return true
+}
+
+function onContextMenu(e: MouseEvent): void {
+  if (!hoveredLink) return
+  e.preventDefault()
+  copyText(hoveredLink)
 }
 
 function resetDev(): void {
@@ -537,13 +598,13 @@ function onKey(e: KeyboardEvent): boolean {
     void paste(e.shiftKey)
     return false
   }
-  if (isMac) return true
   const key = e.key.toLowerCase()
-  if (e.ctrlKey && !e.altKey && key === 'c' && term?.hasSelection()) {
-    void navigator.clipboard.writeText(term.getSelection())
-    term.clearSelection()
+  if (key === 'c' && !e.altKey && (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey) && term?.hasSelection()) {
+    e.preventDefault()
+    copySelection()
     return false
   }
+  if (isMac) return true
   if (e.ctrlKey && !e.altKey && key === 'v') {
     e.preventDefault()
     void paste(e.shiftKey)
@@ -622,6 +683,7 @@ function restart(): void {
   restoredOnMount = false
   term?.reset()
   resetDev()
+  oscLinks.length = 0
   reportedCwd = null
   workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
   void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
@@ -652,7 +714,18 @@ onMounted(() => {
     smoothScrollDuration: 0,
     // CLIs paint with ANSI black/dim colours that vanish on the dark well; xterm lifts them per cell.
     minimumContrastRatio: 4.5,
+    // Apps that track the mouse (full-screen TUIs) get drags; Shift-drag (xterm default) / Option-drag on macOS still selects.
+    macOptionClickForcesSelection: true,
     theme: theme(),
+    // OSC 8 links (Claude Code prints sign-in URLs this way): xterm's default handler opens about:blank, which the app denies.
+    linkHandler: {
+      activate: (event, uri) => {
+        if (!(isMac ? event.metaKey : event.ctrlKey) || !/^https?:\/\//i.test(uri)) return
+        emit('openLink', { kind: 'url', url: uri }, {})
+      },
+      hover: (_event, uri) => hoverLink(uri),
+      leave: leaveLink,
+    },
   })
   fit = new FitAddon()
   term.loadAddon(fit)
@@ -663,6 +736,9 @@ onMounted(() => {
   term.attachCustomKeyEventHandler(onKey)
   term.onWriteParsed(() => att.schedule())
   term.parser.registerOscHandler(7, (data) => (onShellCwd(parseOsc7(data)), true))
+  // Not consumed (false): xterm still turns the sequence into a link.
+  term.parser.registerOscHandler(8, (data) => (rememberLink(oscLinkUri(data)), false))
+  term.parser.registerOscHandler(52, onOsc52)
   term.parser.registerOscHandler(9, (data) => {
     const dir = parseOsc9(data)
     if (dir) onShellCwd(dir)
@@ -673,8 +749,8 @@ onMounted(() => {
       cwd: () => cwd.value,
       isMac,
       onOpen: (target, opts) => emit('openLink', target, opts),
-      onHover: () => (linkHint.value = t('workspace.open.linkHint', { key: isMac ? '⌘' : 'Ctrl' })),
-      onLeave: () => (linkHint.value = undefined),
+      onHover: (target) => hoverLink(target.kind === 'url' ? target.url : target.path),
+      onLeave: leaveLink,
     }),
   )
   term.onData((data) => {
@@ -685,6 +761,8 @@ onMounted(() => {
   term.onBinary((data) => conn?.writeBinary(data))
   term.onResize(({ cols, rows }) => conn?.resize(cols, rows))
   term.textarea?.addEventListener('focus', () => workspace.activate(props.pane.key))
+  host.value!.addEventListener('contextmenu', onContextMenu)
+  host.value!.addEventListener('copy', onCopy, true)
   setRenderer(props.visible)
   refit()
   void applyCodeFont()

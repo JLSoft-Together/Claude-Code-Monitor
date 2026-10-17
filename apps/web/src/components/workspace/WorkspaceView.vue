@@ -13,8 +13,8 @@ import { hasLayouts, hasScripts, listLayouts, rememberScript, type SavedLayout }
 import { folderName, projectOf } from '../../lib/sidebarRows'
 import { createStartGuard } from '../../lib/startGuard'
 import { dirKey } from '../../stores/favorites'
-import type { LinkOpenOptions, LinkTarget } from '../../lib/fileLinks'
-import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
+import { isLoopbackUrl, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
+import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, openExternal, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
 import { motionMs, pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import { dropKept, dustIn, dustOn, dustOutAll, hasKept, onDustLeave } from '../../lib/dust'
 import type { MenuEntry } from '../../lib/menu'
@@ -359,9 +359,10 @@ async function ensureReadable(path: string, html: boolean): Promise<void> {
   else await requestAccess(path)
 }
 
-/** Ctrl/⌘+click in a terminal. Each target opens in its own tab, reusing one already showing it. */
+/** Ctrl/⌘+click in a terminal. Each target opens in its own tab, reusing one already showing it; remote URLs (sign-in pages) go to the system browser. */
 async function openLink(from: Pane, target: LinkTarget, opts: Partial<LinkOpenOptions>): Promise<void> {
   if (target.kind === 'url') {
+    if (!isLoopbackUrl(target.url)) return void openExternal(target.url)
     withViewTransition(() => workspace.openBrowser(target.url, { cwd: workCwd(from) }))
     return
   }

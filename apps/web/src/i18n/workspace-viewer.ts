@@ -166,7 +166,7 @@ const en = {
     devUrl: 'Browser — {host}',
     closePane: 'Close pane',
     splitPane: 'Open next to it',
-    linkHint: '{key}+click to open',
+    linkHint: '{key}+click to open · right-click to copy',
   },
   quickOpen: {
     title: 'Go to file',
@@ -362,7 +362,7 @@ const vi: typeof en = {
     devUrl: 'Trình duyệt — {host}',
     closePane: 'Đóng pane',
     splitPane: 'Mở bên cạnh',
-    linkHint: '{key}+click để mở',
+    linkHint: '{key}+click để mở · chuột phải để sao chép',
   },
   quickOpen: {
     title: 'Mở nhanh tệp',
