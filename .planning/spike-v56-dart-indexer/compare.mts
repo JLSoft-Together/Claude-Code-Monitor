@@ -1,6 +1,6 @@
 // v55 TS heuristic vs analyzer (spike A) on the same project: which widget classes each finds.
 import { readFileSync } from 'node:fs'
-import { scanProject } from '../../apps/desktop/src/flutterPreview/scan'
+import { scanProject } from '@ccm/desktop/src/flutterPreview/scan'
 
 const [root, analyzerJson] = process.argv.slice(2) as [string, string]
 const t0 = Date.now()
