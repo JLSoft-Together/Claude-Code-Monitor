@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDownToLine, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Crosshair, EllipsisVertical, LoaderCircle, PanelLeft, Plus, RefreshCw, Search, Star, Trash2 } from 'lucide-vue-next'
+import { ArrowDownToLine, ArrowUpFromLine, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Crosshair, EllipsisVertical, LoaderCircle, PanelLeft, Plus, RefreshCw, Search, Star, Trash2 } from 'lucide-vue-next'
 import type { RefRow } from '../../../lib/gitRefs'
 
-const props = defineProps<{ open: boolean; selected: RefRow | null; busy: 'fetch' | 'update' | 'delete' | null; view: { group: boolean; tags: boolean }; canWrite: boolean }>()
+// `canPush`: push bridge present and something to push from (a selected local branch, else HEAD on a branch).
+const props = defineProps<{ open: boolean; selected: RefRow | null; busy: 'fetch' | 'update' | 'delete' | null; view: { group: boolean; tags: boolean }; canWrite: boolean; canPush: boolean }>()
 const emit = defineEmits<{
   toggle: []
   newBranch: []
   update: []
+  push: []
   remove: []
   compare: []
   search: []
@@ -87,6 +89,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
         <LoaderCircle v-if="busy === 'update'" :size="15" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
         <ArrowDownToLine v-else :size="15" aria-hidden="true" />
       </button>
+      <button type="button" :class="B" :disabled="!canPush || !!busy" :title="L('push')" :aria-label="L('push')" data-refs-action="push" @click="emit('push')"><ArrowUpFromLine :size="15" aria-hidden="true" /></button>
       <button type="button" :class="B" :disabled="!canWrite || !isBranch || !!target?.current || !!busy" :title="L('delete')" :aria-label="L('delete')" :aria-busy="busy === 'delete'" data-refs-action="remove" @click="emit('remove')">
         <LoaderCircle v-if="busy === 'delete'" :size="15" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
         <Trash2 v-else :size="15" aria-hidden="true" />

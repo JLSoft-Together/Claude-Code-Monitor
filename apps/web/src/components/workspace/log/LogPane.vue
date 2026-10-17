@@ -11,7 +11,7 @@ import { hideImportChanges } from '../../../lib/diffImports'
 import { readDiffOpts } from '../../../lib/diffOpts'
 import { expandableIds, type RefRow } from '../../../lib/gitRefs'
 import { hasFilters } from '../../../lib/logQuery'
-import { gitBranchCreate, gitBranchDelete, gitBranchUpdate, gitFetch, hasBranchOps, logDiff } from '../../../lib/preview'
+import { gitBranchCreate, gitBranchDelete, gitBranchUpdate, gitFetch, hasBranchOps, hasPush, logDiff } from '../../../lib/preview'
 import { readFavorites, readRefsView, writeFavorites, writeRefsView } from '../../../lib/refPrefs'
 import { useGitLog } from '../../../composables/useGitLog'
 import DiffView from '../DiffView.vue'
@@ -22,6 +22,7 @@ import LogRefsToolbar from './LogRefsToolbar.vue'
 import LogRefsTree from './LogRefsTree.vue'
 import LogTable from './LogTable.vue'
 import NewBranchDialog from './NewBranchDialog.vue'
+import PushDialog from './PushDialog.vue'
 import AccessPrompt from '../AccessPrompt.vue'
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
@@ -251,6 +252,14 @@ watch(
 const branchBusy = ref<'fetch' | 'update' | 'delete' | null>(null)
 const branchNotice = ref<{ text: string; failed: boolean } | null>(null)
 const newBranch = ref<{ base: string; baseLabel: string } | null>(null)
+const push = ref<{ root: string; ref: string } | null>(null)
+/** Push source: the selected local branch, else the current branch. */
+const pushRef = computed(() => {
+  const r = selRef()
+  if (r) return r.refKind === 'local' ? r.ref : null
+  const head = log.refs.value?.head.branch
+  return head ? `refs/heads/${head}` : null
+})
 const shortRef = (ref: string): string => ref.replace(/^refs\/(heads|remotes|tags)\//, '')
 
 function report(res: BranchOpResult, okKey: string, name = ''): void {
@@ -272,6 +281,13 @@ async function createBranch(name: string, checkout: boolean): Promise<void> {
   const req = newBranch.value
   newBranch.value = null
   if (req && log.root.value) report(await gitBranchCreate(log.root.value, name, req.base, checkout), checkout ? 'createdSwitched' : 'created', name)
+}
+function askPush(): void {
+  if (log.root.value && pushRef.value && !branchBusy.value) push.value = { root: log.root.value, ref: pushRef.value }
+}
+function pushed(res: BranchOpResult, name: string): void {
+  push.value = null
+  report(res, 'pushed', name)
 }
 async function updateSelected(): Promise<void> {
   const r = selRef()
@@ -416,9 +432,11 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
         :busy="branchBusy"
         :view="refsView"
         :can-write="hasBranchOps && !!log.root.value"
+        :can-push="hasPush && !!log.root.value && !!pushRef"
         @toggle="cols.refsOpen = !cols.refsOpen"
         @new-branch="askNewBranch"
         @update="updateSelected"
+        @push="askPush"
         @remove="deleteSelected"
         @compare="compareSelected"
         @search="refsTree?.focusSearch()"
@@ -530,5 +548,6 @@ const shortHash = computed(() => log.selected.value?.slice(0, 8) ?? '')
       </button>
     </div>
     <NewBranchDialog :request="newBranch" @create="createBranch" @close="newBranch = null" />
+    <PushDialog :request="push" @done="pushed" @close="push = null" />
   </section>
 </template>

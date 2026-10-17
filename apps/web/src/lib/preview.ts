@@ -1,4 +1,4 @@
-import type { BranchOpResult, CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, RefsResult } from '@ccm/shared'
+import type { BranchOpResult, CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, PushPreview, RefsResult } from '@ccm/shared'
 import { desktop } from './desktop'
 import type { DirEntry } from './explorer/tree'
 
@@ -53,7 +53,7 @@ export interface ChangeEntry {
 export type ChangesError = 'denied' | 'no-git' | 'not-repo' | 'failed' | 'conflict' | 'stale' | 'missing' | 'unavailable'
 
 export type ChangesStatus =
-  | { ok: true; root: string; branch: string | null; entries: ChangeEntry[]; truncated: boolean }
+  | { ok: true; root: string; branch: string | null; upstream: string | null; ahead: number; behind: number; entries: ChangeEntry[]; truncated: boolean }
   | { ok: false; error: ChangesError }
 
 export type ChangesDiff =
@@ -121,6 +121,8 @@ interface PreviewBridge {
   gitBranchDelete?: (root: string, ref: string) => Promise<BranchOpResult>
   gitFetch?: (root: string) => Promise<BranchOpResult>
   gitBranchUpdate?: (root: string, ref: string) => Promise<BranchOpResult>
+  gitPushPreview?: (root: string, ref: string, remote?: string, branch?: string) => Promise<PushPreview>
+  gitPush?: (root: string, ref: string, remote: string, branch: string, setUpstream: boolean) => Promise<BranchOpResult>
   changesDiscard?: (root: string, path: string, hunk?: string) => Promise<ChangesResult>
   changesWatch?: (root: string) => Promise<boolean>
   changesUnwatch?: (root: string) => Promise<boolean>
@@ -190,6 +192,13 @@ export const gitBranchCreate = (root: string, name: string, base: string, checko
 export const gitBranchDelete = (root: string, ref: string): Promise<BranchOpResult> => bridge?.gitBranchDelete?.(root, ref) ?? Promise.resolve(noBranchOps)
 export const gitFetch = (root: string): Promise<BranchOpResult> => bridge?.gitFetch?.(root) ?? Promise.resolve(noBranchOps)
 export const gitBranchUpdate = (root: string, ref: string): Promise<BranchOpResult> => bridge?.gitBranchUpdate?.(root, ref) ?? Promise.resolve(noBranchOps)
+const noPush: PushPreview = { ok: false, error: 'denied' }
+export const hasPush = typeof bridge?.gitPush === 'function'
+/** Omitted `remote` / `branch` = main's defaults (upstream, else push remote / origin with the local name). */
+export const gitPushPreview = (root: string, ref: string, remote?: string, branch?: string): Promise<PushPreview> =>
+  bridge?.gitPushPreview?.(root, ref, remote, branch) ?? Promise.resolve(noPush)
+export const gitPush = (root: string, ref: string, remote: string, branch: string, setUpstream: boolean): Promise<BranchOpResult> =>
+  bridge?.gitPush?.(root, ref, remote, branch, setUpstream) ?? Promise.resolve(noBranchOps)
 export const changesDiscard = (root: string, path: string, hunk?: string): Promise<ChangesResult> =>
   bridge?.changesDiscard?.(root, path, hunk) ?? Promise.resolve(unavailable)
 export const changesWatch = (root: string): Promise<boolean> => bridge?.changesWatch?.(root) ?? Promise.resolve(false)
