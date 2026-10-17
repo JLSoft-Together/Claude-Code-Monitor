@@ -153,7 +153,7 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   async function registerRepo(dir: unknown): Promise<string | { error: ChangesError }> {
     const known = await repoOf(dir)
     if (known) return known
-    const ok = await allowedPath(dir)
+    const ok = (await allowedPath(dir)) ?? (await allowedPath(dir, true))
     if (!ok) return { error: 'denied' }
     const top = await toplevel(ok.real)
     if ('error' in top) return top
@@ -455,7 +455,9 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   })
 
   /** Explorer root: a known repo toplevel, else an allowed folder (real path). */
-  const explorerRoot = async (root: unknown): Promise<string | null> => (await repoOf(root)) ?? (await allowedPath(root))?.real ?? null
+  // The Explorer panel may ask for a pane spawned a moment ago, missing from the cached census: re-ask once.
+  const explorerRoot = async (root: unknown): Promise<string | null> =>
+    (await repoOf(root)) ?? ((await allowedPath(root)) ?? (await allowedPath(root, true)))?.real ?? null
 
   ipcMain.handle('ccm:list-dir', async (event, req: unknown) => {
     const { root, dir } = (req ?? {}) as { root?: unknown; dir?: unknown }

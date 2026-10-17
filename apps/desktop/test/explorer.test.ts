@@ -108,6 +108,23 @@ describe('ccm:list-dir / ccm:create-entry', () => {
     expect(await call('ccm:create-entry', { root: project, parent: project, name: 'y.txt', kind: 'file' })).toMatchObject({ ok: true })
   })
 
+  it('re-asks a fresh census for a pane folder missing from the cached one', async () => {
+    const late = new Map<string, Handler>()
+    registerPreviewIpc({
+      ipcMain: { handle: (ch: string, fn: Handler) => late.set(ch, fn), removeHandler: (ch: string) => late.delete(ch) } as never,
+      isAppFrame: () => true,
+      server: { tokensUnder: () => [] } as unknown as PreviewServer,
+      watcher: { listen: () => undefined } as unknown as RootWatcher,
+      shell: {} as never,
+      dialog: {} as never,
+      getWindow: () => null,
+      getRoots: (fresh) => (fresh ? [project] : []),
+      confirmAccess: async () => false,
+    })
+    expect(Array.isArray(await late.get('ccm:list-dir')!({ sender: { id: 2 } }, { root: project, dir: project }))).toBe(true)
+    expect(await late.get('ccm:list-dir')!({ sender: { id: 2 } }, { root: outside, dir: outside })).toBeNull()
+  })
+
   it('renames and trashes only inside readable roots', async () => {
     writeFileSync(path.join(project, 'ipc.txt'), 'i')
     expect(await call('ccm:rename-entry', { root: outside, path: path.join(outside, 'secret.txt'), name: 'x' })).toEqual({ ok: false, error: 'denied' })
