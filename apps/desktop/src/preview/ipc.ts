@@ -10,7 +10,7 @@ import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { filesystemRoots, FullAccess, GrantStore } from './grants'
 import { FileListCache } from './listFiles'
-import { createBranch, deletePlan, fetchAll, runDelete, updateBranch } from './branches'
+import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, runDelete, updateBranch } from './branches'
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { existingDir } from '../pick-start'
@@ -86,7 +86,7 @@ export interface PreviewIpc {
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
-  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update',
+  'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
   'ccm:file-write',
 ]
@@ -408,6 +408,16 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const { root, ref } = (req ?? {}) as { root?: unknown; ref?: unknown }
     const repo = await logRepo(event, root)
     return repo ? updateBranch(repo, ref) : denied
+  })
+  ipcMain.handle('ccm:git-push-preview', async (event, req: unknown) => {
+    const { root, ref, remote, branch } = (req ?? {}) as { root?: unknown; ref?: unknown; remote?: unknown; branch?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? pushPreview(repo, ref, remote, branch) : denied
+  })
+  ipcMain.handle('ccm:git-push', async (event, req: unknown) => {
+    const { root, ref, remote, branch, setUpstream } = (req ?? {}) as { root?: unknown; ref?: unknown; remote?: unknown; branch?: unknown; setUpstream?: unknown }
+    const repo = await logRepo(event, root)
+    return repo ? pushBranch(repo, ref, remote, branch, setUpstream) : denied
   })
 
   ipcMain.handle('ccm:changes-discard', async (event, req: unknown) => {

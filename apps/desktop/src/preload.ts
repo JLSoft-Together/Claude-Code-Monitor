@@ -82,6 +82,9 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   gitBranchDelete: (root: string, ref: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-branch-delete', { root, ref }),
   gitFetch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-fetch', root),
   gitBranchUpdate: (root: string, ref: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-branch-update', { root, ref }),
+  gitPushPreview: (root: string, ref: string, remote?: string, branch?: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-push-preview', { root, ref, remote, branch }),
+  gitPush: (root: string, ref: string, remote: string, branch: string, setUpstream: boolean): Promise<unknown> =>
+    ipcRenderer.invoke('ccm:git-push', { root, ref, remote, branch, setUpstream }),
   // `hunk` stays undefined (not null) for a whole-file discard: the handler branches on `hunk !== undefined`.
   changesDiscard: (root: string, path: string, hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-discard', { root, path, hunk }),
   changesWatch: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-watch', root),

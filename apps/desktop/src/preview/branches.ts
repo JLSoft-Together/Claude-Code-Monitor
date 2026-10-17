@@ -1,6 +1,6 @@
-import { checkBranchName, type BranchOpError, type BranchOpResult } from '@ccm/shared'
+import { checkBranchName, PUSH_PREVIEW_MAX, pushArgs, type BranchOpError, type BranchOpResult, type PushPreview } from '@ccm/shared'
 import { execGit, type GitExecResult } from './gitExec'
-import { REF } from './log'
+import { LOG_FORMAT, parseLog, REF } from './log'
 
 const LOCAL = { timeoutMs: 20_000 }
 const NET = { timeoutMs: 120_000, killTree: true }
@@ -104,4 +104,82 @@ export async function updateBranch(root: string, ref: unknown): Promise<BranchOp
       ? await execGit(root, ['pull', '--ff-only', '--no-rebase'], NET)
       : await execGit(root, ['fetch', remote, `${remoteRef}:${ref}`], NET)
   return res.code === 0 ? { ok: true } : failed(res)
+}
+
+async function listRemotes(root: string): Promise<string[]> {
+  const res = await execGit(root, ['remote'], LOCAL)
+  return res.code === 0 ? res.stdout.split(/\r?\n/).filter((r) => r && !r.startsWith('-')) : []
+}
+
+/** `refs/heads/<name>` of an existing local branch → `<name>`. */
+async function localBranchOf(root: string, ref: unknown): Promise<string | null> {
+  if (!validRef(ref) || !ref.startsWith('refs/heads/')) return null
+  const name = ref.slice('refs/heads/'.length)
+  if (!checkBranchName(name).ok) return null
+  return (await execGit(root, ['rev-parse', '--verify', '-q', `${ref}^{commit}`], LOCAL)).code === 0 ? name : null
+}
+
+async function validBranchName(root: string, name: unknown): Promise<boolean> {
+  return checkBranchName(name).ok && (await execGit(root, ['check-ref-format', '--branch', name as string], LOCAL)).code === 0
+}
+
+/**
+ * Push dialog model: target defaults to the upstream, else the push remote / `origin` / the only remote with the
+ * local name; outgoing = commits of the local branch not on the remote-tracking ref (new remote branch: not on any
+ * branch of that remote). Read-only.
+ */
+export async function pushPreview(root: string, ref: unknown, remote?: unknown, branch?: unknown): Promise<PushPreview> {
+  const local = await localBranchOf(root, ref)
+  if (!local) return { ok: false, error: 'denied' }
+  const remotes = await listRemotes(root)
+  if (!remotes.length) return { ok: false, error: 'no-remote' }
+  const up = await execGit(root, ['for-each-ref', '--format=%(upstream:remotename)%1f%(upstream:remoteref)%1f%(push:remotename)', ref as string], LOCAL)
+  const [upRemote = '', upRef = '', pushRemote = ''] = up.stdout.trim().split('\x1f')
+  const upBranch = upRef.startsWith('refs/heads/') ? upRef.slice('refs/heads/'.length) : ''
+  const hasUpstream = remotes.includes(upRemote) && !!upBranch
+  const target =
+    remote == null ? (hasUpstream ? upRemote : remotes.includes(pushRemote) ? pushRemote : remotes.includes('origin') ? 'origin' : remotes[0]!) : remote
+  if (typeof target !== 'string' || !remotes.includes(target)) return { ok: false, error: 'invalid' }
+  const to = (branch == null ? (hasUpstream && target === upRemote ? upBranch : local) : branch) as string
+  if (!(await validBranchName(root, to))) return { ok: false, error: 'invalid' }
+  const tracking = `refs/remotes/${target}/${to}`
+  const exists = (await execGit(root, ['rev-parse', '--verify', '-q', `${tracking}^{commit}`], LOCAL)).code === 0
+  // `--remotes=<name>` is a glob (`refs/remotes/<name>/*`); a remote name with glob characters falls back to every remote.
+  const not = exists ? tracking : /[?*[]/.test(target) ? '--remotes' : `--remotes=${target}`
+  const log = await execGit(root, ['log', '-z', `--format=${LOG_FORMAT}`, '-n', String(PUSH_PREVIEW_MAX + 1), ref as string, '--not', not, '--'], LOCAL)
+  if (log.code !== 0) return { ok: false, error: log.timedOut ? 'timeout' : 'failed', detail: sanitizeGitError(log.stderr) }
+  const commits = parseLog(log.stdout)
+  return {
+    ok: true,
+    local,
+    remotes,
+    remote: target,
+    branch: to,
+    upstream: hasUpstream && target === upRemote && to === upBranch,
+    hasUpstream,
+    exists,
+    commits: commits.slice(0, PUSH_PREVIEW_MAX),
+    more: commits.length > PUSH_PREVIEW_MAX,
+  }
+}
+
+/** `--porcelain` stdout: `<flag>\t<from>:<to>\t<summary>`; `!` = rejected (by git as non-ff, or by the remote). */
+export function pushRejection(stdout: string): BranchOpResult | null {
+  const line = stdout.split(/\r?\n/).find((l) => l.startsWith('!\t'))
+  if (!line) return null
+  const summary = line.split('\t')[2] ?? ''
+  if (/remote rejected/i.test(summary)) return { ok: false, error: 'remote-rejected', detail: sanitizeGitError(/\((.*)\)/.exec(summary)?.[1] ?? summary) }
+  return { ok: false, error: 'non-ff', detail: sanitizeGitError(summary) }
+}
+
+/** `git push` of one local branch to `<remote>/<branch>` (argv from `pushArgs`); never forced. */
+export async function pushBranch(root: string, ref: unknown, remote: unknown, branch: unknown, setUpstream: unknown): Promise<BranchOpResult> {
+  const local = await localBranchOf(root, ref)
+  if (!local) return { ok: false, error: 'denied' }
+  const remotes = await listRemotes(root)
+  if (!remotes.length) return { ok: false, error: 'no-remote' }
+  if (typeof remote !== 'string' || !remotes.includes(remote) || !(await validBranchName(root, branch))) return { ok: false, error: 'invalid' }
+  const res = await execGit(root, pushArgs(local, remote, branch as string, setUpstream === true), NET)
+  if (res.code === 0) return { ok: true }
+  return (!res.timedOut && pushRejection(res.stdout)) || failed(res)
 }
