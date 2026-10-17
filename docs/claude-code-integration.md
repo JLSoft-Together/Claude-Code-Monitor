@@ -471,7 +471,7 @@ A user request (not monitoring): a tab listing popular MCP servers (Figma, Meshy
 - Godot: `Coding-Solo/godot-mcp` (`npx -y @coding-solo/godot-mcp`, optional `GODOT_PATH` env, needs Godot 4 installed; no editor plugin). Godot Editor (`tomyud1/godot-mcp`) is a guide card: AssetLib plugin "Godot AI Assistant tools MCP" + `claude mcp add godot-editor -- npx -y godot-mcp-server` (README names it `godot`, renamed so it does not collide with the Godot card), WebSocket 6505. Funplay MCP for Godot (`FunplayAI/funplay-godot-mcp`) is a guide card too: its editor dock writes server `funplay` (`npx -y funplay-godot-mcp`, env `FUNPLAY_GODOT_MCP_URL` / `_TOKEN`), HTTP 127.0.0.1:8765.
 - Tested against the real CLI with `CLAUDE_CONFIG_DIR` pointed at a temp folder: `add-json` in all three scopes, `mcp list` states (connected / pending / 401 failure), `marketplace add` + project `plugin install` + `uninstall`.
 
-## 11s. Git Log pane reads history with plain git (v30, desktop only, 2026-10-15; branch writes since v36)
+## 11s. Git Log pane reads history with plain git (v30, desktop only, 2026-10-15; branch writes since v36, push since v54)
 
 Not monitoring: an IntelliJ-style log of a project's repo. The v30 history commands below are read-only (the v36 branch actions are listed after them) and every command runs through `execGit` (`GIT_LITERAL_PATHSPECS=1`, no colour, no pager, `-c log.showSignature=false`: a user `log.showSignature=true` would print the signature check before each signed commit's record and corrupt parsing).
 
@@ -491,8 +491,11 @@ Not monitoring: an IntelliJ-style log of a project's repo. The v30 history comma
 | Delete (remote) | `push <remote> --delete refs/heads/<branch>` | native confirm showing the exact command | 120 s |
 | Update Selected | current branch `pull --ff-only --no-rebase`; other tracked branch `fetch <remote> <remoteRef>:refs/heads/<b>` (git refuses a non-fast-forward) | none: fast-forward only, nothing local is lost | 120 s |
 | Fetch | `fetch --all --no-write-fetch-head` (git < 2.29: without the flag), no prune | none | 120 s |
+| Push (v54) | `push --porcelain [--set-upstream] <remote> refs/heads/<local>:refs/heads/<branch>` (argv from shared `pushArgs`; main checks the local branch exists, `<remote>` is in `git remote`, `<branch>` passes `check-ref-format --branch`) | in-app Push dialog: outgoing commits, target, the exact command; clicking Push runs it (owner decision 2026-10-17: no native confirm) | 120 s |
 
-Network commands (120 s) kill the whole process tree on timeout (`execGit` `killTree`, so `git-remote-https` does not linger on Windows); a spawn error is reported as `failed`, not `timeout`. Never: force push, non-fast-forward update, reset, deleting the current branch or a tag, checking out an existing branch. Delete is not driven by E2E (the native confirm cannot be clicked through CDP); `test/branches.test.ts` covers it against real repos.
+**v54 Push dialog reads** (`.planning/PLAN-v54-git-push.md`, `branches.ts` `pushPreview`, LOCAL 20 s): `remote`; `for-each-ref --format=%(upstream:remotename)%1f%(upstream:remoteref)%1f%(push:remotename) <ref>` (default target = upstream, else push remote / `origin` / the only remote, branch = local name); `rev-parse --verify -q refs/remotes/<remote>/<branch>^{commit}`; outgoing `log -z --format=… -n 101 <ref> --not <remote-tracking ref>` (new remote branch: `--not --remotes=<remote>`). Result from `--porcelain` stdout: `!` + `[remote rejected]` → `remote-rejected` (protected branch, hook), other `!` → `non-ff`. Explorer → Changes shows `↑N` from `status --porcelain=v2 --branch` (`# branch.upstream`, `# branch.ab`), no extra git call.
+
+Network commands (120 s) kill the whole process tree on timeout (`execGit` `killTree`, so `git-remote-https` does not linger on Windows); a spawn error is reported as `failed`, not `timeout`. Never: force push (a rejected push only reports), non-fast-forward update, reset, deleting the current branch or a tag, checking out an existing branch. Delete is not driven by E2E (the native confirm cannot be clicked through CDP); `test/branches.test.ts` covers it against real repos.
 
 ## 11t. Multi-project Workspace: rail, Spaces, Mission Control (v38, desktop only, 2026-10-15)
 

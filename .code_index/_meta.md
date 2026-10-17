@@ -100,3 +100,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 
 - Taskbar icon blank: dead Start Menu `.lnk` removed by `shortcuts.ts` `removeDeadShortcuts` (`main.ts` `removeStaleShortcuts`).
 - v53 Explorer in its own right panel: `WorkspaceView.vue` `explorerOpen` / `explorerWidth`, `SideResizer` `edge`, `sideWidth.ts` key params, `explorer.retryFailed`; `preview/ipc.ts` re-asks a fresh pane census before refusing.
+- v54 Git Push: `preview/branches.ts` `pushPreview` / `pushBranch`, shared `pushArgs` / `PushPreview`, `changes.ts` `parseStatusV2` ahead/behind; web `log/PushDialog.vue`, `LogRefsToolbar` push, `ExplorerChanges` `↑N`.
