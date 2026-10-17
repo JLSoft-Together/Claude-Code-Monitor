@@ -20,7 +20,7 @@ async function run(app) {
     await sleep(300)
   }
   await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','light'); localStorage.setItem('ccm.workspace.sidebar','1'); localStorage.setItem('ccm.workspace.sideView','projects'); localStorage.setItem('ccm.tips', JSON.stringify({ off: true, learned: [], shown: {} }))`)
+  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','light'); localStorage.setItem('ccm.workspace.sidebar','1'); localStorage.setItem('ccm.tips', JSON.stringify({ off: true, learned: [], shown: {} }))`)
   await cmd('Page.reload')
   await sleep(1500)
   await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

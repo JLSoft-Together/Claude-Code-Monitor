@@ -34,7 +34,7 @@ async function run(app) {
   await waitFor(`${W}.panes[0]?.state === 'running'`, 20000, 'shell running')
   await sleep(800)
   await cmd('Page.bringToFront') // navigator.clipboard needs a focused document
-  await evaluate(`document.querySelector('[data-side-view="explorer"]').click()`)
+  await evaluate(`if (!document.querySelector('[data-explorer-tree]')) document.querySelector('[data-explorer-toggle]').click()`)
   await waitFor(`!!document.querySelector('[data-explorer-tree] [data-path$="README.md"]')`, 8000, 'explorer rows').catch(() => {})
   const rowSel = (name) => `[...document.querySelectorAll('[data-explorer-tree] [role=treeitem]')].find((r) => r.querySelector('[data-row-name]')?.textContent.trim() === ${JSON.stringify(name)})`
   const openMenu = (sel) => evaluate(`(() => { const el = ${sel}; const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 20, clientY: r.top + 5 })) })()`)
@@ -66,7 +66,7 @@ async function run(app) {
   // Rename with Shift+F6 while README.md is open in a kept viewer: the viewer follows.
   await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, 'README.md'))}, undefined, { cwd: ${JSON.stringify(DIR)}, preview: false })`)
   await sleep(500)
-  await evaluate(`document.querySelector('[data-side-view="explorer"]').click()`)
+  await evaluate(`if (!document.querySelector('[data-explorer-tree]')) document.querySelector('[data-explorer-toggle]').click()`)
   await waitFor(`!!(${rowSel('README.md')})`, 4000, 'row back').catch(() => {})
   await evaluate(`${rowSel('README.md')}.focus()`)
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'F6', shiftKey: true, bubbles: true }))`)
@@ -96,7 +96,7 @@ async function run(app) {
   // Renaming a folder moves the views inside it (file path, log cwd), never the shell.
   await evaluate(`${W}.openLog(${JSON.stringify(path.join(DIR, 'src'))})`)
   await sleep(500)
-  await evaluate(`document.querySelector('[data-side-view="explorer"]').click()`)
+  await evaluate(`if (!document.querySelector('[data-explorer-tree]')) document.querySelector('[data-explorer-toggle]').click()`)
   await waitFor(`!!(${rowSel('src')})`, 4000, 'src row').catch(() => {})
   await evaluate(`${rowSel('src')}.focus()`)
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'F6', shiftKey: true, bubbles: true }))`)

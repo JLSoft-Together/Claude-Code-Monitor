@@ -32,7 +32,7 @@ const row = (name) => `[...document.querySelectorAll('[data-explorer-tree] [role
 async function run(app) {
   const { evaluate, waitFor, shot, sleep, cmd, key, type } = app
   await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.removeItem('ccm.workspace.sideView')`)
+  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.setItem('ccm.workspace.explorerOpen','0')`)
   await cmd('Page.reload')
   await sleep(1500)
   await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')
@@ -42,7 +42,7 @@ async function run(app) {
   await waitFor(`${W}.panes[0]?.state === 'running'`, 20000, 'shell running')
   await sleep(1000)
 
-  // Ctrl+Shift+E switches the sidebar to the Explorer.
+  // Ctrl+Shift+E opens the Explorer panel (closed above).
   await key('E', 'KeyE', 69, 2 | 8)
   await waitFor(`!!document.querySelector('[data-explorer-tree]')`, 8000, 'explorer shown').catch(() => {})
   check('Ctrl+Shift+E shows the Explorer', await evaluate(`!!document.querySelector('[data-explorer-tree]')`))
@@ -128,10 +128,10 @@ async function run(app) {
   await waitFor(`${W}.panes.some((p) => p.kind === 'changes')`, 5000, 'changes tab').catch(() => {})
   check('Open in Changes tab opens the diff pane', await evaluate(`${W}.panes.some((p) => p.kind === 'changes')`))
 
-  // Back to Projects keeps the preference.
-  await evaluate(`document.querySelector('[data-side-view=projects]').click()`)
+  // The toggle hides the Explorer panel and remembers it; Projects stays on the left the whole time.
+  await evaluate(`document.querySelector('[data-explorer-toggle]').click()`)
   await sleep(300)
-  check('Projects view comes back', await evaluate(`!document.querySelector('[data-explorer]') && localStorage.getItem('ccm.workspace.sideView') === 'projects'`))
+  check('Explorer panel hides, Projects stays', await evaluate(`!document.querySelector('[data-explorer]') && localStorage.getItem('ccm.workspace.explorerOpen') === '0' && !!document.querySelector('[data-tour="ws-sidebar"]')`))
 
   // Image viewer: the <img> comes from the preview server (another loopback port) and must actually decode.
   for (const name of ['ccm-256.png', 'logo.svg']) {

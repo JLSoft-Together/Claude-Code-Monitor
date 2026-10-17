@@ -171,8 +171,6 @@ async function run(app) {
   await shot('run-01b-toolchain')
   await app.key('Escape', 'Escape', 27)
   await sleep(300)
-  // Back to the Projects rail: its header carries the RunBadge checked below.
-  await evaluate(`document.querySelector('[data-side-view=projects]')?.click()`)
   await sleep(300)
 
   // pubspec.yaml edited → watcher re-detects → banner without any click.
