@@ -1,6 +1,6 @@
 import type { PtyPreset, TerminalStatus } from '@ccm/shared'
 import { dirKey } from '../../stores/favorites'
-import { isTerm, primaryPaneKey, tabProject, tabTitle, workCwd, type Pane, type Tab } from '../../stores/workspace'
+import { isTerm, presetOf, primaryPaneKey, tabProject, tabTitle, workCwd, type Pane, type Tab } from '../../stores/workspace'
 import type { RunBadge } from '../runUi'
 import { folderName, projectOf } from '../sidebarRows'
 import { leaves } from '../splitLayout'
@@ -339,7 +339,7 @@ export function buildRail(input: RailInput): RailCluster[] {
     const members = keys.map(paneOf).filter((p): p is Pane => !!p && (isTerm(p) || p.kind === 'run'))
     const grouped = members.length >= 2
     const group = grouped ? `group:${tab.key}` : null
-    const shown = grouped ? members : members.filter((p) => p.kind === 'run' || p.preset !== 'shell')
+    const shown = grouped ? members : members.filter((p) => p.kind === 'run' || presetOf(p) !== 'shell')
     const named = !grouped && shown.length === 1 ? tab.name : undefined
     const titleOf = (): string => (input.tabTitleOf ? input.tabTitleOf(tab) : tabTitle(tab, paneOf, input.labelOf))
     const peerOf = (pane: Pane): Pick<RailRow, 'peer'> => {
@@ -362,18 +362,19 @@ export function buildRail(input: RailInput): RailCluster[] {
       checkout.branch ??= session?.branch ?? pane.branch ?? null
       const subagents = session?.subagents ?? 0
       const since = time(session?.since, pane.focusedAt ?? 0)
-      if (pane.preset === 'shell') {
+      const preset = presetOf(pane)
+      if (preset === 'shell') {
         const shell = input.agentLabel('shell')
         checkout.rows.push({
-          key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'shell', pane, preset: pane.preset, agent: shell, task: input.labelOf(pane),
+          key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'shell', pane, preset, agent: shell, task: input.labelOf(pane),
           ordinal: shell, state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group, ...peerOf(pane),
         })
         continue
       }
-      const agent = input.agentLabel(pane.preset)
+      const agent = input.agentLabel(preset)
       const task = named ?? (session?.title || null)
       checkout.rows.push({
-        key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'agent', pane, preset: pane.preset, agent, task,
+        key: pane.key, paneKey: pane.key, tabKey: tab.key, kind: 'agent', pane, preset, agent, task,
         ordinal: claim(task ? `${task} · ` : '', agent), state: paneState(pane, session), subagents, run: null, since, focused, tabActive, group, ...peerOf(pane),
       })
     }

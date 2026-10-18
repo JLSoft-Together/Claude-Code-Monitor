@@ -1,6 +1,6 @@
 import { isRunLive, type BuildError, type EnvIssue, type FlutterPlatform, type RunConfig, type RunDevice, type RunKind, type RunProject, type RunSession, type RunState, type RunTemplates } from '@ccm/shared'
 import { dirKey } from '../stores/favorites'
-import { isTerm, type Pane } from '../stores/workspace'
+import { isTerm, presetOf, type Pane } from '../stores/workspace'
 import { fileMention } from './promptAttachments'
 
 /** `dir` is `root` or inside it. */
@@ -30,7 +30,7 @@ export const tidyIssueText = (text: string): string => text.replace(/\s*\(\)/, '
 
 /** Running Claude / Codex pane inside the run root, most recently focused first (TermPane drops inserts into a starting pane). */
 export function agentPaneFor(panes: readonly Pane[], root: string): Pane | null {
-  const list = panes.filter((p) => isTerm(p) && p.preset !== 'shell' && p.state === 'running' && !!p.cwd && inRoot(p.cwd, root))
+  const list = panes.filter((p) => isTerm(p) && presetOf(p) !== 'shell' && p.state === 'running' && !!p.cwd && inRoot(p.cwd, root))
   list.sort((a, b) => (b.focusedAt ?? 0) - (a.focusedAt ?? 0))
   return list[0] ?? null
 }

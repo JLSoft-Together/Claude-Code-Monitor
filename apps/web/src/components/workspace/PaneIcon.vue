@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { FileText, GitCompare, GitGraph, Globe, Play } from 'lucide-vue-next'
-import type { Pane } from '../../stores/workspace'
+import { presetOf, type Pane } from '../../stores/workspace'
 import PresetIcon from './PresetIcon.vue'
 
 const props = withDefaults(defineProps<{ pane: Pane; size?: number }>(), { size: 16 })
@@ -16,7 +16,7 @@ watch(
 </script>
 
 <template>
-  <PresetIcon v-if="!pane.kind || pane.kind === 'term'" :preset="pane.preset" :size="size" />
+  <PresetIcon v-if="!pane.kind || pane.kind === 'term'" :preset="presetOf(pane)" :size="size" />
   <template v-else-if="pane.kind === 'browser'">
     <img
       v-if="pane.favicon && LOCAL_ICON.test(pane.favicon) && !broken"

@@ -13,7 +13,7 @@ import { otherEnd, usePeersStore } from '../stores/peers'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 import { baseName } from '../lib/preview'
-import { isTerm, tabTitle as titleOfTab, useWorkspaceStore, workCwd, type Pane, type Tab } from '../stores/workspace'
+import { isTerm, presetOf, tabTitle as titleOfTab, useWorkspaceStore, workCwd, type Pane, type Tab } from '../stores/workspace'
 
 export interface PeerView {
   text: string
@@ -165,7 +165,7 @@ export function usePaneInfo() {
     const dir = workCwd(pane)
     const where = dir ? shortPath(dir) : ''
     const session = sessionOf(pane)
-    const what = session ? `${t(`workspace.preset.${pane.preset}`)} — ${displayTitle(session)}` : t(`workspace.preset.${pane.preset}`)
+    const what = session ? `${t(`workspace.preset.${presetOf(pane)}`)} — ${displayTitle(session)}` : t(`workspace.preset.${presetOf(pane)}`)
     return where ? `${what} · ${where}` : what
   }
 

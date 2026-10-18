@@ -260,6 +260,17 @@ describe('rail groups', () => {
     ])
   })
 
+  it('shows a lone shell running claude as a Claude row, and a tab row again once it ends', () => {
+    const ws = useWorkspaceStore()
+    const sh = ws.open('shell', 'C:\\work\\app', undefined, { tab: true })
+    ws.update(sh.key, { agent: 'claude' })
+    const row = buildRail(input())[0]!.checkouts[0]!.rows[0]!
+    expect([row.kind, row.preset, row.agent, row.key]).toEqual(['agent', 'claude', 'Claude', sh.key])
+
+    ws.update(sh.key, { agent: undefined })
+    expect(buildRail(input())[0]!.checkouts[0]!.rows.map((r) => [r.kind, r.key.startsWith('tab:')])).toEqual([['other', true]])
+  })
+
   it('shows a tab name on a single agent row and on a tab row, and titles groups', () => {
     const ws = useWorkspaceStore()
     const a = ws.open('claude', 'C:\\work\\app', undefined, { tab: true })

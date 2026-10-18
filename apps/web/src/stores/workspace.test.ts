@@ -6,7 +6,7 @@ import vi from '../i18n/vi'
 import { boxes, leaves } from '../lib/splitLayout'
 import type { PaneOpenResult, PtyPreset } from '@ccm/shared'
 import { openedLinkId, usePeersStore } from './peers'
-import { primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
+import { presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
   if (!o || typeof o !== 'object') return [prefix]
@@ -129,6 +129,23 @@ describe('workspace viewer panes', () => {
     ws.insertInto(claude.key, 'hello')
     expect(ws.insertRequest).toMatchObject({ paneKey: claude.key, text: 'hello' })
     expect(ws.activeKey).toBe(claude.key)
+  })
+
+  it('treats a shell running claude / codex as that agent until it ends', () => {
+    const ws = useWorkspaceStore()
+    const shell = ws.open('shell', 'C:\\repo')
+    ws.update(shell.key, { state: 'running' })
+    const browser = ws.split(shell.key, 'row', { kind: 'browser', url: '' })!
+    expect(presetOf(shell)).toBe('shell')
+    expect(ws.resolveAgentPane(browser.key)).toEqual({ choices: [] })
+
+    ws.update(shell.key, { agent: 'codex' })
+    expect(presetOf(shell)).toBe('codex')
+    expect(ws.resolveAgentPane(browser.key)).toEqual({ pane: expect.objectContaining({ key: shell.key }) })
+
+    ws.update(shell.key, { agent: undefined })
+    expect(presetOf(shell)).toBe('shell')
+    expect(presetOf({ preset: 'claude', agent: 'codex' })).toBe('claude')
   })
 })
 

@@ -35,7 +35,7 @@ import { useTerminalsStore } from '../../stores/terminals'
 import { useTipsStore } from '../../stores/tips'
 import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
 import { hasScripts } from '../../lib/projects'
-import { useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
+import { presetOf, useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
 import DevServerChip from './DevServerChip.vue'
@@ -311,6 +311,8 @@ function pickMore(id: string): void {
 }
 
 const cwd = computed(() => workCwd(props.pane))
+// What runs in the pane now (a shell can be running `claude`); spawn and restart keep `pane.preset`.
+const preset = computed(() => presetOf(props.pane))
 let reportedCwd: string | null = null
 
 /** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
@@ -453,7 +455,7 @@ function refit(): void {
 // Attachments tray (agent panes): inserts go through this pane's PTY, the prompt is read back from the screen.
 const attachments = useAttachmentsStore()
 const isWin = desktop?.platform === 'win32'
-const canAttach = computed(() => hasAttachments && props.pane.preset !== 'shell')
+const canAttach = computed(() => hasAttachments && preset.value !== 'shell')
 const attachOpen = computed(() => canAttach.value && !!attachments.open[props.pane.key])
 const attachCount = computed(() => attachments.live(props.pane.key).length)
 const dropping = ref(false)
@@ -490,7 +492,7 @@ onBeforeUnmount(offSnapshot)
 
 const att = usePaneAttachments({
   paneKey: () => props.pane.key,
-  preset: () => props.pane.preset,
+  preset: () => preset.value,
   cwd: () => cwd.value,
   running: () => props.pane.state === 'running',
   visible: () => props.visible,
@@ -561,7 +563,7 @@ async function onDrop(e: DragEvent): Promise<void> {
 
 async function paste(textOnly: boolean): Promise<void> {
   // Agents read clipboard images themselves on their paste key (Alt+V on Windows for Claude Code, §11p).
-  const key = textOnly ? null : imagePasteKey(props.pane.preset, isWin)
+  const key = textOnly ? null : imagePasteKey(preset.value, isWin)
   const blob = key ? await clipboardImageBlob() : null
   if (key && blob) {
     conn?.write(key)
@@ -579,7 +581,7 @@ async function paste(textOnly: boolean): Promise<void> {
 
 function onKey(e: KeyboardEvent): boolean {
   if (e.type !== 'keydown') return true
-  const newline = newlineFor(e, props.pane.preset)
+  const newline = newlineFor(e, preset.value)
   if (newline) {
     e.preventDefault()
     conn?.write(newline)
@@ -796,7 +798,7 @@ watch(
     await att.idle()
     if (props.pane.state !== 'running') return
     if (req.image) {
-      const key = imagePasteKey(props.pane.preset, isWin)
+      const key = imagePasteKey(preset.value, isWin)
       if (key) {
         conn?.write(key)
         att.notePaste({ kind: 'image', name: t('attach.screenshot'), source: 'paste' })
@@ -859,7 +861,7 @@ onBeforeUnmount(() => {
     class="@container flex min-h-0 min-w-0 flex-col gap-1.5"
     :data-pane="pane.key"
     :style="visible ? `view-transition-name: ccm-pane-${pane.key}; view-transition-class: ccm-pane` : undefined"
-    :aria-label="t(`workspace.preset.${pane.preset}`)"
+    :aria-label="t(`workspace.preset.${preset}`)"
     @pointerdown="onPointerDown"
   >
     <header
@@ -872,9 +874,9 @@ onBeforeUnmount(() => {
       @dblclick="onHeadDblClick"
     >
       <span v-if="peerSweep" :key="peerSweep" class="ccm-peer-sweep-x absolute inset-x-1 top-0 h-0.5" aria-hidden="true" data-pane-peer-sweep />
-      <PresetIcon :preset="pane.preset" :size="15" class="shrink-0" />
+      <PresetIcon :preset="preset" :size="15" class="shrink-0" />
       <span class="shrink-0 font-semibold transition-colors duration-(--ccm-dur-fast) ease-out-quint @max-[420px]:sr-only" :class="multi && !focused ? 'text-ink-muted' : 'text-ink'">{{
-        t(`workspace.preset.${pane.preset}`)
+        t(`workspace.preset.${preset}`)
       }}</span>
       <span v-if="cwd" class="min-w-0 shrink-[100] truncate text-ink-faint @max-[380px]:hidden" :title="cwd" data-cwd>{{ shortPath(cwd) }}</span>
       <DevServerChip

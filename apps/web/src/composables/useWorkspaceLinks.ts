@@ -80,6 +80,21 @@ export function useWorkspaceLinks(viewShown: () => boolean): void {
     },
   )
 
+  // `claude` / `codex` typed in a shell pane: the pane shows that agent while its session lives, then a shell again.
+  watch(
+    () => workspace.panes.map((p) => {
+      const term = p.preset === 'shell' && p.terminalId ? terminals.byId[p.terminalId] : undefined
+      return [p.key, term && term.status !== 'stale' ? (term.provider ?? 'claude') : undefined] as const
+    }),
+    (pairs) => {
+      for (const [key, agent] of pairs) {
+        const pane = workspace.panes.find((p) => p.key === key)
+        if (pane && pane.agent !== agent) workspace.update(key, { agent })
+      }
+    },
+    { immediate: true },
+  )
+
   // Attention latches on the transition, so an agent that asked and then moved on is still flagged until seen.
   const seen = (key: string): boolean =>
     viewShown() && workspace.activeKey === key && document.visibilityState === 'visible' && document.hasFocus()

@@ -33,7 +33,7 @@ import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
 import { useSettingsStore } from '../../stores/settings'
-import { closedPanes, isTerm, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type ClosedEntry, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
+import { closedPanes, isTerm, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type ClosedEntry, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import LaunchPicker from './LaunchPicker.vue'
 import BrowserPane from './BrowserPane.vue'
@@ -2359,7 +2359,7 @@ onBeforeUnmount(() => {
                   class="group flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none"
                   @click="deliver(p.key, agentChoices!.text)"
                 >
-                  <PresetIcon :preset="p.preset" :size="14" class="shrink-0 group-focus-visible:text-on-accent" />
+                  <PresetIcon :preset="presetOf(p)" :size="14" class="shrink-0 group-focus-visible:text-on-accent" />
                   <span class="truncate" :title="p.cwd">{{ describe(p) }}</span>
                 </button>
               </li>

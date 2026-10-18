@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { CompactFlow } from '../lib/compactHandoff'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type PtyPreset } from '@ccm/shared'
+import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type Provider, type PtyPreset } from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
@@ -69,6 +69,8 @@ export interface Pane {
   pid?: number
   /** Monitor terminal running inside this pane (agent process descends from the PTY), found by `useWorkspaceLinks`. */
   terminalId?: string
+  /** Agent typed by hand in a shell pane, from the monitor link (`useWorkspaceLinks`); runtime only. */
+  agent?: Provider
   /** Agent session to continue when spawning (`claude --resume` / `codex resume`). */
   resume?: string
   /** Latest agent session seen running in this pane (from the monitor link); what a later restore resumes. */
@@ -218,6 +220,9 @@ interface LastPane extends ViewFields {
 }
 
 export const isTerm = (p: Pick<Pane, 'kind'>): boolean => !p.kind || p.kind === 'term'
+
+/** What the pane runs now: a shell pane running `claude` / `codex` shows and behaves as that agent; spawn keeps `preset`. */
+export const presetOf = (p: Pick<Pane, 'preset' | 'agent'>): PtyPreset => (p.preset === 'shell' && p.agent ? p.agent : p.preset)
 
 export type SaveOutcome = { ok: true } | { ok: false; error: string }
 
@@ -602,7 +607,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activate(paneKey)
   }
 
-  const isAgentPane = (p: Pane): boolean => isTerm(p) && p.preset !== 'shell' && (p.state === 'running' || p.state === 'starting')
+  const isAgentPane = (p: Pane): boolean => isTerm(p) && presetOf(p) !== 'shell' && (p.state === 'running' || p.state === 'starting')
 
   /**
    * Where a browser pane's "Send to agent" lands: a Claude/Codex pane in the same tab (linked to a monitor
