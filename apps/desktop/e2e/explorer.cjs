@@ -79,6 +79,20 @@ async function run(app) {
   check('double click on an open file reuses its viewer', (await evaluate(`${W}.panes.filter((p) => p.kind === 'file').length`)) === 2)
   await shot('explorer-01-tree')
 
+  // v59 Atom Material icons (default): dark variant under the dark theme, open folder icon only around open files.
+  const icon = (name) => `${row(name)}?.querySelector('[data-file-icon]')?.dataset.fileIcon ?? null`
+  const icons = await evaluate(`({ readme: ${icon('README.md')}, main: ${icon('main.ts')}, src: ${icon('src')}, lib: ${icon('lib')} })`)
+  check(
+    'Atom Material icons: README dark variant, main.ts Node (plugin rule), src open (holds main.ts), lib closed',
+    icons.readme === '/file-icons/files/readme_dark.svg' && icons.main === '/file-icons/files/nodejs.svg' && icons.src === '/file-icons/foldersOpen/src.svg' && icons.lib === '/file-icons/folders/lib.svg',
+    JSON.stringify(icons),
+  )
+  check('icon files load', await evaluate(`[...document.querySelectorAll('[data-explorer-tree] img[data-file-icon]')].every((i) => i.complete && i.naturalWidth > 0)`))
+  await evaluate(`${S}.get('settings').fileIcons = 'simple'`)
+  await sleep(200)
+  check('Simple keeps the lucide glyphs', await evaluate(`!${row('main.ts')}.querySelector('[data-file-icon]') && !!${row('main.ts')}.querySelector('svg')`))
+  await evaluate(`${S}.get('settings').fileIcons = 'atom'`)
+
   // Keyboard: focus the tree, ArrowDown moves, ArrowRight expands lib.
   await evaluate(`${row('src')}.focus()`)
   await key('ArrowDown', 'ArrowDown', 40)
