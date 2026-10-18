@@ -91,6 +91,9 @@ start from the newest rollout of today/yesterday; forecast via `LimitHistory` (`
   like a running tool.
 - `codex resume --last` / picker resumes carry no id: such a thread is unpaired and its liveness falls back to the
   15-minute write timeout.
+- A Codex run is visible only once its rollout exists, and 0.162 writes it with the first prompt (checked 2026-10-18:
+  `codex` idle at its prompt for 20 s, no `sessions/` folder created). `codex` typed in a Workspace shell pane therefore
+  shows as Codex only after the first prompt.
 - Codex Desktop / IDE threads are out of scope (ignored by originator).
 - No Codex usage history or cost: no reliable GPT price table; counters only appear on live agents.
 - Codex subagent records (`source.subagent.thread_spawn.parent_thread_id`) were not present on this machine; parsing is
