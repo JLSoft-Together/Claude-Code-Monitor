@@ -96,9 +96,10 @@ Invariants:
 
 ## Workspace — Explorer
 
+- `lib/explorer/fileIcons.ts` (v59 Atom Material icons: rules from generated `fileIconRules.ts` in plugin order, first match wins; path rules match the absolute `/` path; memo by lower-case name; `_dark` variant under a dark theme; `themed` icons drawn as a mask in the row colour; `openDirectories` = ancestors of open file panes → `foldersOpen/`, never on expand). Regenerate with `node scripts/gen-file-icons.mjs`.
 - `lib/explorer/tree.ts` (`flattenTree`, `sortEntries`, `EXCLUDED_NAMES`, `movedPath`, `renamedPanePatches`, `trashedPaneKeys`), `reveal.ts`, `changesScheduler.ts`, `dragPath.ts` (`PATH_MIME`, drag to terminal), `contextMenu.ts` (`explorerMenu`, `explorerKey`). Shared `checkEntryName`.
 - `stores/explorer.ts` (per-root state, stale-reply guard, watch + re-list, `create` / `rename` / `trash`, `retryFailed` once a new pane's PTY runs), `composables/useExplorerChanges.ts`, `composables/useRunMarks.ts`.
-- `ExplorerPanel.vue` (Files | Changes, actions, `CreateEntryDialog.vue`), `ExplorerTree.vue` (windowed `role=tree`, git marks, run marks, layout warm-up on hover), `ExplorerChanges.vue`. Lives in its own right aside of `WorkspaceView` (`[data-explorer-panel]`, ⌘⇧E / Ctrl+Shift+E). Every file opened gets its own viewer (no preview slot; reopening a file jumps to its viewer).
+- `ExplorerPanel.vue` (Files | Changes, actions, `CreateEntryDialog.vue`), `ExplorerTree.vue` (windowed `role=tree`, git marks, run marks, layout warm-up on hover, Atom / Simple icons by `settings.fileIcons`), `ExplorerChanges.vue`. Lives in its own right aside of `WorkspaceView` (`[data-explorer-panel]`, ⌘⇧E / Ctrl+Shift+E). Every file opened gets its own viewer (no preview slot; reopening a file jumps to its viewer).
 
 ## Workspace — changes, diff, Git Log
 

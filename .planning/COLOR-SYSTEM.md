@@ -80,3 +80,10 @@ Source: color audit 2026-10-14. Apple macOS system colors as reference. Tokens l
 
 ## v25 themes
 - Extra themes (`apps/web/src/themes.css`, `lib/themes.ts`) name only their palette per role above; translucent steps (line, fill, soft tints, material, grid) are derived with `color-mix` from the theme ink / accent / status colours. Same rules: status colours for lifecycle only, text ≥4.5:1 on surface and raised (status / diff / accent ink also on their soft tint), glyphs ≥3:1, syntax on the well ≥4.5:1 (comments ≥3:1). `lib/themes.test.ts` enforces it.
+
+## v59 exception: Explorer file icons
+Atom Material file / folder icons (Settings → Appearance → File icons) keep the fills drawn in their SVGs: they are the
+file types' own brand colours, shown as in IntelliJ with that plugin (owner, 2026-10-18), not UI roles, so they do not
+map to tokens. Parts the plugin marks `data-themed` (plain folder, `*ignore` files) are drawn in the row's text colour
+(CSS mask + `bg-current`), as IntelliJ paints them with `Tree.foreground`. Git status colour and the git letter stay on
+the file name. The Simple setting keeps the token-coloured lucide glyphs.
