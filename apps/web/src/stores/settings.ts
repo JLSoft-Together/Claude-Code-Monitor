@@ -35,6 +35,10 @@ function persist(key: string, value: string): void {
 }
 
 export { STUCK_CHOICES }
+
+/** Explorer tree icons: Atom Material (v59) or the lucide glyphs from before. */
+export type FileIconStyle = 'atom' | 'simple'
+const isFileIconStyle = (value: unknown): value is FileIconStyle => value === 'atom' || value === 'simple'
 export const ACTIVITY_PAGE_SIZES = [50, 100, 200, 500]
 
 function readPinned(): Set<string> {
@@ -70,6 +74,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const minimap = ref(read('ccm.minimap') !== '0')
   const dimInactive = ref(read('ccm.workspace.dim') === '1')
   const dustEffect = ref(read('ccm.dust') === '1')
+  const fileIcons = ref<FileIconStyle>(isFileIconStyle(read('ccm.fileIcons')) ? (read('ccm.fileIcons') as FileIconStyle) : 'atom')
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
@@ -96,6 +101,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(dimInactive, (value) => persist('ccm.workspace.dim', value ? '1' : '0'))
   watch(dustEffect, (value) => persist('ccm.dust', value ? '1' : '0'))
   watch(dustEffect, setDustEnabled, { flush: 'sync', immediate: true })
+  watch(fileIcons, (value) => persist('ccm.fileIcons', value))
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
   watch(dailyBudget, (value) => persist('ccm.budget', String(value)))
@@ -216,6 +222,7 @@ export const useSettingsStore = defineStore('settings', () => {
     minimap,
     dimInactive,
     dustEffect,
+    fileIcons,
     pinned,
     activityPageSize,
     dailyBudget,

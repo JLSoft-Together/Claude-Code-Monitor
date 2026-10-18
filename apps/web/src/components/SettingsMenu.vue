@@ -82,12 +82,14 @@ const steppers = computed(() => [
     : []),
 ])
 const openFontLicenses = (): void => void window.open('/fonts-LICENSES.txt', '_blank')
+const openIconLicense = (): void => void window.open('/file-icons-LICENSE.txt', '_blank')
 const helpItems = computed<{ key: string; icon: Component; label: string; hint: string; run: () => void }[]>(() => [
   { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
   ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace') }] : []),
   { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },
   ...(desktop ? [{ key: 'setup', icon: ListChecks, label: t('setup.open'), hint: t('setup.openHint'), run: () => (ui.setupOpen = true) }] : []),
   { key: 'fonts', icon: FileText, label: t('fonts.licenses'), hint: t('fonts.licensesHint'), run: openFontLicenses },
+  ...(hasTerminals ? [{ key: 'fileIcons', icon: FileText, label: t('settings.fileIconsLicense'), hint: t('settings.fileIconsLicenseHint'), run: openIconLicense }] : []),
 ])
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null
@@ -96,6 +98,10 @@ const locales = [
   { value: 'vi' as const, label: 'Tiếng Việt', lang: 'vi' },
   { value: 'en' as const, label: 'English', lang: 'en' },
 ]
+const fileIconStyles = computed(() => [
+  { value: 'atom' as const, label: t('settings.fileIconsAtom') },
+  { value: 'simple' as const, label: t('settings.fileIconsSimple') },
+])
 const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
 const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
 
@@ -323,6 +329,13 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
               <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="settings.minimap" :label="t('settings.minimap')" :hint="t('settings.minimapHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="settings.dimInactive" :label="t('workspace.dim.setting')" :hint="t('workspace.dim.settingHint')" class="px-3" />
+              <div v-if="hasTerminals" class="flex items-center justify-between gap-3 px-3 py-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm">{{ t('settings.fileIcons') }}</p>
+                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.fileIconsHint') }}</p>
+                </div>
+                <SegmentedControl v-model="settings.fileIcons" :options="fileIconStyles" :label="t('settings.fileIcons')" data-setting="file-icons" />
+              </div>
               <ToggleSwitch v-if="hasTerminals" v-model="settings.dustEffect" :label="t('settings.dust')" :hint="t('settings.dustHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="tipsOn" :label="t('tips.setting')" :hint="t('tips.settingHint')" class="px-3" />
             </div>

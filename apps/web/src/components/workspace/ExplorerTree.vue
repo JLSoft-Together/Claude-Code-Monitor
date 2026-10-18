@@ -36,7 +36,11 @@ import { findAction, isSeparator, type MenuEntry } from '../../lib/menu'
 import { isMac } from '../../lib/platform'
 import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
+import { fileIcon, folderIcon, openDirectories, type AtomIcon } from '../../lib/explorer/fileIcons'
+import { modeOf } from '../../lib/themes'
 import { useExplorerStore } from '../../stores/explorer'
+import { useSettingsStore } from '../../stores/settings'
+import { useWorkspaceStore } from '../../stores/workspace'
 import { useRunMarks } from '../../composables/useRunMarks'
 import { dirKey } from '../../stores/favorites'
 import RunProjectMark from './RunProjectMark.vue'
@@ -70,6 +74,17 @@ const INDENT = 14
 
 const GLYPH: Record<FileGlyph, typeof File> = { code: FileCode, json: FileJson, image: FileImage, text: FileText, file: File }
 
+const settings = useSettingsStore()
+const workspace = useWorkspaceStore()
+const atom = computed(() => settings.fileIcons === 'atom')
+const dark = computed(() => modeOf(settings.theme) === 'dark')
+// Folders holding a file open in a viewer get the open icon, as the plugin's hollow folders do; expanding does not.
+const openDirs = computed(() =>
+  atom.value ? openDirectories(workspace.panes.flatMap((p) => (p.kind === 'file' && p.path ? [p.path] : [])), pathKey) : new Set<string>(),
+)
+const atomIcon = (row: TreeRow): AtomIcon => (row.directory ? folderIcon(row.name, openDirs.value.has(pathKey(row.path))) : fileIcon(row.name, row.path, dark.value))
+const maskStyle = (src: string) => ({ maskImage: `url(${src})`, maskSize: 'contain', maskRepeat: 'no-repeat', maskPosition: 'center' })
+
 const scroller = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
 const viewport = ref(0)
@@ -82,7 +97,7 @@ watch(focusIndex, (i) => (lastIndex = i))
 const windowed = computed(() => {
   const first = Math.max(0, Math.floor(scrollTop.value / ROW) - OVERSCAN)
   const last = Math.min(rows.value.length, Math.ceil((scrollTop.value + viewport.value) / ROW) + OVERSCAN)
-  return rows.value.slice(first, last).map((row, i) => ({ row, index: first + i }))
+  return rows.value.slice(first, last).map((row, i) => ({ row, index: first + i, icon: atom.value && row.depth > 0 && !row.outOfRoot ? atomIcon(row) : null }))
 })
 
 const rootListed = computed(() => !!explorer.root && explorer.state.listings.has(explorer.root))
@@ -297,7 +312,7 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
     >
       <div class="relative w-full" :style="{ height: `${rows.length * ROW}px` }">
         <div
-          v-for="{ row, index } in windowed"
+          v-for="{ row, index, icon } in windowed"
           :key="row.path"
           role="treeitem"
           :aria-level="row.depth + 1"
@@ -333,6 +348,10 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           </span>
           <template v-if="row.depth > 0">
             <Link2 v-if="row.outOfRoot" :size="13" class="shrink-0" aria-hidden="true" />
+            <template v-else-if="icon">
+              <span v-if="icon.themed" class="size-4 shrink-0 bg-current" :style="maskStyle(icon.src)" :data-file-icon="icon.src" aria-hidden="true" />
+              <img v-else :src="icon.src" width="16" height="16" class="size-4 shrink-0" alt="" draggable="false" decoding="async" :data-file-icon="icon.src" />
+            </template>
             <component :is="row.expanded ? FolderOpen : Folder" v-else-if="row.directory" :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
             <component :is="GLYPH[fileGlyph(row.name)]" v-else :size="13" class="shrink-0" :class="isActive(row) ? 'text-accent-ink' : 'text-agent-file'" aria-hidden="true" />
           </template>
