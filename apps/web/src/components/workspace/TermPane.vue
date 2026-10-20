@@ -12,7 +12,7 @@ import type { IBufferCell, IDisposable } from '@xterm/xterm'
 import type { PtyServerMessage } from '@ccm/shared'
 import { DevServerDetector, devUrlLabel, rememberDevUrl } from '../../lib/devServer'
 import { createFileLinkProvider, inLinks, joinWrappedLinks, oscLinkUri, selectionText, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
-import { fontEntry, fontStack, SYSTEM_MONO } from '../../lib/fonts'
+import { fontEntry, termFontStack } from '../../lib/fonts'
 import { duration, now, shortPath } from '../../lib/format'
 import type { MenuEntry } from '../../lib/menu'
 import { newlineFor } from '../../lib/termKeys'
@@ -435,7 +435,7 @@ async function applyCodeFont(): Promise<void> {
   const entry = fontEntry('code', id)
   if (entry.family) await document.fonts.load(`${size}px '${entry.family}'`).catch(() => undefined)
   if (!term || id !== settings.codeFont || size !== settings.codeFontSize) return
-  const family = fontStack(entry)
+  const family = termFontStack(entry)
   if (term.options.fontFamily === family && term.options.fontSize === size) return
   term.options.fontFamily = family
   term.options.fontSize = size
@@ -709,7 +709,7 @@ onMounted(() => {
     cursorBlink: true,
     cursorStyle: 'bar',
     // The chosen face may still be loading; applyCodeFont swaps it in once it is.
-    fontFamily: SYSTEM_MONO,
+    fontFamily: termFontStack(fontEntry('code', 'system')),
     fontSize: settings.codeFontSize,
     lineHeight: 1.25,
     scrollback: 5000,

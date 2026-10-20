@@ -71,6 +71,12 @@ export function fontStack(entry: FontEntry): string {
   return entry.family ? `'${entry.family}', ${base}` : base
 }
 
+/** Nerd Fonts people install for shell prompts (Powerlevel10k, Starship…); Chromium does not search other fonts for their private-use glyphs. */
+const NERD_FONTS = `'MesloLGS NF', 'MesloLGS Nerd Font', 'Symbols Nerd Font Mono', 'Symbols Nerd Font', 'JetBrainsMono Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font'`
+
+/** Terminal stack: like fontStack, with installed Nerd Fonts ahead of the generic monospace so prompt icons and separators render. */
+export const termFontStack = (entry: FontEntry): string => fontStack(entry).replace(/, monospace$/, `, ${NERD_FONTS}, monospace`)
+
 /** Entries shown on this platform (other platforms' system fonts are hidden). */
 export const visibleFonts = (kind: FontKind, platform: string | undefined): FontEntry[] =>
   fontList(kind).filter((f) => !f.platforms || (platform !== undefined && (f.platforms as string[]).includes(platform)))

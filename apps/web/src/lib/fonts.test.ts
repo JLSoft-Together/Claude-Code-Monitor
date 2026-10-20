@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { clampCodeSize, CODE_FONTS, CODE_SIZE_DEFAULT, CODE_SIZE_MAX, CODE_SIZE_MIN, fontEntry, fontStack, isFontId, SYSTEM_MONO, SYSTEM_SANS, UI_FONTS, visibleFonts } from './fonts'
+import { clampCodeSize, CODE_FONTS, CODE_SIZE_DEFAULT, CODE_SIZE_MAX, CODE_SIZE_MIN, fontEntry, fontStack, isFontId, SYSTEM_MONO, SYSTEM_SANS, termFontStack, UI_FONTS, visibleFonts } from './fonts'
 import { codeSizeKey, createWheelStepper, wheelZone } from '../composables/useWheelZoom'
 
 // Read from disk: vitest turns CSS imports into empty modules.
@@ -43,6 +43,13 @@ describe('font catalogue', () => {
     expect(fontEntry('code', 'nope').id).toBe('system')
     expect(isFontId('code', 'consolas')).toBe(true)
     expect(isFontId('ui', 'consolas')).toBe(false)
+  })
+
+  it('terminal stacks fall back to installed Nerd Fonts before the generic monospace', () => {
+    const stack = termFontStack(fontEntry('code', 'jetbrains-mono'))
+    expect(stack.startsWith(`'JetBrains Mono Variable', ui-monospace`)).toBe(true)
+    expect(stack).toMatch(/Menlo, Consolas, 'MesloLGS NF', .*'Symbols Nerd Font Mono'.*, monospace$/)
+    expect(termFontStack(fontEntry('code', 'system')).startsWith('ui-monospace')).toBe(true)
   })
 
   it('hides the other platform’s system fonts', () => {
