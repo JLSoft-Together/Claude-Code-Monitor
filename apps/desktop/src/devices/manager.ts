@@ -6,6 +6,7 @@ import type { Spawner } from '../run/proc'
 import { createAdbCommands, type AdbCommands } from './adb'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
+import { newQrSecret, qrPayload, runQrPairing } from './qr'
 
 export interface DeviceManagerTiming {
   wifiSwitchMs: number
@@ -110,6 +111,7 @@ export class DeviceManager {
   private unwatch: (() => void) | null = null
   private rows: AdbDeviceRow[] = []
   private autoDone = false
+  private readonly qrSessions = new Map<string, { owner: string; ctl: AbortController }>()
 
   constructor(private readonly deps: DeviceManagerDeps) {
     this.t = { ...TIMING, ...deps.timing }
@@ -189,7 +191,47 @@ export class DeviceManager {
   /** Window closed / reloaded: every hold whose owner key starts with `prefix` ("<senderId>:") goes. */
   releaseOwner(prefix: string): void {
     for (const o of [...this.holds]) if (o.startsWith(prefix)) this.holds.delete(o)
+    for (const s of this.qrSessions.values()) if (s.owner.startsWith(prefix)) s.ctl.abort()
     if (!this.holds.size) this.dropWatch()
+  }
+
+  /** Newest history Wi-Fi id on `host` with a port other than 5555. */
+  private lastPortFor(host: string): number | null {
+    const key = addressKey(host, 0)
+    let best: { port: number; seen: number } | null = null
+    for (const [id, h] of Object.entries(this.deps.history.all())) {
+      if (!h.wifi) continue
+      const a = parseAddress(id)
+      if (!a?.host || !a.port || a.port === WIFI_PORT || addressKey(a.host, 0) !== key) continue
+      if (!best || h.lastSeen > best.seen) best = { port: a.port, seen: h.lastSeen }
+    }
+    return best?.port ?? null
+  }
+
+  /** Returns the QR to show at once; pairing runs in the background and reports through `qr` events. */
+  async qrStart(owner: string): Promise<{ id: string; payload: string } | DevResult> {
+    if (!(await this.resolveAdb())) return MISSING
+    if (!(await this.commands.mdnsCheck())) return { ok: false, error: 'mdns-unavailable' }
+    const { name, password } = newQrSecret()
+    const ctl = new AbortController()
+    this.qrSessions.set(name, { owner, ctl })
+    void runQrPairing({
+      cmds: this.commands,
+      name,
+      password,
+      signal: ctl.signal,
+      onStatus: (status, detail) => this.deps.broadcast({ type: 'qr', id: name, status, ...(detail ? { detail } : {}) }),
+      lastPortFor: (host) => this.lastPortFor(host),
+      timing: { pairWaitMs: this.t.qrPairWaitMs, connectWaitMs: this.t.qrConnectWaitMs, pollMs: this.t.mdnsPollMs },
+    }).finally(() => this.qrSessions.delete(name))
+    return { id: name, payload: qrPayload(name, password) }
+  }
+
+  qrCancel(id: string): DevResult {
+    const s = this.qrSessions.get(id)
+    if (!s) return INVALID
+    s.ctl.abort()
+    return { ok: true }
   }
 
   async connect(address: string): Promise<DevResult> {
@@ -292,6 +334,7 @@ export class DeviceManager {
   }
 
   stop(sync = false): void {
+    for (const s of this.qrSessions.values()) s.ctl.abort()
     this.holds.clear()
     this.dropWatch(sync)
   }
