@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { readAdbFrames } from '../parse'
 import { killTree, type Spawner } from '../proc'
-import { collect } from './devices'
+import { collect } from '../collect'
 
 export interface AdbWatchTiming {
   firstListMs: number
