@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Building2, CircleAlert } from 'lucide-vue-next'
 import type { Selection, WorldApi } from '@ccm/habblaud/client/src/world/api'
 import { modalOpen } from '@ccm/habblaud/client/src/world/input'
+import { useRevealInWorkspace } from '../../composables/useRevealInWorkspace'
 import { isTyping } from '../../lib/shortcuts'
 import { officeFeed } from '../../office/feed'
 import { applyOfficeLocale, type OfficeLocale } from '../../office/i18n'
@@ -22,6 +23,7 @@ const agents = useAgentsStore()
 const connection = useConnectionStore()
 const settings = useSettingsStore()
 const office = useOfficeStore()
+const reveal = useRevealInWorkspace()
 
 /** Room for the Agent Map toolbar above the canvas (px): overview and focus frame below it. */
 const TOOLBAR_INSET = 48
@@ -81,7 +83,17 @@ function onWorldSelect(sel: Selection): void {
   if (selecting || sel?.type !== 'agent') return
   if (ui.selectedAgentId !== sel.id) ui.selectAgent(sel.id)
   const tid = agents.byId[sel.id]?.terminalId
-  if (tid) ui.revealTerminal(tid)
+  if (!tid) return
+  ui.revealTerminal(tid)
+  jumpIfAsking(sel.id, tid)
+}
+
+/** A raised hand on screen: go to its session (Workspace pane, else its terminal window). Focus only, nothing is sent. */
+function jumpIfAsking(agentId: string, terminalId: string): void {
+  if (officeFeed.replaying) return
+  if (officeFeed.snapshot?.agents.find((a) => a.id === agentId)?.status !== 'waiting') return
+  if (reveal.show(terminalId)) return
+  if (!connection.focusWindow(terminalId)) ui.reportWindowResult(terminalId, 'offline')
 }
 
 function syncSelection(id: string | null): void {

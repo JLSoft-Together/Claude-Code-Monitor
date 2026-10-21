@@ -28,8 +28,13 @@ type FakeWorld = {
 const h = vi.hoisted(() => {
   const worlds: FakeWorld[] = []
   const locale = { gate: null as Promise<void> | null }
-  return { worlds, locale }
+  const reveal = { show: (_terminalId: string): boolean => false }
+  return { worlds, locale, reveal }
 })
+
+vi.mock('../../composables/useRevealInWorkspace', () => ({
+  useRevealInWorkspace: () => ({ show: (id: string) => h.reveal.show(id) }),
+}))
 
 vi.mock('@ccm/habblaud/client/src/world', () => ({
   createWorld: vi.fn((canvas: HTMLCanvasElement) => {
@@ -306,6 +311,92 @@ describe('OfficeView selection', () => {
     world().select({ type: 'agent', id: 'a1' })
     expect(useUiStore().selectedAgentId).toBe('a1')
     expect(useUiStore().focusedTerminalId).toBe('t1')
+  })
+
+  describe('a character that is asking', () => {
+    const snap = (status: string, id = 'a1'): OfficeSnapshot =>
+      ({
+        rev: 1,
+        serverTime: 1,
+        rooms: [{ id: 'r' }],
+        agents: [{ id, roomId: 'r', kind: 'main', role: 'main', status, recent: [], tasks: [], shells: [] }],
+        accounts: [],
+        meta: {},
+      }) as unknown as OfficeSnapshot
+    let focusWindow: Mock<(id: string) => boolean>
+    let show: Mock<(id: string) => boolean>
+
+    beforeEach(() => {
+      focusWindow = vi.fn(() => true)
+      useConnectionStore().focusWindow = focusWindow as unknown as ReturnType<typeof useConnectionStore>['focusWindow']
+      show = vi.fn(() => false)
+      h.reveal.show = show
+      useAgentsStore().replaceAll([
+        { id: 'a1', terminalId: 't1', role: 'main', status: 'waiting' } as never,
+        { id: 's1', parentId: 'a1', terminalId: 't1', role: 'subagent', status: 'waiting' } as never,
+      ])
+    })
+
+    afterEach(() => officeFeed.stopReplay())
+
+    it('raises its terminal window when the session has no Workspace pane', async () => {
+      await mountView()
+      officeFeed.ingestLive(snap('waiting'))
+      world().select({ type: 'agent', id: 'a1' })
+      expect(show).toHaveBeenCalledWith('t1')
+      expect(focusWindow).toHaveBeenCalledWith('t1')
+      expect(useUiStore().selectedAgentId).toBe('a1')
+    })
+
+    it('opens the Workspace pane instead when the session has one', async () => {
+      show.mockReturnValue(true)
+      await mountView()
+      officeFeed.ingestLive(snap('waiting'))
+      world().select({ type: 'agent', id: 'a1' })
+      expect(show).toHaveBeenCalledWith('t1')
+      expect(focusWindow).not.toHaveBeenCalled()
+    })
+
+    it("goes to the subagent's session", async () => {
+      await mountView()
+      officeFeed.ingestLive(snap('waiting', 's1'))
+      world().select({ type: 'agent', id: 's1' })
+      expect(focusWindow).toHaveBeenCalledWith('t1')
+    })
+
+    it('reports the session offline when the window request cannot be sent', async () => {
+      focusWindow.mockReturnValue(false)
+      await mountView()
+      officeFeed.ingestLive(snap('waiting'))
+      world().select({ type: 'agent', id: 'a1' })
+      expect(useUiStore().windowResult).toEqual({ terminalId: 't1', result: 'offline' })
+    })
+
+    it('only selects a character that is not asking', async () => {
+      await mountView()
+      officeFeed.ingestLive(snap('working'))
+      world().select({ type: 'agent', id: 'a1' })
+      expect(show).not.toHaveBeenCalled()
+      expect(focusWindow).not.toHaveBeenCalled()
+      expect(useUiStore().selectedAgentId).toBe('a1')
+    })
+
+    it('does not jump for a raised hand in a replayed moment', async () => {
+      await mountView()
+      officeFeed.pushReplay(snap('waiting'))
+      world().select({ type: 'agent', id: 'a1' })
+      expect(show).not.toHaveBeenCalled()
+      expect(focusWindow).not.toHaveBeenCalled()
+    })
+
+    it('does not jump when the app selection moves the office to an asking agent', async () => {
+      await mountView()
+      officeFeed.ingestLive(snap('waiting'))
+      useUiStore().selectAgent('a1')
+      await flushPromises()
+      expect(world().select).toHaveBeenCalledWith({ type: 'agent', id: 'a1' }, { focus: true })
+      expect(focusWindow).not.toHaveBeenCalled()
+    })
   })
 
   it('selects and focuses the character when the app selection changes', async () => {
