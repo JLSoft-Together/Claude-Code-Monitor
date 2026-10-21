@@ -77,3 +77,5 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 - `layoutXml.ts` — `isLayoutRootName`, `isLooseLayoutXml`. Desktop + web layout preview.
 - `entryName.ts` — `checkEntryName` (new file / folder names). Desktop `preview/explorer.ts` + web `CreateEntryDialog.vue`.
 - `index.ts` — re-exports.
+
+`office.snapshot {payload: OfficeSnapshot}` (server -> client) is a direct reply from `OfficeHub` to clients that sent `office.subscribe {on}` (client -> server, boolean checked in `server.ts`); never batched into `seq`. `GET /api/timeline/days` and `/api/timeline/:day` are plain HTTP behind the app key.

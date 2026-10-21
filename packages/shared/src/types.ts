@@ -1,4 +1,6 @@
-export type TerminalStatus = 'working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
+import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
+
+export type TerminalStatus ='working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
 
 export type AgentStatus =
   | 'working'
@@ -428,6 +430,8 @@ export type MonitorEvent =
   | { type: 'favorites.updated'; payload: { favorites: Favorite[] } }
   | { type: 'favorite.rejected'; payload: { dir: string; reason: FavoriteRejectReason } }
   | { type: 'tool.span'; payload: ToolSpan }
+  /** Direct reply to office subscribers only (never batched into seq); see apps/collector/src/office/hub.ts. */
+  | { type: 'office.snapshot'; payload: OfficeSnapshot }
   | { type: 'toolSpans.data'; payload: ToolSpansData }
   | { type: 'jobs.updated'; payload: { jobs: BackgroundJob[] } }
   | { type: 'limits.updated'; payload: PlanLimits }
@@ -454,6 +458,7 @@ export interface ServerMessage {
 
 export type ClientMessage =
   | { type: 'resync' }
+  | { type: 'office.subscribe'; on: boolean }
   | { type: 'toolSpans.get'; terminalId?: string; since?: string }
   | { type: 'terminal.alias'; terminalId: string; alias: string | null }
   | { type: 'favorite.toggle'; terminalId: string }

@@ -14,6 +14,7 @@ export default defineConfig({
     proxy: {
       '/ws': { target: collector, ws: true, changeOrigin: true },
       '/health': { target: collector, changeOrigin: true },
+      '/api/timeline': { target: collector, changeOrigin: true },
     },
   },
   // Habblaud's shared/i18n.ts statically imports every dictionary through ./locales/all; the browser (and these tests)

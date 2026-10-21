@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@ccm/habblaud": "*"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   }

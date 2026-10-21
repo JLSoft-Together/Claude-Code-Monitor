@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import path from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { sanitizeKinds, sanitizeQuiet, sanitizeStuck, type ClientMessage, type FocusWindowResult, type MonitorEvent, type ServerMessage } from '@ccm/shared'
+import { createTimelineHandler } from '@ccm/habblaud/server/http/timeline'
 import type { MonitorStore } from './store'
 
 const MIME: Record<string, string> = {
@@ -186,6 +187,8 @@ export function startServer(options: {
   /** Extra origin ports allowed to connect (Vite dev server). */
   devOriginPorts?: readonly number[]
   heartbeatMs?: number
+  /** `<dataDir>/timeline`: serves GET /api/timeline/days and /api/timeline/:day (behind the app key). */
+  timelineDir?: string
   onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
   onClientClose?: (clientId: number) => void
   onFocusRun?: (terminalId: string, key: string | null) => Promise<FocusWindowResult | null>
@@ -194,6 +197,7 @@ export function startServer(options: {
   const { store } = options
   const ports = [options.port, ...(options.devOriginPorts ?? [])]
   const appKey = options.appKey ?? null
+  const timelineHandler = options.timelineDir ? createTimelineHandler({ dir: options.timelineDir, recording: true }) : null
   const server = createServer((req, res) => {
     if (!isLocalRequest(req, ports)) {
       res.writeHead(403).end()
@@ -207,6 +211,7 @@ export function startServer(options: {
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end('Orrery only opens in its desktop app.')
       return
     }
+    if (timelineHandler?.(req, res, new URL(req.url ?? '/', 'http://127.0.0.1'))) return
     if (req.url?.startsWith('/snooze?') && req.method === 'GET') {
       const q = new URL(req.url, 'http://127.0.0.1').searchParams
       const terminalId = q.get('t')
@@ -290,9 +295,11 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
+        } else if (m.type === 'office.subscribe' && typeof m.on === 'boolean') {
+          options.onClientMessage?.({ type: 'office.subscribe', on: m.on }, ctx())
         } else if (m.type === 'terminal.alias' && typeof m.terminalId === 'string' && (typeof m.alias === 'string' || m.alias === null)) {
           options.onClientMessage?.({ type: 'terminal.alias', terminalId: m.terminalId, alias: m.alias }, ctx())
         } else if (m.type === 'favorite.toggle' && typeof m.terminalId === 'string') {

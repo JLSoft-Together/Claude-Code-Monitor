@@ -1,4 +1,9 @@
 import path from 'node:path'
+import { TIMELINE_DIR, TimelineRecorder } from '@ccm/habblaud/server/history/timeline'
+import { NameStore } from '@ccm/habblaud/server/model/names'
+import type { MonitorEvent } from '@ccm/shared'
+import { OfficeHub } from './office/hub'
+import { OfficeModel } from './office/model'
 import { AliasStore, MAX_NOTE_LENGTH } from './aliases'
 import { firstStartToday } from './daystart'
 import { loadConfig } from './config'
@@ -91,14 +96,21 @@ async function main(): Promise<void> {
 
   // Listen first: the dashboard opens at once and sessions arrive as the first pass publishes them.
   store.setLoading(true)
+  let officeHub: OfficeHub | null = null
+  const officeReplies = new Map<string, (event: MonitorEvent) => void>()
   const server = await startServer({
+    timelineDir: path.join(config.dataDir, TIMELINE_DIR),
     host: config.host,
     port: config.port,
     webDist: config.webDist,
     devOriginPorts: config.devOriginPorts,
     appKey: config.appKey,
     store,
-    onClientClose: (clientId) => toaster.dropClient(clientId),
+    onClientClose: (clientId) => {
+      toaster.dropClient(clientId)
+      officeReplies.delete(String(clientId))
+      officeHub?.dropClient(String(clientId))
+    },
     onFocusRun: async (terminalId, key) => {
       if (!toaster.accepts(key)) return null
       if (!store.getTerminal(terminalId)) return 'notFound'
@@ -137,6 +149,11 @@ async function main(): Promise<void> {
           break
         case 'history.get':
           monitor.sendHistory(ctx.reply)
+          break
+        case 'office.subscribe':
+          if (message.on) officeReplies.set(String(ctx.clientId), ctx.reply)
+          else officeReplies.delete(String(ctx.clientId))
+          officeHub?.subscribe(String(ctx.clientId), message.on)
           break
         case 'toolSpans.get':
           monitor.sendToolSpans(ctx.reply, message.terminalId, message.since)
@@ -197,6 +214,10 @@ async function main(): Promise<void> {
   console.log(`[collector] data dir ${config.dataDir}`)
   console.log(`[collector] dashboard http://${config.host}:${config.port}  websocket ws://${config.host}:${config.port}/ws`)
 
+  const officeNames = new NameStore(path.join(config.dataDir, 'office-names.json'))
+  officeNames.load()
+  const recorder = new TimelineRecorder({ dir: path.join(config.dataDir, TIMELINE_DIR) })
+  recorder.start()
   let closing = false
   let usageStarted = false
   const shutdown = () => {
@@ -204,6 +225,9 @@ async function main(): Promise<void> {
     closing = true
     clearInterval(toastTimer)
     monitor.stop()
+    officeHub?.stop()
+    recorder.stop()
+    officeNames.flush()
     server.close()
     void Promise.all([
       toaster.clear(),
@@ -228,6 +252,21 @@ async function main(): Promise<void> {
 
   await monitor.start()
   store.setLoading(false)
+  if (!closing) {
+    // meta.version: the collector does not know the app version, so it stays empty.
+    officeHub = new OfficeHub({
+      store,
+      model: new OfficeModel({ names: officeNames, version: '' }),
+      recorder,
+      send: (clientId, message) => {
+        const reply = officeReplies.get(clientId)
+        const event = message.events[0]
+        if (reply && event) reply(event)
+      },
+    })
+    officeHub.start()
+    for (const id of officeReplies.keys()) officeHub.subscribe(id, true)
+  }
   if (closing) return
   await monitor.codex?.start()
   if (closing) return

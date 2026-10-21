@@ -98,6 +98,10 @@ export class MonitorStore implements UsageSink {
     return this.terminals.values()
   }
 
+  agentList(): IterableIterator<Agent> {
+    return this.agents.values()
+  }
+
   contextPct(terminalId: string): number | null {
     for (const a of this.agents.values()) {
       if (a.terminalId !== terminalId || a.role !== 'main') continue
