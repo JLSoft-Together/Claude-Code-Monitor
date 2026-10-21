@@ -22,6 +22,8 @@ import {
   LayoutGrid,
   Mail,
   Maximize,
+  Volume2,
+  VolumeX,
   Minus,
   Network,
   PanelLeft,
@@ -1592,7 +1594,17 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
               <component :is="c.icon" :size="16" aria-hidden="true" />
               <KeyHint v-if="c.hint" :keys="c.hint" />
             </button>
-            <!-- Sound (Task 7) and timelapse (Task 8) buttons go here, before the options. -->
+            <button
+              type="button"
+              :class="TOOL"
+              :aria-pressed="office.sound"
+              :aria-label="office.sound ? t('officeV60.soundOn') : t('officeV60.soundOff')"
+              :title="office.sound ? t('officeV60.soundOn') : t('officeV60.soundOff')"
+              @click="office.setSound(!office.sound)"
+            >
+              <component :is="office.sound ? Volume2 : VolumeX" :size="16" aria-hidden="true" />
+            </button>
+            <!-- Timelapse button (Task 8) goes here, before the options. -->
             <OfficeOptions />
           </template>
           <template v-else>

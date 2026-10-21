@@ -10,6 +10,8 @@ const en = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     overview: 'Show the whole office',
+    soundOn: 'Turn office sound off',
+    soundOff: 'Turn office sound on',
     options: {
       label: 'Office options',
       title: 'Office',
@@ -44,6 +46,8 @@ const vi: typeof en = {
     zoomIn: 'Phóng to',
     zoomOut: 'Thu nhỏ',
     overview: 'Xem toàn bộ văn phòng',
+    soundOn: 'Tắt âm thanh văn phòng',
+    soundOff: 'Bật âm thanh văn phòng',
     options: {
       label: 'Tuỳ chọn văn phòng',
       title: 'Văn phòng',
