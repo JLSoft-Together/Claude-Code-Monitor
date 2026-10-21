@@ -1,0 +1,37 @@
+{
+  "name": "@ccm/habblaud",
+  "version": "1.0.3",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./client/src/world": {
+      "types": "./types/client/src/world/index.d.ts",
+      "default": "./client/src/world/index.ts"
+    },
+    "./client/src/art": {
+      "types": "./types/client/src/art/index.d.ts",
+      "default": "./client/src/art/index.ts"
+    },
+    "./client/src/art/furniture": {
+      "types": "./types/client/src/art/furniture/index.d.ts",
+      "default": "./client/src/art/furniture/index.ts"
+    },
+    "./*": {
+      "types": "./types/*.d.ts",
+      "default": "./*.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.types.json",
+    "types": "tsc -p tsconfig.types.json",
+    "prepare": "tsc -p tsconfig.types.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "happy-dom": "^20.0.0",
+    "vite": "^7.1.9",
+    "vitest": "^5.0.3"
+  }
+}
