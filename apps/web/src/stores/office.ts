@@ -54,7 +54,7 @@ export function officeRoomOf(snapshot: OfficeSnapshot | null, agentId: string | 
   return snapshot.agents.find((a) => a.id === agentId)?.roomId ?? null
 }
 
-/** Office view state shared by `OfficeView` (owns the world) and the Agent Map toolbar (zoom, overview, options). */
+/** Office view state shared by `OfficeView` (owns the world) and the Agent Map toolbar (zoom, overview, options, sound, timelapse). */
 export const useOfficeStore = defineStore('office', () => {
   const options = ref<OfficeOptions>(readOfficeOptions())
   /** The live world while the Office view is mounted; shallow so the canvas engine never turns reactive. */
@@ -99,5 +99,13 @@ export const useOfficeStore = defineStore('office', () => {
     world.value?.overview()
   }
 
-  return { options, world, sound, setSound, setOption, zoomBy, overview }
+  /** Timelapse bar open (toolbar button, key L); `OfficeTimelapse` owns the replay while it is mounted. */
+  const timelapse = ref(false)
+  /** A recorded moment is on screen instead of the live office (REPLAY badge, sepia canvas). */
+  const replaying = ref(false)
+  function toggleTimelapse(): void {
+    timelapse.value = !timelapse.value
+  }
+
+  return { options, world, sound, setSound, setOption, zoomBy, overview, timelapse, replaying, toggleTimelapse }
 })

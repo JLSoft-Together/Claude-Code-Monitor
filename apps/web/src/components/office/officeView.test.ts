@@ -20,6 +20,7 @@ type FakeWorld = {
   getOptions: () => unknown
   setOptions: ReturnType<typeof vi.fn>
   setViewInsets: ReturnType<typeof vi.fn>
+  setPlayback: ReturnType<typeof vi.fn>
   screenPositionOf: () => null
   destroy: ReturnType<typeof vi.fn>
 }
@@ -53,6 +54,7 @@ vi.mock('@ccm/habblaud/client/src/world', () => ({
       getOptions: () => ({}),
       setOptions: vi.fn(),
       setViewInsets: vi.fn(),
+      setPlayback: vi.fn(),
       screenPositionOf: () => null,
       destroy: vi.fn(),
     }
@@ -278,5 +280,122 @@ describe('Office view mode', () => {
       expect(i18n.global.te(k, 'en')).toBe(true)
       expect(i18n.global.te(k, 'vi')).toBe(true)
     }
+  })
+})
+
+describe('Office timelapse', () => {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const now = new Date()
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10).getTime()
+  const keyframe = {
+    t: 'k',
+    at: from,
+    v: 1,
+    every: 300_000,
+    rooms: [{ id: 'r1', name: 'app', path: '', slot: 0, seed: 1, createdAt: from }],
+    agents: [{ id: 'a1', kind: 'main', roomId: 'r1', name: 'Ada', look: 'f', role: 'main', account: 'x', status: 'working', statusSince: from, startedAt: from, seed: 1 }],
+    accounts: [],
+  }
+  const dayText = `${JSON.stringify(keyframe)}\n${JSON.stringify({ t: 'd', at: from + 60_000 })}\n`
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/timeline/days') return new Response(JSON.stringify({ recording: true, days: [{ day: today, bytes: 1, from, to: from + 60_000 }] }))
+        if (url === `/api/timeline/${today}`) return new Response(dayText)
+        return new Response('', { status: 404 })
+      }),
+    )
+  })
+  afterEach(() => {
+    officeFeed.stopReplay()
+    vi.unstubAllGlobals()
+  })
+
+  const pressL = (target: EventTarget = document.body, init: KeyboardEventInit = {}): void => {
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', code: 'KeyL', bubbles: true, cancelable: true, ...init }))
+  }
+
+  it('toggles the timelapse bar with L while the office is visible', async () => {
+    await mountView()
+    const office = useOfficeStore()
+    pressL()
+    await flushPromises()
+    expect(office.timelapse).toBe(true)
+    expect(w!.find('[data-lapse-bar]').exists()).toBe(true)
+    pressL()
+    await flushPromises()
+    expect(office.timelapse).toBe(false)
+    expect(w!.find('[data-lapse-bar]').exists()).toBe(false)
+  })
+
+  it('ignores L typed in a field, with a modifier, or while a dialog is open', async () => {
+    await mountView()
+    const office = useOfficeStore()
+    const input = document.createElement('input')
+    document.body.append(input)
+    pressL(input)
+    pressL(document.body, { ctrlKey: true })
+    useUiStore().settingsOpen = true
+    pressL()
+    useUiStore().settingsOpen = false
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    const inner = document.createElement('button')
+    dialog.append(inner)
+    document.body.append(dialog)
+    pressL(inner)
+    await flushPromises()
+    expect(office.timelapse).toBe(false)
+  })
+
+  it('stops listening for L once the office is left', async () => {
+    await mountView()
+    w!.unmount()
+    w = null
+    pressL()
+    expect(useOfficeStore().timelapse).toBe(false)
+  })
+
+  it('tints the canvas sepia while replaying and shows the REPLAY badge', async () => {
+    await mountView()
+    const canvas = (): HTMLCanvasElement => w!.find('canvas').element as HTMLCanvasElement
+    expect(canvas().style.filter).toBe('')
+    useOfficeStore().timelapse = true
+    await flushPromises()
+    expect(officeFeed.replaying).toBe(true)
+    expect(canvas().style.filter).toBe('sepia(0.3) saturate(0.9) contrast(1.03)')
+    expect(world().setPlayback).toHaveBeenCalledWith(expect.objectContaining({ clock: expect.any(Function) }))
+    expect(w!.find('[data-lapse-badge]').text()).toContain('REPLAY')
+    await w!.find('[data-lapse-live]').trigger('click')
+    expect(canvas().style.filter).toBe('')
+    expect(world().setPlayback).toHaveBeenLastCalledWith(null)
+    expect(officeFeed.replaying).toBe(false)
+  })
+
+  it('hides the "no agents" note while the timelapse bar is open', async () => {
+    await mountView()
+    officeFeed.ingestLive({ rev: 1, serverTime: 1, rooms: [], agents: [], accounts: [], meta: {} } as unknown as OfficeSnapshot)
+    await flushPromises()
+    expect(w!.find('[data-office-empty]').exists()).toBe(true)
+    // No history: the live (empty) office stays on screen under the bar.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
+    useOfficeStore().timelapse = true
+    await flushPromises()
+    expect(w!.find('[data-office-empty]').exists()).toBe(false)
+  })
+
+  it('ends any replay when the office is left', async () => {
+    await mountView()
+    useOfficeStore().timelapse = true
+    await flushPromises()
+    expect(officeFeed.replaying).toBe(true)
+    w!.unmount()
+    w = null
+    expect(officeFeed.replaying).toBe(false)
+    expect(useOfficeStore().replaying).toBe(false)
+    expect(useOfficeStore().timelapse).toBe(false)
   })
 })

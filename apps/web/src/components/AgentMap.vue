@@ -19,6 +19,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  History,
   LayoutGrid,
   Mail,
   Maximize,
@@ -1604,7 +1605,20 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
             >
               <component :is="office.sound ? Volume2 : VolumeX" :size="16" aria-hidden="true" />
             </button>
-            <!-- Timelapse button (Task 8) goes here, before the options. -->
+            <button
+              type="button"
+              :class="TOOL"
+              :aria-pressed="office.timelapse"
+              :aria-label="office.timelapse ? t('officeV60.timelapse.close') : t('officeV60.timelapse.open')"
+              :title="office.timelapse ? t('officeV60.timelapse.close') : t('officeV60.timelapse.open')"
+              aria-keyshortcuts="L"
+              :disabled="!office.world && !office.timelapse"
+              data-office-timelapse-toggle
+              @click="office.toggleTimelapse()"
+            >
+              <History :size="16" aria-hidden="true" />
+              <KeyHint keys="L" />
+            </button>
             <OfficeOptions />
           </template>
           <template v-else>

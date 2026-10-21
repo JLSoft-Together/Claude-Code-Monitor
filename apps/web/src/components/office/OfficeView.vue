@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Building2, CircleAlert } from 'lucide-vue-next'
 import type { Selection, WorldApi } from '@ccm/habblaud/client/src/world/api'
+import { modalOpen } from '@ccm/habblaud/client/src/world/input'
+import { isTyping } from '../../lib/shortcuts'
 import { officeFeed } from '../../office/feed'
 import { applyOfficeLocale, type OfficeLocale } from '../../office/i18n'
 import { useAgentsStore } from '../../stores/agents'
@@ -10,6 +12,7 @@ import { useConnectionStore } from '../../stores/connection'
 import { officeRoomOf, useOfficeStore } from '../../stores/office'
 import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
+import OfficeTimelapse from './OfficeTimelapse.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
 
@@ -22,6 +25,8 @@ const office = useOfficeStore()
 
 /** Room for the Agent Map toolbar above the canvas (px): overview and focus frame below it. */
 const TOOLBAR_INSET = 48
+/** Canvas tint while a recorded moment is on screen (upstream `.is-replay`). */
+const REPLAY_FILTER = 'sepia(0.3) saturate(0.9) contrast(1.03)'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 const canvasKey = ref(0)
@@ -120,9 +125,26 @@ async function build(first: boolean): Promise<void> {
   }
 }
 
-onMounted(() => void build(true))
+/** Key L toggles the timelapse while the office is on screen, unless a field, a dialog or a modifier owns the key. */
+function onKey(e: KeyboardEvent): void {
+  if (e.code !== 'KeyL' || e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+  if (isTyping(e.target) || modalOpen(e.target instanceof HTMLElement ? e.target : null)) return
+  if (ui.paletteOpen || ui.settingsOpen || ui.tourOpen || ui.recapOpen || ui.diagnosticsOpen || ui.shortcutsOpen) return
+  if (!office.timelapse && !world) return
+  e.preventDefault()
+  office.toggleTimelapse()
+  ui.pressKey('L')
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKey)
+  void build(true)
+})
 
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKey)
+  // The timelapse child unmounts next and ends any replay; the bar starts closed on the next visit.
+  office.timelapse = false
   gen++
   teardown()
   if (subscribed) connection.subscribeOffice(false)
@@ -156,13 +178,20 @@ const ariaLabel = computed(() => {
   const c = counts.value ?? { agents: 0, rooms: 0 }
   return t('officeV60.ariaLabel', { agents: t('officeV60.agents', { n: c.agents }, c.agents), rooms: t('officeV60.rooms', { n: c.rooms }, c.rooms) })
 })
-const empty = computed(() => state.value === 'ready' && counts.value?.agents === 0)
+const empty = computed(() => state.value === 'ready' && counts.value?.agents === 0 && !office.timelapse)
 const waiting = computed(() => state.value === 'loading' || (state.value === 'ready' && !counts.value))
 </script>
 
 <template>
   <div class="relative h-full w-full min-w-0 overflow-hidden bg-canvas" data-office>
-    <canvas :key="canvasKey" ref="canvas" class="absolute inset-0 block h-full w-full [image-rendering:pixelated]" role="img" :aria-label="ariaLabel" />
+    <canvas
+      :key="canvasKey"
+      ref="canvas"
+      class="absolute inset-0 block h-full w-full [image-rendering:pixelated]"
+      :style="office.replaying ? { filter: REPLAY_FILTER } : undefined"
+      role="img"
+      :aria-label="ariaLabel"
+    />
 
     <div
       v-if="waiting || state === 'failed'"
@@ -184,5 +213,7 @@ const waiting = computed(() => state.value === 'loading' || (state.value === 're
     <div v-if="empty" class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-4" role="status" aria-live="polite">
       <p class="ccm-menu max-w-full truncate px-3 py-1.5 text-xs text-ink" data-office-empty>{{ t('officeV60.empty') }}</p>
     </div>
+
+    <OfficeTimelapse v-if="office.timelapse" />
   </div>
 </template>
