@@ -27,6 +27,9 @@ import { createCustomRunner } from './run/custom'
 import { createFlutterDevices } from './run/flutter/devices'
 import { createFlutterRunner } from './run/flutter/runner'
 import { registerRunIpc } from './run/ipc'
+import { DeviceHistory, DEVICES_FILE } from './devices/history'
+import { registerDevicesIpc } from './devices/ipc'
+import { DeviceManager } from './devices/manager'
 import type { LayoutIpc } from './layout/ipc'
 import { wireLayout } from './layout/wire'
 import { wireFlutterPreview, type FlutterPreviewWire } from './flutterPreview/wire'
@@ -86,6 +89,8 @@ let disposeExtensions: (() => void) | null = null
 let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
+let deviceManager: DeviceManager | null = null
+let disposeDevices: (() => void) | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
 let editors: EditorTracker | null = null
@@ -171,6 +176,10 @@ function stopPreview(): Promise<void> {
   disposeGitHub = null
   disposeRun?.()
   disposeRun = null
+  disposeDevices?.()
+  disposeDevices = null
+  deviceManager?.stop(true)
+  deviceManager = null
   previewWatch.closeAll()
   // Both kept until stopped: a quit during the graceful stop still reaches killNow() through them.
   const layout = layoutIpc
@@ -912,6 +921,30 @@ async function ready(): Promise<void> {
   await runManager.loadSettings()
   const previewGate = previewIpc
   disposeRun = registerRunIpc({ ipcMain, isAppFrame, manager: runManager, resolveDir: (dir) => previewGate.resolveDir(dir) })
+  const devices = new DeviceManager({
+    spawn: defaultSpawner,
+    env: process.env,
+    platform: process.platform,
+    home: os.homedir(),
+    getSettings: () => ({ androidSdk: runManager?.getSettings().androidSdk ?? null }),
+    history: new DeviceHistory(path.join(DATA_DIR, DEVICES_FILE)),
+    broadcast: (event) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:dev-event', event)
+    },
+    confirmRemove: (ids) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.devRemoveTitle(ids.length),
+        detail: t.devRemoveDetail(ids),
+        buttons: [t.devRemoveConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+  })
+  deviceManager = devices
+  disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices })
+  void devices.autoConnectOnce()
   layoutIpc = wireLayout({
     ipcMain,
     isAppFrame,
