@@ -32,6 +32,7 @@ import peerMapV54 from './peer-map-v54'
 import peerWsV54 from './peer-ws-v54'
 import githubV58 from './github-v58'
 import officeV60 from './office-v60'
+import devicesV61 from './devices-v61'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -49,11 +50,13 @@ const vi: typeof en = {
   ...peerWsV54.vi,
   ...githubV58.vi,
   ...officeV60.vi,
+  ...devicesV61.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
   },
   nav: {
+    devices: 'Thiết bị',
     extensions: 'Mở rộng',
     history: 'Lịch sử',
     label: 'Màn hình',
@@ -833,6 +836,7 @@ const vi: typeof en = {
     scopeLabel: 'Hiện',
     scope: { all: 'Tất cả', sessions: 'Session', favorites: 'Yêu thích', commands: 'Lệnh' },
     goHistory: 'Tới Lịch sử',
+    goDevices: 'Tới Thiết bị',
     goExtensions: 'Tới Mở rộng',
     darkTheme: 'Giao diện tối',
     themeNamed: 'Giao diện: {name}',

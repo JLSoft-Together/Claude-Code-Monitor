@@ -2,8 +2,9 @@
 import ArtImage from './ArtImage.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Puzzle, Search, SquareTerminal } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, History, Languages, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
 import { hasExtensions, hasTerminals } from '../lib/desktop'
+import { hasDevices } from '../lib/devices'
 import { now, relativeTime } from '../lib/format'
 import { isMac } from '../lib/platform'
 import { formatKeys } from '../lib/shortcuts'
@@ -27,6 +28,7 @@ const tabs = computed(() => [
   { id: 'usage' as View, label: t('nav.usage'), icon: ChartColumnBig },
   { id: 'history' as View, label: t('nav.history'), icon: History },
   ...(hasExtensions ? [{ id: 'extensions' as View, label: t('nav.extensions'), icon: Puzzle }] : []),
+  ...(hasDevices ? [{ id: 'devices' as View, label: t('nav.devices'), icon: Smartphone }] : []),
 ])
 const titleChars = computed(() => [...t('app.title')])
 // Brand words ("Agent") take the accent; the last word stays in ink.

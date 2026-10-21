@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   devHold: vi.fn(),
   devSnapshot: vi.fn(),
   devConnect: vi.fn(),
+  devPair: vi.fn(),
   devQrStart: vi.fn(),
   devQrCancel: vi.fn(),
   devDiscover: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../lib/devices', () => ({
   devHold: (on: boolean) => api.devHold(on),
   devSnapshot: () => api.devSnapshot(),
   devConnect: (a: string) => api.devConnect(a),
+  devPair: (a: string, c: string) => api.devPair(a, c),
   devQrStart: () => api.devQrStart(),
   devQrCancel: (id: string) => api.devQrCancel(id),
   devDiscover: () => api.devDiscover(),
@@ -42,7 +44,7 @@ const dev = (id: string, over: Partial<AdbDevice> = {}): AdbDevice => ({
 beforeEach(() => {
   setActivePinia(createPinia())
   api.handler = null
-  for (const f of [api.onDevEvent, api.devHold, api.devSnapshot, api.devConnect, api.devQrStart, api.devQrCancel, api.devDiscover, api.devDisconnect, api.devConnectMany]) f.mockReset()
+  for (const f of [api.onDevEvent, api.devHold, api.devSnapshot, api.devConnect, api.devPair, api.devQrStart, api.devQrCancel, api.devDiscover, api.devDisconnect, api.devConnectMany]) f.mockReset()
   api.devHold.mockResolvedValue(true)
   api.devQrCancel.mockResolvedValue({ ok: true })
 })
@@ -78,6 +80,14 @@ describe('devices store', () => {
     await p
     expect(s.busy.size).toBe(0)
     expect(s.lastError).toEqual({ code: 'connect-failed', detail: 'x' })
+  })
+
+  it('pair resolves the bridge result', async () => {
+    api.devPair.mockResolvedValue({ ok: true, detail: 'paired' })
+    const s = useDevicesStore()
+    await expect(s.pair('1.2.3.4:37000', '123456')).resolves.toEqual({ ok: true, detail: 'paired' })
+    expect(api.devPair).toHaveBeenCalledWith('1.2.3.4:37000', '123456')
+    expect(s.busy.size).toBe(0)
   })
 
   it('cancelled results never set lastError', async () => {

@@ -83,7 +83,11 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   const connect = (address: string) => track(['connect'], async () => fail(await api.devConnect(address)))
-  const pair = (address: string, code: string) => track(['connect'], async () => fail(await api.devPair(address, code)))
+  async function pair(address: string, code: string): Promise<DevResult> {
+    let r: DevResult = { ok: false, error: 'cancelled' }
+    await track(['connect'], async () => fail((r = await api.devPair(address, code))))
+    return r
+  }
   const disconnect = (ids: string[]) => track(ids, async () => failBatch(await api.devDisconnect(ids)))
   const connectMany = (ids: string[]) => track(ids, async () => failBatch(await api.devConnectMany(ids)))
   const toWifi = (id: string) => track([id], async () => fail(await api.devToWifi(id)))

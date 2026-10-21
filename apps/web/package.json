@@ -59,12 +59,14 @@
     "lottie-web": "^5.13.0",
     "lucide-vue-next": "^0.544.0",
     "pinia": "^3.0.3",
+    "qrcode": "1.5.4",
     "shiki": "^4.5.0",
     "vue": "^3.5.22",
     "vue-i18n": "^11.1.12"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
+    "@types/qrcode": "1.5.5",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^20.0.0",
