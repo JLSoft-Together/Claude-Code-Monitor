@@ -1,6 +1,6 @@
 import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
 
-export type TerminalStatus ='working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
+export type TerminalStatus = 'working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
 
 export type AgentStatus =
   | 'working'
