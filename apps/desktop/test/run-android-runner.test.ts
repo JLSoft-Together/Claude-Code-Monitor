@@ -37,6 +37,7 @@ interface FakeChild extends EventEmitter {
   stdout: EventEmitter & { resume: () => void }
   stderr: EventEmitter & { resume: () => void }
   unref: () => void
+  kill: (signal?: string) => boolean
   out: (text: string) => void
   exit: (code: number) => void
 }
@@ -60,6 +61,12 @@ function fakeSpawn(routes: Route[]): { spawn: Spawner; calls: FakeChild[]; keys:
       stdout: stream(),
       stderr: stream(),
       unref: () => undefined,
+      kill: vi.fn(() => {
+        if (child.exitCode !== null) return false
+        child.exitCode = -1
+        process.nextTick(() => child.emit('close', null))
+        return true
+      }),
       out(text: string) {
         child.stdout.emit('data', Buffer.from(text))
       },
@@ -354,7 +361,9 @@ describe('adb device service', () => {
     fake.calls[0]!.out('00' + frame('R58M\tunauthorized transport_id:2\n'))
     expect(seen[1]!.map((d) => d.state)).toEqual(['unauthorized'])
     svc.stop()
-    expect(killed(fake.calls[0])).toBe(true)
+    // PID only: the first adb client is the parent of `adb fork-server`, a tree kill would take the server down.
+    expect(fake.calls[0]!.kill).toHaveBeenCalledWith('SIGKILL')
+    expect(killed(fake.calls[0])).toBe(false)
   })
 
   it('restarts the tracker, then falls back to polling', async () => {

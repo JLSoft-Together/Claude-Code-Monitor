@@ -74,6 +74,15 @@ export function killTree(child: ChildProcess, sync = false): void {
   }
 }
 
+/** Kills an adb client by pid only: the first client is the parent of `adb fork-server`, which a tree kill takes down. */
+export function killAdbClient(child: ChildProcess): void {
+  try {
+    child.kill('SIGKILL')
+  } catch {
+    // already gone
+  }
+}
+
 export interface ProcRow {
   pid: number
   ppid: number

@@ -11,11 +11,14 @@ vi.mock('../src/run/proc', async (orig) => {
 
 const ADB = '/sdk/platform-tools/adb'
 
-function fake(out = '', code: number | null = 0, live = false): { spawn: Spawner; specs: SpawnSpec[] } {
+function fake(out = '', code: number | null = 0, live = false): { spawn: Spawner; specs: SpawnSpec[]; kills: ReturnType<typeof vi.fn>[] } {
   const specs: SpawnSpec[] = []
+  const kills: ReturnType<typeof vi.fn>[] = []
   const spawn: Spawner = (spec) => {
     specs.push(spec)
-    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), pid: undefined })
+    const kill = vi.fn()
+    kills.push(kill)
+    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), pid: undefined, kill })
     if (!live) {
       process.nextTick(() => {
         child.stdout.emit('data', Buffer.from(out))
@@ -24,7 +27,7 @@ function fake(out = '', code: number | null = 0, live = false): { spawn: Spawner
     }
     return child as unknown as ChildProcess
   }
-  return { spawn, specs }
+  return { spawn, specs, kills }
 }
 
 const make = (f: ReturnType<typeof fake>, adb: string | null = ADB, timing = {}) =>
@@ -63,11 +66,12 @@ describe('adb commands', () => {
     expect(await make(fake(), null).list()).toBeNull()
   })
 
-  it('connect times out and kills the child', async () => {
+  it('connect times out and kills only the client pid, never the tree holding the adb server', async () => {
     const f = fake('', 0, true)
     const r = await make(f, ADB, { connectMs: 50 }).connect('1.2.3.4:5555')
     expect(r).toEqual({ ok: false, error: 'timeout' })
-    expect(killTree).toHaveBeenCalled()
+    expect(f.kills[0]).toHaveBeenCalledWith('SIGKILL')
+    expect(killTree).not.toHaveBeenCalled()
   })
 
   it('adb missing', async () => {

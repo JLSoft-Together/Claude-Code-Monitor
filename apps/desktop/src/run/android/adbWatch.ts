@@ -8,6 +8,7 @@ export interface AdbWatchTiming {
   pollMs: number
   restartWindowMs: number
   maxRestarts: number
+  pollTimeoutMs: number
 }
 
 export interface AdbWatchOpts<T> {
@@ -16,6 +17,8 @@ export interface AdbWatchOpts<T> {
   adb: () => Promise<string | null>
   parse: (body: string) => T[]
   timing?: Partial<AdbWatchTiming>
+  /** Kills the tracker / a timed-out poll; killTree by default. */
+  kill?: (child: ChildProcess, sync: boolean) => void
 }
 
 export interface AdbWatch<T> {
@@ -29,10 +32,12 @@ const TIMING = {
   pollMs: 3_000,
   restartWindowMs: 5 * 60_000,
   maxRestarts: 3,
+  pollTimeoutMs: 10_000,
 }
 
 export function createAdbWatch<T>(opts: AdbWatchOpts<T>): AdbWatch<T> {
   const t = { ...TIMING, ...opts.timing }
+  const kill = opts.kill ?? killTree
   let items: T[] = []
   let started: Promise<void> | null = null
   let gotFirst = false
@@ -58,7 +63,7 @@ export function createAdbWatch<T>(opts: AdbWatchOpts<T>): AdbWatch<T> {
   const pollOnce = async (): Promise<void> => {
     const adb = await opts.adb()
     if (!adb) return publish([])
-    const r = await collect(opts.spawn, adb, ['devices', '-l'], opts.cwd, { timeoutMs: 10_000 })
+    const r = await collect(opts.spawn, adb, ['devices', '-l'], opts.cwd, { timeoutMs: t.pollTimeoutMs, kill })
     if (r.code === 0) publish(opts.parse(r.out))
   }
 
@@ -158,7 +163,7 @@ export function createAdbWatch<T>(opts: AdbWatchOpts<T>): AdbWatch<T> {
       if (pollTimer) clearTimeout(pollTimer)
       pollTimer = null
       listeners.clear()
-      if (tracker) killTree(tracker, sync)
+      if (tracker) kill(tracker, sync)
       tracker = null
     },
   }

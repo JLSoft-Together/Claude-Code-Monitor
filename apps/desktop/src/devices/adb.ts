@@ -1,6 +1,6 @@
 import type { AdbMdnsService, DevErrorCode, DevResult } from '@ccm/shared'
 import { collect, type Collected } from '../run/collect'
-import type { Spawner } from '../run/proc'
+import { killAdbClient, type Spawner } from '../run/proc'
 import { parseAdbDeviceRows, parseConnect, parseDisconnect, parseMdnsServices, parsePair, parseWlanIp, type AdbDeviceRow } from './parse'
 
 export interface AdbCommandsOpts {
@@ -29,7 +29,7 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
 
   const run = async (args: string[], timeoutMs: number): Promise<Collected | null> => {
     const adb = await opts.adb()
-    return adb ? collect(opts.spawn, adb, args, opts.cwd, { timeoutMs }) : null
+    return adb ? collect(opts.spawn, adb, args, opts.cwd, { timeoutMs, kill: killAdbClient }) : null
   }
 
   const result = async (args: string[], timeoutMs: number, spawnFailed: DevErrorCode, parse: (r: Collected) => DevResult): Promise<DevResult> => {

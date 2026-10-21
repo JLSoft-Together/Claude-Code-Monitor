@@ -2,7 +2,7 @@ import type { AdbDevice, AdbState, DevBatchResult, DevEvent, DevResult, DevSnaps
 import { createAdbWatch, type AdbWatch } from '../run/android/adbWatch'
 import { findAdbTools } from '../run/android/devices'
 import type { EnvDeps } from '../run/android/env'
-import type { Spawner } from '../run/proc'
+import { killAdbClient, type Spawner } from '../run/proc'
 import { createAdbCommands, type AdbCommands } from './adb'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
@@ -132,7 +132,7 @@ export class DeviceManager {
   }
 
   private makeWatch(adb: string): AdbWatch<AdbDeviceRow> {
-    return createAdbWatch({ spawn: this.deps.spawn, cwd: this.deps.home, adb: async () => adb, parse: parseAdbDeviceRows })
+    return createAdbWatch({ spawn: this.deps.spawn, cwd: this.deps.home, adb: async () => adb, parse: parseAdbDeviceRows, kill: killAdbClient })
   }
 
   private emit(): void {

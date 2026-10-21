@@ -14,7 +14,13 @@ export function collect(
   file: string,
   args: string[],
   cwd: string,
-  opts: { timeoutMs?: number; env?: Record<string, string>; track?: (child: ChildProcess, done: boolean) => void } = {},
+  opts: {
+    timeoutMs?: number
+    env?: Record<string, string>
+    track?: (child: ChildProcess, done: boolean) => void
+    /** Timeout kill; killTree by default. */
+    kill?: (child: ChildProcess, sync: boolean) => void
+  } = {},
 ): Promise<Collected> {
   return new Promise((resolve) => {
     let child: ChildProcess
@@ -36,7 +42,7 @@ export function collect(
     }
     const timer = opts.timeoutMs
       ? setTimeout(() => {
-          killTree(child)
+          ;(opts.kill ?? killTree)(child, false)
           finish(null, true)
         }, opts.timeoutMs)
       : null

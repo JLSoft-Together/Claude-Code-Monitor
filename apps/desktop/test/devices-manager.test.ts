@@ -10,7 +10,7 @@ import { DeviceHistory } from '../src/devices/history'
 import { DeviceManager, mapLimit, mergeDevices, type DeviceManagerDeps } from '../src/devices/manager'
 import { parseAdbDeviceRows } from '../src/devices/parse'
 import type { EnvDeps } from '../src/run/android/env'
-import type { SpawnSpec, Spawner } from '../src/run/proc'
+import { killTree, type SpawnSpec, type Spawner } from '../src/run/proc'
 
 vi.mock('../src/run/proc', async (orig) => {
   const mod = await orig<typeof import('../src/run/proc')>()
@@ -32,11 +32,20 @@ interface FakeChild extends EventEmitter {
   stdout: EventEmitter & { resume: () => void }
   stderr: EventEmitter & { resume: () => void }
   unref: () => void
+  kill: (signal?: string) => boolean
   out: (text: string) => void
   exit: (code: number) => void
 }
 
 const stream = (): EventEmitter & { resume: () => void } => Object.assign(new EventEmitter(), { resume: () => undefined })
+
+/** `child.kill`: the pid-only kill adb clients get. */
+function fakeKill(this: FakeChild): boolean {
+  if (this.exitCode !== null) return false
+  this.exitCode = -1
+  process.nextTick(() => this.emit('close', null))
+  return true
+}
 const frame = (body: string): string => body.length.toString(16).padStart(4, '0') + body
 
 /** Every `track-devices` child stays alive and first reports `devices`; other commands exit 0. */
@@ -52,6 +61,7 @@ function fakeSpawn(devices: string): { spawn: Spawner; calls: FakeChild[]; keys:
       stdout: stream(),
       stderr: stream(),
       unref: () => undefined,
+      kill: vi.fn(fakeKill),
       out(text: string) {
         child.stdout.emit('data', Buffer.from(text))
       },
@@ -333,6 +343,7 @@ describe('DeviceManager', () => {
   })
 
   it('releaseOwner by prefix stops the tracker with the last hold', async () => {
+    vi.mocked(killTree).mockClear()
     const { mgr, fake } = setup()
     await mgr.hold('7:view', true)
     await mgr.hold('7:other', true)
@@ -343,6 +354,8 @@ describe('DeviceManager', () => {
     expect(tracker.exitCode).toBeNull()
     mgr.releaseOwner('8:')
     expect(tracker.exitCode).toBe(-1)
+    expect(tracker.kill).toHaveBeenCalledWith('SIGKILL')
+    expect(killTree).not.toHaveBeenCalled()
   })
 
   it('tracker restarts on sdk change', async () => {

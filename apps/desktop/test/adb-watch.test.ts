@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import { createAdbWatch } from '../src/run/android/adbWatch'
 import { parseAdbDeviceRows } from '../src/devices/parse'
-import type { SpawnSpec, Spawner } from '../src/run/proc'
+import { killTree, type SpawnSpec, type Spawner } from '../src/run/proc'
 
 vi.mock('../src/run/proc', async (orig) => {
   const mod = await orig<typeof import('../src/run/proc')>()
@@ -98,6 +98,33 @@ describe('createAdbWatch', () => {
     await vi.waitFor(() => expect(seen).toEqual([['R58M']]))
     expect(fake.keys().filter((k) => k.includes('track-devices'))).toHaveLength(4)
     await vi.waitFor(() => expect(fake.keys().filter((k) => k.endsWith('devices -l')).length).toBeGreaterThan(1))
+    watch.stop()
+  })
+
+  it('stop kills the tracker with the injected kill, not a tree kill', async () => {
+    vi.mocked(killTree).mockClear()
+    const fake = fakeSpawn([[/track-devices/, 'live']])
+    const kill = vi.fn()
+    const watch = createAdbWatch({ ...base, spawn: fake.spawn, kill })
+    watch.onChange(() => undefined)
+    await vi.waitFor(() => expect(fake.calls).toHaveLength(1))
+    watch.stop(true)
+    expect(kill).toHaveBeenCalledWith(fake.calls[0], true)
+    expect(killTree).not.toHaveBeenCalled()
+  })
+
+  it('polls with the injected kill on timeout', async () => {
+    vi.mocked(killTree).mockClear()
+    const fake = fakeSpawn([
+      [/track-devices/, { code: 1 }],
+      [/devices -l$/, 'live'],
+    ])
+    const kill = vi.fn()
+    const watch = createAdbWatch({ ...base, spawn: fake.spawn, kill, timing: { maxRestarts: 0, pollMs: 5, pollTimeoutMs: 20 } })
+    watch.onChange(() => undefined)
+    await vi.waitFor(() => expect(kill).toHaveBeenCalled())
+    expect(kill.mock.calls[0]![0].key).toMatch(/devices -l$/)
+    expect(killTree).not.toHaveBeenCalled()
     watch.stop()
   })
 

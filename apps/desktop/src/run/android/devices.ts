@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { RunDevice, RunEmulator, RunResult } from '@ccm/shared'
 import { parseAdbDevices } from '../parse'
 import { collect } from '../collect'
-import type { Spawner } from '../proc'
+import { killAdbClient, type Spawner } from '../proc'
 import { resolveCommand } from '../resolve'
 import type { DeviceService, RunSettings } from '../types'
 import { createAdbWatch, type AdbWatchTiming } from './adbWatch'
@@ -61,6 +61,7 @@ export function createAdbDevices(opts: AdbDevicesOpts): DeviceService {
     adb: async () => (await getTools()).adb,
     parse: (body) => (devices = parseAdbDevices(body)),
     timing: opts.timing,
+    kill: killAdbClient,
   })
 
   const emulatorSerials = (list: RunDevice[]): Set<string> => new Set(list.filter((d) => d.emulator).map((d) => d.id))
@@ -83,7 +84,7 @@ export function createAdbDevices(opts: AdbDevicesOpts): DeviceService {
     async launchEmulator(id): Promise<RunResult> {
       const { adb, emulator } = await getTools()
       if (!adb || !emulator) return { ok: false, error: { code: 'emulator-missing' } }
-      const r0 = await collect(opts.spawn, adb, ['devices', '-l'], opts.home, { timeoutMs: 10_000 })
+      const r0 = await collect(opts.spawn, adb, ['devices', '-l'], opts.home, { timeoutMs: 10_000, kill: killAdbClient })
       const before = emulatorSerials(r0.code === 0 ? parseAdbDevices(r0.out) : devices)
       let child: ChildProcess
       try {
@@ -105,10 +106,10 @@ export function createAdbDevices(opts: AdbDevicesOpts): DeviceService {
       while (Date.now() < deadline && !stopped) {
         if (exitedEarly && !serial) return { ok: false, error: { code: 'emulator-failed', detail: id } }
         if (!serial) {
-          const r = await collect(opts.spawn, adb, ['devices', '-l'], opts.home, { timeoutMs: 10_000 })
+          const r = await collect(opts.spawn, adb, ['devices', '-l'], opts.home, { timeoutMs: 10_000, kill: killAdbClient })
           const fresh = (r.code === 0 ? parseAdbDevices(r.out) : []).filter((d) => d.emulator && !before.has(d.id))
           for (const d of fresh) {
-            const name = await collect(opts.spawn, adb, ['-s', d.id, 'emu', 'avd', 'name'], opts.home, { timeoutMs: 10_000 })
+            const name = await collect(opts.spawn, adb, ['-s', d.id, 'emu', 'avd', 'name'], opts.home, { timeoutMs: 10_000, kill: killAdbClient })
             const avd = name.out.trim().split(/\r?\n/)[0]?.trim()
             if (!avd || avd === id) {
               serial = d.id
@@ -117,7 +118,7 @@ export function createAdbDevices(opts: AdbDevicesOpts): DeviceService {
           }
         }
         if (serial) {
-          const boot = await collect(opts.spawn, adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], opts.home, { timeoutMs: 10_000 })
+          const boot = await collect(opts.spawn, adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'], opts.home, { timeoutMs: 10_000, kill: killAdbClient })
           if (boot.out.trim() === '1') return { ok: true }
         }
         await sleep(t.bootPollMs)
