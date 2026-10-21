@@ -1,0 +1,572 @@
+/* ------------------------------------------------------------------ Habblaud World: social leve na cidade (Fase 5)
+   Os botões perto de mim (curtir, bater, cumprimentar), a roda de cumprimentos, o "Ir para HB-XXXX" no minimapa, o
+   fade do teletransporte e as ações nos cartões (curtir, bater, cumprimentar, bloquear, denunciar). Carregado junto
+   com a cena da cidade; as cores saem dos tokens do .ui-root (ui/styles.css). */
+
+/* os avisos do escritório na cidade sobem acima do "Ir para" do minimapa */
+.ui-root.is-city .ui-toasts {
+  bottom: calc(226px + env(safe-area-inset-bottom));
+}
+
+/* ---- botões perto de mim */
+
+.ui-city-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line-strong);
+  box-shadow: 0 10px 26px rgba(5, 7, 12, 0.45);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: ui-city-dock-in 0.22s var(--ease);
+}
+
+.ui-city-dock[hidden] {
+  display: none;
+}
+
+@keyframes ui-city-dock-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+.ui-city-dock__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px 0 8px;
+  border-radius: 10px;
+  background: var(--ui-bg-soft);
+  border: 1px solid var(--ui-line);
+  color: var(--ui-text);
+  font: 700 12.5px/1 var(--font-ui);
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.ui-city-dock__btn:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-city-dock__btn:active {
+  transform: scale(0.96);
+}
+
+.ui-city-dock__btn.is-like {
+  border-color: rgba(255, 110, 140, 0.45);
+  background: rgba(255, 80, 120, 0.12);
+}
+
+.ui-city-dock__btn.is-like .ui-city-dock__icon {
+  animation: ui-city-heartbeat 1.4s ease-in-out infinite;
+}
+
+@keyframes ui-city-heartbeat {
+  0%,
+  60%,
+  100% {
+    transform: none;
+  }
+  70% {
+    transform: scale(1.25);
+  }
+  80% {
+    transform: scale(1);
+  }
+  90% {
+    transform: scale(1.18);
+  }
+}
+
+.ui-city-dock__icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ui-city-dock__btn kbd,
+.ui-city-x__btn kbd {
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--ui-line-strong);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--ui-muted);
+  font: 600 10px/15px var(--font-ui);
+}
+
+/* ---- a roda de cumprimentos */
+
+.ui-city-wheel {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+}
+
+.ui-city-wheel[hidden] {
+  display: none;
+}
+
+.ui-city-wheel__ring,
+.ui-city-wheel__center,
+.ui-city-wheel__arrow {
+  position: absolute;
+  left: var(--cx);
+  top: var(--cy);
+}
+
+.ui-city-wheel__ring {
+  width: 0;
+  height: 0;
+}
+
+.ui-city-wheel__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 128px;
+  height: 128px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(20, 24, 33, 0.95) 58%, rgba(20, 24, 33, 0.55) 72%, transparent 73%);
+  pointer-events: none;
+  text-align: center;
+}
+
+.ui-city-wheel__label {
+  color: var(--ui-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ui-city-wheel__to {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ffe2b8;
+  font: 700 13px/1.25 var(--font-ui);
+}
+
+.ui-city-wheel__hint {
+  max-width: 104px;
+  color: var(--ui-text);
+  font: 600 11px/1.25 var(--font-ui);
+}
+
+.ui-city-wheel__item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: var(--ui-bg-solid);
+  border: 2px solid var(--ui-line-strong);
+  box-shadow: 0 6px 16px rgba(5, 7, 12, 0.5);
+  transform: translate(var(--x), var(--y));
+  transition:
+    transform 0.14s var(--ease),
+    border-color 0.14s,
+    background 0.14s;
+}
+
+.ui-city-wheel.is-in .ui-city-wheel__item {
+  animation: ui-city-wheel-in 0.26s var(--ease) both;
+  animation-delay: calc(var(--i) * 18ms);
+}
+
+@keyframes ui-city-wheel-in {
+  from {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+}
+
+.ui-city-wheel__item.is-focus,
+.ui-city-wheel__item:hover {
+  border-color: #ffd27a;
+  background: #2a2232;
+  transform: translate(var(--x), var(--y)) scale(1.16);
+}
+
+.ui-city-wheel__item.is-picked {
+  transform: translate(var(--x), var(--y)) scale(1.35);
+}
+
+.ui-city-wheel__emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.ui-city-wheel__key {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: #1b2030;
+  border: 1px solid var(--ui-line-strong);
+  color: var(--ui-muted);
+  font: 700 9.5px/13px var(--font-ui);
+  text-align: center;
+}
+
+/* a seta que aponta para quem vai receber */
+.ui-city-wheel__arrow {
+  width: 0;
+  height: 0;
+  transform: rotate(var(--a, 0rad));
+  pointer-events: none;
+}
+
+.ui-city-wheel__arrow::before {
+  content: '';
+  position: absolute;
+  left: 134px;
+  top: -11px;
+  border-left: 18px solid #ffd27a;
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+  filter: drop-shadow(0 0 1px #1b2030) drop-shadow(0 0 1px #1b2030) drop-shadow(0 3px 4px rgba(5, 7, 12, 0.6));
+  animation: ui-city-arrow 0.9s ease-in-out infinite;
+}
+
+.ui-city-wheel__arrow[hidden] {
+  display: none;
+}
+
+@keyframes ui-city-arrow {
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+/* ---- "Ir para HB-XXXX" e "Visitar um prédio aleatório", em cima do minimapa */
+
+.ui-city-tp {
+  position: fixed;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(146px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  width: 186px;
+}
+
+.ui-city-tp__form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 3px 3px 7px;
+  border-radius: 9px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.ui-city-tp__label {
+  color: var(--ui-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ui-city-tp__input {
+  width: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #cfeaff;
+  font: 700 12px/1.3 var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ui-city-tp__input::placeholder {
+  color: var(--ui-faint);
+  letter-spacing: 0.05em;
+}
+
+.ui-city-tp__go,
+.ui-city-tp__dice {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(124, 200, 255, 0.14);
+  border: 1px solid rgba(124, 200, 255, 0.4);
+  color: #d6efff;
+  font: 700 11.5px/1 var(--font-ui);
+}
+
+.ui-city-tp__dice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  width: 100%;
+  justify-content: center;
+  background: var(--ui-bg);
+  border-color: var(--ui-line-strong);
+  color: var(--ui-text);
+}
+
+.ui-city-tp__dice:hover,
+.ui-city-tp__go:hover {
+  background: rgba(124, 200, 255, 0.22);
+}
+
+.ui-city-tp__dice:disabled,
+.ui-city-tp__go:disabled {
+  opacity: 0.55;
+}
+
+.ui-city-tp__error {
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--ui-bg-solid);
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  color: #ffc9c9;
+  font-size: 11px;
+}
+
+.ui-city-tp__error[hidden] {
+  display: none;
+}
+
+/* ---- fade do teletransporte: escurece em íris e clareia no lugar novo */
+
+.ui-city-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  background: radial-gradient(circle at 50% 50%, rgba(20, 16, 40, 0.92) 0%, rgba(6, 8, 16, 1) 70%);
+  pointer-events: none !important;
+}
+
+.ui-city-fade[hidden] {
+  display: none;
+}
+
+/* ---- botão de teste dos fogos (modo demonstração com ?fireworks=1) */
+
+.ui-city-testfw {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--top-h, 64px) + 12px);
+  transform: translateX(-50%);
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: #3a2350;
+  border: 1px solid #b28dff;
+  color: #f1e6ff;
+  font: 700 12.5px/1 var(--font-ui);
+  box-shadow: 0 8px 20px rgba(5, 7, 12, 0.45);
+}
+
+/* ---- ações nos cartões */
+
+.ui-city-x {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ui-line);
+}
+
+.ui-city-x__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-city-x__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--ui-bg-soft);
+  border: 1px solid var(--ui-line-strong);
+  color: var(--ui-text);
+  font: 700 11.5px/1 var(--font-ui);
+}
+
+.ui-city-x__btn[hidden] {
+  display: none;
+}
+
+.ui-city-x__btn:hover:not(:disabled) {
+  background: var(--ui-bg-hover);
+}
+
+.ui-city-x__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-city-x__btn.is-primary {
+  border-color: rgba(255, 210, 122, 0.5);
+  background: rgba(255, 210, 122, 0.12);
+}
+
+.ui-city-x__btn.is-liked {
+  border-color: rgba(255, 110, 140, 0.5);
+}
+
+.ui-city-x__btn.is-quiet {
+  color: var(--ui-muted);
+  font-weight: 600;
+}
+
+.ui-city-x__btn.is-danger {
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.14);
+  color: #ffc9c9;
+}
+
+.ui-city-x__code {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(124, 200, 255, 0.3);
+  color: #cfeaff;
+  font: 700 11px/1.3 var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.ui-city-x__code[hidden],
+.ui-city-x__hint[hidden],
+.ui-city-x__seal[hidden],
+.ui-city-x__reasons[hidden],
+.ui-city-x__done[hidden] {
+  display: none;
+}
+
+.ui-city-x__hint {
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.ui-city-x__seal {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(200, 206, 220, 0.08);
+  border: 1px dashed rgba(200, 206, 220, 0.35);
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.ui-city-x__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ui-city-x__reasons > .ui-city-x__hint {
+  width: 100%;
+}
+
+.ui-city-x__reason {
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--ui-bg-soft);
+  border: 1px solid var(--ui-line-strong);
+  color: var(--ui-text);
+  font: 600 11px/1.2 var(--font-ui);
+}
+
+.ui-city-x__reason:hover {
+  border-color: rgba(255, 179, 71, 0.6);
+  background: rgba(255, 179, 71, 0.1);
+}
+
+.ui-city-x__done {
+  color: var(--st-working);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-city-dock,
+  .ui-city-dock__btn.is-like .ui-city-dock__icon,
+  .ui-city-wheel.is-in .ui-city-wheel__item,
+  .ui-city-wheel__arrow::before {
+    animation: none;
+  }
+}
+
+/* celular: sem teclado, os botões ficam maiores e sem a tecla; o "Ir para" encolhe em cima do minimapa menor */
+@media (max-width: 600px) {
+  /* no canto de baixo à esquerda (a dica das teclas some no celular), só os ícones, do tamanho de um dedo */
+  .ui-city-dock {
+    left: calc(8px + env(safe-area-inset-left));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    transform: none;
+    animation: none;
+  }
+
+  .ui-city-dock__btn {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    padding: 0 8px;
+  }
+
+  .ui-city-dock__text {
+    display: none;
+  }
+
+  .ui-city-dock__icon {
+    font-size: 20px;
+  }
+
+  .ui-city-dock__btn kbd,
+  .ui-city-x__btn kbd,
+  .ui-city-wheel__key {
+    display: none;
+  }
+
+  .ui-city-tp {
+    bottom: calc(112px + env(safe-area-inset-bottom));
+    width: 142px;
+  }
+
+  .ui-city-tp__label,
+  .ui-city-tp__dice-text {
+    display: none;
+  }
+
+  .ui-root.is-city .ui-toasts {
+    bottom: calc(176px + env(safe-area-inset-bottom));
+  }
+}

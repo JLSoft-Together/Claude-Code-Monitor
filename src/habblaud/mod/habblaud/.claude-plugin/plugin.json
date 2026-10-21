@@ -1,0 +1,11 @@
+{
+  "name": "habblaud",
+  "displayName": "Habblaud",
+  "version": "1.0.3",
+  "description": "Liga a sessão ao Habblaud: grava o uso do plano (5h e semanal) para o escritório, avisa embaixo do prompt quando outra sessão precisa de você e adiciona o comando /habblaud.",
+  "author": { "name": "Márcio Junior", "url": "https://github.com/marmottajr" },
+  "homepage": "https://github.com/marmottajr/habblaud#readme",
+  "repository": "https://github.com/marmottajr/habblaud",
+  "license": "MIT",
+  "keywords": ["habblaud", "escritorio", "uso", "rate-limits", "status"]
+}

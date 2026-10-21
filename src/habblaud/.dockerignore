@@ -1,0 +1,17 @@
+# Contexto mínimo para o build: tudo fica de fora, exceto o que a compilação precisa.
+# (Evita mandar para o daemon node_modules, dist, caches de geração de arte e arquivos locais.)
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts
+!client/
+!shared/
+!server/
+!scripts/build-server.mjs
+!scripts/build-info.mjs
+
+# Mesmo dentro das pastas incluídas: nada de lixo local.
+**/node_modules
+**/.DS_Store
+**/*.log

@@ -1,0 +1,18 @@
+{
+  "description": "Responder pelo escritório: manda cada pedido de permissão (e pergunta do AskUserQuestion) para o Habblaud local (porta em HABBLAUD_PORT, padrão 4747) e espera a resposta por até 5 min (até 24 h com HABBLAUD_PERMISSION_TIMEOUT); fora do ar ou sem página aberta, sai na hora e vale o terminal.",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/permission-hook.mjs\"",
+            "timeout": 86430,
+            "statusMessage": "Aguardando resposta no Habblaud"
+          }
+        ]
+      }
+    ]
+  }
+}

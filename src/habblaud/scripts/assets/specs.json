@@ -1,0 +1,380 @@
+{
+  "defaultModel": "google/gemini-3.1-flash-image",
+  "styles": {
+    "pixel": "Style: authentic pixel art made of crisp hard-edged square pixels on a perfectly regular grid, limited palette, flat color fills with 3-4 shades per material, no anti-aliasing, no gradients, no blur, no noise, no dithering. Cozy, bright, modern office pixel art with its own original look: light cool neutral greys, light porcelain floor tiles, warm honey wood, bluish glass, glowing bright blue monitor screens, blue sofas with orange cushions, terracotta pots with lush green plants, colorful binders. Original artwork: do not copy or imitate any existing game, tileset or artist. Outlines in dark blue-grey (#2b3245), never pure black. Light comes from the top-left. Absolutely no text, letters, numbers, logos or watermark.",
+    "chroma": "Background: one perfectly flat solid magenta color (#FF00FF) filling the entire background edge to edge, with no shadow, no floor, no gradient, no vignette and nothing else. The subject is isolated, centered, with a generous margin, and must not contain any magenta or pink.",
+    "wallart": "Style: a bold, simple illustration that will be displayed TINY as a framed picture on an office wall in a pixel art game (smaller than 64 pixels wide). Use large flat areas of strong saturated color, high contrast between neighbouring shapes, chunky iconic shapes and very few details; no thin lines, no small text. The artwork must fill the ENTIRE wide canvas edge to edge (full bleed), with no white or empty margins and no letterboxing: no frame, no border, no wall, no mat, no signature, no letters.",
+    "poster": "Style: a bold minimalist graphic poster that will be displayed TINY (about 12x16 pixels) on an office wall in a pixel art game. One single big iconic subject centered and filling most of the canvas, on a solid flat background color; strong saturated colors, high contrast, chunky simple shapes, no small details, no thin lines. Fill the whole canvas edge to edge: no frame, no border, no wall, no text, no letters, no numbers."
+  },
+  "assets": [
+    {
+      "id": "logo-mark",
+      "group": "brand",
+      "aspect": "1:1",
+      "styles": [
+        "pixel",
+        "chroma"
+      ],
+      "prompt": "A pixel art game icon of a charming little modern office building, designed to stay crisp as a tiny app icon. It is drawn on a coarse grid of big square pixels (the building is about 60 pixels wide and 70 pixels tall), every pixel exactly the same size and perfectly aligned to the grid, shown enlarged. Strictly front-facing elevation, as building sprites in classic top-down RPG and management games: perfectly straight vertical walls and horizontal edges, no perspective, no vanishing point, no slanted or diagonal lines, no side wall. A flat teal-blue roof seen from above as a simple rectangle with a light rim and straight vertical sides (not a trapezoid), directly on top of the facade, with one small potted plant on it. Light warm-grey facade with two honey-wood horizontal bands between the floors. Three floors with three big simple windows each: one solid flat color per window inside a dark frame, glowing warm yellow (two of them glowing bright blue like computer screens), with no mullions, no panes, no curtains and nothing drawn inside. A glass double door with a small teal awning in the middle of the ground floor. Only the building: nothing on the ground around it (no furniture, no sofas, no extra plants, no people). Simple, bold, symmetrical, cute; a compact rectangular silhouette, a bit taller than wide, that fills most of the square.",
+      "post": {
+        "kind": "native",
+        "colors": 28,
+        "balance": 0.5,
+        "merge": 12
+      },
+      "out": "brand/logo-detailed.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "empty-office",
+      "group": "illustrations",
+      "aspect": "16:9",
+      "styles": [
+        "pixel"
+      ],
+      "prompt": "A pixel art scene of a cozy, empty modern office interior at dusk, in top-down 3/4 view like a cozy management game. Light porcelain floor tiles with subtle grout lines; a warm wooden lounge corner with a blue sofa, orange cushions and a rug; two islands of white desks with glowing blue monitors, keyboards and mugs, grey office chairs pushed in; potted plants in terracotta pots; tall shelves with colorful binders; a water cooler with a blue jug; a small coffee counter. Big windows along the back wall show an orange, pink and purple sunset sky over distant city silhouettes. Warm golden lamp light pools on the floor. Calm, quiet, inviting atmosphere, nobody there: no people, no characters, no animals.",
+      "post": {
+        "kind": "scene",
+        "w": 480,
+        "h": 270,
+        "colors": 32,
+        "scale": 2,
+        "despeckle": true,
+        "balance": 0.5
+      },
+      "out": "illustrations/empty-office.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "painting-mountains",
+      "group": "art",
+      "kind": "painting",
+      "title": "Montanhas ao amanhecer",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A landscape painting: snowy blue mountains under a warm peach and golden sunrise sky, a calm turquoise lake in front reflecting them, dark green pine trees on the shores.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-mountains.png"
+    },
+    {
+      "id": "painting-beach",
+      "group": "art",
+      "kind": "painting",
+      "title": "Praia tropical",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A sunny tropical beach painting: a bright turquoise sea, golden sand, one leaning coconut palm tree on the left, a small white sailboat on the horizon, a big yellow sun in a clear blue sky.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "white"
+      },
+      "out": "art/painting-beach.png"
+    },
+    {
+      "id": "painting-city-night",
+      "group": "art",
+      "kind": "painting",
+      "title": "Cidade à noite",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A city skyline at night: a deep navy sky with a big, perfectly round, pale yellow full moon and a few stars; a row of chunky skyscrapers in three shades of blue, each with a grid of big glowing warm-yellow windows; their yellow reflections on a calm dark river in front.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "black",
+        "saturation": 1.1,
+        "darkBias": -0.5
+      },
+      "out": "art/painting-city-night.png"
+    },
+    {
+      "id": "painting-abstract",
+      "group": "art",
+      "kind": "painting",
+      "title": "Formas e cores",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A bold modern abstract painting in Bauhaus style: a few large overlapping shapes (a big circle, a half circle and two rectangles) in orange, mustard yellow, teal and navy blue on a cream background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-abstract.png"
+    },
+    {
+      "id": "painting-cat",
+      "group": "art",
+      "kind": "painting",
+      "title": "Retrato de gato",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A portrait painting of a cute chubby orange tabby cat sitting and looking at the viewer with big green eyes, centered, against a flat soft teal background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "gold"
+      },
+      "out": "art/painting-cat.png"
+    },
+    {
+      "id": "painting-wave",
+      "group": "art",
+      "kind": "painting",
+      "title": "A grande onda",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A great curling ocean wave in Japanese woodblock (ukiyo-e) style: deep Prussian blue water with white foam claws, a small snowy Mount Fuji in the distance, cream sky.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-wave.png"
+    },
+    {
+      "id": "painting-sunflowers",
+      "group": "art",
+      "kind": "painting",
+      "title": "Girassóis",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting of a terracotta vase holding three big bright yellow sunflowers with dark brown centers and green leaves, on a wooden table, against a flat cobalt blue background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "gold"
+      },
+      "out": "art/painting-sunflowers.png"
+    },
+    {
+      "id": "painting-rio",
+      "group": "art",
+      "kind": "painting",
+      "title": "Pão de Açúcar",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "Rio de Janeiro's Sugarloaf Mountain (Pão de Açúcar) rising from Guanabara Bay at sunset: dark green rounded granite peaks, an orange and pink sky with a low sun, calm blue water with a few tiny boats.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "wood"
+      },
+      "out": "art/painting-rio.png"
+    },
+    {
+      "id": "painting-wide-forest-lake",
+      "group": "art",
+      "kind": "painting",
+      "title": "Lago na floresta",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic landscape painting: a calm lake at golden hour surrounded by layered dark green pine forests, soft blue mountains in the distance, a warm yellow sky and the sun reflected on the water.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 18,
+        "frame": "wood"
+      },
+      "out": "art/painting-wide-forest-lake.png"
+    },
+    {
+      "id": "painting-wide-color-fields",
+      "group": "art",
+      "kind": "painting",
+      "title": "Campos de cor",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic abstract painting: large soft-edged horizontal color fields in coral orange, deep blue, teal and cream, with two bold circles (one mustard yellow, one navy) placed off-center. Calm, modern, gallery-like.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "white"
+      },
+      "out": "art/painting-wide-color-fields.png"
+    },
+    {
+      "id": "painting-wide-aurora",
+      "group": "art",
+      "kind": "painting",
+      "title": "Aurora boreal",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic painting of vivid green and violet northern lights (aurora borealis) swirling over snowy mountains and a frozen lake at night, a dark navy starry sky, a few dark pine trees in the foreground.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 18,
+        "frame": "black"
+      },
+      "out": "art/painting-wide-aurora.png"
+    },
+    {
+      "id": "poster-coffee",
+      "group": "art",
+      "kind": "poster",
+      "variant": "coffee",
+      "title": "Café",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big white coffee mug full of dark brown coffee, seen from the side with a chunky handle on the right, with ONE single short and thick white wisp of steam above it, on a solid warm orange background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-coffee.png"
+    },
+    {
+      "id": "poster-rocket",
+      "group": "art",
+      "kind": "poster",
+      "variant": "rocket",
+      "title": "Foguete",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big red and white cartoon rocket with a round blue window flying straight up, a bright yellow-orange flame below it, on a solid dark navy background with two tiny white stars.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-rocket.png"
+    },
+    {
+      "id": "poster-code",
+      "group": "art",
+      "kind": "poster",
+      "variant": "code",
+      "title": "Código",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A dark code editor window icon: a dark charcoal rectangle with a light grey title bar with three tiny colored dots, and inside it four or five thick horizontal bars of different lengths in bright green, cyan, orange and pink, indented like lines of source code, on a solid deep purple background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-code.png"
+    },
+    {
+      "id": "poster-cat",
+      "group": "art",
+      "kind": "poster",
+      "variant": "cat",
+      "title": "Gato",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cute black cat head with pointy ears, big round yellow eyes and a small pink nose, front view, on a solid sunny yellow background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-cat.png"
+    },
+    {
+      "id": "poster-bug",
+      "group": "art",
+      "kind": "poster",
+      "variant": "bug",
+      "title": "Sem bugs",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cartoon green beetle bug seen from above with six black legs and two antennae, crossed out by a thick red prohibition circle with a diagonal bar, on a solid off-white background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-bug.png"
+    },
+    {
+      "id": "poster-ship-it",
+      "group": "art",
+      "kind": "poster",
+      "variant": "ship_it",
+      "title": "Ship it!",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cheerful cargo ship seen from the side, filling the whole width: a bright red hull, a white bridge cabin at the back and three big containers in yellow, blue and green, sailing on two rows of bold deep-blue waves, on a solid light sky-blue background with a small yellow sun in a corner.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-ship-it.png"
+    }
+  ]
+}

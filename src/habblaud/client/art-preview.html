@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Habblaud — prévia da arte</title>
+    <style>
+      :root {
+        --bg: #161a24;
+        --panel: #1f2431;
+        --ink: #e8ecf3;
+        --muted: #9aa4b6;
+        --accent: #f2c14e;
+      }
+      html, body { margin: 0; background: var(--bg); color: var(--ink); }
+      /* Texto na fonte do sistema: a Pixelify abaixo de ~30px fecha a abertura do "C" e ele vira
+         "O" ("Oena de exemplo"). Pixelify só no título principal, grande e no peso 400 carregado. */
+      body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; padding: 24px 28px 64px; }
+      header h1 { margin: 0 0 4px; font-family: 'Pixelify Sans', system-ui, sans-serif; font-weight: 400; font-size: 32px; letter-spacing: 0.5px; }
+      header p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
+      nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 22px; font-size: 14px; }
+      nav a { color: var(--accent); text-decoration: none; }
+      section { background: var(--panel); border-radius: 10px; padding: 16px 18px 18px; margin: 0 0 22px; }
+      section h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+      section .desc { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+      canvas.px { image-rendering: pixelated; display: block; }
+      .scroll { overflow-x: auto; }
+      .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+      .cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      .cell span { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Habblaud — prévia da arte procedural</h1>
+      <p>Tudo gerado em código (canvas 2D), ampliado 3× sem suavização. Âncora em magenta; footprint pontilhado.</p>
+    </header>
+    <nav id="nav"></nav>
+    <main id="root"></main>
+    <script type="module" src="/src/art/preview.ts"></script>
+  </body>
+</html>

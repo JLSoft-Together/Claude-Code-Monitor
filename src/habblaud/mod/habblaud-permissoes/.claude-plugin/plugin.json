@@ -1,0 +1,11 @@
+{
+  "name": "habblaud-permissoes",
+  "displayName": "Habblaud: permissões pelo escritório",
+  "version": "1.0.3",
+  "description": "Hook PermissionRequest que deixa aprovar ou recusar pelo Habblaud os pedidos de permissão do Claude Code e responder as perguntas do AskUserQuestion; o diálogo continua no terminal e vale o que você responder primeiro.",
+  "author": { "name": "Márcio Junior", "url": "https://github.com/marmottajr" },
+  "homepage": "https://github.com/marmottajr/habblaud#readme",
+  "repository": "https://github.com/marmottajr/habblaud",
+  "license": "MIT",
+  "keywords": ["habblaud", "permissoes", "hooks"]
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#12151d" />
+    <meta name="description" content="Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo." />
+    <title>Habblaud</title>
+    <!-- Prévia ao compartilhar o link (Open Graph / Twitter). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Habblaud" />
+    <meta property="og:title" content="Habblaud" />
+    <meta property="og:description" content="Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo." />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:image" content="/assets/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="O escritório do Habblaud em pixel art, com salas de projeto e agentes trabalhando." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Habblaud" />
+    <meta name="twitter:description" content="Escritório virtual em pixel art que mostra, em tempo real, o que seus agentes do Claude Code estão fazendo." />
+    <meta name="twitter:image" content="/assets/og-image.png" />
+    <link rel="icon" href="/assets/brand/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/assets/brand/favicon-16.png" type="image/png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
+    <!-- App na Tela de Início (celular): tela cheia, ícone e nome. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Habblaud" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #12151d; }
+      #world, #city, #visit { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; image-rendering: pixelated; }
+      #world[hidden], #city[hidden], #visit[hidden] { display: none; }
+      #ui { position: fixed; inset: 0; pointer-events: none; }
+      #ui > * { pointer-events: auto; }
+    </style>
+  </head>
+  <body>
+    <canvas id="world"></canvas>
+    <div id="ui"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

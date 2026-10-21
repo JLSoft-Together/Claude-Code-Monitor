@@ -1,0 +1,26 @@
+{
+  "name": "habblaud",
+  "owner": { "name": "Márcio Junior", "url": "https://github.com/marmottajr" },
+  "description": "Plugins do Habblaud, o escritório virtual em pixel art das suas sessões do Claude Code.",
+  "version": "1.0.3",
+  "plugins": [
+    {
+      "name": "habblaud",
+      "source": "./mod/habblaud",
+      "description": "Mod do Habblaud: uso do plano (5h e semanal) para o escritório, aviso embaixo do prompt quando outra sessão precisa de você e o comando /habblaud.",
+      "category": "productivity"
+    },
+    {
+      "name": "habblaud-permissoes",
+      "source": "./mod/habblaud-permissoes",
+      "description": "Aprovar ou recusar pelo Habblaud os pedidos de permissão do Claude Code e responder as perguntas do agente (hook PermissionRequest).",
+      "category": "productivity"
+    },
+    {
+      "name": "habblaud-mensagens",
+      "source": "./mod/habblaud-mensagens",
+      "description": "Mandar mensagens pelo Habblaud: o que você digita no escritório entra na sessão como se você tivesse digitado no terminal.",
+      "category": "productivity"
+    }
+  ]
+}

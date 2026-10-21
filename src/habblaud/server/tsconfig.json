@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  // Os scripts do host em TypeScript (docker-up, instaladores do tap de statusline, do hook de permissão, do mod e dos
+  // hooks do Codex, auxiliar das mensagens ao Codex, gerador do timelapse fictício, publicação de versão) também são
+  // verificados.
+  "include": [".", "../shared", "../scripts/docker-up.ts", "../scripts/statusline-install.ts", "../scripts/hooks-install.ts", "../scripts/mod-install.ts", "../scripts/codex-install.ts", "../scripts/codex-bridge.ts", "../scripts/remote-setup.ts", "../scripts/remote-mdns.ts", "../scripts/demo-timeline.ts", "../scripts/release.ts"]
+}

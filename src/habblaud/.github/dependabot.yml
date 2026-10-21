@@ -1,0 +1,30 @@
+# Atualizações automáticas de dependências (Dependabot).
+# Documentação: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # Dependências npm (package.json e package-lock.json na raiz)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Os tipos acompanham a menor versão do Node que o Habblaud suporta (engines: >=22.12). Com os de uma versão
+      # mais nova, o typecheck deixaria passar APIs que não existem nela. Sobe à mão, junto com o engines e o CI.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # Imagens base do Dockerfile (node:24-alpine)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # A imagem fica numa versão LTS do Node. Trocar de versão principal (ex.: 24 -> 26 quando o 26 virar LTS) é à mão.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  # Actions usadas em .github/workflows/ci.yml (actions/checkout, actions/setup-node)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

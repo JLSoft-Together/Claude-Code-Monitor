@@ -1,0 +1,4 @@
+{
+  "description": "Módulo de hooks do mod do Habblaud (uso do plano, aviso embaixo do prompt e /habblaud)",
+  "modules": ["./register.ts"]
+}

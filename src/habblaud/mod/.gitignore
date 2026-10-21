@@ -1,0 +1,4 @@
+# Gerados pelo Claude Code a cada carga de um mod por --plugin-dir: os tipos da versão instalada
+# (~800 KB, mudam a cada versão do Claude Code) e o tsconfig.json que estende os tipos gerados.
+*/.claude-plugin/types/
+*/tsconfig.json
