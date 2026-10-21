@@ -305,11 +305,12 @@ function onBarKey(e: KeyboardEvent): void {
   close()
 }
 
-// A language switch re-creates the world: the new one gets the replay clock too.
+// A language switch re-creates the world: the new one gets the replay clock too. Its `setPlayback` restarts the sim
+// empty and waits for the next snapshot as the initial load, so re-seek: set the playback, then publish the moment.
 watch(
   () => office.world,
   (w) => {
-    if (active && w) w.setPlayback?.(playback)
+    if (active && w) seek(cur)
   },
 )
 

@@ -239,12 +239,28 @@ describe('OfficeTimelapse playback', () => {
     expect(rafQueue.length).toBe(0)
   })
 
-  it('re-applies the playback to a world rebuilt by a language switch', async () => {
+  it('re-applies the playback to a world rebuilt by a language switch and re-publishes the paused moment', async () => {
+    const push = vi.spyOn(officeFeed, 'pushReplay')
     await mountBar()
-    const next = { setPlayback: vi.fn() }
+    frame(250)
+    await w!.find('[data-lapse-play]').trigger('click') // pause at FROM + 45 s
+    const at = FROM + 45_000
+    push.mockClear()
+    // The rebuilt world's setPlayback restarts its sim empty: a snapshot must follow it.
+    const order: string[] = []
+    const next = { setPlayback: vi.fn((_p: WorldPlayback | null) => order.push('setPlayback')) }
+    push.mockImplementation(function (this: typeof officeFeed, s) {
+      order.push('push')
+      return Object.getPrototypeOf(officeFeed).pushReplay.call(this, s)
+    })
     useOfficeStore().world = next as never
     await flushPromises()
     expect(next.setPlayback).toHaveBeenCalledWith(expect.objectContaining({ clock: expect.any(Function) }))
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push.mock.calls[0]![0].serverTime).toBe(at)
+    expect(push.mock.calls[0]![0].agents.map((a) => a.id)).toEqual(['a1'])
+    expect(order).toEqual(['setPlayback', 'push'])
+    expect((next.setPlayback.mock.calls[0]![0] as WorldPlayback).scale()).toBe(0)
   })
 })
 
