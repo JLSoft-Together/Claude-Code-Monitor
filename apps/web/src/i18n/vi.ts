@@ -31,6 +31,7 @@ import peerV54 from './peer-v54'
 import peerMapV54 from './peer-map-v54'
 import peerWsV54 from './peer-ws-v54'
 import githubV58 from './github-v58'
+import officeV60 from './office-v60'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -47,6 +48,7 @@ const vi: typeof en = {
   ...peerMapV54.vi,
   ...peerWsV54.vi,
   ...githubV58.vi,
+  ...officeV60.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowUpLeft,
   ArrowUpRight,
+  Building2,
   ChartGantt,
   ChevronDown,
   ChevronUp,
@@ -58,6 +59,9 @@ import TreeEdge from './TreeEdge.vue'
 import KeyHint from './KeyHint.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ToolTimeline from './ToolTimeline.vue'
+import OfficeOptions from './office/OfficeOptions.vue'
+import OfficeView from './office/OfficeView.vue'
+import { useOfficeStore } from '../stores/office'
 
 const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
@@ -977,7 +981,7 @@ async function flyToFit(): Promise<void> {
 }
 
 watch(
-  () => ui.selectedAgentId && !visibility.value.visible.has(ui.selectedAgentId),
+  () => ui.mapView === 'map' && !!ui.selectedAgentId && !visibility.value.visible.has(ui.selectedAgentId),
   (lost) => {
     if (lost) ui.selectAgent(null)
   },
@@ -1305,7 +1309,7 @@ function onMenuPick(id: string): void {
 }
 
 function onCanvasKey(e: KeyboardEvent): void {
-  if (e.defaultPrevented || isTyping(e.target)) return
+  if (e.defaultPrevented || ui.mapView !== 'map' || isTyping(e.target)) return
   const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('.vue-flow__node')
   const id = el?.dataset.id
   const mod = e.ctrlKey || e.metaKey
@@ -1408,7 +1412,16 @@ const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?
 const views = computed(() => [
   { value: 'map' as MapView, label: t('tools.view.map'), icon: Network },
   { value: 'timeline' as MapView, label: t('tools.view.timeline'), icon: ChartGantt },
+  { value: 'office' as MapView, label: t('officeV60.view'), icon: Building2 },
 ])
+
+const office = useOfficeStore()
+const officeControls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
+  { key: 'zoomIn', label: t('officeV60.zoomIn'), icon: Plus, run: () => office.zoomBy(1.25) },
+  { key: 'zoomOut', label: t('officeV60.zoomOut'), icon: Minus, run: () => office.zoomBy(0.8) },
+  { key: 'overview', label: t('officeV60.overview'), icon: Maximize, hint: 'F', run: () => office.overview() },
+])
+const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
 </script>
 
 <template>
@@ -1417,13 +1430,14 @@ const views = computed(() => [
     <div
       ref="canvas"
       class="relative min-h-0 flex-1 overflow-hidden"
-      :class="[nodeMotion ? 'ccm-map-motion' : '', ui.mapView === 'map' ? 'bg-canvas' : 'bg-surface']"
+      :class="[nodeMotion ? 'ccm-map-motion' : '', ui.mapView === 'timeline' ? 'bg-surface' : 'bg-canvas']"
       role="region"
-      :aria-label="t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : 'map.ariaLabel')"
+      :aria-label="regionLabel"
       @keydown="onCanvasKey"
       @focusin="onCanvasFocusIn"
     >
       <ToolTimeline v-if="ui.mapView === 'timeline'" :terminal-id="terminalId" />
+      <OfficeView v-else-if="ui.mapView === 'office'" :terminal-id="terminalId" />
       <VueFlow
         v-else
         :id="FLOW_ID"
@@ -1562,6 +1576,24 @@ const views = computed(() => [
             >
               {{ t('tools.minutes', { n: w }) }}
             </button>
+          </template>
+          <template v-else-if="ui.mapView === 'office'">
+            <button
+              v-for="c in officeControls"
+              :key="c.key"
+              type="button"
+              :class="TOOL"
+              :aria-label="c.label"
+              :title="c.label"
+              :aria-keyshortcuts="c.hint"
+              :disabled="!office.world"
+              @click="c.run()"
+            >
+              <component :is="c.icon" :size="16" aria-hidden="true" />
+              <KeyHint v-if="c.hint" :keys="c.hint" />
+            </button>
+            <!-- Sound (Task 7) and timelapse (Task 8) buttons go here, before the options. -->
+            <OfficeOptions />
           </template>
           <template v-else>
             <button
