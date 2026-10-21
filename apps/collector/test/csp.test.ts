@@ -1,6 +1,25 @@
 import { createHash } from 'node:crypto'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { contentSecurityPolicy } from '../src/server'
+import { cacheControlFor, contentSecurityPolicy } from '../src/server'
+
+describe('cacheControlFor', () => {
+  const root = path.resolve('dist-root')
+  const at = (...p: string[]) => cacheControlFor(root, path.join(root, ...p))
+  it('makes only Vite-hashed bundles immutable', () => {
+    expect(at('assets', 'index-BMrYeALK.js')).toBe('public, max-age=31536000, immutable')
+    expect(at('assets', 'WorkspaceView-C61tNg0-.css')).toBe('public, max-age=31536000, immutable')
+    expect(at('assets', 'be-vietnam-pro-latin-400-normal-PpnXBOrz.woff2')).toBe('public, max-age=31536000, immutable')
+  })
+  it('revalidates public files, also those copied under assets/', () => {
+    expect(at('assets', 'art', 'painting-abstract.png')).toBe('no-cache')
+    expect(at('assets', 'brand', 'logo-12345678.png')).toBe('no-cache')
+    expect(at('assets', 'manifest.json')).toBe('no-cache')
+    expect(at('assets', 'og-image.png')).toBe('no-cache')
+    expect(at('sw.js')).toBe('no-cache')
+    expect(at('icon-192.png')).toBe('no-cache')
+  })
+})
 
 describe('contentSecurityPolicy', () => {
   it('allows only the bundle and the hashed inline script', () => {

@@ -22,7 +22,7 @@ function initialView(): View {
   }
 }
 
-export type MapView = 'map' | 'timeline'
+export type MapView = 'map' | 'timeline' | 'office'
 
 function initialLaunchTerminal(): TerminalApp {
   try {
@@ -34,7 +34,8 @@ function initialLaunchTerminal(): TerminalApp {
 
 function initialMapView(): MapView {
   try {
-    return localStorage.getItem('ccm.mapView') === 'timeline' ? 'timeline' : 'map'
+    const v = localStorage.getItem('ccm.mapView')
+    return v === 'timeline' || v === 'office' ? v : 'map'
   } catch {
     return 'map'
   }

@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ccm/habblaud": "*",
     "@ccm/shared": "*",
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "6.11.1",

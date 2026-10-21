@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, ServerMessage, ToastKind } from '@ccm/shared'
+import { officeFeed } from '../office/feed'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
 import { useExtrasStore } from './extras'
@@ -123,6 +124,9 @@ export const useConnectionStore = defineStore('connection', () => {
           break
         case 'toolSpans.data':
           toolSpans.applyData(event.payload)
+          break
+        case 'office.snapshot':
+          officeFeed.ingestLive(event.payload)
           break
         case 'agent.created':
           agents.upsert(event.payload)
@@ -281,6 +285,7 @@ export const useConnectionStore = defineStore('connection', () => {
       retryMs = MIN_RETRY_MS
       lastPresence = null
       sendPresence()
+      if (officeOn) send({ type: 'office.subscribe', on: true })
     }
     ws.onmessage = (e) => onMessage(String(e.data))
     ws.onclose = () => {
@@ -290,6 +295,13 @@ export const useConnectionStore = defineStore('connection', () => {
       scheduleReconnect()
     }
     ws.onerror = () => ws.close()
+  }
+
+  let officeOn = false
+  /** Remembers the last choice and re-sends `on` after every reconnect; the feed keeps its last snapshot (stale) meanwhile. */
+  function subscribeOffice(on: boolean): void {
+    officeOn = on
+    send({ type: 'office.subscribe', on })
   }
 
   let lastPresence: string | null = null
@@ -410,5 +422,6 @@ export const useConnectionStore = defineStore('connection', () => {
     loadHistory,
     loadTimeline,
     loadToolSpans,
+    subscribeOffice,
   }
 })

@@ -83,6 +83,7 @@ const steppers = computed(() => [
 ])
 const openFontLicenses = (): void => void window.open('/fonts-LICENSES.txt', '_blank')
 const openIconLicense = (): void => void window.open('/file-icons-LICENSE.txt', '_blank')
+const openHabblaudLicense = (): void => void window.open('/habblaud-LICENSE.txt', '_blank')
 const helpItems = computed<{ key: string; icon: Component; label: string; hint: string; run: () => void }[]>(() => [
   { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
   ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace') }] : []),
@@ -90,6 +91,7 @@ const helpItems = computed<{ key: string; icon: Component; label: string; hint: 
   ...(desktop ? [{ key: 'setup', icon: ListChecks, label: t('setup.open'), hint: t('setup.openHint'), run: () => (ui.setupOpen = true) }] : []),
   { key: 'fonts', icon: FileText, label: t('fonts.licenses'), hint: t('fonts.licensesHint'), run: openFontLicenses },
   ...(hasTerminals ? [{ key: 'fileIcons', icon: FileText, label: t('settings.fileIconsLicense'), hint: t('settings.fileIconsLicenseHint'), run: openIconLicense }] : []),
+  { key: 'habblaud', icon: FileText, label: t('settings.habblaudLicense'), hint: t('settings.habblaudLicenseHint'), run: openHabblaudLicense },
 ])
 const closeButton = ref<HTMLButtonElement | null>(null)
 let restoreFocus: HTMLElement | null = null

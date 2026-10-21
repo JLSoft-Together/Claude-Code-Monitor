@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import path from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { sanitizeKinds, sanitizeQuiet, sanitizeStuck, type ClientMessage, type FocusWindowResult, type MonitorEvent, type ServerMessage } from '@ccm/shared'
+import { createTimelineHandler } from '@ccm/habblaud/server/http/timeline'
 import type { MonitorStore } from './store'
 
 const MIME: Record<string, string> = {
@@ -73,6 +74,18 @@ function decodePath(pathname: string): string | null {
   }
 }
 
+/** Vite's flat `assets/<name>-<8-char hash>.<ext>` output. */
+const HASHED_ASSET = /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/
+
+/**
+ * Only Vite's content-hashed bundles are immutable. Everything else revalidates, or an update never lands: sw.js,
+ * manifest, icons, and the public files copied under `assets/` (Habblaud art / brand / illustrations keep their names).
+ */
+export function cacheControlFor(root: string, file: string): string {
+  const assets = path.join(root, 'assets')
+  return path.dirname(file) === assets && HASHED_ASSET.test(path.basename(file)) ? 'public, max-age=31536000, immutable' : 'no-cache'
+}
+
 async function serveStatic(webDist: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const root = path.resolve(webDist)
@@ -113,8 +126,7 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
   }
   res.writeHead(200, {
     'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
-    // Only Vite's hashed bundles are immutable; sw.js / manifest / icons must revalidate or updates never land.
-    'cache-control': file.startsWith(path.join(root, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'cache-control': cacheControlFor(root, file),
     'x-content-type-options': 'nosniff',
   })
   const stream = createReadStream(file)
@@ -186,6 +198,8 @@ export function startServer(options: {
   /** Extra origin ports allowed to connect (Vite dev server). */
   devOriginPorts?: readonly number[]
   heartbeatMs?: number
+  /** `<dataDir>/timeline`: serves GET /api/timeline/days and /api/timeline/:day (behind the app key). */
+  timelineDir?: string
   onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
   onClientClose?: (clientId: number) => void
   onFocusRun?: (terminalId: string, key: string | null) => Promise<FocusWindowResult | null>
@@ -194,6 +208,7 @@ export function startServer(options: {
   const { store } = options
   const ports = [options.port, ...(options.devOriginPorts ?? [])]
   const appKey = options.appKey ?? null
+  const timelineHandler = options.timelineDir ? createTimelineHandler({ dir: options.timelineDir, recording: true }) : null
   const server = createServer((req, res) => {
     if (!isLocalRequest(req, ports)) {
       res.writeHead(403).end()
@@ -207,6 +222,7 @@ export function startServer(options: {
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end('Orrery only opens in its desktop app.')
       return
     }
+    if (timelineHandler?.(req, res, new URL(req.url ?? '/', 'http://127.0.0.1'))) return
     if (req.url?.startsWith('/snooze?') && req.method === 'GET') {
       const q = new URL(req.url, 'http://127.0.0.1').searchParams
       const terminalId = q.get('t')
@@ -290,9 +306,11 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
+        } else if (m.type === 'office.subscribe' && typeof m.on === 'boolean') {
+          options.onClientMessage?.({ type: 'office.subscribe', on: m.on }, ctx())
         } else if (m.type === 'terminal.alias' && typeof m.terminalId === 'string' && (typeof m.alias === 'string' || m.alias === null)) {
           options.onClientMessage?.({ type: 'terminal.alias', terminalId: m.terminalId, alias: m.alias }, ctx())
         } else if (m.type === 'favorite.toggle' && typeof m.terminalId === 'string') {

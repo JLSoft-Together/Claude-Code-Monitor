@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "brand": {
+    "mark": {
+      "file": "brand/logo-mark.png",
+      "w": 32,
+      "h": 32
+    },
+    "markLarge": {
+      "file": "brand/logo-mark@4x.png",
+      "w": 128,
+      "h": 128
+    },
+    "signage": {
+      "file": "brand/signage.png",
+      "w": 64,
+      "h": 16
+    },
+    "signageLarge": {
+      "file": "brand/signage@4x.png",
+      "w": 256,
+      "h": 64
+    },
+    "favicon16": "brand/favicon-16.png",
+    "favicon32": "brand/favicon-32.png",
+    "appleTouch": "brand/apple-touch-icon.png",
+    "icon192": "brand/icon-192.png",
+    "icon512": "brand/icon-512.png",
+    "markDetailed": {
+      "file": "brand/logo-detailed.png",
+      "w": 78,
+      "h": 86
+    }
+  },
+  "illustrations": {
+    "emptyOffice": {
+      "file": "illustrations/empty-office.png",
+      "w": 960,
+      "h": 540,
+      "scale": 2
+    }
+  },
+  "wallArt": [
+    {
+      "id": "painting-mountains",
+      "kind": "painting",
+      "file": "art/painting-mountains.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Montanhas ao amanhecer",
+      "framed": {
+        "file": "art/framed/painting-mountains.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-beach",
+      "kind": "painting",
+      "file": "art/painting-beach.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Praia tropical",
+      "framed": {
+        "file": "art/framed/painting-beach.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-city-night",
+      "kind": "painting",
+      "file": "art/painting-city-night.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Cidade à noite",
+      "framed": {
+        "file": "art/framed/painting-city-night.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-abstract",
+      "kind": "painting",
+      "file": "art/painting-abstract.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Formas e cores",
+      "framed": {
+        "file": "art/framed/painting-abstract.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-cat",
+      "kind": "painting",
+      "file": "art/painting-cat.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Retrato de gato",
+      "framed": {
+        "file": "art/framed/painting-cat.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wave",
+      "kind": "painting",
+      "file": "art/painting-wave.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "A grande onda",
+      "framed": {
+        "file": "art/framed/painting-wave.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-sunflowers",
+      "kind": "painting",
+      "file": "art/painting-sunflowers.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Girassóis",
+      "framed": {
+        "file": "art/framed/painting-sunflowers.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-rio",
+      "kind": "painting",
+      "file": "art/painting-rio.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Pão de Açúcar",
+      "framed": {
+        "file": "art/framed/painting-rio.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wide-forest-lake",
+      "kind": "painting",
+      "file": "art/painting-wide-forest-lake.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Lago na floresta",
+      "framed": {
+        "file": "art/framed/painting-wide-forest-lake.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-color-fields",
+      "kind": "painting",
+      "file": "art/painting-wide-color-fields.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Campos de cor",
+      "framed": {
+        "file": "art/framed/painting-wide-color-fields.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-aurora",
+      "kind": "painting",
+      "file": "art/painting-wide-aurora.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Aurora boreal",
+      "framed": {
+        "file": "art/framed/painting-wide-aurora.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "art/poster-coffee.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Café",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "art/poster-rocket.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Foguete",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "art/poster-code.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Código",
+      "variant": "code"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "art/poster-cat.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Gato",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "art/poster-bug.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Sem bugs",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "art/poster-ship-it.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Ship it!",
+      "variant": "ship_it"
+    }
+  ],
+  "og": "og-image.png"
+}

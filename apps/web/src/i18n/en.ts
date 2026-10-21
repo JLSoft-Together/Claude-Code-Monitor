@@ -30,6 +30,7 @@ import peerV54 from './peer-v54'
 import peerMapV54 from './peer-map-v54'
 import peerWsV54 from './peer-ws-v54'
 import githubV58 from './github-v58'
+import officeV60 from './office-v60'
 
 export default {
   ...v25.en,
@@ -46,6 +47,7 @@ export default {
   ...peerMapV54.en,
   ...peerWsV54.en,
   ...githubV58.en,
+  ...officeV60.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
@@ -658,6 +660,8 @@ export default {
     fileIconsSimple: 'Simple',
     fileIconsLicense: 'File icon licence',
     fileIconsLicenseHint: 'Atom Material Icons, MIT licence',
+    habblaudLicense: 'Office licence',
+    habblaudLicenseHint: 'Habblaud pixel-art office, MIT licence',
     breakHint: 'Every {n} minutes from the first collector start of the day: drink some water, stand up and walk a bit.',
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',

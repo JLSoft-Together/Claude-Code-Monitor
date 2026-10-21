@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
@@ -13,7 +14,13 @@ export default defineConfig({
     proxy: {
       '/ws': { target: collector, ws: true, changeOrigin: true },
       '/health': { target: collector, changeOrigin: true },
+      '/api/timeline': { target: collector, changeOrigin: true },
     },
+  },
+  // Habblaud's shared/i18n.ts statically imports every dictionary through ./locales/all; the browser (and these tests)
+  // swap it for an empty one and load only the active dictionary (apps/web/src/office/i18n.ts), as upstream does.
+  resolve: {
+    alias: [{ find: /^\.\/locales\/all$/, replacement: fileURLToPath(new URL('../../packages/habblaud/shared/locales/none.ts', import.meta.url)) }],
   },
   // ES worker: the highlight worker lazy-loads shiki grammars (code splitting is not possible in an iife worker).
   worker: { format: 'es' },

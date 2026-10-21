@@ -110,6 +110,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## Build & packaging
 
+- v60: `build.mjs` unchanged; `@ccm/habblaud` (collector `office/`, `server/http/timeline.ts`) resolves like `@ccm/shared` and lands in `stage/collector.cjs`. Headless check: `CCM_PORT=4319 CCM_DATA_DIR=<tmp> CCM_WEB_DIST CCM_STATUSLINE_BRIDGE node stage/collector.cjs --dev`, then `GET /api/timeline/days` answers JSON.
 - `build.mjs`: esbuild → `stage/main.cjs`, `stage/collector.cjs` (from `apps/collector/src/index.ts`), `stage/pty-host.cjs`, `stage/preload.cjs`, `stage/package.json`; `external` electron + koffi. `buildDaemon` runs `apps/layout-daemon` gradlew with `gradleJavaHome` (JDK 17–24; Gradle 8.14 refuses 25): `--dist` → `shadowJar stageLooseKit` (must succeed); dev → `assemble` only when artifacts are missing; `CCM_SKIP_DAEMON_BUILD=1` skips.
 - `electron-builder.yml`: app dir `stage`, output `release`; win nsis + portable x64 unsigned; mac dmg arm64 + x64 ad-hoc, `mac.protocols`; `--publish never`.
 - Packaged layout: `resources/app.asar` (main), `app.asar.unpacked/collector.cjs` + `pty-host.cjs`, `resources/web`, `resources/bridge/statusline-bridge.mjs`, `resources/pty/node_modules/@lydell/node-pty` (host prebuilt; node-pty is a devDependency on purpose), `resources/koffi` (win only, loader + host prebuilt), `resources/layout-daemon/{layout-daemon.jar, ccm-project-model.gradle, loose-kit/}`, icons. Dev: `resource()` falls back to repo paths.
