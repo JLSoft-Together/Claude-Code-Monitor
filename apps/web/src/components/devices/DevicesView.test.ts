@@ -165,6 +165,19 @@ describe('Devices view', () => {
     expect(w!.find('[data-dev-qr-popover]').exists()).toBe(false)
   })
 
+  it('closing the popover with Esc while start is pending cancels the session', async () => {
+    let resolve!: (v: unknown) => void
+    api.devQrStart.mockReturnValue(new Promise((r) => (resolve = r)))
+    await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await w!.get('[data-dev-qr]').trigger('click')
+    await w!.get('[data-dev-qr-popover]').trigger('keydown', { key: 'Escape' })
+    expect(w!.find('[data-dev-qr-popover]').exists()).toBe(false)
+    resolve({ id: 'q9', payload: 'WIFI:T:ADB;S:orrery-0a1b2c3d;P:123456;;' })
+    await flushPromises()
+    expect(api.devQrCancel).toHaveBeenCalledWith('q9')
+    expect(useDevicesStore().qr).toBeNull()
+  })
+
   it('holds the tracker while mounted', async () => {
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
     expect(api.devHold).toHaveBeenCalledWith(true)

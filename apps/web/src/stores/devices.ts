@@ -21,6 +21,8 @@ export const useDevicesStore = defineStore('devices', () => {
   const lastError = ref<{ code: DevErrorCode; detail?: string } | null>(null)
   let unsubscribe: (() => void) | null = null
   let opened = false
+  let qrGen = 0
+  const busyCount = new Map<string, number>()
 
   const rows = (pick: (d: AdbDevice) => boolean) => devices.value.filter((d) => selected.value.has(d.id) && pick(d))
   const selectedRows = computed(() => rows(() => true))
@@ -49,13 +51,22 @@ export const useDevicesStore = defineStore('devices', () => {
     if (first) fail(first.result)
   }
 
+  /** Reference-counted, so a key stays busy until every overlapping call on it has finished. */
   async function track(keys: string[], fn: () => Promise<void>): Promise<void> {
+    for (const k of keys) busyCount.set(k, (busyCount.get(k) ?? 0) + 1)
     busy.value = new Set([...busy.value, ...keys])
     try {
       await fn()
     } finally {
       const next = new Set(busy.value)
-      for (const k of keys) next.delete(k)
+      for (const k of keys) {
+        const n = (busyCount.get(k) ?? 1) - 1
+        if (n > 0) busyCount.set(k, n)
+        else {
+          busyCount.delete(k)
+          next.delete(k)
+        }
+      }
       busy.value = next
     }
   }
@@ -107,20 +118,29 @@ export const useDevicesStore = defineStore('devices', () => {
       else fail(r)
     })
 
-  const startQr = () =>
-    track(['qr'], async () => {
-      await cancelQr()
+  // Each start or cancel bumps qrGen; a start that resolves after a newer one (or after a cancel / close) ends its own session.
+  function startQr(): Promise<void> {
+    const gen = ++qrGen
+    return track(['qr'], async () => {
+      await dropQr()
       const r = await api.devQrStart()
-      if (!('payload' in r)) return fail(r)
-      if (!opened) await api.devQrCancel(r.id)
+      const current = gen === qrGen && opened
+      if (!('payload' in r)) return current ? fail(r) : undefined
+      if (!current) await api.devQrCancel(r.id)
       else qr.value = { id: r.id, payload: r.payload, status: 'waiting' }
     })
+  }
 
-  async function cancelQr(): Promise<void> {
+  async function dropQr(): Promise<void> {
     const running = qr.value
     if (!running) return
     qr.value = null
     await api.devQrCancel(running.id)
+  }
+
+  function cancelQr(): Promise<void> {
+    qrGen++
+    return dropQr()
   }
 
   function toggle(id: string): void {

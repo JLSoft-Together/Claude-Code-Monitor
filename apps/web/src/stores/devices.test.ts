@@ -123,6 +123,41 @@ describe('devices store', () => {
     expect(s.qr).toBeNull()
   })
 
+  it('cancelQr during a pending start cancels the late session', async () => {
+    let resolve!: (v: unknown) => void
+    api.devQrStart.mockReturnValue(new Promise((r) => (resolve = r)))
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    const p = s.startQr()
+    await s.cancelQr()
+    resolve({ id: 'late', payload: 'p' })
+    await p
+    expect(api.devQrCancel).toHaveBeenCalledWith('late')
+    expect(s.qr).toBeNull()
+    expect(s.busy.has('qr')).toBe(false)
+  })
+
+  it('a second start supersedes the first pending one', async () => {
+    const pending: ((v: unknown) => void)[] = []
+    api.devQrStart.mockImplementation(() => new Promise((r) => pending.push(r)))
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    const p1 = s.startQr()
+    const p2 = s.startQr()
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    pending[0]!({ id: 'a', payload: 'pa' })
+    await p1
+    expect(api.devQrCancel).toHaveBeenCalledWith('a')
+    expect(s.busy.has('qr')).toBe(true)
+    pending[1]!({ id: 'b', payload: 'pb' })
+    await p2
+    expect(s.qr).toMatchObject({ id: 'b', payload: 'pb', status: 'waiting' })
+    expect(api.devQrCancel).not.toHaveBeenCalledWith('b')
+    expect(s.busy.has('qr')).toBe(false)
+  })
+
   it('batch errors skip cancelled and keep the first real failure', async () => {
     const s = useDevicesStore()
     const mixed = [
