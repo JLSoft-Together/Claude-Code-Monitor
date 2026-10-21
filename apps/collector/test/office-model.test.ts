@@ -247,6 +247,60 @@ describe('OfficeModel grace periods', () => {
   })
 })
 
+describe('OfficeModel tombstones and room paths', () => {
+  const t = [term({ status: 'working' })]
+  it('does not resurrect an expired sub that stays finished in the input', () => {
+    const { model, clock } = setup()
+    const done = [main(), sub({ status: 'completed' })]
+    model.setState(t, done)
+    clock.t += DONE_GRACE_MS + 1
+    expect(model.tick()).toBe(true)
+    model.setState(t, done)
+    expect(model.snapshot().agents.map((a) => a.id)).toEqual(['a1'])
+    clock.t += DONE_GRACE_MS + 1
+    expect(model.tick()).toBe(false)
+  })
+
+  it('does not resurrect an expired main with a stale terminal', () => {
+    const { model, clock } = setup()
+    model.setState([term({ status: 'stale' })], [main()])
+    clock.t += OFFLINE_GRACE_MS + 1
+    model.tick()
+    model.setState([term({ status: 'stale' })], [main()])
+    expect(model.snapshot().agents).toEqual([])
+  })
+
+  it('brings an expired agent back when it becomes live again', () => {
+    const { model, clock } = setup()
+    model.setState(t, [main(), sub({ status: 'completed' })])
+    clock.t += DONE_GRACE_MS + 1
+    model.tick()
+    model.setState(t, [main(), sub({ status: 'working' })])
+    expect(model.snapshot().agents.find((a) => a.id === 's1')!.status).toBe('working')
+  })
+
+  it('clears the tombstone when the id leaves the input', () => {
+    const { model, clock } = setup()
+    model.setState(t, [main(), sub({ status: 'completed' })])
+    clock.t += DONE_GRACE_MS + 1
+    model.tick()
+    model.setState(t, [main()])
+    model.setState(t, [main(), sub({ status: 'completed' })])
+    expect(model.snapshot().agents.find((a) => a.id === 's1')!.status).toBe('done')
+  })
+
+  it('keeps original case in room name and path on win32', () => {
+    const { model } = setup()
+    model.setState(
+      [term({ id: 't1', cwd: 'C:\\Code\\MyProject' }), term({ id: 't2', cwd: 'c:/code/myproject/' })],
+      [main(), main({ id: 'a2', terminalId: 't2' })],
+    )
+    const s = model.snapshot()
+    expect(s.rooms).toHaveLength(1)
+    expect(s.rooms[0]).toMatchObject({ id: 'c:/code/myproject', name: 'MyProject', path: 'C:/Code/MyProject' })
+  })
+})
+
 describe('OfficeModel privacy', () => {
   it('never emits input, command or detail keys', () => {
     const { model } = setup()

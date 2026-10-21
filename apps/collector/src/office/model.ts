@@ -24,6 +24,14 @@ export function roomKey(cwd: string | undefined, platform: NodeJS.Platform): str
   return platform === 'win32' ? p.toLowerCase() : p
 }
 
+/** Original-case room path: `/` separators, no trailing slash. */
+function displayPath(cwd: string | undefined): string {
+  const raw = (cwd ?? '').trim()
+  if (!raw) return UNKNOWN_ROOM
+  const p = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/')
+  return p.length > 1 ? p.replace(/\/+$/, '') : p
+}
+
 interface Entry {
   agent: Agent
   terminal?: TerminalSession
@@ -55,6 +63,10 @@ export class OfficeModel {
   private readonly known = new Map<string, Entry>()
   private readonly people = new Map<string, PersonName>()
   private readonly spanLogs = new Map<string, SpanLog>()
+  /** Agents whose grace ended while the collector still reports them finished/stale: they must not reappear. */
+  private readonly expired = new Set<string>()
+  /** First-seen original-case display path per room id. */
+  private readonly roomPathOf = new Map<string, string>()
   private rev = 0
   private lastKey = ''
 
@@ -70,10 +82,15 @@ export class OfficeModel {
     const now = this.now()
     const terms = new Map(terminals.map((t) => [t.id, t]))
     const seen = new Set<string>()
+    for (const id of [...this.expired]) if (!agents.some((a) => a.id === id)) this.expired.delete(id)
     for (const agent of agents) {
+      const live = terms.get(agent.terminalId)
+      if (this.expired.has(agent.id)) {
+        if (this.isGone(agent, live)) continue
+        this.expired.delete(agent.id)
+      }
       seen.add(agent.id)
       const prev = this.known.get(agent.id)
-      const live = terms.get(agent.terminalId)
       const entry: Entry = { agent, terminal: live ?? prev?.terminal, goneAt: prev?.goneAt, seenAt: prev?.seenAt ?? now }
       if (this.isGone(agent, live)) entry.goneAt ??= now
       else delete entry.goneAt
@@ -100,6 +117,7 @@ export class OfficeModel {
     for (const [id, entry] of this.known) {
       if (entry.goneAt !== undefined && now - entry.goneAt > this.graceOf(entry.agent)) {
         this.known.delete(id)
+        this.expired.add(id)
         this.people.delete(id)
         this.spanLogs.delete(id)
         changed = true
@@ -120,16 +138,18 @@ export class OfficeModel {
     for (const e of live) {
       const id = roomKey(e.terminal?.cwd, this.platform)
       roomOf.set(e.agent.id, id)
-      roomPaths.set(id, id)
+      if (!this.roomPathOf.has(id)) this.roomPathOf.set(id, displayPath(e.terminal?.cwd))
+      roomPaths.set(id, this.roomPathOf.get(id)!)
       const started = this.ts(e.terminal?.startedAt ?? e.agent.startedAt, e.seenAt)
       roomStart.set(id, Math.min(roomStart.get(id) ?? started, started))
     }
+    for (const id of [...this.roomPathOf.keys()]) if (!roomPaths.has(id)) this.roomPathOf.delete(id)
     this.slots.sync(roomPaths.keys(), now)
     const display = roomDisplayNames(roomPaths)
     const rooms: RoomInfo[] = [...roomPaths.keys()].map((id) => ({
       id,
       name: display.get(id) ?? id,
-      path: id,
+      path: roomPaths.get(id)!,
       slot: this.slots.slotOf(id) ?? 0,
       seed: hash32(id),
       createdAt: roomStart.get(id) ?? 0,
