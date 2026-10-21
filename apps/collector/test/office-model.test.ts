@@ -143,6 +143,24 @@ describe('OfficeModel mapping', () => {
     expect(act).not.toHaveProperty('detail')
   })
 
+  it('keeps the activity id and time while the same tool runs, and starts anew on another tool', () => {
+    const { model } = setup()
+    model.setState([term({ status: 'working' })], [main({ currentTool: 'Task', updatedAt: iso(7_000) })])
+    const first = model.snapshot().agents[0]!.activity!
+    model.setState([term({ status: 'working' })], [main({ currentTool: 'Task', updatedAt: iso(9_000), outputTokens: 50 })])
+    const same = model.snapshot().agents[0]!.activity!
+    expect(same.id).toBe(first.id)
+    expect(same.at).toBe(T0 + 7_000)
+    model.setState([term({ status: 'working' })], [main({ currentTool: 'Read', updatedAt: iso(11_000) })])
+    const next = model.snapshot().agents[0]!.activity!
+    expect(next.id).not.toBe(first.id)
+    expect(next).toMatchObject({ tool: 'Read', at: T0 + 11_000 })
+    model.setState([term({ status: 'idle' })], [main({ updatedAt: iso(12_000) })])
+    expect(model.snapshot().agents[0]!.activity).toBeUndefined()
+    model.setState([term({ status: 'working' })], [main({ currentTool: 'Read', updatedAt: iso(13_000) })])
+    expect(model.snapshot().agents[0]!.activity!.at).toBe(T0 + 13_000)
+  })
+
   it('keeps the last SNAPSHOT_RECENT spans per agent and counts calls', () => {
     const { model } = setup()
     model.setState([term()], [main()])

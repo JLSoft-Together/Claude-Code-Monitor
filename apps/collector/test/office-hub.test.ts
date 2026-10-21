@@ -8,7 +8,9 @@ import { WebSocket } from 'ws'
 import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
 import { NameStore } from '@ccm/habblaud/server/model/names'
 import type { ServerMessage, TerminalSession } from '@ccm/shared'
+import { getLocale, setLocale } from '@ccm/habblaud/shared/i18n'
 import { OfficeHub } from '../src/office/hub'
+import { useEnglishOffice } from '../src/office/locale'
 import { OfficeModel } from '../src/office/model'
 import { startServer } from '../src/server'
 import { MonitorStore } from '../src/store'
@@ -215,6 +217,19 @@ describe('timeline routes', () => {
     expect((await get('/api/timeline/2026-10-19')).status).toBe(404)
     expect((await get('/api/timeline/..%2Fsecret')).status).toBe(400)
     expect((await get('/api/timeline/nope')).status).toBe(400)
+  })
+
+  it('answers in English once the collector boot set the office locale', async () => {
+    try {
+      useEnglishOffice()
+      expect(getLocale()).toBe('en')
+      const bad = await get('/api/timeline/nope')
+      expect(JSON.parse(bad.body)).toEqual({ error: 'invalid day: use YYYY-MM-DD' })
+      const none = await get('/api/timeline/2026-10-19')
+      expect(JSON.parse(none.body)).toEqual({ error: 'nothing recorded on this day' })
+    } finally {
+      setLocale('pt-BR')
+    }
   })
 
   it('answers 403 without the app key', async () => {

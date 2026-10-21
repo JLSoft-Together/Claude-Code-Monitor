@@ -74,6 +74,18 @@ function decodePath(pathname: string): string | null {
   }
 }
 
+/** Vite's flat `assets/<name>-<8-char hash>.<ext>` output. */
+const HASHED_ASSET = /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/
+
+/**
+ * Only Vite's content-hashed bundles are immutable. Everything else revalidates, or an update never lands: sw.js,
+ * manifest, icons, and the public files copied under `assets/` (Habblaud art / brand / illustrations keep their names).
+ */
+export function cacheControlFor(root: string, file: string): string {
+  const assets = path.join(root, 'assets')
+  return path.dirname(file) === assets && HASHED_ASSET.test(path.basename(file)) ? 'public, max-age=31536000, immutable' : 'no-cache'
+}
+
 async function serveStatic(webDist: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const root = path.resolve(webDist)
@@ -114,8 +126,7 @@ async function serveStatic(webDist: string, req: IncomingMessage, res: ServerRes
   }
   res.writeHead(200, {
     'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
-    // Only Vite's hashed bundles are immutable; sw.js / manifest / icons must revalidate or updates never land.
-    'cache-control': file.startsWith(path.join(root, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'cache-control': cacheControlFor(root, file),
     'x-content-type-options': 'nosniff',
   })
   const stream = createReadStream(file)

@@ -63,6 +63,8 @@ export class OfficeModel {
   private readonly known = new Map<string, Entry>()
   private readonly people = new Map<string, PersonName>()
   private readonly spanLogs = new Map<string, SpanLog>()
+  /** Start of each agent's current tool: the activity id and time stay put while only updatedAt / tokens move. */
+  private readonly toolStart = new Map<string, { tool: string; at: number }>()
   /** Agents whose grace ended while the collector still reports them finished/stale: they must not reappear. */
   private readonly expired = new Set<string>()
   /** First-seen original-case display path per room id. */
@@ -95,6 +97,10 @@ export class OfficeModel {
       if (this.isGone(agent, live)) entry.goneAt ??= now
       else delete entry.goneAt
       this.known.set(agent.id, entry)
+      if (!agent.currentTool) this.toolStart.delete(agent.id)
+      else if (this.toolStart.get(agent.id)?.tool !== agent.currentTool) {
+        this.toolStart.set(agent.id, { tool: agent.currentTool, at: this.ts(agent.updatedAt ?? entry.terminal?.lastActivityAt, now) })
+      }
     }
     // Agents that vanished from the state leave after their grace period.
     for (const [id, entry] of this.known) {
@@ -120,6 +126,7 @@ export class OfficeModel {
         this.expired.add(id)
         this.people.delete(id)
         this.spanLogs.delete(id)
+        this.toolStart.delete(id)
         changed = true
       }
     }
@@ -300,7 +307,7 @@ export class OfficeModel {
     const title = main ? (terminal?.alias ?? terminal?.title) : agent.description
     if (title) info.title = title
     if (status === 'waiting' && main && terminal?.waitingFor) info.waitingFor = terminal.waitingFor
-    if (agent.currentTool) info.activity = this.toActivity(agent.id, agent.currentTool, lastEventAt)
+    if (agent.currentTool) info.activity = this.toActivity(agent.id, agent.currentTool, this.toolStart.get(agent.id)?.at ?? lastEventAt)
     return info
   }
 }

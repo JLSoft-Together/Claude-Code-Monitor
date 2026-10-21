@@ -4,6 +4,7 @@ import { NameStore } from '@ccm/habblaud/server/model/names'
 import type { MonitorEvent } from '@ccm/shared'
 import { OfficeHub } from './office/hub'
 import { OfficeModel } from './office/model'
+import { useEnglishOffice } from './office/locale'
 import { AliasStore, MAX_NOTE_LENGTH } from './aliases'
 import { firstStartToday } from './daystart'
 import { loadConfig } from './config'
@@ -26,6 +27,7 @@ import { listCodexProcesses } from './codex/processes'
 import { isPidAlive } from './process'
 
 async function main(): Promise<void> {
+  useEnglishOffice()
   const config = loadConfig()
   if (!config.appKey && !config.dev) {
     console.error('[collector] Orrery runs inside its desktop app: npm run desktop (UI work: npm run dev).')
