@@ -15,6 +15,9 @@ class FakeAudioContext {
     const p = () => ({ value: 0 })
     return { threshold: p(), knee: p(), ratio: p(), connect: () => {} }
   }
+  createGain() {
+    return { gain: { value: 1 }, connect: () => {} }
+  }
   createBuffer() {
     throw new Error('no buffers in the fake')
   }

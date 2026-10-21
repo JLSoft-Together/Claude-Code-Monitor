@@ -10,12 +10,26 @@ export type OfficeOptions = Pick<WorldOptions, OfficeOptionKey>
 
 export const OFFICE_OPTIONS_KEY = 'ccm.office.options'
 export const OFFICE_SOUND_KEY = 'ccm.office.sound'
+export const OFFICE_VOLUME_KEY = 'ccm.office.volume'
+/** The scheduler squares the slider (perceptual curve) and the board boosts ×6, so 40 % ≈ Habblaud at full volume. */
+export const DEFAULT_OFFICE_VOLUME = 0.4
 
 function readSound(): boolean {
   try {
     return localStorage.getItem(OFFICE_SOUND_KEY) === '1'
   } catch {
     return false
+  }
+}
+
+/** Saved slider position (0–1); missing or corrupted falls back to the default. */
+function readVolume(): number {
+  try {
+    const raw = localStorage.getItem(OFFICE_VOLUME_KEY)
+    const v = raw === null ? Number.NaN : Number(raw)
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_OFFICE_VOLUME
+  } catch {
+    return DEFAULT_OFFICE_VOLUME
   }
 }
 export const BUBBLES: readonly WorldOptions['bubbles'][] = ['all', 'important', 'none']
@@ -70,12 +84,24 @@ export const useOfficeStore = defineStore('office', () => {
       // Storage blocked: the choice still applies for this session.
     }
   }
+  /** Toolbar slider; moving it above zero while muted turns the sound on (dragging to zero never turns it off). */
+  const volume = ref(readVolume())
+  function setVolume(v: number): void {
+    if (!Number.isFinite(v)) return
+    volume.value = Math.min(1, Math.max(0, v))
+    try {
+      localStorage.setItem(OFFICE_VOLUME_KEY, String(volume.value))
+    } catch {
+      // Storage blocked: the level still applies for this session.
+    }
+    if (volume.value > 0 && !sound.value) setSound(true)
+  }
   // One sound controller per world instance (OfficeView recreates the world on a locale switch).
   watch(
     world,
     (w, _old, onCleanup) => {
       if (!w) return
-      const s = createOfficeSound(w, { enabled: () => sound.value })
+      const s = createOfficeSound(w, { enabled: () => sound.value, volume: () => volume.value })
       onCleanup(() => s.dispose())
     },
     { flush: 'sync' },
@@ -107,5 +133,5 @@ export const useOfficeStore = defineStore('office', () => {
     timelapse.value = !timelapse.value
   }
 
-  return { options, world, sound, setSound, setOption, zoomBy, overview, timelapse, replaying, toggleTimelapse }
+  return { options, world, sound, setSound, volume, setVolume, setOption, zoomBy, overview, timelapse, replaying, toggleTimelapse }
 })

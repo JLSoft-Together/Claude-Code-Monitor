@@ -482,6 +482,41 @@ body {
     }
   }
 
+  /* macOS slider: thin track filled up to `--ccm-slider-value` (0–100 %), round knob; muted fills with ink. */
+  .ccm-slider {
+    --ccm-slider-fill: var(--ccm-accent);
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+    &[data-muted] {
+      --ccm-slider-fill: var(--ccm-ink-faint);
+    }
+    &::-webkit-slider-runnable-track {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(to right, var(--ccm-slider-fill) var(--ccm-slider-value, 0%), var(--ccm-fill-strong) var(--ccm-slider-value, 0%));
+    }
+    &::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -5px;
+      border-radius: 999px;
+      background: var(--ccm-control);
+      box-shadow: var(--ccm-shadow-control);
+      transition: scale var(--ccm-dur-press) var(--ease-out-quint);
+    }
+    &:active::-webkit-slider-thumb {
+      scale: 1.12;
+    }
+    &:focus-visible {
+      outline-offset: 0;
+      border-radius: 7px;
+    }
+  }
+
   .ccm-field {
     height: 28px;
     padding-inline: 8px;

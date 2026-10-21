@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SoundCue, WorldApi } from '@ccm/habblaud/client/src/world/api'
 
 const board = vi.hoisted(() => ({ configure: vi.fn(), unlock: vi.fn(() => Promise.resolve()), play: vi.fn(() => true) }))
-const made = vi.hoisted(() => ({ n: 0 }))
+const made = vi.hoisted(() => ({ n: 0, opts: undefined as unknown }))
 vi.mock('@ccm/habblaud/client/src/audio/board', () => ({
-  SoundBoard: function () {
+  SoundBoard: function (opts: unknown) {
     made.n++
+    made.opts = opts
     return board
   },
 }))
 
-import { createOfficeSound } from './sound'
+import { OFFICE_BOOST, createOfficeSound } from './sound'
 
 function fakeWorld() {
   let cb: ((c: SoundCue) => void) | null = null
@@ -54,6 +55,25 @@ describe('createOfficeSound', () => {
     expect(board.play).toHaveBeenCalledWith('keys', cue)
   })
 
+  it('configures the board with the live volume', () => {
+    const w = fakeWorld()
+    let volume = 0.8
+    create(w.world, { enabled: () => true, volume: () => volume })
+    w.emit(cue)
+    expect(board.configure).toHaveBeenLastCalledWith(true, expect.objectContaining({ volume: 0.8 }))
+    volume = 0.2
+    w.emit(cue)
+    expect(board.configure).toHaveBeenLastCalledWith(true, expect.objectContaining({ volume: 0.2 }))
+  })
+
+  it('unlocks on the change of a range moved by keyboard', () => {
+    let on = false
+    create(fakeWorld().world, { enabled: () => on })
+    on = true
+    window.dispatchEvent(new Event('change'))
+    expect(board.unlock).toHaveBeenCalled()
+  })
+
   it('stays silent while the document is hidden', () => {
     const w = fakeWorld()
     create(w.world, { enabled: () => true })
@@ -65,6 +85,12 @@ describe('createOfficeSound', () => {
   it('shares one board across create / dispose cycles', () => {
     for (let i = 0; i < 3; i++) create(fakeWorld().world, { enabled: () => true }).dispose()
     expect(made.n).toBe(1)
+  })
+
+  it('boosts the board so 100 % is clearly louder than Habblaud at full volume', () => {
+    create(fakeWorld().world, { enabled: () => true })
+    expect(made.opts).toEqual({ boost: OFFICE_BOOST })
+    expect(OFFICE_BOOST).toBeGreaterThan(1)
   })
 
   it('dispose unsubscribes and removes the gesture listeners', () => {

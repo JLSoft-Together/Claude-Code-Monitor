@@ -27,6 +27,7 @@ Nothing under `server/world`, `client/src/ui`, `client/src/net/world*` or `clien
 
 - A. `shared/i18n.ts`: `Locale` gains `'vi'`; `normalizeLocale('vi' | 'vi-*')` returns `'vi'`; `intlLocale()` returns `vi-VN` for it. Reason: Orrery ships `en` + `vi`. (`setLocale(l)` already exists upstream, so it is unchanged.) Test: `shared/i18n.local.test.ts`.
 - B. `client/src/world/input.ts`: no change needed. Upstream 1.0.3 `onKey` already returns early for `input`, `textarea`, `select`, contenteditable targets and for ctrl/meta/alt. Pinned by `client/src/world/input.local.test.ts` so a re-copy cannot lose it.
+- C. `client/src/audio/board.ts`: `SoundBoard` takes `{ boost }` (`SoundBoardOptions`). With a boost a `GainNode` sits before the compressor and the compressor becomes a peak limiter (threshold −6 dB, knee 6, ratio 12); without one the routing is upstream's (−18 dB, 12, 6). Reason: the synth voices peak at 0.03–0.11, so even volume 1 stays faint in the Orrery office (owner, 2026-10-21: "100% but still quiet"). Test: `client/src/audio/board.local.test.ts`.
 
 ## Local shim (not upstream)
 

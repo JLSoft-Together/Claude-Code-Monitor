@@ -11,6 +11,9 @@ const en = {
     zoomOut: 'Zoom out',
     overview: 'Show the whole office',
     sound: 'Office sound',
+    volume: 'Office volume',
+    volumeValue: '{n}%',
+    volumeHint: 'Office volume: {n}% (drag or scroll)',
     timelapse: {
       open: 'Replay the day',
       close: 'Close the timelapse',
@@ -78,6 +81,9 @@ const vi: typeof en = {
     zoomOut: 'Thu nhỏ',
     overview: 'Xem toàn bộ văn phòng',
     sound: 'Âm thanh văn phòng',
+    volume: 'Âm lượng văn phòng',
+    volumeValue: '{n}%',
+    volumeHint: 'Âm lượng văn phòng: {n}% (kéo hoặc cuộn chuột)',
     timelapse: {
       open: 'Phát lại trong ngày',
       close: 'Đóng timelapse',

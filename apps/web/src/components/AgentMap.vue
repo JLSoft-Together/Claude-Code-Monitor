@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Mail,
   Maximize,
+  Volume1,
   Volume2,
   VolumeX,
   Minus,
@@ -1424,6 +1425,13 @@ const officeControls = computed<{ key: string; label: string; icon: typeof Plus;
   { key: 'zoomOut', label: t('officeV60.zoomOut'), icon: Minus, run: () => office.zoomBy(0.8) },
   { key: 'overview', label: t('officeV60.overview'), icon: Maximize, hint: 'F', run: () => office.overview() },
 ])
+const volumePct = computed(() => Math.round(office.volume * 100))
+const volumeIcon = computed(() => (!office.sound || volumePct.value === 0 ? VolumeX : volumePct.value < 50 ? Volume1 : Volume2))
+/** Wheel over the speaker or slider nudges the volume by one step, as on the macOS menu bar. */
+function onVolumeWheel(e: WheelEvent): void {
+  if (!e.deltaY) return
+  office.setVolume((volumePct.value + (e.deltaY < 0 ? 5 : -5)) / 100)
+}
 const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
 </script>
 
@@ -1595,16 +1603,33 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
               <component :is="c.icon" :size="16" aria-hidden="true" />
               <KeyHint v-if="c.hint" :keys="c.hint" />
             </button>
-            <button
-              type="button"
-              :class="TOOL"
-              :aria-pressed="office.sound"
-              :aria-label="t('officeV60.sound')"
-              :title="t('officeV60.sound')"
-              @click="office.setSound(!office.sound)"
-            >
-              <component :is="office.sound ? Volume2 : VolumeX" :size="16" aria-hidden="true" />
-            </button>
+            <div class="flex items-center" data-office-sound @wheel.prevent="onVolumeWheel">
+              <button
+                type="button"
+                :class="TOOL"
+                :aria-pressed="office.sound"
+                :aria-label="t('officeV60.sound')"
+                :title="t('officeV60.sound')"
+                @click="office.setSound(!office.sound)"
+              >
+                <component :is="volumeIcon" :size="16" aria-hidden="true" />
+              </button>
+              <input
+                type="range"
+                class="ccm-slider mr-1.5 ml-0.5 w-20"
+                min="0"
+                max="100"
+                step="5"
+                :value="volumePct"
+                :style="{ '--ccm-slider-value': `${volumePct}%` }"
+                :data-muted="office.sound ? undefined : ''"
+                :aria-label="t('officeV60.volume')"
+                :aria-valuetext="t('officeV60.volumeValue', { n: volumePct })"
+                :title="t('officeV60.volumeHint', { n: volumePct })"
+                data-office-volume
+                @input="office.setVolume(Number(($event.target as HTMLInputElement).value) / 100)"
+              />
+            </div>
             <button
               type="button"
               :class="TOOL"

@@ -3,12 +3,19 @@
 import { SoundScheduler, type SoundKind, type SoundSettings } from './scheduler';
 import { makeNoise, playVoice } from './synth';
 
+export interface SoundBoardOptions {
+  /** Ganho antes do limitador (patch local do Orrery): os sons saem mais altos e o limitador só segura os picos. */
+  boost?: number;
+}
+
 export class SoundBoard {
   readonly scheduler = new SoundScheduler();
   private ac: AudioContext | null = null;
   private out: AudioNode | null = null;
   private noise: AudioBuffer | null = null;
   private enabled = false;
+
+  constructor(private readonly opts: SoundBoardOptions = {}) {}
 
   configure(enabled: boolean, settings: SoundSettings): void {
     this.enabled = enabled;
@@ -28,12 +35,20 @@ export class SoundBoard {
         const ac = new Ctor();
         // limitador suave: vários sons juntos nunca estouram
         const comp = ac.createDynamicsCompressor();
-        comp.threshold.value = -18;
-        comp.knee.value = 12;
-        comp.ratio.value = 6;
+        const boost = this.opts.boost ?? 1;
+        comp.threshold.value = boost > 1 ? -6 : -18;
+        comp.knee.value = boost > 1 ? 6 : 12;
+        comp.ratio.value = boost > 1 ? 12 : 6;
         comp.connect(ac.destination);
+        let input: AudioNode = comp;
+        if (boost !== 1) {
+          const pre = ac.createGain();
+          pre.gain.value = boost;
+          pre.connect(comp);
+          input = pre;
+        }
         this.ac = ac;
-        this.out = comp;
+        this.out = input;
         this.noise = makeNoise(ac);
       }
       if (this.ac.state === 'suspended') return this.ac.resume().catch(() => undefined);
