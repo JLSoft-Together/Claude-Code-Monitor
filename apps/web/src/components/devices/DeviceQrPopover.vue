@@ -8,7 +8,7 @@ import { useDevicesStore } from '../../stores/devices'
 
 const emit = defineEmits<{ close: [refocus: boolean] }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useDevicesStore()
 const root = ref<HTMLElement | null>(null)
 const cancelButton = ref<HTMLButtonElement | null>(null)
@@ -27,8 +27,13 @@ watch(
 )
 
 const starting = computed(() => !store.qr && store.busy.has('qr'))
-/** Start failed (error shown by the view) or the session ended on its own. */
+/** Start failed or the session ended on its own. */
 const status = computed<QrStatus | null>(() => store.qr?.status ?? (starting.value ? null : 'failed'))
+/** Why the start failed (e.g. mdns-unavailable), shown instead of the generic "Pairing failed." */
+const startError = computed(() => {
+  const code = !store.qr && !starting.value ? store.lastError?.code : undefined
+  return code ? t(te(`devices.error.${code}`) ? `devices.error.${code}` : 'devices.error.denied') : ''
+})
 const live = computed(() => starting.value || status.value === 'waiting' || status.value === 'pairing' || status.value === 'connecting')
 
 const STATUS_META: Record<QrStatus, { icon: typeof CircleCheck; cls: string; spin?: boolean }> = {
@@ -94,9 +99,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
       <component :is="meta.icon" v-else :size="20" :class="meta.cls" aria-hidden="true" />
     </div>
 
-    <p class="mt-3 flex min-w-0 items-center gap-1.5 text-xs" :class="meta.cls" role="status" data-dev-qr-status>
-      <component :is="meta.icon" :size="14" class="shrink-0" :class="meta.spin ? 'animate-spin' : ''" aria-hidden="true" />
-      <span class="truncate">{{ t(`devices.qr.${status ?? 'waiting'}`) }}</span>
+    <p class="mt-3 flex min-w-0 gap-1.5 text-xs" :class="[meta.cls, startError ? 'items-start' : 'items-center']" role="status" data-dev-qr-status>
+      <component :is="meta.icon" :size="14" class="shrink-0" :class="[meta.spin ? 'animate-spin' : '', startError ? 'mt-px' : '']" aria-hidden="true" />
+      <span v-if="startError" class="min-w-0 line-clamp-3" :title="startError">{{ startError }}</span>
+      <span v-else class="truncate">{{ t(`devices.qr.${status ?? 'waiting'}`) }}</span>
     </p>
     <p v-if="store.qr?.detail && !live" class="mt-1 line-clamp-3 font-mono text-2xs break-all text-ink-muted" :title="store.qr.detail">{{ store.qr.detail }}</p>
 

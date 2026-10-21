@@ -14,6 +14,7 @@ const CHANNELS = [
 ]
 
 const DENIED: DevResult = { ok: false, error: 'denied' }
+const INVALID: DevResult = { ok: false, error: 'invalid' }
 const isId = (v: unknown): v is string => typeof v === 'string' && /^(?!-)[A-Za-z0-9_.:@%[\]-]{1,128}$/.test(v)
 const isIds = (v: unknown): v is string[] => Array.isArray(v) && v.length >= 1 && v.length <= 50 && v.every(isId)
 const isAddress = (v: unknown): v is string => typeof v === 'string' && v.length >= 1 && v.length <= 300
@@ -46,7 +47,8 @@ export function registerDevicesIpc(deps: DevicesIpcDeps): () => void {
   })
   ipcMain.handle('ccm:dev-connect', (event, address: unknown) => (isAppFrame(event) && isAddress(address) ? manager.connect(address) : DENIED))
   ipcMain.handle('ccm:dev-pair', (event, address: unknown, code: unknown) => {
-    if (!isAppFrame(event) || !isAddress(address) || typeof code !== 'string' || !/^\d{6}$/.test(code)) return DENIED
+    if (!isAppFrame(event) || !isAddress(address)) return DENIED
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return INVALID
     return manager.pair(address, code)
   })
   ipcMain.handle('ccm:dev-disconnect', (event, ids: unknown) => (isAppFrame(event) && isIds(ids) ? manager.disconnect(ids) : []))

@@ -85,6 +85,23 @@ describe('Devices view', () => {
     expect(w!.text()).toContain(t('devices.connect.pairedHint'))
   })
 
+  it('a partial pairing code disables Connect and asks for all 6 digits', async () => {
+    await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await w!.get('[data-dev-address]').setValue('192.168.1.5:37000')
+    await w!.get('[data-dev-pair-toggle]').trigger('click')
+    expect(w!.find('[data-dev-code-hint]').exists()).toBe(false)
+    await w!.get('[data-dev-code]').setValue('123')
+    expect(w!.get('[data-dev-connect]').attributes('disabled')).toBeDefined()
+    expect(w!.get('[data-dev-code-hint]').text()).toContain(t('devices.connect.codeLength'))
+    await w!.get('[data-dev-code]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(api.devPair).not.toHaveBeenCalled()
+    expect(api.devConnect).not.toHaveBeenCalled()
+    await w!.get('[data-dev-code]').setValue('123456')
+    expect(w!.get('[data-dev-connect]').attributes('disabled')).toBeUndefined()
+    expect(w!.find('[data-dev-code-hint]').exists()).toBe(false)
+  })
+
   it('connect button calls connect without a code', async () => {
     api.devConnect.mockResolvedValue({ ok: true })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
@@ -164,6 +181,16 @@ describe('Devices view', () => {
     await flushPromises()
     expect(api.devQrCancel).toHaveBeenCalledWith('q1')
     expect(w!.find('[data-dev-qr-popover]').exists()).toBe(false)
+  })
+
+  it('qr popover shows why the start failed', async () => {
+    api.devQrStart.mockResolvedValue({ ok: false, error: 'mdns-unavailable' })
+    await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await w!.get('[data-dev-qr]').trigger('click')
+    await flushPromises()
+    const status = w!.get('[data-dev-qr-status]').text()
+    expect(status).toContain(t('devices.error.mdns-unavailable'))
+    expect(status).not.toContain(t('devices.qr.failed'))
   })
 
   it('closing the popover with Esc while start is pending cancels the session', async () => {

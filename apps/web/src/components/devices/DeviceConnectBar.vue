@@ -39,6 +39,7 @@ watch(pairOpen, (open) => {
 const remembered = computed(() => store.devices.filter((d) => !d.online && d.transport === 'wifi'))
 const connecting = computed(() => store.busy.has('connect'))
 const pairing = computed(() => pairOpen.value && code.value.length > 0)
+const partialCode = computed(() => pairing.value && code.value.length < 6)
 const rememberedBusy = computed(() => remembered.value.length > 0 && remembered.value.every((d) => store.busy.has(d.id)))
 
 async function togglePair(): Promise<void> {
@@ -56,7 +57,7 @@ function onCode(e: Event): void {
 
 async function submit(): Promise<void> {
   const target = address.value.trim()
-  if (!target || connecting.value) return
+  if (!target || connecting.value || partialCode.value) return
   store.lastError = null
   pairedHint.value = false
   if (pairing.value) {
@@ -150,12 +151,13 @@ function closeQr(refocus = true): void {
             autocomplete="one-time-code"
             class="ccm-field w-28 font-mono tracking-widest"
             :placeholder="t('devices.connect.pairCode')"
+            :aria-describedby="partialCode ? 'dev-code-hint' : undefined"
             data-dev-code
             @input="onCode"
             @keydown.enter.prevent="submit"
           />
         </span>
-        <button type="button" class="ccm-btn ccm-btn-primary" :disabled="!address.trim() || connecting" data-dev-connect @click="submit">
+        <button type="button" class="ccm-btn ccm-btn-primary" :disabled="!address.trim() || connecting || partialCode" data-dev-connect @click="submit">
           <LoaderCircle v-if="connecting" :size="14" class="animate-spin" aria-hidden="true" />
           <Link v-else :size="14" aria-hidden="true" />{{ t('devices.connect.connect') }}
         </button>
@@ -188,6 +190,9 @@ function closeQr(refocus = true): void {
       </div>
     </div>
 
+    <p v-if="partialCode" id="dev-code-hint" class="mt-2 flex items-center gap-1.5 text-xs text-ink-muted" data-dev-code-hint>
+      <Info :size="14" class="shrink-0" aria-hidden="true" />{{ t('devices.connect.codeLength') }}
+    </p>
     <p v-if="pairedHint" class="mt-2 flex items-center gap-1.5 text-xs text-ink-muted" role="status" data-dev-paired>
       <Info :size="14" class="shrink-0" aria-hidden="true" />{{ t('devices.connect.pairedHint') }}
     </p>
