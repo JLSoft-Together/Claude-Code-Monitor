@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "$/*": ["./src/*"],
+      "$root/*": ["./*"],
+      "$docs/*": ["./docs/*"],
+      "$electron/*": ["./electron/*"],
+      "$renderer/*": ["./src/*"],
+      "$control/*": ["./pages/control/*"],
+      "$explorer/*": ["./pages/explorer/*"],
+      "$copilot/*": ["./pages/copilot/*"],
+      "$terminal/*": ["./pages/terminal/*"],
+      "$automation/*": ["./pages/automation/*"],
+      "$mirror/*": ["./pages/mirror/*"]
+    },
+    "ignoreDeprecations": "6.0"
+  },
+  "vueCompilerOptions": {
+    "vitePressExtensions": [".md"]
+  },
+  "exclude": ["node_modules", "dist", "dist-electron", "dist-release"]
+}

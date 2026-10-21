@@ -1,0 +1,115 @@
+name: release-assets
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            build_command: build:linux
+
+          - os: macos-latest
+            platform: mac
+            build_command: build:mac
+
+          - os: windows-latest
+            platform: win
+            build_command: build:win
+
+    env:
+      VITE_GITEE_APP_TOKEN: ${{ secrets.VITE_GITEE_APP_TOKEN }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Enable corepack and pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.2 --activate
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      # Flatpak runtime cache
+      - name: Cache Flatpak runtime
+        if: matrix.platform == 'linux'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/share/flatpak
+            ~/.cache/flatpak
+          key: flatpak-${{ runner.os }}-25.08
+          restore-keys: |
+            flatpak-${{ runner.os }}-
+
+      - name: Install Flatpak toolchain (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder libudev-dev
+
+          flatpak --user remote-add \
+            --if-not-exists \
+            flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+
+          flatpak --user install \
+            -y \
+            --noninteractive \
+            flathub \
+            org.freedesktop.Platform//25.08 \
+            org.freedesktop.Sdk//25.08 \
+            org.electronjs.Electron2.BaseApp//25.08
+
+      - name: Build ${{ matrix.platform }}
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: pnpm ${{ matrix.build_command }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            desktop/dist-release/*.exe
+            desktop/dist-release/*.zip
+            desktop/dist-release/*.dmg
+            desktop/dist-release/*.AppImage
+            desktop/dist-release/*.flatpak
+            desktop/dist-release/*.snap
+            desktop/dist-release/*.deb
+            desktop/dist-release/*.rpm
+            desktop/dist-release/*.tar.gz
+            desktop/dist-release/*.blockmap
+            desktop/dist-release/latest*.yml

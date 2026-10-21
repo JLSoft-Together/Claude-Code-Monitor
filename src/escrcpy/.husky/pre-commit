@@ -1,0 +1,2 @@
+
+git ls-files -z -- "desktop/electron/resources/extra" | xargs -0 git update-index --chmod=+x

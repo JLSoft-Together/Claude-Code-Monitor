@@ -1,0 +1,20 @@
+{
+  "$schema": "https://v2-10-12.turborepo.dev/schema.json",
+  "tasks": {
+    "build": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "build:electron": {
+      "dependsOn": ["build"],
+      "outputs": ["dist-release/**"]
+    },
+    "dev": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "persistent": true
+    },
+    "lint": {}
+  }
+}
