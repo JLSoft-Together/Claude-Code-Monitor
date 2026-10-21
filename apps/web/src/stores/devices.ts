@@ -20,6 +20,7 @@ export const useDevicesStore = defineStore('devices', () => {
   const qr = ref<DevQr | null>(null)
   const lastError = ref<{ code: DevErrorCode; detail?: string } | null>(null)
   let unsubscribe: (() => void) | null = null
+  let opened = false
 
   const rows = (pick: (d: AdbDevice) => boolean) => devices.value.filter((d) => selected.value.has(d.id) && pick(d))
   const selectedRows = computed(() => rows(() => true))
@@ -44,7 +45,7 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   function failBatch(list: DevBatchResult[]): void {
-    const first = list.find((b) => !b.result.ok)
+    const first = list.find((b) => !b.result.ok && b.result.error !== 'cancelled')
     if (first) fail(first.result)
   }
 
@@ -60,6 +61,7 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   async function open(): Promise<void> {
+    opened = true
     unsubscribe ??= api.onDevEvent(onEvent)
     await api.devHold(true)
     const snap = await api.devSnapshot()
@@ -72,10 +74,12 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   async function close(): Promise<void> {
-    const running = qr.value
-    qr.value = null
-    await api.devHold(false)
-    if (running) await api.devQrCancel(running.id)
+    opened = false
+    try {
+      await cancelQr()
+    } finally {
+      await api.devHold(false)
+    }
   }
 
   const connect = (address: string) => track(['connect'], async () => fail(await api.devConnect(address)))
@@ -101,9 +105,11 @@ export const useDevicesStore = defineStore('devices', () => {
 
   const startQr = () =>
     track(['qr'], async () => {
+      await cancelQr()
       const r = await api.devQrStart()
-      if ('payload' in r) qr.value = { id: r.id, payload: r.payload, status: 'waiting' }
-      else fail(r)
+      if (!('payload' in r)) return fail(r)
+      if (!opened) await api.devQrCancel(r.id)
+      else qr.value = { id: r.id, payload: r.payload, status: 'waiting' }
     })
 
   async function cancelQr(): Promise<void> {

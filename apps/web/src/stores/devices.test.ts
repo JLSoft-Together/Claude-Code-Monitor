@@ -11,6 +11,8 @@ const api = vi.hoisted(() => ({
   devQrStart: vi.fn(),
   devQrCancel: vi.fn(),
   devDiscover: vi.fn(),
+  devDisconnect: vi.fn(),
+  devConnectMany: vi.fn(),
 }))
 
 vi.mock('../lib/devices', () => ({
@@ -26,6 +28,8 @@ vi.mock('../lib/devices', () => ({
   devQrStart: () => api.devQrStart(),
   devQrCancel: (id: string) => api.devQrCancel(id),
   devDiscover: () => api.devDiscover(),
+  devDisconnect: (ids: string[]) => api.devDisconnect(ids),
+  devConnectMany: (ids: string[]) => api.devConnectMany(ids),
 }))
 
 import { useDevicesStore } from './devices'
@@ -38,7 +42,7 @@ const dev = (id: string, over: Partial<AdbDevice> = {}): AdbDevice => ({
 beforeEach(() => {
   setActivePinia(createPinia())
   api.handler = null
-  for (const f of [api.onDevEvent, api.devHold, api.devSnapshot, api.devConnect, api.devQrStart, api.devQrCancel, api.devDiscover]) f.mockReset()
+  for (const f of [api.onDevEvent, api.devHold, api.devSnapshot, api.devConnect, api.devQrStart, api.devQrCancel, api.devDiscover, api.devDisconnect, api.devConnectMany]) f.mockReset()
   api.devHold.mockResolvedValue(true)
   api.devQrCancel.mockResolvedValue({ ok: true })
 })
@@ -97,9 +101,9 @@ describe('devices store', () => {
     api.devQrStart.mockResolvedValue({ id: 'q1', payload: 'WIFI:T:ADB;S:n;P:1;;' })
     api.devSnapshot.mockResolvedValue(null)
     const s = useDevicesStore()
+    await s.open()
     await s.startQr()
     expect(s.qr).toMatchObject({ id: 'q1', status: 'waiting' })
-    await s.open()
     api.handler!({ type: 'qr', id: 'other', status: 'failed' })
     expect(s.qr?.status).toBe('waiting')
     api.handler!({ type: 'qr', id: 'q1', status: 'pairing' })
@@ -107,6 +111,72 @@ describe('devices store', () => {
     await s.cancelQr()
     expect(api.devQrCancel).toHaveBeenCalledWith('q1')
     expect(s.qr).toBeNull()
+  })
+
+  it('batch errors skip cancelled and keep the first real failure', async () => {
+    const s = useDevicesStore()
+    const mixed = [
+      { id: 'a', result: { ok: false, error: 'cancelled' } },
+      { id: 'b', result: { ok: false, error: 'timeout' } },
+    ]
+    api.devDisconnect.mockResolvedValue(mixed)
+    await s.disconnect(['a', 'b'])
+    expect(s.lastError?.code).toBe('timeout')
+    s.lastError = null
+    api.devConnectMany.mockResolvedValue(mixed.slice(0, 1))
+    await s.connectMany(['a'])
+    expect(s.lastError).toBeNull()
+    api.devConnectMany.mockResolvedValue(mixed)
+    await s.connectMany(['a', 'b'])
+    expect((s.lastError as { code: string } | null)?.code).toBe('timeout')
+  })
+
+  it('close cancels a running qr', async () => {
+    api.devQrStart.mockResolvedValue({ id: 'q1', payload: 'p' })
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    await s.startQr()
+    await s.close()
+    expect(api.devHold).toHaveBeenLastCalledWith(false)
+    expect(api.devQrCancel).toHaveBeenCalledWith('q1')
+    expect(s.qr).toBeNull()
+  })
+
+  it('close during a pending startQr cancels the late session', async () => {
+    let resolve!: (v: unknown) => void
+    api.devQrStart.mockReturnValue(new Promise((r) => (resolve = r)))
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    const p = s.startQr()
+    await s.close()
+    resolve({ id: 'late', payload: 'p' })
+    await p
+    expect(api.devQrCancel).toHaveBeenCalledWith('late')
+    expect(s.qr).toBeNull()
+  })
+
+  it('close still cancels qr when devHold(false) rejects', async () => {
+    api.devQrStart.mockResolvedValue({ id: 'q1', payload: 'p' })
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    await s.startQr()
+    api.devHold.mockRejectedValue(new Error('x'))
+    await expect(s.close()).rejects.toThrow('x')
+    expect(api.devQrCancel).toHaveBeenCalledWith('q1')
+  })
+
+  it('startQr cancels a session that is already running', async () => {
+    api.devQrStart.mockResolvedValueOnce({ id: 'q1', payload: 'p' }).mockResolvedValueOnce({ id: 'q2', payload: 'p' })
+    api.devSnapshot.mockResolvedValue(null)
+    const s = useDevicesStore()
+    await s.open()
+    await s.startQr()
+    await s.startQr()
+    expect(api.devQrCancel).toHaveBeenCalledWith('q1')
+    expect(s.qr?.id).toBe('q2')
   })
 
   it('selection getters gate batch actions', async () => {
