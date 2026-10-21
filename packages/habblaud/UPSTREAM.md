@@ -39,3 +39,7 @@ Nothing under `server/world`, `client/src/ui`, `client/src/net/world*` or `clien
 ## Typing
 
 Consumers resolve `types/**/*.d.ts` (emitted by `tsc -p tsconfig.types.json`, run by `prepare` and `typecheck`; gitignored), so the upstream sources are never type-checked under Orrery's stricter `noUncheckedIndexedAccess` / `verbatimModuleSyntax`. Runtime resolves the `.ts` sources (Vite, Vitest, tsx, esbuild).
+
+## `client/src/net/store.ts`: typing only
+
+Vendored byte-for-byte only because `client/src/world/index.ts` imports its `OfficeStore` type (`import type`) and `client/src/world/playback.test.ts` uses it. The file contains live network code (`fetch`/`EventSource` against `/api/permissions`, `/api/messages`, `/api/demo`, ...). Orrery code must never instantiate `OfficeStore` or import `client/src/net/store` as a value; the office is fed by Orrery's own `{snapshot, on}` shim.
