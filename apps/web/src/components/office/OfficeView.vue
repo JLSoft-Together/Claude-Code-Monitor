@@ -28,12 +28,15 @@ const TOOLBAR_INSET = 48
 /** Canvas tint while a recorded moment is on screen (upstream `.is-replay`). */
 const REPLAY_FILTER = 'sepia(0.3) saturate(0.9) contrast(1.03)'
 
+const root = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const canvasKey = ref(0)
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
 const counts = ref<{ agents: number; rooms: number } | null>(null)
 
 let gen = 0
+/** A build got past the locale and wants snapshots; they flow only while the window is visible too. */
+let wantFeed = false
 let subscribed = false
 let world: WorldApi | null = null
 let offSelect: (() => void) | null = null
@@ -51,6 +54,13 @@ function teardown(): void {
   world = null
   office.world = null
   roomFocusedFor = null
+}
+
+function syncFeed(): void {
+  const on = wantFeed && !document.hidden
+  if (on === subscribed) return
+  subscribed = on
+  connection.subscribeOffice(on)
 }
 
 function readCounts(): void {
@@ -87,7 +97,7 @@ function syncSelection(id: string | null): void {
 }
 
 /** Mount and language switch: locale first (world modules read `tr()` at load), then subscribe, import, create. */
-async function build(first: boolean): Promise<void> {
+async function build(): Promise<void> {
   const my = ++gen
   teardown()
   state.value = 'loading'
@@ -95,10 +105,8 @@ async function build(first: boolean): Promise<void> {
     await applyOfficeLocale(officeLocale(locale.value))
     if (my !== gen) return
     officeFeed.relocalize()
-    if (first) {
-      connection.subscribeOffice(true)
-      subscribed = true
-    }
+    wantFeed = true
+    syncFeed()
     const { createWorld } = await import('@ccm/habblaud/client/src/world')
     if (my !== gen) return
     canvasKey.value++
@@ -121,7 +129,10 @@ async function build(first: boolean): Promise<void> {
     syncSelection(ui.selectedAgentId)
     focusTerminalRoom()
   } catch {
-    if (my === gen) state.value = 'failed'
+    if (my !== gen) return
+    state.value = 'failed'
+    wantFeed = false
+    syncFeed()
   }
 }
 
@@ -136,22 +147,44 @@ function onKey(e: KeyboardEvent): void {
   ui.pressKey('L')
 }
 
+/** The world's camera keys (vendored `input.ts`, on window). */
+const CAMERA_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S', '+', '=', '-', '_', '0'])
+
+/**
+ * Keeps those keys for the office: from focus in a side panel they would pan the camera and their preventDefault
+ * would block the panel's keyboard scrolling. Registered on window before any world, so it stops only the window
+ * listeners that come after it (the world's); document listeners (Monitor shortcuts, key L) already ran.
+ */
+function guardCameraKeys(e: KeyboardEvent): void {
+  if (!CAMERA_KEYS.has(e.key)) return
+  const t = e.target
+  if (t === document.body || t === document.documentElement || t === document || t === window) return
+  // The map region: office canvas, timelapse bar and the Agent Map toolbar above them.
+  const area = root.value?.parentElement ?? root.value
+  if (t instanceof Node && area?.contains(t)) return
+  e.stopImmediatePropagation()
+}
+
 onMounted(() => {
   document.addEventListener('keydown', onKey)
-  void build(true)
+  document.addEventListener('visibilitychange', syncFeed)
+  window.addEventListener('keydown', guardCameraKeys)
+  void build()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
+  document.removeEventListener('visibilitychange', syncFeed)
+  window.removeEventListener('keydown', guardCameraKeys)
   // The timelapse child unmounts next and ends any replay; the bar starts closed on the next visit.
   office.timelapse = false
   gen++
   teardown()
-  if (subscribed) connection.subscribeOffice(false)
-  subscribed = false
+  wantFeed = false
+  syncFeed()
 })
 
-watch(locale, () => void build(false))
+watch(locale, () => void build())
 // Theme tokens give the account colours; the world itself keeps Habblaud's palette.
 watch(
   () => settings.theme,
@@ -183,7 +216,7 @@ const waiting = computed(() => state.value === 'loading' || (state.value === 're
 </script>
 
 <template>
-  <div class="relative h-full w-full min-w-0 overflow-hidden bg-canvas" data-office>
+  <div ref="root" class="relative h-full w-full min-w-0 overflow-hidden bg-canvas" data-office>
     <canvas
       :key="canvasKey"
       ref="canvas"

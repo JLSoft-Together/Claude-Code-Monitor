@@ -10,8 +10,7 @@ const en = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     overview: 'Show the whole office',
-    soundOn: 'Turn office sound off',
-    soundOff: 'Turn office sound on',
+    sound: 'Office sound',
     timelapse: {
       open: 'Replay the day',
       close: 'Close the timelapse',
@@ -78,8 +77,7 @@ const vi: typeof en = {
     zoomIn: 'Phóng to',
     zoomOut: 'Thu nhỏ',
     overview: 'Xem toàn bộ văn phòng',
-    soundOn: 'Tắt âm thanh văn phòng',
-    soundOff: 'Bật âm thanh văn phòng',
+    sound: 'Âm thanh văn phòng',
     timelapse: {
       open: 'Phát lại trong ngày',
       close: 'Đóng timelapse',

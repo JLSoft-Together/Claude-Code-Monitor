@@ -172,6 +172,121 @@ describe('OfficeView lifecycle', () => {
     relocalize.mockRestore()
   })
 
+  it('still subscribes once when the language changes during the first build', async () => {
+    let release!: () => void
+    h.locale.gate = new Promise<void>((r) => (release = r))
+    w = mount(OfficeView, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    await nextTick()
+    i18n.global.locale.value = 'vi'
+    await nextTick()
+    release()
+    await flushPromises()
+    expect(subscribe.mock.calls).toEqual([[true]])
+    expect(createWorld).toHaveBeenCalledTimes(1)
+    w.unmount()
+    w = null
+    expect(subscribe.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('pauses the office feed while the window is hidden', async () => {
+    const hidden = (v: boolean): void => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: v })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    try {
+      await mountView()
+      expect(subscribe.mock.calls).toEqual([[true]])
+      hidden(true)
+      expect(subscribe.mock.calls).toEqual([[true], [false]])
+      hidden(true)
+      hidden(false)
+      expect(subscribe.mock.calls).toEqual([[true], [false], [true]])
+      w!.unmount()
+      w = null
+      expect(subscribe).toHaveBeenLastCalledWith(false)
+      hidden(false)
+      expect(subscribe).toHaveBeenCalledTimes(4)
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    }
+  })
+
+  it('subscribes only once it is visible when mounted in a hidden window', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    try {
+      await mountView()
+      expect(subscribe).not.toHaveBeenCalled()
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+      document.dispatchEvent(new Event('visibilitychange'))
+      expect(subscribe.mock.calls).toEqual([[true]])
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    }
+  })
+
+  it('unsubscribes when the world fails to load', async () => {
+    vi.mocked(createWorld).mockImplementationOnce(() => {
+      throw new Error('chunk failed')
+    })
+    await mountView()
+    expect(w!.find('[data-office-state]').text()).toContain(i18n.global.t('officeV60.failed'))
+    expect(subscribe.mock.calls).toEqual([[true], [false]])
+    w!.unmount()
+    w = null
+    expect(subscribe).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the camera keys away from the world while focus is in a side panel', async () => {
+    await mountView()
+    // Stands in for the world's window listener (vendored input.ts), registered after the view mounted.
+    const camera = vi.fn()
+    const shortcut = vi.fn()
+    window.addEventListener('keydown', camera)
+    document.addEventListener('keydown', shortcut)
+    const panel = document.createElement('button')
+    document.body.append(panel)
+    const press = (target: EventTarget, key: string) => target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    try {
+      for (const key of ['ArrowDown', 'w', 'S', '+', '-', '0']) press(panel, key)
+      expect(camera).not.toHaveBeenCalled()
+      expect(shortcut).toHaveBeenCalledTimes(6)
+      press(panel, 'x')
+      expect(camera).toHaveBeenCalledTimes(1)
+      press(document.body, 'ArrowLeft')
+      expect(camera).toHaveBeenCalledTimes(2)
+      press(w!.find('canvas').element, 'ArrowLeft')
+      expect(camera).toHaveBeenCalledTimes(3)
+      w!.unmount()
+      w = null
+      press(panel, 'ArrowDown')
+      expect(camera).toHaveBeenCalledTimes(4)
+    } finally {
+      window.removeEventListener('keydown', camera)
+      document.removeEventListener('keydown', shortcut)
+    }
+  })
+
+  it('stops the real world input from panning on a side-panel arrow key, not on the office canvas', async () => {
+    await mountView()
+    const { attachInput } = await import('@ccm/habblaud/client/src/world/input')
+    const cam = { panBy: vi.fn(), zoom: 1, zoomAt: vi.fn(), settle: vi.fn() }
+    const h = { pick: () => null, click: vi.fn(), doubleClick: vi.fn(), hover: vi.fn(), interact: vi.fn(), overview: vi.fn(), zoomStep: vi.fn() }
+    const detach = attachInput(w!.find('canvas').element as HTMLCanvasElement, cam as never, h)
+    const panel = document.createElement('div')
+    panel.tabIndex = 0
+    document.body.append(panel)
+    try {
+      const fromPanel = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+      panel.dispatchEvent(fromPanel)
+      expect(cam.panBy).not.toHaveBeenCalled()
+      expect(fromPanel.defaultPrevented).toBe(false)
+      w!.find('canvas').element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))
+      expect(cam.panBy).toHaveBeenCalledTimes(1)
+    } finally {
+      detach()
+    }
+  })
+
   it('relocalizes the feed when the theme changes, without a new world', async () => {
     const relocalize = vi.spyOn(officeFeed, 'relocalize')
     await mountView()
@@ -268,6 +383,17 @@ describe('Office view mode', () => {
     await nextTick()
     setActivePinia(createPinia())
     expect(useUiStore().mapView).toBe('office')
+  })
+
+  it('gives the sound toggle a static label and reports its state through aria-pressed', async () => {
+    const src = (await import('../AgentMap.vue?raw')).default
+    const start = src.indexOf(':aria-pressed="office.sound"')
+    expect(start).toBeGreaterThan(-1)
+    const button = src.slice(start, src.indexOf('@click="office.setSound', start))
+    expect(button).toContain(`:aria-label="t('officeV60.sound')"`)
+    expect(button).not.toContain('office.sound ?')
+    expect(i18n.global.t('officeV60.sound', {}, { locale: 'en' })).toBe('Office sound')
+    expect(i18n.global.t('officeV60.sound', {}, { locale: 'vi' })).toBe('Âm thanh văn phòng')
   })
 
   it('has every office string in English and Vietnamese', () => {

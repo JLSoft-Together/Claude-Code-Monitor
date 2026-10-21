@@ -1599,8 +1599,8 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
               type="button"
               :class="TOOL"
               :aria-pressed="office.sound"
-              :aria-label="office.sound ? t('officeV60.soundOn') : t('officeV60.soundOff')"
-              :title="office.sound ? t('officeV60.soundOn') : t('officeV60.soundOff')"
+              :aria-label="t('officeV60.sound')"
+              :title="t('officeV60.sound')"
               @click="office.setSound(!office.sound)"
             >
               <component :is="office.sound ? Volume2 : VolumeX" :size="16" aria-hidden="true" />
