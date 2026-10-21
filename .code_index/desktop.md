@@ -121,3 +121,21 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 ## E2E harness
 
 - `npm run e2e -w @ccm/desktop [packaged exe]` → `e2e/run.cjs`; driver `e2e/cdp.cjs` (port 4399, temp profile + data dir, `launch({env})`, retrying temp cleanup); output in `%TEMP%/ccm-e2e`. Scripts are named per feature / version (`desktop-only.cjs`, `rail.cjs`, `pane-drag.cjs`, `v50-groups.cjs`, `v52-polish.cjs`, …); they pre-set `ccm.tourDone` / `ccm.tourWorkspaceDone` / `ccm.setupDone` in localStorage.
+
+## Devices (v61, docs §11aa)
+
+- `src/devices/parse.ts` (pure): `parseAdbDeviceRows`, `parseConnect` / `parsePair` / `parseDisconnect` (decided from output, `adb connect` exits 0 on failure), `parseMdnsServices`, `parseWlanIp`, `parseAddress` (rejects `-…`), `addressKey`, `isWifiId`, `transportOf`. `adb.ts` `createAdbCommands` (connect 15 s / pair 20 s / rest 10 s; `list` = `devices -l`). `history.ts` `DeviceHistory` (`DEVICES_FILE` `adb-devices.json`, tmp + rename, 200 max, no `unauthorized`, writes only on ready-set / alias change).
+- `manager.ts` `DeviceManager` (`mergeDevices` live rows + history, batches of 5, `toWifi`, `discover`, `qrStart` / `qrCancel`, `autoConnectOnce`, tracker via `run/android/adbWatch.ts` only while a window holds the view); `qr.ts` `newQrSecret`, `qrPayload`, `runQrPairing`. `main.ts` wires `DeviceManager` + `registerDevicesIpc`, `confirmRemove` native confirm, `strings.ts` en / vi.
+- IPC `devices/ipc.ts` `registerDevicesIpc` (page values validated: id regex, ≤ 50 ids, 6-digit code, alias ≤ 64, `parseAddress`; `ownerOf` release on window destroy / navigation):
+
+| Channel | Does |
+|---|---|
+| `ccm:dev-snapshot` / `ccm:dev-hold` | `{adb, devices, autoConnect}` / hold or release the tracker |
+| `ccm:dev-connect` / `ccm:dev-pair` / `ccm:dev-to-wifi` | one address / address + code / USB → Wi-Fi |
+| `ccm:dev-disconnect` / `ccm:dev-connect-many` | batch (`DevBatchResult[]`) |
+| `ccm:dev-remove` | forget history rows after native confirm |
+| `ccm:dev-alias` / `ccm:dev-auto-connect` | rename / auto-connect on launch |
+| `ccm:dev-discover` / `ccm:dev-qr-start` / `ccm:dev-qr-cancel` | mDNS connect services / QR pairing |
+| `ccm:dev-event` (main → page) | `DevEvent` `devices` / `qr` |
+
+- Preload `devSnapshot` … `onDevEvent`. Tests `test/devices-*.test.ts`; E2E `e2e/devices.cjs` (ANDROID_HOME → fake adb, screenshots `devices-01..04` in the e2e output dir; Forget not driven, no native-confirm auto-answer).

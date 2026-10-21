@@ -616,6 +616,31 @@ Collector:
 - `store.ts`: snapshot `peerLinks`, events `link.created` / `link.updated` (field patch, folded per id in a batch like agents) / `link.removed`.
 - Demo: `node scripts/demo-fixture.mjs --peers=N` gives every fake session a socket path, seeds N messages (both sides, empty body; ~30 % sent from a subagent) and keeps sending one now and then while it runs.
 
+## 11aa. Devices tab: wireless ADB (v61, desktop only, 2026-10-21)
+
+Plan `.planning/PLAN-v61-adb-devices.md`. Source: the Orrery Devices tab replaces the escrcpy-style device list with the SDK's own `adb` (resolved by `findAdbTools`: Settings `androidSdk`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, default SDK dir, PATH; adb is never bundled). Nothing here touches Claude Code.
+
+**Verification status.** The output lines below are the formats the parsers in `apps/desktop/src/devices/parse.ts` accept (fixtures in `apps/desktop/test/devices-parse.test.ts`). They were checked against the platform-tools output formats documented in AOSP sources, **not against a live device in this session**. `e2e/devices.cjs` runs the real app against a fake adb (`e2e/fixtures/run-fakes/adb.js`) that prints the same lines.
+
+Commands (always an args array through `Spawner`, never a shell; page-supplied values are validated in `devices/ipc.ts`, anything starting with `-` is refused):
+
+| Purpose | Command | Output line parsed |
+|---|---|---|
+| List / track | `adb devices -l`, `adb track-devices -l` | `<id>  <state> [usb:<p>] [product:<x>] [model:<x>] [device:<x>] [transport_id:<n>]`; states `device` / `unauthorized` / `offline` / `recovery` / `sideload` / `bootloader` / `no permissions (…)`, anything else `unknown` |
+| Connect | `adb connect <host:port>` | `connected to <addr>` / `already connected to <addr>`; failures `failed to connect to '<addr>': …`, `cannot connect to <addr>: …`, `failed to authenticate to <addr>` |
+| Pair | `adb pair <host:port> <6 digits>` | `Successfully paired to <addr> [guid=<id>]` / `Failed: …` |
+| Disconnect | `adb disconnect <id>` | `disconnected <id>` / `error: no such device '<id>'` |
+| USB to Wi-Fi | `adb -s <id> shell ip -f inet addr show wlan0`, `adb -s <id> tcpip 5555`, then (after 1 s) `adb connect <ip>:5555` | `inet <ip>/<n> …` |
+| mDNS | `adb mdns check`, `adb mdns services` | `<name>\t<_adb-tls-pairing._tcp \| _adb-tls-connect._tcp \| _adb._tcp>\t<host:port>` after a `List of discovered mdns services` header |
+
+- **`adb connect` exits 0 on failure.** The result is decided from the output line, never from the exit code (a non-zero code or a timeout only means adb itself failed). An empty output is a failure.
+- **mDNS needs platform-tools 31 or newer** (`adb mdns check` prints `unavailable` or fails on older ones). An adb server that was started without mDNS lists no services until it is restarted (`adb kill-server`); the UI reports `mdns-unavailable` / `no-devices` instead of hanging.
+- **QR pairing**: the page shows `WIFI:T:ADB;S:orrery-<8 hex>;P:<6 digits>;;` (name from `crypto.randomBytes(4)`, password from `crypto.randomInt`, zero-padded). Main polls `mdns services` every 1 s: a `_adb-tls-pairing._tcp` entry with that name (wait 60 s) runs `adb pair <host:port> <password>`, then the phone's `_adb-tls-connect._tcp` entry (wait 30 s) runs `adb connect`. Cancelling, closing the popover or the owning window stops it.
+- **History file** `<CCM_DATA_DIR>/adb-devices.json` (`{version: 1, autoConnect, devices: [...]}`): remembered ready device ids with aliases and `lastSeen`, written with tmp + rename, at most 200 entries (oldest `lastSeen` dropped), only when the ready set or an alias changes. `unauthorized` devices are never saved. Auto-connect (default on) runs `adb connect` once per app run for each remembered Wi-Fi id, without starting a tracker. The tracker runs only while a window holds the Devices view.
+- Forget (remove history rows) asks a native confirm first; Disconnect does not. The E2E has no auto-answer for that native dialog, so it stops at Disconnect.
+
+Deviation: escrcpy drives adb through adbkit inside its preload; Orrery runs the adb CLI from the main process instead (no new desktop dependency, one trust boundary, the page gets ids and results only). The web side adds only `qrcode` (QR tile rendering).
+
 ## 12. Open items
 
 | Item | State |
