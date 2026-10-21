@@ -77,6 +77,35 @@ describe('OfficeHub', () => {
     hub.stop()
   })
 
+  it('a late subscriber does not make existing subscribers miss a pending update', () => {
+    const { hub, sent, store } = setup()
+    hub.subscribe('A', true)
+    sent.length = 0
+    store.upsertTerminal(term())
+    store.upsertAgent({ id: 'a1', terminalId: 't1', role: 'main', status: 'working' })
+    vi.advanceTimersByTime(20)
+    hub.subscribe('B', true)
+    vi.advanceTimersByTime(400)
+    const revs = (id: string) => snapshots(sent, id).map((e) => (e as { payload: OfficeSnapshot }).payload.rev)
+    expect(revs('B').length).toBeGreaterThan(0)
+    expect(revs('A').length).toBeGreaterThan(0)
+    expect(Math.max(...revs('A'))).toBe(Math.max(...revs('B')))
+    hub.stop()
+  })
+
+  it('sends a second snapshot when a terminal status flips working to waiting', () => {
+    const { hub, sent, store } = setup()
+    store.upsertTerminal(term({ status: 'working' }))
+    store.upsertAgent({ id: 'a1', terminalId: 't1', role: 'main', status: 'working' })
+    vi.advanceTimersByTime(300)
+    hub.subscribe('c1', true)
+    sent.length = 0
+    store.upsertTerminal(term({ status: 'waiting' }))
+    vi.advanceTimersByTime(400)
+    expect(snapshots(sent, 'c1')).toHaveLength(1)
+    hub.stop()
+  })
+
   it('dropClient stops sends', () => {
     const { hub, sent, store } = setup()
     hub.subscribe('c1', true)

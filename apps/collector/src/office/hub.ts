@@ -92,11 +92,11 @@ export class OfficeHub {
     this.lastRev = snapshot.rev
     if (changed) this.recorder?.ingest(snapshot)
     const message: ServerMessage = { seq: -1, direct: true, events: [{ type: 'office.snapshot', payload: snapshot }] }
-    if (only !== undefined && force) {
+    // A changed rev goes to every subscriber, whoever triggered the commit; an unchanged one only to the new subscriber.
+    if (changed) {
+      for (const id of this.subscribers) this.send(id, message)
+    } else if (only !== undefined && force) {
       this.send(only, message)
-      return
     }
-    if (!changed) return
-    for (const id of this.subscribers) this.send(id, message)
   }
 }
