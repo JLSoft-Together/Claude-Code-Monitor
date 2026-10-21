@@ -41,6 +41,7 @@ describe('adb commands', () => {
     await c.wlanIp('abc')
     await c.mdnsCheck()
     await c.mdnsServices()
+    await c.list()
     expect(f.specs.every((s) => s.file === ADB)).toBe(true)
     expect(f.specs.map((s) => s.args)).toEqual([
       ['connect', '1.2.3.4:5555'],
@@ -50,7 +51,16 @@ describe('adb commands', () => {
       ['-s', 'abc', 'shell', 'ip', '-f', 'inet', 'addr', 'show', 'wlan0'],
       ['mdns', 'check'],
       ['mdns', 'services'],
+      ['devices', '-l'],
     ])
+  })
+
+  it('list parses devices and returns null on timeout, failure or missing adb', async () => {
+    const rows = await make(fake('List of devices attached\nabc\tdevice model:Pixel_7\n')).list()
+    expect(rows?.map((r) => [r.id, r.model])).toEqual([['abc', 'Pixel 7']])
+    expect(await make(fake('', 0, true), ADB, { cmdMs: 50 }).list()).toBeNull()
+    expect(await make(fake('', 1)).list()).toBeNull()
+    expect(await make(fake(), null).list()).toBeNull()
   })
 
   it('connect times out and kills the child', async () => {

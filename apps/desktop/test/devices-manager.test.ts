@@ -63,6 +63,7 @@ function fakeSpawn(devices: string): { spawn: Spawner; calls: FakeChild[]; keys:
     calls.push(child)
     process.nextTick(() => {
       if (key.includes('track-devices')) return child.out(frame(devices))
+      if (key.endsWith('devices -l')) child.out(devices)
       child.exit(0)
     })
     return child as unknown as ChildProcess
@@ -107,6 +108,7 @@ function fakeCommands(over: Partial<AdbCommands> = {}): AdbCommands & { log: str
     wlanIp: vi.fn(async (id: string) => (log.push(`wlanIp ${id}`), '192.168.1.5')),
     mdnsCheck: vi.fn(async () => true),
     mdnsServices: vi.fn(async () => [] as AdbMdnsService[]),
+    list: vi.fn(async () => parseAdbDeviceRows(LIVE)),
     ...over,
   } as AdbCommands & { log: string[] }
 }
@@ -161,7 +163,32 @@ describe('DeviceManager', () => {
     expect(await mgr.pair('192.168.1.9:37000', '123456')).toEqual({ ok: false, error: 'adb-missing' })
     expect(await mgr.toWifi('R58M123ABC')).toEqual({ ok: false, error: 'adb-missing' })
     expect(await mgr.disconnect(['a:1'])).toEqual([{ id: 'a:1', result: { ok: false, error: 'adb-missing' } }])
+    expect(await mgr.remove(['192.168.1.9:5555'])).toEqual({ ok: false, error: 'adb-missing' })
+    expect(await mgr.connectMany(['1.2.3.4:5555'])).toEqual([{ id: '1.2.3.4:5555', result: { ok: false, error: 'adb-missing' } }])
+    expect(await mgr.discover()).toEqual({ ok: false, error: 'adb-missing' })
     expect(fake.calls).toHaveLength(0)
+  })
+
+  it('reads devices without a tracker while nothing is held', async () => {
+    const hist = history({ '192.168.1.9:5555': { wifi: true } })
+    const { mgr, fake, confirmRemove } = setup({ hist })
+    expect((await mgr.snapshot()).devices.map((d) => d.id)).toContain('R58M123ABC')
+    await mgr.disconnect(['192.168.1.5:5555'])
+    expect(fake.keys()).toContain('adb disconnect 192.168.1.5:5555')
+    expect(await mgr.remove(['192.168.1.5:5555', '192.168.1.9:5555'])).toEqual({ ok: true })
+    expect(confirmRemove).toHaveBeenCalledWith(['192.168.1.9:5555'])
+    expect(fake.keys().some((k) => k.includes('track-devices'))).toBe(false)
+    expect(fake.keys().filter((k) => k.endsWith('devices -l'))).toHaveLength(3)
+  })
+
+  it('does not treat devices as offline when the live set is unknown', async () => {
+    const hist = history({ '192.168.1.5:5555': { wifi: true } })
+    const commands = fakeCommands({ list: vi.fn(async () => null) })
+    const { mgr, confirmRemove } = setup({ commands, hist })
+    expect(await mgr.remove(['192.168.1.5:5555'])).toEqual({ ok: false, error: 'adb-missing' })
+    expect(confirmRemove).not.toHaveBeenCalled()
+    expect(await mgr.disconnect(['192.168.1.5:5555'])).toEqual([{ id: '192.168.1.5:5555', result: { ok: false, error: 'not-connected' } }])
+    expect((await mgr.snapshot()).devices.map((d) => d.online)).toEqual([false])
   })
 
   it('connect rejects bad addresses without spawning', async () => {

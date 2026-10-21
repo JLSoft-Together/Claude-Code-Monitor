@@ -145,15 +145,11 @@ export class DeviceManager {
     this.watchAdb = null
   }
 
-  /** Rows from the held tracker, or from a throwaway one when no view is open. */
-  private async liveRows(adb: string): Promise<AdbDeviceRow[]> {
-    if (this.watch && this.watchAdb === adb) return (this.rows = await this.watch.list())
-    const temp = this.makeWatch(adb)
-    try {
-      return (this.rows = await temp.list())
-    } finally {
-      temp.stop()
-    }
+  /** Rows from the held tracker, else one `adb devices -l`; null when the live set is unknown. */
+  private async liveRows(adb: string): Promise<AdbDeviceRow[] | null> {
+    const rows = this.watch && this.watchAdb === adb ? await this.watch.list() : await this.commands.list()
+    if (rows) this.rows = rows
+    return rows
   }
 
   async snapshot(): Promise<DevSnapshot> {
@@ -163,7 +159,7 @@ export class DeviceManager {
       this.rows = []
       return { adb: null, devices: mergeDevices([], history.all()), autoConnect: history.autoConnect }
     }
-    const rows = await this.liveRows(adb)
+    const rows = (await this.liveRows(adb)) ?? []
     history.seen(rows, Date.now())
     return { adb, devices: mergeDevices(rows, history.all()), autoConnect: history.autoConnect }
   }
@@ -217,7 +213,8 @@ export class DeviceManager {
   async disconnect(ids: string[]): Promise<DevBatchResult[]> {
     const adb = await this.resolveAdb()
     if (!adb) return ids.map((id) => ({ id, result: MISSING }))
-    const online = new Set((await this.liveRows(adb)).map((r) => r.id))
+    const live = await this.liveRows(adb)
+    const online = new Set(live?.map((r) => r.id))
     return mapLimit(ids, this.t.batchLimit, async (id) => ({
       id,
       result: online.has(id) && isWifiId(id) ? await this.commands.disconnect(id) : { ok: false, error: 'not-connected' },
@@ -241,7 +238,10 @@ export class DeviceManager {
   async remove(ids: string[]): Promise<DevResult> {
     const { history } = this.deps
     const adb = await this.resolveAdb()
-    const online = new Set(adb ? (await this.liveRows(adb)).map((r) => r.id) : [])
+    if (!adb) return MISSING
+    const live = await this.liveRows(adb)
+    if (!live) return MISSING
+    const online = new Set(live.map((r) => r.id))
     const targets = ids.filter((id) => !online.has(id) && id in history.all())
     if (!targets.length) return { ok: true }
     if (!(await this.deps.confirmRemove(targets))) return { ok: false, error: 'cancelled' }
@@ -272,7 +272,7 @@ export class DeviceManager {
     const adb = await this.resolveAdb()
     if (!adb) return MISSING
     if (!(await this.commands.mdnsCheck())) return { ok: false, error: 'mdns-unavailable' }
-    const online = new Set((await this.liveRows(adb)).map((r) => r.id))
+    const online = new Set((await this.liveRows(adb))?.map((r) => r.id))
     const targets = new Set<string>()
     for (const s of await this.commands.mdnsServices()) {
       if (s.kind === 'pairing') continue

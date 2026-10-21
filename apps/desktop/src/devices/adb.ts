@@ -1,7 +1,7 @@
 import type { AdbMdnsService, DevErrorCode, DevResult } from '@ccm/shared'
 import { collect, type Collected } from '../run/collect'
 import type { Spawner } from '../run/proc'
-import { parseConnect, parseDisconnect, parseMdnsServices, parsePair, parseWlanIp } from './parse'
+import { parseAdbDeviceRows, parseConnect, parseDisconnect, parseMdnsServices, parsePair, parseWlanIp, type AdbDeviceRow } from './parse'
 
 export interface AdbCommandsOpts {
   spawn: Spawner
@@ -18,6 +18,8 @@ export interface AdbCommands {
   wlanIp(id: string): Promise<string | null>
   mdnsCheck(): Promise<boolean>
   mdnsServices(): Promise<AdbMdnsService[]>
+  /** One-shot `adb devices -l`; null when adb is missing, timed out or failed. */
+  list(): Promise<AdbDeviceRow[] | null>
 }
 
 const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000 }
@@ -59,6 +61,10 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
     async mdnsServices() {
       const r = await run(['mdns', 'services'], t.cmdMs)
       return r && r.code === 0 ? parseMdnsServices(r.out) : []
+    },
+    async list() {
+      const r = await run(['devices', '-l'], t.cmdMs)
+      return r && !r.timedOut && r.code === 0 ? parseAdbDeviceRows(r.out) : null
     },
   }
 }
