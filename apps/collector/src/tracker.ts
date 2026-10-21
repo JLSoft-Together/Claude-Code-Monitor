@@ -89,7 +89,7 @@ function hasTypeValue(line: Buffer, values: Buffer[]): boolean {
   let at = line.indexOf(TYPE_KEY)
   while (at !== -1) {
     const from = at + TYPE_KEY.length
-    for (const v of values) if (line.compare(v, 0, v.length, from, from + v.length) === 0) return true
+    for (const v of values) if (from + v.length <= line.length && line.compare(v, 0, v.length, from, from + v.length) === 0) return true
     at = line.indexOf(TYPE_KEY, from)
   }
   return false

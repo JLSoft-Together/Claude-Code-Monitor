@@ -60,6 +60,14 @@ describe('tracker helpers', () => {
     expect(signalLineFilter(buf(queued({ kind: 'human' })), 0, 0)).toEqual({ gitBranch: 'main' })
     expect(signalLineFilter(buf({ type: 'attachment', attachment: { type: 'hook_success', content: '{"kind":"peer","type":"queued_command"}' } }), 0, 0)).toBeNull()
   })
+
+  it('reads a line whose last type value sits closer to the end than a signal type is long', () => {
+    // A short nested type near the end of the line ("type":"ab"}) left fewer bytes than 'permission-mode"'.
+    const line = Buffer.from('{"type":"attachment","attachment":{"type":"ab"}}')
+    expect(() => signalLineFilter(line, 0, 0)).not.toThrow()
+    expect(signalLineFilter(line, 0, 0)).toBeNull()
+    expect(signalLineFilter(Buffer.from('{"x":1,"type":"user"'), 0, 0)).toBeUndefined()
+  })
 })
 
 describe('SessionTracker main ↔ subagent message counts', () => {
