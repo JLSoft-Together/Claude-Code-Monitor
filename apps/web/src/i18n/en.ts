@@ -660,6 +660,8 @@ export default {
     fileIconsSimple: 'Simple',
     fileIconsLicense: 'File icon licence',
     fileIconsLicenseHint: 'Atom Material Icons, MIT licence',
+    habblaudLicense: 'Office licence',
+    habblaudLicenseHint: 'Habblaud pixel-art office, MIT licence',
     breakHint: 'Every {n} minutes from the first collector start of the day: drink some water, stand up and walk a bit.',
     breakHintAt: 'Every {n} minutes since {since}, when the collector first started today. Next at {next}.',
     subtitle: 'Saved on this computer.',

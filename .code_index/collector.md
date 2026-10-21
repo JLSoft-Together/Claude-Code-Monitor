@@ -40,6 +40,12 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 - `store.ts` `MonitorStore`: terminals / agents / links maps, activity + `toolActivity` rings, diff → patch, `coalesce` per id, batch flush, seq; setters for usage, jobs, limits (incl. `setCodexLimits`), response, favorites, notify, snoozes, `peerLinks`, `setLoading`, `contextPct`, `setProjectRoots`.
 - `server.ts` `startServer`: 127.0.0.1 only, `hasAppKey` (header `x-ccm-app`, constant-time) on every route but `/health`, `isAllowedOrigin`, WS heartbeat 30 s + `maxPayload` 128 KB, one stringify per batch, client messages validated by shape, `ClientContext {reply, clients, clientId}` for direct replies; POST `/focus` + GET `/snooze` (toast links, called by the desktop main); `serveStatic` with `contentSecurityPolicy` (inline-script hashes, test `csp.test.ts`).
 
+## Office (v60) — `office/`
+
+- `model.ts` `OfficeModel`: Orrery terminals / agents / ToolSpans -> `OfficeSnapshot` (room per project via `roomKey`, character per agent; grace 20 s offline / 25 s done; tool name / kind / icon only, never `detail`; `meta.version` is `''`, the collector has no app version).
+- `hub.ts` `OfficeHub`: store listener -> model, commit <= 200 ms, tick 1 s, `TimelineRecorder.ingest` per changed commit (`<dataDir>/timeline/*.jsonl`), names in `<dataDir>/office-names.json`; sends `office.snapshot` only to clients that sent `office.subscribe` (zero cost without a subscriber).
+- `server.ts` `timelineDir` -> `createTimelineHandler` (vendored `@ccm/habblaud` `server/http/timeline.ts`): `GET /api/timeline/days`, `/api/timeline/:day`, behind the app key. `@ccm/habblaud` bundles into `stage/collector.cjs` like `@ccm/shared` (no `build.mjs` change). No env vars added. Tests `office-model`, `office-hub`.
+
 ## Codex CLI — `codex/` (docs `docs/codex-integration.md`)
 
 - `rollout.ts` `classifyLine` (content lines never parsed), `extractCodexSignals`, `CodexThreadState`, `modeOf`.

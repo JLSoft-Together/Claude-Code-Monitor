@@ -1,5 +1,7 @@
 # Habblaud Office on the Monitor page — Implementation Plan (v60)
 
+> **Status:** implemented 2026-10-21 (branch `worktree-v60-habblaud-office`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Show the Habblaud pixel-art office (one room per project, a character per agent, social life, sound, day timelapse) as a third center view on the Monitor page, fed by Orrery's own collector data.

@@ -661,6 +661,8 @@ const vi: typeof en = {
     fileIconsSimple: 'Đơn giản',
     fileIconsLicense: 'Giấy phép icon tệp',
     fileIconsLicenseHint: 'Atom Material Icons, giấy phép MIT',
+    habblaudLicense: 'Giấy phép văn phòng',
+    habblaudLicenseHint: 'Văn phòng pixel-art Habblaud, giấy phép MIT',
     breakHint: 'Cứ {n} phút một lần, tính từ lúc bật collector đầu tiên trong ngày: uống nước, đứng dậy đi lại một chút.',
     breakHintAt: 'Cứ {n} phút một lần, tính từ {since} (lần bật collector đầu tiên hôm nay). Lần tới: {next}.',
     subtitle: 'Lưu trên máy này.',
