@@ -6,7 +6,7 @@ import vi from '../i18n/vi'
 import { boxes, leaves } from '../lib/splitLayout'
 import type { PaneOpenResult, PtyPreset } from '@ccm/shared'
 import { openedLinkId, usePeersStore } from './peers'
-import { presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
+import { agentNow, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
   if (!o || typeof o !== 'object') return [prefix]
@@ -145,7 +145,27 @@ describe('workspace viewer panes', () => {
 
     ws.update(shell.key, { agent: undefined })
     expect(presetOf(shell)).toBe('shell')
-    expect(presetOf({ preset: 'claude', agent: 'codex' })).toBe('claude')
+    expect(presetOf({ preset: 'claude', agent: 'shell' })).toBe('shell')
+    expect(presetOf({ preset: 'claude', agent: 'codex' })).toBe('codex')
+  })
+
+  it('agentNow: follows the linked session, and an agent pane falls back to its shell once it ends', () => {
+    const live = { status: 'idle' as const, provider: 'claude' as const }
+    const stale = { status: 'stale' as const, provider: 'claude' as const }
+    // Shell pane: the typed agent while it lives, nothing after.
+    expect(agentNow({ preset: 'shell', terminalId: 't1' }, live)).toBe('claude')
+    expect(agentNow({ preset: 'shell', terminalId: 't1' }, { status: 'working', provider: 'codex' })).toBe('codex')
+    expect(agentNow({ preset: 'shell', terminalId: 't1', agent: 'claude' }, stale)).toBeUndefined()
+    expect(agentNow({ preset: 'shell' }, undefined)).toBeUndefined()
+    // Agent pane: its own agent needs no override; not linked yet is still the agent.
+    expect(agentNow({ preset: 'claude', terminalId: 't1' }, live)).toBeUndefined()
+    expect(agentNow({ preset: 'claude' }, undefined)).toBeUndefined()
+    // Ctrl+C ×2 / /exit: the session goes stale, then is dropped with the link; the pane stays a shell.
+    expect(agentNow({ preset: 'claude', terminalId: 't1' }, stale)).toBe('shell')
+    expect(agentNow({ preset: 'claude', agent: 'shell' }, undefined)).toBe('shell')
+    // Another agent typed in that shell shows as itself, the preset again as no override.
+    expect(agentNow({ preset: 'claude', terminalId: 't2', agent: 'shell' }, { status: 'idle', provider: 'codex' })).toBe('codex')
+    expect(agentNow({ preset: 'claude', terminalId: 't3', agent: 'shell' }, live)).toBeUndefined()
   })
 })
 

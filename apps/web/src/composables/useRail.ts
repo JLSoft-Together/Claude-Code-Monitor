@@ -8,7 +8,7 @@ import { runBadge, type RunBadge } from '../lib/runUi'
 import { shellTitle } from '../lib/sidebarRows'
 import { displayTitle } from '../lib/title'
 import { useRunStore } from '../stores/run'
-import { isTerm, useWorkspaceStore, type Pane } from '../stores/workspace'
+import { isTerm, presetOf, useWorkspaceStore, type Pane } from '../stores/workspace'
 import { usePaneInfo } from './usePaneInfo'
 import { useProjectRoots } from './useProjectRoots'
 
@@ -43,7 +43,7 @@ function createRail() {
       activeKey: workspace.activeKey,
       sessionOf,
       factsOf,
-      labelOf: (p) => (isTerm(p) && p.preset === 'shell' && !info.sessionOf(p) ? (shellTitle(p) ?? info.labelOf(p)) : info.labelOf(p)),
+      labelOf: (p) => (isTerm(p) && presetOf(p) === 'shell' && !info.sessionOf(p) ? (shellTitle(p) ?? info.labelOf(p)) : info.labelOf(p)),
       tabTitleOf: (tab) => info.tabTitle(tab),
       agentLabel: (p) => (p === 'shell' ? t('workspace.preset.shell') : t(`provider.${p}`)),
       runOf,

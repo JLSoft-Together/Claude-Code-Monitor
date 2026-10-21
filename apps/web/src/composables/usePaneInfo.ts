@@ -114,11 +114,11 @@ export function usePaneInfo() {
   function labelOf(pane: Pane): string {
     if (!isTerm(pane)) return viewLabel(pane)
     const session = sessionOf(pane)
-    return session ? displayTitle(session) : t(`workspace.preset.${pane.preset}`)
+    return session ? displayTitle(session) : t(`workspace.preset.${presetOf(pane)}`)
   }
 
   function titleOf(pane: Pane): string {
-    return isTerm(pane) && pane.preset === 'shell' && !sessionOf(pane) ? (shellTitle(pane) ?? labelOf(pane)) : labelOf(pane)
+    return isTerm(pane) && presetOf(pane) === 'shell' && !sessionOf(pane) ? (shellTitle(pane) ?? labelOf(pane)) : labelOf(pane)
   }
 
   function tabTitle(tab: Tab): string {
@@ -175,7 +175,7 @@ export function usePaneInfo() {
    */
   function isBusy(pane: Pane): boolean {
     if (!isTerm(pane) || (pane.state !== 'running' && pane.state !== 'starting')) return false
-    return pane.preset !== 'shell' || !!pane.ranCommand || !!sessionOf(pane)
+    return presetOf(pane) !== 'shell' || !!pane.ranCommand || !!sessionOf(pane)
   }
 
   function linkedId(pane: Pane | undefined): string | null {

@@ -3,7 +3,7 @@ import { PtyConnection } from '../lib/ptyClient'
 import { effectiveStatus, runningSubagents } from '../lib/subagents'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
-import { useWorkspaceStore } from '../stores/workspace'
+import { agentNow, useWorkspaceStore } from '../stores/workspace'
 
 const RETRY_MS = 10_000
 // Host caches its process table 1.5 s; a "not ours" answer only counts once the table is surely newer than the agent.
@@ -80,12 +80,10 @@ export function useWorkspaceLinks(viewShown: () => boolean): void {
     },
   )
 
-  // `claude` / `codex` typed in a shell pane: the pane shows that agent while its session lives, then a shell again.
+  // `claude` / `codex` typed in a shell pane shows that agent while its session lives, then a shell again;
+  // an agent pane whose agent quit (its preset runs inside a shell) shows that shell.
   watch(
-    () => workspace.panes.map((p) => {
-      const term = p.preset === 'shell' && p.terminalId ? terminals.byId[p.terminalId] : undefined
-      return [p.key, term && term.status !== 'stale' ? (term.provider ?? 'claude') : undefined] as const
-    }),
+    () => workspace.panes.map((p) => [p.key, agentNow(p, p.terminalId ? terminals.byId[p.terminalId] : undefined)] as const),
     (pairs) => {
       for (const [key, agent] of pairs) {
         const pane = workspace.panes.find((p) => p.key === key)

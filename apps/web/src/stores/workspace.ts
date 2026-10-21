@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { CompactFlow } from '../lib/compactHandoff'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type Provider, type PtyPreset } from '@ccm/shared'
+import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type PtyPreset, type TerminalSession } from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
@@ -69,8 +69,8 @@ export interface Pane {
   pid?: number
   /** Monitor terminal running inside this pane (agent process descends from the PTY), found by `useWorkspaceLinks`. */
   terminalId?: string
-  /** Agent typed by hand in a shell pane, from the monitor link (`useWorkspaceLinks`); runtime only. */
-  agent?: Provider
+  /** What runs now when it differs from `preset`, from the monitor link (`agentNow`): an agent typed in a shell pane, or 'shell' once an agent pane's agent exited. Runtime only. */
+  agent?: PtyPreset
   /** Agent session to continue when spawning (`claude --resume` / `codex resume`). */
   resume?: string
   /** Latest agent session seen running in this pane (from the monitor link); what a later restore resumes. */
@@ -221,8 +221,20 @@ interface LastPane extends ViewFields {
 
 export const isTerm = (p: Pick<Pane, 'kind'>): boolean => !p.kind || p.kind === 'term'
 
-/** What the pane runs now: a shell pane running `claude` / `codex` shows and behaves as that agent; spawn keeps `preset`. */
-export const presetOf = (p: Pick<Pane, 'preset' | 'agent'>): PtyPreset => (p.preset === 'shell' && p.agent ? p.agent : p.preset)
+/** What the pane runs now: a shell pane running `claude` / `codex` shows and behaves as that agent, an agent pane whose agent quit as its shell; spawn keeps `preset`. */
+export const presetOf = (p: Pick<Pane, 'preset' | 'agent'>): PtyPreset => p.agent ?? p.preset
+
+/**
+ * `Pane.agent` from the pane's linked monitor terminal: the live agent when it is not the preset; an agent pane
+ * that was linked and whose session ended is back at the shell its preset runs in (until the next agent links).
+ */
+export function agentNow(p: Pick<Pane, 'preset' | 'agent' | 'terminalId'>, term: Pick<TerminalSession, 'status' | 'provider'> | undefined): PtyPreset | undefined {
+  if (term && term.status !== 'stale') {
+    const live = term.provider ?? 'claude'
+    return live === p.preset ? undefined : live
+  }
+  return p.preset !== 'shell' && (p.terminalId || p.agent) ? 'shell' : undefined
+}
 
 export type SaveOutcome = { ok: true } | { ok: false; error: string }
 

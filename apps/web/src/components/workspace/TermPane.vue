@@ -687,7 +687,7 @@ function restart(): void {
   resetDev()
   oscLinks.length = 0
   reportedCwd = null
-  workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
+  workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, agent: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
   void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
 }
 
@@ -758,7 +758,7 @@ onMounted(() => {
   term.onData((data) => {
     conn?.write(data)
     touch()
-    if (props.pane.preset === 'shell' && !props.pane.ranCommand && data.includes('\r')) workspace.update(props.pane.key, { ranCommand: true })
+    if (preset.value === 'shell' && !props.pane.ranCommand && data.includes('\r')) workspace.update(props.pane.key, { ranCommand: true })
   })
   term.onBinary((data) => conn?.writeBinary(data))
   term.onResize(({ cols, rows }) => conn?.resize(cols, rows))
