@@ -7,8 +7,14 @@ import type { WorldApi } from '@ccm/habblaud/client/src/world/api'
 /** Quiet by default: well under Habblaud's 0.6. */
 const OFFICE_VOLUME = 0.35
 
+// One board per app: it owns the AudioContext, which upstream never closes, and the world is rebuilt on every mount.
+let shared: SoundBoard | null = null
+function soundBoard(): SoundBoard {
+  return (shared ??= new SoundBoard())
+}
+
 export function createOfficeSound(world: WorldApi, opts: { enabled: () => boolean }): { dispose(): void } {
-  const board = new SoundBoard()
+  const board = soundBoard()
   const sync = (): boolean => {
     const on = opts.enabled()
     board.configure(on, { ...DEFAULT_SOUND_SETTINGS, volume: OFFICE_VOLUME })

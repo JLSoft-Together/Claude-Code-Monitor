@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SoundCue, WorldApi } from '@ccm/habblaud/client/src/world/api'
 
 const board = vi.hoisted(() => ({ configure: vi.fn(), unlock: vi.fn(() => Promise.resolve()), play: vi.fn(() => true) }))
-vi.mock('@ccm/habblaud/client/src/audio/board', () => ({ SoundBoard: function () { return board } }))
+const made = vi.hoisted(() => ({ n: 0 }))
+vi.mock('@ccm/habblaud/client/src/audio/board', () => ({
+  SoundBoard: function () {
+    made.n++
+    return board
+  },
+}))
 
 import { createOfficeSound } from './sound'
 
@@ -54,6 +60,11 @@ describe('createOfficeSound', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     w.emit(cue)
     expect(board.play).not.toHaveBeenCalled()
+  })
+
+  it('shares one board across create / dispose cycles', () => {
+    for (let i = 0; i < 3; i++) create(fakeWorld().world, { enabled: () => true }).dispose()
+    expect(made.n).toBe(1)
   })
 
   it('dispose unsubscribes and removes the gesture listeners', () => {
