@@ -24,6 +24,7 @@ import {
   Moon,
   Search,
   Settings2,
+  Smartphone,
   Stethoscope,
   Trash2,
   Volume2,
@@ -34,6 +35,7 @@ import {
 } from 'lucide-vue-next'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
+import { hasDevices } from '../lib/devices'
 import { hasLog } from '../lib/preview'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
@@ -134,6 +136,7 @@ const items = computed<Item[]>(() => {
     { id: 'c:usage', group: 'nav', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
     { id: 'c:history', group: 'nav', label: t('palette.goHistory'), icon: History, run: () => ui.setView('history') },
     ...(hasExtensions ? [{ id: 'c:extensions', group: 'nav' as const, label: t('palette.goExtensions'), icon: Puzzle, run: () => ui.setView('extensions') }] : []),
+    ...(hasDevices ? [{ id: 'c:devices', group: 'nav' as const, label: t('palette.goDevices'), icon: Smartphone, run: () => ui.setView('devices') }] : []),
     ...(hasTerminals && hasLog
       ? [
           {

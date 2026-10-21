@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { BuildError, LogLevel, RunDevice } from '@ccm/shared'
+import { parseAdbDeviceRows } from '../devices/parse'
 
 export type MachineMessage =
   | { kind: 'event'; event: string; params: Record<string, unknown> }
@@ -128,26 +129,18 @@ export function parseLogcat(line: string): { level: LogLevel; tag: string; text:
   return m ? { level: m[1] as LogLevel, tag: m[2] ?? '', text: m[3] ?? '' } : null
 }
 
-const ADB_STATE: Record<string, RunDevice['state']> = { device: 'ready', unauthorized: 'unauthorized', offline: 'offline' }
-
 /** `adb devices -l` body, or one `track-devices` frame (same line format). */
 export function parseAdbDevices(out: string): RunDevice[] {
-  const devices: RunDevice[] = []
-  for (const line of out.split(/\r?\n/)) {
-    const m = groups(/^(\S+)\s+(device|unauthorized|offline)\b(.*)$/, line.trim())
-    if (!m) continue
-    const [, id = '', state = '', rest = ''] = m
-    const model = /\bmodel:(\S+)/.exec(rest)?.[1]?.replace(/_/g, ' ')
-    devices.push({
-      id,
-      name: model ?? id,
+  return parseAdbDeviceRows(out)
+    .filter((r) => r.state === 'ready' || r.state === 'unauthorized' || r.state === 'offline')
+    .map((r) => ({
+      id: r.id,
+      name: r.model ?? r.id,
       platform: 'android',
-      emulator: id.startsWith('emulator-'),
-      state: ADB_STATE[state] ?? 'offline',
+      emulator: r.id.startsWith('emulator-'),
+      state: r.state as RunDevice['state'],
       source: 'adb',
-    })
-  }
-  return devices
+    }))
 }
 
 /** `adb track-devices` frames: 4 hex digits length + payload, back to back. Returns parsed frames and the unparsed tail. */

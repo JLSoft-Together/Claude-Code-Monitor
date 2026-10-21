@@ -79,3 +79,7 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 - `index.ts` — re-exports.
 
 `office.snapshot {payload: OfficeSnapshot}` (server -> client) is a direct reply from `OfficeHub` to clients that sent `office.subscribe {on}` (client -> server, boolean checked in `server.ts`); never batched into `seq`. `GET /api/timeline/days` and `/api/timeline/:day` are plain HTTP behind the app key.
+
+## Devices (v61, desktop IPC, not the WS protocol)
+
+- `devices.ts` — `AdbDevice`, `AdbState`, `AdbTransport`, `AdbMdnsService`, `DevErrorCode`, `DevResult` / `DevBatchResult`, `DevSnapshot`, `QrStatus`, `DevEvent` (`devices` / `qr`). Desktop `src/devices/*` emits, web `stores/devices.ts` consumes over `ccm:dev-*`; the collector and the WebSocket protocol are untouched.

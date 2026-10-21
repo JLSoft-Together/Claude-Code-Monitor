@@ -4,9 +4,10 @@ import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
 import { hasExtensions, hasTerminals } from '../lib/desktop'
+import { hasDevices } from '../lib/devices'
 import { WINDOWS, type WindowMin } from '../lib/toolTimeline'
 
-export type View = 'monitor' | 'workspace' | 'usage' | 'history' | 'extensions'
+export type View = 'monitor' | 'workspace' | 'usage' | 'history' | 'extensions' | 'devices'
 export type Panel = 'sessions' | 'activity'
 export type WindowResult = FocusWindowResult | 'offline'
 
@@ -16,6 +17,7 @@ function initialView(): View {
     const v = sessionStorage.getItem('ccm.view')
     if (v === 'workspace') return start
     if (v === 'extensions') return hasExtensions ? v : start
+    if (v === 'devices') return hasDevices ? v : start
     return v === 'monitor' || v === 'usage' || v === 'history' ? v : start
   } catch {
     return start

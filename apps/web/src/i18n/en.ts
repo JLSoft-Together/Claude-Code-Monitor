@@ -31,6 +31,7 @@ import peerMapV54 from './peer-map-v54'
 import peerWsV54 from './peer-ws-v54'
 import githubV58 from './github-v58'
 import officeV60 from './office-v60'
+import devicesV61 from './devices-v61'
 
 export default {
   ...v25.en,
@@ -48,11 +49,13 @@ export default {
   ...peerWsV54.en,
   ...githubV58.en,
   ...officeV60.en,
+  ...devicesV61.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
   },
   nav: {
+    devices: 'Devices',
     extensions: 'Extensions',
     history: 'History',
     label: 'Views',
@@ -832,6 +835,7 @@ export default {
     scopeLabel: 'Show',
     scope: { all: 'All', sessions: 'Sessions', favorites: 'Favorites', commands: 'Commands' },
     goHistory: 'Go to History',
+    goDevices: 'Go to Devices',
     goExtensions: 'Go to Extensions',
     darkTheme: 'Dark theme',
     themeNamed: 'Theme: {name}',

@@ -136,3 +136,8 @@ Invariants:
 
 - Vitest next to the code (`lib/*.test.ts`, `stores/*.test.ts`, `composables/*.test.ts`, `components/**/*.test.ts`); `lib/lib.test.ts`, `lib/features.test.ts`, `lib/tier2.test.ts`, `lib/viewer.test.ts`, `lib/reviewTools.test.ts` group older features.
 - Desktop CDP E2E in `apps/desktop/e2e/*.cjs` (one file per feature, e.g. `agent-map`, `rail`, `explorer`, `diff`, `split-diff`, `log`, `run-pane`, `file-editor`, `pane-drag`, `v49-open`, `v50-groups`, `v51-compact`, `v52-polish`); selectors are the `data-*` attributes on components.
+
+## Devices (v61, desktop only)
+
+- `lib/devices.ts` (`hasDevices` = bridge present, `dev*` wrappers, `onDevEvent`), `stores/devices.ts` `useDevicesStore` (`devices`, ref-counted `busy`, `selected`, `qr`, `lastError`, `open` / `close` hold the tracker, `refresh` re-holds + reloads when Settings closes (`DevicesView.vue` watches `ui.settingsOpen`), `connect`, `pair`, `toWifi`, `disconnect`, `connectMany`, `remove`, `setAlias`), `ui.ts` `View` + 'devices' (6th header tab in `AppHeader.vue`, `App.vue` `DevicesView`).
+- `components/devices/`: `DevicesView.vue`, `DeviceConnectBar.vue` (address, pair code with `devices.connect.codeLength` hint below 6 digits, QR, Discover, Connect remembered, auto-connect), `DeviceQrPopover.vue` (`qrcode` tile, the only black-on-white; a failed start shows `devices.error.<code>`), `DeviceRow.vue` (`data-dev-row`, `data-dev-action`, inline alias), `meta.ts` (`STATE_META`, `rowActions`, `ROW_GRID`); strings `i18n/devices-v61.ts` (`devices.*`, `nav.devices`). Tests `DevicesView.test.ts`, `stores/devices.test.ts`; E2E `desktop/e2e/devices.cjs`.
