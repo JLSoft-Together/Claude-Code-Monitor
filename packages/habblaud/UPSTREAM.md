@@ -8,8 +8,8 @@ Files are byte-for-byte upstream except the patches and the shim listed below. D
 - `client/src/world/**` except `city/`, `visit/`, `visit-social.ts`, `visit-social.css`, `visit-social.test.ts`
 - `client/src/art/**` except `preview.ts`
 - `client/src/audio/**`
-- `client/src/net/timeline.ts` (+ test), `client/src/net/store.ts` (type-only import of `client/src/world/index.ts`)
-- `shared/**` (all)
+- `client/src/net/timeline.ts` (+ test), `client/src/net/store.ts` (`client/src/world/index.ts` imports it as a type: `import type`)
+- `shared/**` (all, except the local `shared/locales/vi.ts` + `vi.test.ts` below)
 - `server/history/timeline.ts`, `server/http/timeline.ts`, `server/model/rooms.ts`, `server/model/names.ts`, `server/log.ts` (+ their tests)
 - Test support pulled in by those tests: `server/test/fixtures.ts`, `scripts/statusline-tap.mjs` (fixtures.ts imports it)
 - `LICENSE`
@@ -34,7 +34,7 @@ Nothing under `server/world`, `client/src/ui`, `client/src/net/world*` or `clien
 
 ## Local files (not upstream)
 
-`package.json`, `tsconfig.json`, `tsconfig.types.json`, `vitest.config.ts`, `.gitignore`, `UPSTREAM.md`, `*.local.test.ts`.
+`package.json`, `tsconfig.json`, `tsconfig.types.json`, `vitest.config.ts`, `.gitignore`, `UPSTREAM.md`, `*.local.test.ts`, `shared/locales/vi.ts` (Vietnamese dictionary) and `shared/locales/vi.test.ts`.
 
 ## Typing
 
