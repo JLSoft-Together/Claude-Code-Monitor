@@ -1,0 +1,4 @@
+# Vendored Habblaud sources stay LF on every checkout, byte-for-byte with upstream
+# (a CRLF shebang line in scripts/statusline-tap.mjs breaks Vitest's loader on Windows).
+* text=auto eol=lf
+*.png binary
