@@ -124,9 +124,9 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## Devices (v61, docs §11aa)
 
-- `src/devices/parse.ts` (pure): `parseAdbDeviceRows`, `parseConnect` / `parsePair` / `parseDisconnect` (decided from output, `adb connect` exits 0 on failure), `parseMdnsServices`, `parseWlanIp`, `parseAddress` (rejects `-…`), `addressKey`, `isWifiId`, `transportOf`. `adb.ts` `createAdbCommands` (connect 15 s / pair 20 s / rest 10 s; `list` = `devices -l`). `history.ts` `DeviceHistory` (`DEVICES_FILE` `adb-devices.json`, tmp + rename, 200 max, no `unauthorized`, writes only on ready-set / alias change).
+- `src/devices/parse.ts` (pure): `parseAdbDeviceRows`, `parseConnect` / `parsePair` / `parseDisconnect` (decided from output, `adb connect` exits 0 on failure), `parseMdnsServices`, `parseWlanIp`, `parseAddress` (rejects `-…`), `addressKey`, `isWifiId`, `transportOf`. `adb.ts` `createAdbCommands` (connect 15 s / pair 20 s / rest 10 s; `list` = `devices -l`). `history.ts` `DeviceHistory` (`DEVICES_FILE` `adb-devices.json`, tmp + rename, 200 max, no `unauthorized` / `emulator-*`, writes only on ready-set / alias change; null-prototype map, `get` uses `Object.hasOwn`, `__proto__` dropped on load). adb clients are killed with `run/proc.ts` `killAdbClient` (pid only, passed as `kill` to `collect` / `createAdbWatch` here and in `run/android/devices.ts`): the first client is the parent of `adb fork-server`, a tree kill drops every Wi-Fi connection.
 - `manager.ts` `DeviceManager` (`mergeDevices` live rows + history, batches of 5, `toWifi`, `discover`, `qrStart` / `qrCancel`, `autoConnectOnce`, tracker via `run/android/adbWatch.ts` only while a window holds the view); `qr.ts` `newQrSecret`, `qrPayload`, `runQrPairing`. `main.ts` wires `DeviceManager` + `registerDevicesIpc`, `confirmRemove` native confirm, `strings.ts` en / vi.
-- IPC `devices/ipc.ts` `registerDevicesIpc` (page values validated: id regex, ≤ 50 ids, 6-digit code, alias ≤ 64, `parseAddress`; `ownerOf` release on window destroy / navigation):
+- IPC `devices/ipc.ts` `registerDevicesIpc` (page values validated: id regex, ≤ 50 ids, 6-digit code (`invalid` for an app frame, `denied` otherwise), alias ≤ 64, `parseAddress`; `ownerOf` release on window destroy / navigation):
 
 | Channel | Does |
 |---|---|
