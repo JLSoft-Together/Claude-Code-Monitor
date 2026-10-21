@@ -56,3 +56,6 @@ temp/
 *.key
 *.p12
 *.pfx
+
+# Claude Code worktrees
+.claude/worktrees/
