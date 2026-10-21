@@ -52,7 +52,7 @@ const INVALID: DevResult = { ok: false, error: 'invalid' }
 
 export function mergeDevices(live: AdbDeviceRow[], history: Record<string, HistoryEntry>): AdbDevice[] {
   const out: AdbDevice[] = live.map((r) => {
-    const h = history[r.id]
+    const h = Object.hasOwn(history, r.id) ? history[r.id] : undefined
     const alias = h?.alias ?? null
     return {
       id: r.id,
@@ -286,7 +286,7 @@ export class DeviceManager {
     const live = await this.liveRows(adb)
     if (!live) return MISSING
     const online = new Set(live.map((r) => r.id))
-    const targets = ids.filter((id) => !online.has(id) && id in history.all())
+    const targets = ids.filter((id) => !online.has(id) && history.get(id) !== null)
     if (!targets.length) return { ok: true }
     if (!(await this.deps.confirmRemove(targets))) return { ok: false, error: 'cancelled' }
     history.remove(targets)
@@ -295,7 +295,7 @@ export class DeviceManager {
   }
 
   setAlias(id: string, alias: string | null): DevResult {
-    const cur = this.deps.history.all()[id]
+    const cur = this.deps.history.get(id)
     if (!cur) return INVALID
     const before = cur.alias
     this.deps.history.setAlias(id, alias)

@@ -82,6 +82,32 @@ describe('DeviceHistory', () => {
     expect(h.autoConnect).toBe(false)
   })
 
+  it('ignores Object.prototype names as ids', () => {
+    const h = new DeviceHistory(file)
+    h.setAlias('constructor', 'x')
+    h.setAlias('toString', 'x')
+    expect(({}).constructor).toBe(Object)
+    expect((Object as unknown as { alias?: unknown }).alias).toBeUndefined()
+    expect(h.all()['constructor']).toBeUndefined()
+    expect(fs.existsSync(file)).toBe(false)
+  })
+
+  it('loads a file with a __proto__ key safely', () => {
+    const entry = { alias: 'evil', model: null, wifi: true, lastSeen: 9 }
+    fs.writeFileSync(file, `{"version":1,"devices":{"__proto__":${JSON.stringify(entry)},"ok":${JSON.stringify(entry)}}}`)
+    const h = new DeviceHistory(file)
+    expect(Object.keys(h.all())).toEqual(['ok'])
+    expect((h.all() as Record<string, unknown>).lastSeen).toBeUndefined()
+    expect(Object.hasOwn(h.all(), '__proto__')).toBe(false)
+    expect(h.wifiIds()).toEqual(['ok'])
+  })
+
+  it('does not remember emulators', () => {
+    const h = new DeviceHistory(file)
+    h.seen([row('emulator-5554', 'ready', 'sdk_gphone64'), row('R58M')], 1)
+    expect(Object.keys(h.all())).toEqual(['R58M'])
+  })
+
   it('round-trips through disk', () => {
     const h = new DeviceHistory(file)
     h.seen([row('A', 'ready', 'M'), row('1.2.3.4:5555')], 7)

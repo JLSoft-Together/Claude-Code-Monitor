@@ -283,6 +283,15 @@ describe('DeviceManager', () => {
     expect(ok.events.at(-1)).toMatchObject({ type: 'devices' })
   })
 
+  it('Object.prototype names are not history ids', async () => {
+    const { mgr, confirmRemove, events } = setup()
+    expect(await mgr.remove(['toString', 'constructor'])).toEqual({ ok: true })
+    expect(confirmRemove).not.toHaveBeenCalled()
+    expect(mgr.setAlias('constructor', 'x')).toEqual({ ok: false, error: 'invalid' })
+    expect((Object as unknown as { alias?: unknown }).alias).toBeUndefined()
+    expect(events).toHaveLength(0)
+  })
+
   it('discover skips connected devices', async () => {
     const commands = fakeCommands({
       mdnsServices: vi.fn(async () => [

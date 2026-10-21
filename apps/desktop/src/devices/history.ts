@@ -26,7 +26,7 @@ function cleanEntry(v: unknown): HistoryEntry | null {
 }
 
 export class DeviceHistory {
-  private devices: Record<string, HistoryEntry> = {}
+  private devices: Record<string, HistoryEntry> = Object.create(null) as Record<string, HistoryEntry>
   private auto = true
 
   constructor(private readonly file: string) {
@@ -35,6 +35,7 @@ export class DeviceHistory {
       if (typeof raw.autoConnect === 'boolean') this.auto = raw.autoConnect
       if (raw.devices && typeof raw.devices === 'object') {
         for (const [id, v] of Object.entries(raw.devices)) {
+          if (id === '__proto__') continue
           const e = cleanEntry(v)
           if (e) this.devices[id] = e
         }
@@ -46,6 +47,10 @@ export class DeviceHistory {
 
   all(): Record<string, HistoryEntry> {
     return this.devices
+  }
+
+  get(id: string): HistoryEntry | null {
+    return Object.hasOwn(this.devices, id) ? this.devices[id]! : null
   }
 
   get autoConnect(): boolean {
@@ -65,8 +70,9 @@ export class DeviceHistory {
   seen(rows: AdbDeviceRow[], now: number): void {
     let dirty = false
     for (const r of rows) {
-      if (r.state !== 'ready') continue
-      const cur = this.devices[r.id]
+      // Emulator serials are per launch and never come back over Wi-Fi.
+      if (r.state !== 'ready' || r.id.startsWith('emulator-')) continue
+      const cur = this.get(r.id)
       if (!cur) {
         this.devices[r.id] = { alias: null, model: r.model, wifi: isWifiId(r.id), lastSeen: now }
         dirty = true
@@ -82,7 +88,7 @@ export class DeviceHistory {
   }
 
   setAlias(id: string, alias: string | null): void {
-    const cur = this.devices[id]
+    const cur = this.get(id)
     if (!cur) return
     const next = alias?.trim().slice(0, MAX_ALIAS) || null
     if (cur.alias === next) return
@@ -91,7 +97,7 @@ export class DeviceHistory {
   }
 
   remove(ids: string[]): void {
-    for (const id of ids) delete this.devices[id]
+    for (const id of ids) if (Object.hasOwn(this.devices, id)) delete this.devices[id]
     this.write()
   }
 
