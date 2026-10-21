@@ -47,6 +47,11 @@ describe('parseAdbDeviceRows', () => {
     expect(rows[8]!.state).toBe('unknown')
   })
 
+  it('skips adb banner and error lines', () => {
+    const rows = parseAdbDeviceRows('* daemon not running; starting now at tcp:5037\n* daemon started successfully\nerror: device offline\nR58\tdevice\n')
+    expect(rows.map((r) => r.id)).toEqual(['R58'])
+  })
+
   it('detects transport', () => {
     const rows = parseAdbDeviceRows(DEVICES)
     expect(rows.slice(0, 5).map(transportOf)).toEqual(['usb', 'wifi', 'wifi', 'emulator', 'usb'])

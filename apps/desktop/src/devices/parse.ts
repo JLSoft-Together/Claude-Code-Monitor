@@ -28,7 +28,7 @@ export function parseAdbDeviceRows(out: string): AdbDeviceRow[] {
     const line = raw.trim()
     if (!line || line.startsWith('List of devices') || line.startsWith('*')) continue
     const m = /^(\S+)\s+(no permissions|\S+)(.*)$/.exec(line)
-    if (!m) continue
+    if (!m || m[1]!.endsWith(':')) continue
     const fields: Record<string, string> = {}
     for (const f of (m[3] ?? '').matchAll(/\b(usb|product|model|device|transport_id):(\S+)/g)) fields[f[1]!] = f[2]!
     rows.push({
