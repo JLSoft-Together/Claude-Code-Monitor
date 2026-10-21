@@ -116,6 +116,13 @@ describe('runQrPairing', () => {
     expect(statuses).toEqual(['waiting', 'timeout'])
   })
 
+  it('unexpected errors end with failed', async () => {
+    const c = cmds({ mdnsServices: vi.fn(async () => Promise.reject(new Error('nope'))) })
+    const { p, statuses } = run(c)
+    await expect(p).resolves.toEqual({ ok: false, error: 'pair-failed', detail: 'nope' })
+    expect(statuses).toEqual(['waiting', 'failed'])
+  })
+
   it('cancel stops polling', async () => {
     vi.useFakeTimers()
     const c = cmds()
@@ -194,6 +201,39 @@ describe('DeviceManager qr', () => {
     mgr.stop()
     await vi.advanceTimersByTimeAsync(1_000)
     expect(qrEvents(events).filter((s) => s === 'cancelled')).toHaveLength(2)
+  })
+
+  it('ends with failed and drops the session when adb throws', async () => {
+    vi.useFakeTimers()
+    const { mgr, events } = setup(cmds({ mdnsServices: vi.fn(async () => Promise.reject(new Error('adb exploded'))) }))
+    const r = await mgr.qrStart('7:qr')
+    if ('ok' in r) throw new Error('expected a session')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(qrEvents(events)).toEqual(['waiting', 'failed'])
+    expect(events.find((e) => e.type === 'qr' && e.status === 'failed')).toMatchObject({ detail: 'adb exploded' })
+    expect(mgr.qrCancel(r.id)).toEqual({ ok: false, error: 'invalid' })
+  })
+
+  it('a throwing broadcast causes no unhandled rejection', async () => {
+    vi.useFakeTimers()
+    const seen: unknown[] = []
+    const on = (e: unknown): void => void seen.push(e)
+    process.on('unhandledRejection', on)
+    try {
+      const { mgr } = setup(cmds())
+      ;(mgr as unknown as { deps: { broadcast: () => void } }).deps.broadcast = () => {
+        throw new Error('boom')
+      }
+      const r = await mgr.qrStart('7:qr')
+      if ('ok' in r) throw new Error('expected a session')
+      await vi.advanceTimersByTimeAsync(1_000)
+      vi.useRealTimers()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(seen).toEqual([])
+      expect(mgr.qrCancel(r.id)).toEqual({ ok: false, error: 'invalid' })
+    } finally {
+      process.off('unhandledRejection', on)
+    }
   })
 
   it('connect fallback uses the newest remembered non-5555 port', async () => {

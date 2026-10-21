@@ -35,7 +35,30 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+/** Always ends with exactly one terminal status, even when an adb command or `onStatus` throws. */
 export async function runQrPairing(o: QrPairingOptions): Promise<DevResult> {
+  let terminal = false
+  const onStatus: QrPairingOptions['onStatus'] = (s, detail) => {
+    if (s !== 'waiting' && s !== 'pairing' && s !== 'connecting') terminal = true
+    o.onStatus(s, detail)
+  }
+  try {
+    return await pairByQr({ ...o, onStatus })
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e)
+    const aborted = o.signal.aborted
+    if (!terminal) {
+      try {
+        o.onStatus(aborted ? 'cancelled' : 'failed', aborted ? undefined : detail)
+      } catch {
+        // the listener itself is broken: nothing left to notify
+      }
+    }
+    return aborted ? CANCELLED : { ok: false, error: 'pair-failed', detail }
+  }
+}
+
+async function pairByQr(o: QrPairingOptions): Promise<DevResult> {
   const { cmds, signal, timing } = o
   const end = (s: QrStatus, result: DevResult): DevResult => {
     o.onStatus(s, result.ok ? undefined : result.detail)

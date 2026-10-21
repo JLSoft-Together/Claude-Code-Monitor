@@ -223,7 +223,9 @@ export class DeviceManager {
       onStatus: (status, detail) => this.deps.broadcast({ type: 'qr', id: name, status, ...(detail ? { detail } : {}) }),
       lastPortFor: (host) => this.lastPortFor(host),
       timing: { pairWaitMs: this.t.qrPairWaitMs, connectWaitMs: this.t.qrConnectWaitMs, pollMs: this.t.mdnsPollMs },
-    }).finally(() => this.qrSessions.delete(name))
+    })
+      .catch(() => undefined)
+      .finally(() => this.qrSessions.delete(name))
     return { id: name, payload: qrPayload(name, password) }
   }
 
