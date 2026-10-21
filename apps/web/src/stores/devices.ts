@@ -71,9 +71,7 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
-  async function open(): Promise<void> {
-    opened = true
-    unsubscribe ??= api.onDevEvent(onEvent)
+  async function load(): Promise<void> {
     await api.devHold(true)
     const snap = await api.devSnapshot()
     if (snap) {
@@ -82,6 +80,17 @@ export const useDevicesStore = defineStore('devices', () => {
       setDevices(snap.devices)
     }
     loaded.value = true
+  }
+
+  async function open(): Promise<void> {
+    opened = true
+    unsubscribe ??= api.onDevEvent(onEvent)
+    await load()
+  }
+
+  /** Holding again re-resolves adb in main (e.g. after the SDK path changed in Settings). */
+  async function refresh(): Promise<void> {
+    if (opened) await load()
   }
 
   async function close(): Promise<void> {
@@ -156,7 +165,7 @@ export const useDevicesStore = defineStore('devices', () => {
   return {
     devices, adbFound, autoConnect, loaded, busy, selected, qr, lastError,
     selectedRows, selectedOnlineWifi, selectedOfflineWifi, selectedOffline,
-    open, close, connect, pair, disconnect, connectMany, toWifi, remove, setAlias, setAutoConnect,
+    open, close, refresh, connect, pair, disconnect, connectMany, toWifi, remove, setAlias, setAutoConnect,
     discover, startQr, cancelQr, toggle, selectAll,
   }
 })

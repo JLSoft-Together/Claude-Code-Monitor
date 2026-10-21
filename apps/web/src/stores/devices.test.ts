@@ -62,6 +62,33 @@ describe('devices store', () => {
     expect(s.loaded).toBe(true)
   })
 
+  it('refresh re-holds and reloads the snapshot without subscribing again', async () => {
+    api.devSnapshot.mockResolvedValue({ adb: null, devices: [], autoConnect: true })
+    const s = useDevicesStore()
+    await s.open()
+    expect(s.adbFound).toBe(false)
+    api.devHold.mockClear()
+    api.devSnapshot.mockResolvedValue({ adb: '/adb', devices: [dev('a')], autoConnect: false })
+    await s.refresh()
+    expect(api.devHold).toHaveBeenCalledWith(true)
+    expect(api.devSnapshot).toHaveBeenCalledTimes(2)
+    expect(api.onDevEvent).toHaveBeenCalledTimes(1)
+    expect(s.adbFound).toBe(true)
+    expect(s.autoConnect).toBe(false)
+    expect(s.devices.map((d) => d.id)).toEqual(['a'])
+  })
+
+  it('refresh does nothing once closed', async () => {
+    api.devSnapshot.mockResolvedValue({ adb: null, devices: [], autoConnect: true })
+    const s = useDevicesStore()
+    await s.open()
+    await s.close()
+    api.devHold.mockClear()
+    await s.refresh()
+    expect(api.devHold).not.toHaveBeenCalled()
+    expect(api.devSnapshot).toHaveBeenCalledTimes(1)
+  })
+
   it('devices event replaces the list and prunes selection', async () => {
     api.devSnapshot.mockResolvedValue({ adb: '/adb', devices: [dev('a'), dev('b')], autoConnect: true })
     const s = useDevicesStore()

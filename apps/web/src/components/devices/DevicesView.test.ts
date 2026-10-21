@@ -25,6 +25,7 @@ vi.mock('../../lib/devices', () => ({
 }))
 
 import { useDevicesStore } from '../../stores/devices'
+import { useUiStore } from '../../stores/ui'
 import DevicesView from './DevicesView.vue'
 
 const dev = (id: string, over: Partial<AdbDevice> = {}): AdbDevice => ({
@@ -176,6 +177,23 @@ describe('Devices view', () => {
     await flushPromises()
     expect(api.devQrCancel).toHaveBeenCalledWith('q9')
     expect(useDevicesStore().qr).toBeNull()
+  })
+
+  it('refreshes when Settings closes, so a newly set SDK clears the adb hint', async () => {
+    await mountWith({ adb: null, devices: [], autoConnect: true })
+    expect(w!.find('[data-dev-noadb]').exists()).toBe(true)
+    await w!.get('[data-dev-noadb] button').trigger('click')
+    const ui = useUiStore()
+    expect(ui.settingsOpen).toBe(true)
+    await flushPromises()
+    expect(api.devSnapshot).toHaveBeenCalledTimes(1)
+    api.devHold.mockClear()
+    api.devSnapshot.mockResolvedValue({ adb: '/adb', devices: [], autoConnect: true })
+    ui.settingsOpen = false
+    await flushPromises()
+    expect(api.devHold).toHaveBeenCalledWith(true)
+    expect(api.devSnapshot).toHaveBeenCalledTimes(2)
+    expect(w!.find('[data-dev-noadb]').exists()).toBe(false)
   })
 
   it('holds the tracker while mounted', async () => {

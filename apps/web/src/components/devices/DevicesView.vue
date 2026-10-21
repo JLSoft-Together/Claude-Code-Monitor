@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CircleAlert, RefreshCw, Settings2, Smartphone, Trash2, Unplug, X } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
@@ -29,6 +29,13 @@ function batch(fn: () => Promise<void>): void {
 }
 
 onMounted(() => void store.open().catch(() => undefined))
+// Settings is an overlay, so the view stays mounted while the Android SDK is set there.
+watch(
+  () => ui.settingsOpen,
+  (open, was) => {
+    if (was && !open) void store.refresh().catch(() => undefined)
+  },
+)
 onBeforeUnmount(() => void store.close().catch(() => undefined))
 </script>
 
