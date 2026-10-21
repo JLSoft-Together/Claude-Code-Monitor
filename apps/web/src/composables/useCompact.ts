@@ -2,7 +2,7 @@ import { effectScope, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { compactState, compactTick, handoffFile, type CompactFlow, type CompactState } from '../lib/compactHandoff'
 import { desktop } from '../lib/desktop'
-import { isTerm, useWorkspaceStore, type Pane } from '../stores/workspace'
+import { isTerm, presetOf, useWorkspaceStore, type Pane } from '../stores/workspace'
 import { usePaneInfo } from './usePaneInfo'
 
 function createCompact() {
@@ -20,7 +20,7 @@ function createCompact() {
   const compactionsOf = (pane: Pane): number => info.sessionOf(pane)?.compactions ?? 0
 
   function stateOf(pane: Pane | undefined): CompactState | null {
-    if (!pane || !isTerm(pane) || pane.preset === 'shell') return null
+    if (!pane || !isTerm(pane) || presetOf(pane) === 'shell') return null
     return compactState(info.statusOf(pane), pane.compact)
   }
 

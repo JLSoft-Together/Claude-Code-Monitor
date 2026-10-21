@@ -1446,7 +1446,7 @@ watch(
 function agentPaneOf(tab: Tab): Pane | undefined {
   const agents = leaves(tab.root)
     .map((k) => paneOf(k))
-    .filter((p): p is Pane => !!p && isTerm(p) && p.preset !== 'shell')
+    .filter((p): p is Pane => !!p && isTerm(p) && presetOf(p) !== 'shell')
   return agents.find((p) => p.key === tab.focus) ?? agents[0]
 }
 
