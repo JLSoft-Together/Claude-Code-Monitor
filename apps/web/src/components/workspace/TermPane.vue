@@ -1175,7 +1175,7 @@ onBeforeUnmount(() => {
       :class="multi && focused ? 'outline-focus' : 'outline-transparent'"
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
-      <div class="size-full overflow-hidden rounded-card p-2 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
+      <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
         <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
       <div
