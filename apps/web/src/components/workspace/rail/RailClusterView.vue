@@ -20,7 +20,10 @@ import {
 import { folderName } from '../../../lib/sidebarRows'
 import { isMac } from '../../../lib/platform'
 import { keyCombo } from '../../../lib/shortcuts'
+import { folderIcon } from '../../../lib/explorer/fileIcons'
+import { useSettingsStore } from '../../../stores/settings'
 import { useWorkspaceStore } from '../../../stores/workspace'
+import FileTypeIcon from '../FileTypeIcon.vue'
 import RunBadge from '../RunBadge.vue'
 import RailGroupHead from './RailGroupHead.vue'
 import RailRow from './RailRow.vue'
@@ -57,6 +60,8 @@ const { t } = useI18n()
 const MOVE_KEYS = { up: keyCombo(['Alt', '↑'], isMac), down: keyCombo(['Alt', '↓'], isMac) }
 const name = computed(() => (props.cluster.key === 'home' ? t('workspace.side.home') : props.cluster.name))
 /** Folder the header acts on: the active checkout, else the main one. Never assumed allowed beyond what is open. */
+const settings = useSettingsStore()
+const atomFolder = computed(() => (settings.fileIcons === 'atom' ? folderIcon(name.value, props.cluster.active) : null))
 const headDir = computed(() => (props.cluster.checkouts.find((k) => k.active) ?? props.cluster.checkouts[0])?.path ?? props.cluster.root)
 // A lone plain folder needs no checkout line; a branch, a worktree or a remembered project does.
 const showCheckouts = computed(() => showsCheckouts(props.cluster))
@@ -129,8 +134,17 @@ const HEAD_BTN =
             :class="collapsed ? '' : 'rotate-90'"
             aria-hidden="true"
           />
+          <FileTypeIcon
+            v-if="atomFolder"
+            :icon="atomFolder"
+            :size="14"
+            class="transition-colors duration-(--ccm-dur-base)"
+            :class="cluster.live ? 'text-accent' : 'text-ink-faint'"
+            data-rail-folder
+          />
           <component
             :is="cluster.active ? FolderOpen : Folder"
+            v-else
             :size="14"
             class="shrink-0 transition-colors duration-(--ccm-dur-base)"
             :class="cluster.live ? 'fill-accent-soft text-accent' : 'fill-fill text-ink-faint'"
