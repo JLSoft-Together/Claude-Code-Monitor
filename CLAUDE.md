@@ -13,7 +13,7 @@ npm workspaces (pnpm not installed on this machine). From repo root:
 - `npm install` — install all workspaces
 - `npm run dev` — UI work only: collector `--dev` (`127.0.0.1:4317`, no app key, no terminals) + Vite web (`127.0.0.1:5173`, proxies `/ws`). Give it its own `CCM_DATA_DIR`: it records the office timelapse into `timeline/<today>.jsonl` like the packaged app, so both would append to the same file and demo-fixture sessions would land in the real timeline
 - `npm test` — Vitest in all workspaces; single file: `npm test -w @ccm/collector -- test/monitor.test.ts`
-- `npm run typecheck`
+- `npm run typecheck` — `tsc` / `vue-tsc` per workspace; there is no linter, so typecheck + Vitest is the gate. Web single file: `npm test -w @ccm/web -- src/lib/themes.test.ts`
 - `npm run desktop` — build web, then run the Electron app from `apps/desktop/stage` (dev); runs `gradlew assemble` in `apps/layout-daemon` first when its jar / loose kit / layoutlib-dist is missing (JAVA_HOME if JDK 17–24, else newest fitting JDK in `~/.gradle/jdks` or Android Studio JBR — Gradle 8.14 refuses Java 25; `CCM_SKIP_DAEMON_BUILD=1` skips)
 - `npm run desktop:dev` — Electron app with Vite HMR for the web UI (window loads `127.0.0.1:5173`); main/collector changes still need a restart. Close a running packaged app first (single-instance lock, port 4317)
 - `npm run dist` — packages for the host OS (`scripts/dist.mjs`: win32 → `dist:win`, darwin → `dist:mac`, else exit 1); no cross builds (node-pty prebuilt is host-only)
@@ -32,14 +32,21 @@ Deviations from `PLAN.md` are allowed only when a discovered Claude Code limitat
 
 Core principle: **Observe → Normalize → Broadcast → Render**. Monitoring must never send prompts to Claude Code, call the Claude API, or spawn another LLM agent — zero additional token cost. Single owner-approved exception (v51): the Workspace menu item **Compact…** submits one handoff prompt into an idle agent pane the owner picked; `/compact` and the resume line are typed / prefilled only (docs §11x).
 
-## Planned architecture
+## Architecture
 
 ```
-apps/collector   Node.js + TS. Discovers Claude processes, session files, hook events, terminal titles.
-                 Normalizes into shared types, keeps in-memory state, serves WebSocket on 127.0.0.1 only.
-apps/web         Vue 3 + TS + Vite + Tailwind + Pinia + vue-i18n + Vue Flow (Cytoscape.js fallback).
-packages/shared  Event protocol + TerminalSession / Agent types shared by both apps.
-apps/desktop     Electron shell (Windows + macOS): hosts collector in utilityProcess, tray, packaging.
+apps/collector     Node.js + TS. Discovers Claude processes, session files, hook events, terminal titles
+                   (codex/ for Codex runs, office/ for the Habblaud timelapse).
+                   Normalizes into shared types, keeps in-memory state, serves WebSocket on 127.0.0.1 only.
+apps/web           Vue 3 + TS + Vite + Tailwind + Pinia + vue-i18n + Vue Flow (Cytoscape.js fallback).
+packages/shared    Event protocol + TerminalSession / Agent types shared by both apps.
+apps/desktop       Electron shell (Windows + macOS): hosts collector in utilityProcess, tray, packaging.
+                   Main-process features live here, not in the collector: pty/ (Workspace terminals,
+                   MCP server `orrery`), devices/ (adb), extensions/, github/, layout/, preview/, run/, flutterPreview/.
+apps/layout-daemon Kotlin + Gradle: warm layoutlib (Paparazzi) render daemon for the XML Layout Preview,
+                   JSON-RPC 2.0 over stdio; `./gradlew test` (JDK 17–24), see its README.
+packages/habblaud  Vendored Habblaud pixel-art office (MIT).
+src/               Upstream source copies (escrcpy, habblaud) for reference only — not built.
 ```
 
 Key cross-cutting contracts:
