@@ -14,7 +14,6 @@ import {
   ArrowUpLeft,
   ArrowUpRight,
   Building2,
-  ChartGantt,
   ChevronDown,
   ChevronUp,
   Eye,
@@ -29,7 +28,6 @@ import {
   Minus,
   Network,
   PanelLeft,
-  PanelRight,
   Plus,
   Search,
   X,
@@ -52,7 +50,6 @@ import type { MenuEntry } from '../lib/menu'
 import { motionMs, nextMapIsSwitch, reducedMotion } from '../lib/motion'
 import { isMac } from '../lib/platform'
 import { isTyping, keyCombo } from '../lib/shortcuts'
-import { WINDOWS } from '../lib/toolTimeline'
 import AgentDetails from './AgentDetails.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 import DoneTray from './DoneTray.vue'
@@ -62,7 +59,6 @@ import SubPill from './SubPill.vue'
 import TreeEdge from './TreeEdge.vue'
 import KeyHint from './KeyHint.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
-import ToolTimeline from './ToolTimeline.vue'
 import OfficeOptions from './office/OfficeOptions.vue'
 import OfficeView from './office/OfficeView.vue'
 import { useOfficeStore } from '../stores/office'
@@ -930,10 +926,10 @@ watch(
   () => ui.layoutRequest,
   () => syncNodes(true),
 )
-// Pinned panels and the session bar change the canvas size; floating panels do not.
+// A pinned panel changes the canvas size; a floating one does not.
 let resizeTimer: number | undefined
 watch(
-  () => [ui.panels.sessions.open && ui.panels.sessions.pinned, ui.panels.activity.open && ui.panels.activity.pinned, ui.barMin].join(','),
+  () => ui.panels.sessions.open && ui.panels.sessions.pinned,
   () => {
     window.clearTimeout(resizeTimer)
     resizeTimer = window.setTimeout(() => syncNodes(true), 240)
@@ -1415,7 +1411,6 @@ const controls = computed<{ key: string; label: string; icon: typeof Plus; hint?
 
 const views = computed(() => [
   { value: 'map' as MapView, label: t('tools.view.map'), icon: Network },
-  { value: 'timeline' as MapView, label: t('tools.view.timeline'), icon: ChartGantt },
   { value: 'office' as MapView, label: t('officeV60.view'), icon: Building2 },
 ])
 
@@ -1432,7 +1427,7 @@ function onVolumeWheel(e: WheelEvent): void {
   if (!e.deltaY) return
   office.setVolume((volumePct.value + (e.deltaY < 0 ? 5 : -5)) / 100)
 }
-const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabel' : ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
+const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
 </script>
 
 <template>
@@ -1441,14 +1436,13 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
     <div
       ref="canvas"
       class="relative min-h-0 flex-1 overflow-hidden"
-      :class="[nodeMotion ? 'ccm-map-motion' : '', ui.mapView === 'timeline' ? 'bg-surface' : 'bg-canvas']"
+      :class="[nodeMotion ? 'ccm-map-motion' : '', 'bg-canvas']"
       role="region"
       :aria-label="regionLabel"
       @keydown="onCanvasKey"
       @focusin="onCanvasFocusIn"
     >
-      <ToolTimeline v-if="ui.mapView === 'timeline'" :terminal-id="terminalId" />
-      <OfficeView v-else-if="ui.mapView === 'office'" :terminal-id="terminalId" />
+      <OfficeView v-if="ui.mapView === 'office'" :terminal-id="terminalId" />
       <VueFlow
         v-else
         :id="FLOW_ID"
@@ -1576,19 +1570,7 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
 
         <div class="ccm-material pointer-events-auto flex flex-wrap items-center justify-center gap-0.5 rounded-control p-0.5 shadow-pop" role="toolbar" :aria-label="t('map.title')">
           <SegmentedControl v-model="ui.mapView" :options="views" :label="t('tools.view.label')" />
-          <template v-if="ui.mapView === 'timeline'">
-            <button
-              v-for="w in WINDOWS"
-              :key="w"
-              type="button"
-              :class="[TOOL, 'tabular-nums']"
-              :aria-pressed="ui.timelineWindow === w"
-              @click="ui.timelineWindow = w"
-            >
-              {{ t('tools.minutes', { n: w }) }}
-            </button>
-          </template>
-          <template v-else-if="ui.mapView === 'office'">
+          <template v-if="ui.mapView === 'office'">
             <button
               v-for="c in officeControls"
               :key="c.key"
@@ -1688,16 +1670,6 @@ const regionLabel = computed(() => t(ui.mapView === 'timeline' ? 'tools.ariaLabe
           </template>
         </div>
 
-        <button
-          type="button"
-          :class="[CHROME_BTN, ui.isCollapsed('activity') ? '' : 'invisible']"
-          :aria-label="t('map.showActivity')"
-          :title="t('map.showActivity')"
-          aria-keyshortcuts="A"
-          @click="ui.togglePanel('activity')"
-        >
-          <span class="hidden sm:inline">{{ t('activity.title') }}</span><KeyHint keys="A" /><PanelRight :size="16" aria-hidden="true" />
-        </button>
       </div>
 
       <AgentDetails v-if="ui.mapView === 'map'" :flow-id="FLOW_ID" />

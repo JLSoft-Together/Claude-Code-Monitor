@@ -128,3 +128,8 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - Atom file icons outside Explorer: `components/workspace/FileTypeIcon.vue` (img / themed mask for an `AtomIcon`); `PaneIcon.vue` `atomFile` (file panes in rail rows, tabs, Mission Control, drag ghost) and `rail/RailClusterView.vue` `atomFolder` (project head, themed default folder keeps the live `text-accent` tint) when `settings.fileIcons === 'atom'`.
 - HTML rendered view: `lib/codeView.ts` `isHtml`; `FilePane.vue` `htmlPage` / `rendered` (shares `mdPreview` toggle), `htmlUrl` from `previewUrl` (undefined pending, null → source), `<webview>` partition `persist:ccm-preview` remounted via `htmlRev` on text change.
 - v62 auto save (`.planning/PLAN-v62-auto-save.md`): `lib/autoSave.ts`, settings `autoSave|autoSaveDelay`, `FilePane.vue` triggers + quiet `save`, close saves first (`WorkspaceView`/`MissionControl` `closePanes`), quit via `editors.ts` `autoSave()` in `main.ts` `confirmUnsaved`; tests `lib/autoSave.test.ts`, desktop `test/editors.test.ts`.
+
+## 2026-10-23 — Office perf
+
+- Office lag audit: Habblaud local patches D / E / F (`art/api.ts` `spriteBounds`, `world/index.ts` `sizeDirty` + `IDLE_FRAME_MS`), `StatusIcon.vue` spinner on the root `<svg>`; details `web.md` "Office perf", `packages/habblaud/UPSTREAM.md`.
+- Map runners sample their path once (`lib/pathSamples.ts`, `TreeEdge.vue`, `PeerEdge.vue`); Monitor drops `SessionBar`, the Activity aside and the Timeline view (`MonitorView.vue`, `AgentMap.vue`, `ui.ts` `MapView`, `useShortcuts.ts`, `lib/shortcuts.ts`, `lib/tour.ts`).
