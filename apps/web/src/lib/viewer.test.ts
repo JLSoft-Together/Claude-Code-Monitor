@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changedLines, findMatches, grammarFor, renderLine } from './codeView'
+import { changedLines, findMatches, grammarFor, isHtml, renderLine } from './codeView'
 import { renderMarkdown } from './markdown'
 import { dirOf, parseAddress } from './preview'
 
@@ -35,6 +35,13 @@ describe('code view', () => {
     expect(grammarFor('ts')).toBe('typescript')
     expect(grammarFor(undefined, 'C:\\a\\App.VUE')).toBe('vue')
     expect(grammarFor('xyz')).toBeNull()
+  })
+
+  it('detects HTML files for the rendered view', () => {
+    expect(isHtml('/a/index.html')).toBe(true)
+    expect(isHtml('C:\\a\\PAGE.HTM')).toBe(true)
+    expect(isHtml('/a/notes.md')).toBe(false)
+    expect(isHtml('/a/page.html.bak')).toBe(false)
   })
 
   it('finds matches case-insensitively', () => {

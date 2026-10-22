@@ -9,7 +9,7 @@ import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, 
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { useWorkspaceStore, type SaveOutcome } from '../../stores/workspace'
-import { changedLines, escapeHtml, findMatches, grammarFor, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
+import { changedLines, escapeHtml, findMatches, grammarFor, isHtml, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
 import { blockPatch } from '../../lib/diffBlocks'
 import { joinPath } from '../../lib/fileLinks'
 import { tokenize } from '../../lib/highlight'
@@ -69,6 +69,9 @@ const lines = shallowRef<string[]>([])
 const tokens = shallowRef<CodeToken[][] | null>(null)
 const plainBecauseLarge = ref(false)
 const imageUrl = ref<string | null>(null)
+// undefined while the preview URL is resolving; null when the path can't be served (source view then).
+const htmlUrl = ref<string | null | undefined>(undefined)
+const htmlRev = ref(0)
 const wrap = ref(false)
 const mdPreview = ref(true)
 const targetLine = ref<number | null>(null)
@@ -139,7 +142,9 @@ const gutter = computed(() => {
 
 const name = computed(() => baseName(props.path))
 const markdown = computed(() => view.value?.kind === 'text' && isMarkdown(props.path))
-const showSource = computed(() => view.value?.kind === 'text' && !(markdown.value && mdPreview.value))
+const htmlPage = computed(() => view.value?.kind === 'text' && isHtml(props.path))
+const rendered = computed(() => markdown.value || htmlPage.value)
+const showSource = computed(() => view.value?.kind === 'text' && !(mdPreview.value && (markdown.value || (htmlPage.value && htmlUrl.value !== null))))
 const matches = computed<Match[]>(() => (findOpen.value && showSource.value ? findMatches(lines.value, query.value) : []))
 // XML layout preview (v32): Code | Split | Design for res/layout*/ files, per-user mode.
 const LAYOUT_MODE_KEY = 'ccm.layout.mode'
@@ -295,6 +300,8 @@ const windowCopy = useWindowCopy({
   allText: () => paintedText,
 })
 const allSelected = windowCopy.allSelected
+// Saved or changed on disk: remount the rendered page (the preview server sends no-store).
+watch(() => (htmlPage.value ? view.value?.kind === 'text' && view.value.text : null), () => htmlRev.value++)
 watch(html, () => windowCopy.capture(), { flush: 'pre' })
 watch(html, () => windowCopy.restore(), { flush: 'post' })
 
@@ -326,6 +333,11 @@ async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
   loading.value = false
   view.value = next
   if (next?.kind === 'image') imageUrl.value = (await previewUrl(next.path))?.url ?? null
+  if (next?.kind === 'text' && isHtml(next.path)) {
+    void previewUrl(next.path).then((res) => {
+      if (seq === loadSeq) htmlUrl.value = res?.url ?? null
+    })
+  }
   if (next?.kind !== 'text') {
     lines.value = []
     tokens.value = null
@@ -379,7 +391,7 @@ async function startEdit(): Promise<void> {
   }
   findOpen.value = false
   closePopup()
-  if (markdown.value) mdPreview.value = false
+  if (rendered.value) mdPreview.value = false
   editorDoc.value = pending.value ?? baseText.value
   focusEditor = true
   editing.value = true
@@ -562,7 +574,7 @@ const offChange = onPreviewChanged((change) => {
 
 async function openFind(): Promise<void> {
   findOpen.value = true
-  if (markdown.value) mdPreview.value = false
+  if (rendered.value) mdPreview.value = false
   await nextTick()
   findInput.value?.select()
   findInput.value?.focus()
@@ -837,7 +849,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onWindowKey, true)
   if (root.value) resize.observe(root.value)
   await load()
-  if (props.line && markdown.value) mdPreview.value = false
+  if (props.line && rendered.value) mdPreview.value = false
   void setWatch(view.value && view.value.kind !== 'denied' ? dirOf(view.value.path) : null)
   await jumpTo(props.line)
 })
@@ -866,7 +878,7 @@ const headMore = computed<MenuEntry[]>(() => {
   if (changes.blocks.value.length && changes.ok.value) out.push({ id: 'diff', label: t('workspace.gutter.showDiff'), hint: t('workspace.gutter.summary', changeTotals.value), icon: GitCompare })
   if (isXmlPreview.value) for (const m of layoutModes.value) out.push({ id: `layout:${m.value}`, label: m.label, icon: layoutMode.value === m.value ? Check : m.icon })
   if (isDart.value && fwpProject.value) out.push({ id: 'fwp', label: t('fwp.toggle'), icon: fwpOpen.value ? Check : Smartphone })
-  if (markdown.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
+  if (rendered.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
   if (text) {
     out.push({ id: 'wrap', label: t('workspace.viewer.wrap'), icon: wrap.value ? Check : TextWrap, disabled: !showSource.value })
     out.push({ id: 'find', label: t('workspace.viewer.find'), icon: Search, shortcut: isMac ? '⌘F' : 'Ctrl+F' })
@@ -954,7 +966,7 @@ function pickHead(id: string): void {
       >
         <Smartphone :size="14" aria-hidden="true" />
       </button>
-      <template v-if="markdown">
+      <template v-if="rendered">
         <button
           type="button"
           class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
@@ -1164,6 +1176,8 @@ function pickHead(id: string): void {
         <div v-else-if="view.kind === 'image'" class="grid min-h-full place-items-center p-6">
           <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
         </div>
+        <webview v-else-if="htmlPage && !showSource && htmlUrl" :key="htmlRev" :src="htmlUrl" partition="persist:ccm-preview" class="size-full bg-page" />
+        <div v-else-if="htmlPage && !showSource" class="size-full" />
         <article v-else-if="!showSource" ref="mdEl" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />
         <div
           v-else
