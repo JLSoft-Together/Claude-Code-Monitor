@@ -50,6 +50,9 @@ export interface CreateWorldOptions {
   visit?: boolean;
 }
 
+const IDLE_FRAME_MS = 1000 / 30 - 4;
+const FULL_RATE_HOLD_MS = 300;
+
 export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: CreateWorldOptions = {}): WorldApi & { debug: WorldDebug; visit: VisitWorld } {
   let options: WorldOptions = { ...DEFAULT_WORLD_OPTIONS };
   const visitMode = !!o.visit;
@@ -81,6 +84,12 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   let framed = false;
   let lastCols = -1;
   const abort = new AbortController();
+  // Orrery local patch E: reading clientWidth every frame forced a layout of the whole app per frame.
+  let sizeDirty = false;
+  const sizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => (sizeDirty = true));
+  // Orrery local patch F: an idle office draws at ~30 fps; camera motion gets every frame for a moment.
+  const drawnCam = { x: NaN, y: NaN, zoom: NaN };
+  let fullRateUntil = 0;
 
   // ------------------------------------------------------------------ tamanho/DPR
 
@@ -273,6 +282,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
 
   const loop = (ts: number) => {
     raf = requestAnimationFrame(loop);
+    const camMoved = camera.x !== drawnCam.x || camera.y !== drawnCam.y || camera.zoom !== drawnCam.zoom;
+    if (camMoved) fullRateUntil = ts + FULL_RATE_HOLD_MS;
+    if (!camMoved && !camera.animating && !camera.follow && ts >= fullRateUntil && lastTs && ts - lastTs < IDLE_FRAME_MS) return;
     const real = Date.now();
     const realDt = lastTs ? Math.min(0.1, Math.max(0, (ts - lastTs) / 1000)) : 1 / 60;
     lastTs = ts;
@@ -283,7 +295,10 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     const now = playback ? worldNow : real;
     try {
       const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-      if (canvas.clientWidth !== camera.viewW || canvas.clientHeight !== camera.viewH || dpr !== camera.dpr) resize();
+      if (sizeDirty || dpr !== camera.dpr || (!sizeObserver && (canvas.clientWidth !== camera.viewW || canvas.clientHeight !== camera.viewH))) {
+        sizeDirty = false;
+        resize();
+      }
       sim.update(dt, now);
       // partidas e apostas resolvidas: para o feed (as do timelapse são encenação do passado: ficam fora)
       const events = sim.social.events;
@@ -305,6 +320,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       const followCh = camera.follow ? sim.person(camera.follow) : undefined;
       if (camera.follow && !followCh) camera.follow = null;
       camera.update(real, followCh ? camera.centerFor(followCh.x, followCh.y - 12, camera.zoom) : null, realDt);
+      drawnCam.x = camera.x;
+      drawnCam.y = camera.y;
+      drawnCam.zoom = camera.zoom;
       renderer.frame(now, dt, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
       overlay.draw(now, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
       renderer.pruneHeads();
@@ -353,6 +371,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   };
   canvas.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('resize', resize);
+  sizeObserver?.observe(canvas);
   document.addEventListener('visibilitychange', onVisibility);
   resize();
   raf = requestAnimationFrame(loop);
@@ -470,6 +489,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       offSnapshot();
       detachInput();
       window.removeEventListener('resize', resize);
+      sizeObserver?.disconnect();
       canvas.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('visibilitychange', onVisibility);
       selectCbs.clear();
