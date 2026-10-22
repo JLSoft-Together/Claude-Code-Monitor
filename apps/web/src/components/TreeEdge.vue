@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRunnerBudget } from '../composables/useMapNode'
 import { treePath } from '../lib/layout'
+import { pointAt, samplePath, type PathSamples } from '../lib/pathSamples'
 import { reducedMotion } from '../lib/motion'
 
 defineOptions({ inheritAttrs: false })
@@ -27,6 +28,7 @@ const dot = ref<{ x: number; y: number; dir: PulseDir } | null>(null)
 let frame = 0
 let timer = 0
 let holding = false
+let pathRev = 0
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
 
@@ -49,14 +51,20 @@ function run(dir: PulseDir): void {
   const start = () => {
     const el = pathEl.value
     if (!el) return
-    const len = el.getTotalLength()
-    if (!len) return
     if (runners && !runners.take()) return
     holding = true
+    const first = samplePath(el)
+    if (!first) return release()
+    let samples: PathSamples = first
+    let rev = pathRev
     const t0 = performance.now()
     const step = (at: number) => {
       const k = Math.min(1, (at - t0) / PULSE_MS)
-      const p = el.getPointAtLength(len * (dir === 'down' ? ease(k) : 1 - ease(k)))
+      if (pathRev !== rev) {
+        rev = pathRev
+        samples = samplePath(el) ?? samples
+      }
+      const p = pointAt(samples, dir === 'down' ? ease(k) : 1 - ease(k))
       dot.value = { x: p.x, y: p.y, dir }
       if (k < 1) frame = requestAnimationFrame(step)
       else {
@@ -69,6 +77,8 @@ function run(dir: PulseDir): void {
   if (dir === 'down') timer = window.setTimeout(start, DOWN_DELAY_MS)
   else start()
 }
+
+watch(d, () => pathRev++)
 
 watch(
   () => props.data?.pulse?.n,

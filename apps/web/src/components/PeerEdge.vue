@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { EdgeLabelRenderer, type GraphNode } from '@vue-flow/core'
 import { usePeerMap, usePeerName, useRunnerBudget, type PeerEdgeData, type PeerLane } from '../composables/useMapNode'
 import { now, relativeTime } from '../lib/format'
 import { MAIN_HEIGHT, MAIN_WIDTH, peerPath, type Box } from '../lib/layout'
 import { reducedMotion } from '../lib/motion'
+import { pointAt, samplePath, type PathSamples } from '../lib/pathSamples'
 import { usePeersStore } from '../stores/peers'
 
 defineOptions({ inheritAttrs: false })
@@ -43,6 +44,8 @@ const lanes: Record<PeerLane, { frame: number; holding: boolean; pending: number
   ba: { frame: 0, holding: false, pending: 0 },
 }
 let hotTimer = 0
+let arcRev = 0
+watch(() => arc.value.d, () => arcRev++)
 
 const ease = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2)
 
@@ -66,16 +69,27 @@ function launch(lane: PeerLane, n: number): void {
   const l = lanes[lane]
   const el = pathEl.value
   heat()
-  if (!el || !el.getTotalLength() || reducedMotion() || (runners && !runners.take())) {
+  if (!el || reducedMotion() || (runners && !runners.take())) {
     land(lane)
     return
   }
+  const first = samplePath(el)
+  if (!first) {
+    runners?.give()
+    land(lane)
+    return
+  }
+  let samples: PathSamples = first
+  let rev = arcRev
   l.holding = true
   const t0 = performance.now()
   const step = (at: number) => {
     const k = Math.min(1, (at - t0) / FLY_MS)
-    const len = el.getTotalLength()
-    const p = el.getPointAtLength(len * (lane === 'ab' ? ease(k) : 1 - ease(k)))
+    if (arcRev !== rev) {
+      rev = arcRev
+      samples = samplePath(el) ?? samples
+    }
+    const p = pointAt(samples, lane === 'ab' ? ease(k) : 1 - ease(k))
     envelopes.value = { ...envelopes.value, [lane]: { x: p.x, y: p.y, n } }
     if (k < 1) {
       l.frame = requestAnimationFrame(step)
