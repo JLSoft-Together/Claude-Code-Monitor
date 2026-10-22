@@ -27,14 +27,32 @@ export function seasonalCostume(theme: SeasonalTheme, seed: number): CharacterFr
 
 /** Reutiliza footprints de plantas: nenhuma nova colisão ou mudança de caminhos. */
 export function seasonalFurniture(theme: SeasonalTheme, kind: FurnitureKind, area: AreaLayout, seed: number): Sprite | null {
+  const p = seasonalFurnitureProp(theme, kind, area, seed);
+  return p ? prop(p) : null;
+}
+
+export function seasonalFurnitureProp(theme: SeasonalTheme, kind: FurnitureKind, area: AreaLayout, seed: number): SeasonalProp | null {
   if (theme === 'none' || area.kind === 'restroom') return null;
   if (kind === 'plant_tall') {
     const first = area.furniture.find((f) => f.kind === 'plant_tall');
     if (!first || hash32(first.id) !== seed) return null;
-    return prop(theme === 'christmas' ? 'tree' : seed % 3 === 0 ? 'ghost' : 'pumpkin');
+    return theme === 'christmas' ? 'tree' : seed % 3 === 0 ? 'ghost' : 'pumpkin';
   }
-  if (kind === 'plant_small') return prop(theme === 'christmas' ? 'gift' : 'pumpkin');
+  if (kind === 'plant_small') return theme === 'christmas' ? 'gift' : 'pumpkin';
   return null;
+}
+
+export const SEASONAL_ELEVATOR_LIFT = 19;
+export const SEASONAL_WALL_BAT_MIN_W = 90;
+export const SEASONAL_WALL_BAT_Y = 18;
+
+export function seasonalElevatorProp(theme: SeasonalTheme): SeasonalProp | null {
+  return theme === 'none' ? null : theme === 'christmas' ? 'wreath' : 'bat';
+}
+
+export function seasonalWallBat(theme: SeasonalTheme, wall: WallSegment): { cx: number; y: number } | null {
+  if (theme !== 'halloween' || wall.kind !== 'face' || wall.w <= SEASONAL_WALL_BAT_MIN_W) return null;
+  return { cx: wall.x + wall.w / 2, y: wall.y + 5 + SEASONAL_WALL_BAT_Y };
 }
 
 export function seasonalRugColor(theme: SeasonalTheme, original: string): string {
@@ -121,9 +139,10 @@ export function decorateSeasonalWall(ctx: CanvasRenderingContext2D, theme: Seaso
 
 /** Guirlandas nas molduras dos elevadores (sem cobrir a porta animada). */
 export function decorateElevator(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, x: number, y: number): void {
-  if (theme === 'none') return;
-  const sprite = prop(theme === 'christmas' ? 'wreath' : 'bat');
-  ctx.drawImage(sprite.canvas, Math.round(x - sprite.ax), Math.round(y - 19 - sprite.ay));
+  const kind = seasonalElevatorProp(theme);
+  if (!kind) return;
+  const sprite = prop(kind);
+  ctx.drawImage(sprite.canvas, Math.round(x - sprite.ax), Math.round(y - SEASONAL_ELEVATOR_LIFT - sprite.ay));
 }
 
 const glows = new Map<SeasonalTheme, HTMLCanvasElement>();

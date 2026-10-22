@@ -42,6 +42,7 @@ export class Camera {
   dpr = 1;
   /** Zoom mínimo dinâmico (permite enquadrar prédios grandes abaixo de 1×). */
   minZoom = ZOOM_MIN;
+  maxZoom = ZOOM_MAX;
   bounds: Bounds = { x: 0, y: 0, w: 800, h: 600 };
   follow: string | null = null;
   /** Margens cobertas pela UI (px CSS): enquadramentos usam só a área livre. */
@@ -68,7 +69,7 @@ export class Camera {
     for (let k = 1; k <= ZOOM_MAX * this.dpr; k++) set.add(Math.round((k / this.dpr) * 1000) / 1000);
     // meio-níveis a partir de 2× (a irregularidade de 1px fica imperceptível)
     for (let h = 4; h <= ZOOM_MAX * 2; h++) set.add(h / 2);
-    const out = [...set].filter((z) => z >= min - 1e-6 && z <= ZOOM_MAX + 1e-6).sort((a, b) => a - b);
+    const out = [...set].filter((z) => z >= min - 1e-6 && z <= this.maxZoom + 1e-6).sort((a, b) => a - b);
     if (!out.length || out[0] > min + 1e-6) out.unshift(min);
     return out;
   }
@@ -99,7 +100,7 @@ export class Camera {
   }
 
   animateTo(x: number, y: number, zoom: number, now: number, dur = 400): void {
-    const tz = Math.max(Math.min(this.minZoom, ZOOM_MIN), Math.min(ZOOM_MAX, zoom));
+    const tz = Math.max(Math.min(this.minZoom, ZOOM_MIN), Math.min(this.maxZoom, zoom));
     this.anim = { fx: this.x, fy: this.y, fz: this.zoom, tx: x, ty: y, tz, t0: now, dur };
   }
 
@@ -117,7 +118,7 @@ export class Camera {
 
   /** Zoom ancorado num ponto da tela (CSS px). */
   zoomAt(newZoom: number, sx: number, sy: number, now: number, animate = true): void {
-    const z = Math.max(Math.min(this.minZoom, ZOOM_MIN), Math.min(ZOOM_MAX, newZoom));
+    const z = Math.max(Math.min(this.minZoom, ZOOM_MIN), Math.min(this.maxZoom, newZoom));
     const wx = this.x + (sx - this.viewW / 2) / this.zoom;
     const wy = this.y + (sy - this.viewH / 2) / this.zoom;
     const nx = wx - (sx - this.viewW / 2) / z;

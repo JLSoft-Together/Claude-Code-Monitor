@@ -1,0 +1,832 @@
+{
+ "flat": {
+  "anims": [
+   [
+    "stand_se",
+    "feet",
+    0
+   ],
+   [
+    "stand_ne",
+    "feet",
+    0
+   ],
+   [
+    "walk_se",
+    "feet",
+    0
+   ],
+   [
+    "walk_ne",
+    "feet",
+    0
+   ],
+   [
+    "sit_type_ne",
+    "seat",
+    0
+   ],
+   [
+    "sit_se",
+    "seat",
+    0
+   ],
+   [
+    "raise_hand_se",
+    "feet",
+    320
+   ],
+   [
+    "raise_hand_seated_se",
+    "seat",
+    320
+   ],
+   [
+    "sleep_se",
+    "seat",
+    1400
+   ],
+   [
+    "talk_se",
+    "feet",
+    380
+   ],
+   [
+    "cheer_se",
+    "feet",
+    340
+   ],
+   [
+    "stand_coffee_se",
+    "feet",
+    0
+   ],
+   [
+    "drink_se",
+    "feet",
+    700
+   ],
+   [
+    "walk_coffee_se",
+    "feet",
+    0
+   ]
+  ],
+  "sheets": [
+   {
+    "name": "turn",
+    "n": 4,
+    "scale": "turn",
+    "cols": [
+     [
+      0,
+      "stand_se",
+      "feet"
+     ],
+     [
+      2,
+      "stand_ne",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk8-se",
+    "alt": "walk-se",
+    "alt_spec": {
+     "n": 4,
+     "cols": [
+      [
+       0,
+       "walk_se",
+       "feet"
+      ],
+      [
+       1,
+       "walk_se",
+       "feet"
+      ],
+      [
+       2,
+       "walk_se",
+       "feet"
+      ],
+      [
+       3,
+       "walk_se",
+       "feet"
+      ]
+     ]
+    },
+    "n": 8,
+    "scale": "walk",
+    "cm_ref": 0,
+    "cols": [
+     [
+      0,
+      "walk_se",
+      "feet"
+     ],
+     [
+      1,
+      "walk_se",
+      "feet"
+     ],
+     [
+      2,
+      "walk_se",
+      "feet"
+     ],
+     [
+      3,
+      "walk_se",
+      "feet"
+     ],
+     [
+      4,
+      "walk_se",
+      "feet"
+     ],
+     [
+      5,
+      "walk_se",
+      "feet"
+     ],
+     [
+      6,
+      "walk_se",
+      "feet"
+     ],
+     [
+      7,
+      "walk_se",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk8-ne",
+    "alt": "walk-ne",
+    "alt_spec": {
+     "n": 4,
+     "cols": [
+      [
+       0,
+       "walk_ne",
+       "feet"
+      ],
+      [
+       1,
+       "walk_ne",
+       "feet"
+      ],
+      [
+       2,
+       "walk_ne",
+       "feet"
+      ],
+      [
+       3,
+       "walk_ne",
+       "feet"
+      ]
+     ]
+    },
+    "n": 8,
+    "scale": "walk",
+    "cm_ref": 2,
+    "cols": [
+     [
+      0,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      1,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      2,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      3,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      4,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      5,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      6,
+      "walk_ne",
+      "feet"
+     ],
+     [
+      7,
+      "walk_ne",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "seated",
+    "n": 5,
+    "scale": "ref",
+    "cols": [
+     [
+      1,
+      "sit_type_ne",
+      "seat"
+     ],
+     [
+      2,
+      "sit_se",
+      "seat"
+     ],
+     [
+      3,
+      "sleep_se",
+      "seat"
+     ],
+     [
+      4,
+      "raise_hand_seated_se",
+      "seat"
+     ]
+    ]
+   },
+   {
+    "name": "actions",
+    "n": 5,
+    "scale": "ref",
+    "cols": [
+     [
+      1,
+      "raise_hand_se",
+      "feet"
+     ],
+     [
+      2,
+      "talk_se",
+      "feet"
+     ],
+     [
+      3,
+      "talk_se",
+      "feet"
+     ],
+     [
+      4,
+      "cheer_se",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "actions2",
+    "n": 6,
+    "scale": "ref",
+    "optional": true,
+    "cols": [
+     [
+      1,
+      "raise_hand_se",
+      "feet"
+     ],
+     [
+      2,
+      "talk_se",
+      "feet"
+     ],
+     [
+      3,
+      "cheer_se",
+      "feet"
+     ],
+     [
+      5,
+      "raise_hand_seated_se",
+      "seat",
+      "match"
+     ]
+    ]
+   },
+   {
+    "name": "coffee",
+    "n": 4,
+    "scale": "ref",
+    "optional": true,
+    "cols": [
+     [
+      1,
+      "stand_coffee_se",
+      "feet"
+     ],
+     [
+      2,
+      "drink_se",
+      "feet"
+     ],
+     [
+      3,
+      "drink_se",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk-coffee",
+    "n": 4,
+    "scale": "walk",
+    "optional": true,
+    "cols": [
+     [
+      0,
+      "walk_coffee_se",
+      "feet"
+     ],
+     [
+      1,
+      "walk_coffee_se",
+      "feet"
+     ],
+     [
+      2,
+      "walk_coffee_se",
+      "feet"
+     ],
+     [
+      3,
+      "walk_coffee_se",
+      "feet"
+     ]
+    ]
+   }
+  ],
+  "synth": [
+   [
+    "sleep_se",
+    "breathe",
+    0.975
+   ]
+  ]
+ },
+ "3d": {
+  "ship": "apps/web/public/assets/iso3d/chars",
+  "raw": ".cache/raw3d",
+  "anims": [
+   [
+    "stand_down",
+    "feet",
+    0
+   ],
+   [
+    "stand_up",
+    "feet",
+    0
+   ],
+   [
+    "stand_right",
+    "feet",
+    0
+   ],
+   [
+    "walk_down",
+    "feet",
+    0
+   ],
+   [
+    "walk_up",
+    "feet",
+    0
+   ],
+   [
+    "walk_right",
+    "feet",
+    0
+   ],
+   [
+    "sit_type_up",
+    "seat",
+    0
+   ],
+   [
+    "sit_down",
+    "seat",
+    0
+   ],
+   [
+    "raise_hand_seated_down",
+    "seat",
+    320
+   ],
+   [
+    "sleep_down",
+    "seat",
+    1400
+   ],
+   [
+    "raise_hand_down",
+    "feet",
+    320
+   ],
+   [
+    "talk_down",
+    "feet",
+    380
+   ],
+   [
+    "cheer_down",
+    "feet",
+    340
+   ],
+   [
+    "stand_coffee_down",
+    "feet",
+    0
+   ],
+   [
+    "drink_down",
+    "feet",
+    700
+   ],
+   [
+    "walk_coffee_down",
+    "feet",
+    0
+   ],
+   [
+    "walk_coffee_right",
+    "feet",
+    0
+   ]
+  ],
+  "sheets": [
+   {
+    "name": "turn",
+    "n": 3,
+    "scale": "turn",
+    "cols": [
+     [
+      0,
+      "stand_down",
+      "feet"
+     ],
+     [
+      1,
+      "stand_right",
+      "feet"
+     ],
+     [
+      2,
+      "stand_up",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk-down",
+    "n": 4,
+    "scale": "walk",
+    "cm_ref": 0,
+    "cols": [
+     [
+      0,
+      "walk_down",
+      "feet"
+     ],
+     [
+      1,
+      "walk_down",
+      "feet"
+     ],
+     [
+      2,
+      "walk_down",
+      "feet"
+     ],
+     [
+      3,
+      "walk_down",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk-up",
+    "n": 4,
+    "scale": "walk",
+    "cm_ref": 2,
+    "cols": [
+     [
+      0,
+      "walk_up",
+      "feet"
+     ],
+     [
+      1,
+      "walk_up",
+      "feet"
+     ],
+     [
+      2,
+      "walk_up",
+      "feet"
+     ],
+     [
+      3,
+      "walk_up",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk8-right",
+    "alt": "walk-right",
+    "alt_spec": {
+     "n": 4,
+     "cols": [
+      [
+       0,
+       "walk_right",
+       "feet"
+      ],
+      [
+       1,
+       "walk_right",
+       "feet"
+      ],
+      [
+       2,
+       "walk_right",
+       "feet"
+      ],
+      [
+       3,
+       "walk_right",
+       "feet"
+      ]
+     ]
+    },
+    "n": 8,
+    "scale": "walk",
+    "cm_ref": 1,
+    "cols": [
+     [
+      0,
+      "walk_right",
+      "feet"
+     ],
+     [
+      1,
+      "walk_right",
+      "feet"
+     ],
+     [
+      2,
+      "walk_right",
+      "feet"
+     ],
+     [
+      3,
+      "walk_right",
+      "feet"
+     ],
+     [
+      4,
+      "walk_right",
+      "feet"
+     ],
+     [
+      5,
+      "walk_right",
+      "feet"
+     ],
+     [
+      6,
+      "walk_right",
+      "feet"
+     ],
+     [
+      7,
+      "walk_right",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "poses",
+    "n": 7,
+    "scale": "ref",
+    "cols": [
+     [
+      1,
+      "sit_type_up",
+      "seat"
+     ],
+     [
+      2,
+      "sit_down",
+      "seat"
+     ],
+     [
+      3,
+      "sleep_down",
+      "seat"
+     ],
+     [
+      4,
+      "raise_hand_seated_down",
+      "seat"
+     ],
+     [
+      5,
+      "raise_hand_down",
+      "feet"
+     ],
+     [
+      6,
+      "cheer_down",
+      "feet"
+     ]
+    ],
+    "optional": true
+   },
+   {
+    "name": "actions",
+    "n": 5,
+    "scale": "ref",
+    "optional": true,
+    "cols": [
+     [
+      1,
+      "raise_hand_down",
+      "feet"
+     ],
+     [
+      2,
+      "talk_down",
+      "feet"
+     ],
+     [
+      3,
+      "talk_down",
+      "feet"
+     ],
+     [
+      4,
+      "cheer_down",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "coffee",
+    "n": 4,
+    "scale": "ref",
+    "optional": true,
+    "cols": [
+     [
+      1,
+      "stand_coffee_down",
+      "feet"
+     ],
+     [
+      2,
+      "drink_down",
+      "feet"
+     ],
+     [
+      3,
+      "drink_down",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk-coffee-down",
+    "n": 4,
+    "scale": "walk",
+    "optional": true,
+    "cols": [
+     [
+      0,
+      "walk_coffee_down",
+      "feet"
+     ],
+     [
+      1,
+      "walk_coffee_down",
+      "feet"
+     ],
+     [
+      2,
+      "walk_coffee_down",
+      "feet"
+     ],
+     [
+      3,
+      "walk_coffee_down",
+      "feet"
+     ]
+    ]
+   },
+   {
+    "name": "walk8-coffee-right",
+    "alt": "walk-coffee-right",
+    "alt_spec": {
+     "n": 4,
+     "cols": [
+      [
+       0,
+       "walk_coffee_right",
+       "feet"
+      ],
+      [
+       1,
+       "walk_coffee_right",
+       "feet"
+      ],
+      [
+       2,
+       "walk_coffee_right",
+       "feet"
+      ],
+      [
+       3,
+       "walk_coffee_right",
+       "feet"
+      ]
+     ]
+    },
+    "n": 8,
+    "scale": "walk",
+    "optional": true,
+    "cols": [
+     [
+      0,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      1,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      2,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      3,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      4,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      5,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      6,
+      "walk_coffee_right",
+      "feet"
+     ],
+     [
+      7,
+      "walk_coffee_right",
+      "feet"
+     ]
+    ]
+   }
+  ],
+  "synth": [
+   [
+    "sleep_down",
+    "breathe",
+    0.975
+   ]
+  ],
+  "frame": [
+   192,
+   352
+  ],
+  "feet": 344
+ }
+}

@@ -33,6 +33,29 @@ export interface Persona {
   /** 0..1: sorte/habilidade em jogos (games e esporte puxam para cima). */
   skill: number;
   catchphrase: string;
+  soloK?: Partial<Record<IdleActivity, number>>;
+}
+
+export type PersonaOverride = (seed: number, base: Persona) => Persona | null | undefined;
+
+let personaOverride: PersonaOverride | null = null;
+const overridden = new Map<number, Persona>();
+
+export function setPersonaOverride(fn: PersonaOverride | null): void {
+  personaOverride = fn;
+  overridden.clear();
+}
+
+function applyOverride(seed: number, base: Persona): Persona {
+  if (!personaOverride) return base;
+  const hit = overridden.get(seed);
+  if (hit) return hit;
+  const out = personaOverride(seed, base);
+  if (out === undefined) return base;
+  const p = out ?? base;
+  if (overridden.size > 500) overridden.clear();
+  overridden.set(seed, p);
+  return p;
 }
 
 /** Mistura de 32 bits (sementes próximas viram sequências bem diferentes). */
@@ -48,7 +71,7 @@ const cache = new Map<number, Persona>();
 /** Personalidade do agente com esta semente (2 ou 3 traços sem conflito). */
 export function personaFor(seed: number): Persona {
   const hit = cache.get(seed);
-  if (hit) return hit;
+  if (hit) return applyOverride(seed, hit);
   const rng = mulberry32(mix(seed));
   const n = rng() < 0.55 ? 2 : 3;
   const traits: TraitId[] = [];
@@ -69,7 +92,7 @@ export function personaFor(seed: number): Persona {
   const p: Persona = { traits, sociability: clamp01(sociability), skill: clamp01(skill), catchphrase };
   if (cache.size > 500) cache.clear();
   cache.set(seed, p);
-  return p;
+  return applyOverride(seed, p);
 }
 
 function clamp01(v: number): number {
@@ -119,5 +142,6 @@ const SOLO_K: Partial<Record<TraitId, Partial<Record<IdleActivity, number>>>> = 
 export function soloWeights(p: Persona): Record<IdleActivity, number> {
   const out = { ...IDLE_WEIGHTS };
   for (const t of p.traits) for (const [k, v] of Object.entries(SOLO_K[t] ?? {})) out[k as IdleActivity] *= v as number;
+  if (p.soloK) for (const [k, v] of Object.entries(p.soloK)) out[k as IdleActivity] *= v as number;
   return out;
 }

@@ -687,6 +687,21 @@ body {
   opacity: 0;
 }
 
+.ccm-office-fullscreen {
+  animation: ccm-office-fullscreen-in var(--ccm-dur-slow) var(--ease-out-quint) both;
+}
+@keyframes ccm-office-fullscreen-in {
+  from {
+    opacity: 0.55;
+    scale: 0.985;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccm-office-fullscreen {
+    animation: none;
+  }
+}
+
 .ccm-dot-enter-active {
   transition:
     opacity var(--ccm-dur-base) var(--ease-out-quint),

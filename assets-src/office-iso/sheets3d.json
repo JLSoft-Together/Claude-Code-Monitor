@@ -1,0 +1,4 @@
+{
+  "takes": {"ava-turn": "2", "jin-walk-up": "2", "mai-walk-up": "2", "kofi-walk-down": "2", "jin-poses": "2", "jin-walk-coffee-down": "3", "jin-walk-coffee-right": "2", "mai-actions": "2", "jin-actions": "3", "rosa-walk8-right": "2", "ava-walk8-right": "3", "jin-walk8-coffee-right": "5"},
+  "tune": {}
+}

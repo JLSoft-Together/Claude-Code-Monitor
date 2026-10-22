@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Orrery Office — blueprint style iso</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f5f5f7; --card: #fff; --ink: #1d1d1f; --ink2: #6e6e73; --line: #d2d2d7; --accent: #0071e3; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --card: #2c2c2e; --ink: #f5f5f7; --ink2: #a1a1a6; --line: #3a3a3c; --accent: #0a84ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  header { padding: 24px 32px 8px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--ink2); }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 20px; padding: 16px 32px 40px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card img { width: 100%; display: block; cursor: zoom-in; background: #e9e6e0; }
+  .meta { padding: 12px 16px 16px; display: grid; gap: 6px; }
+  .meta h2 { font-size: 16px; margin: 0; display: flex; gap: 8px; align-items: center; }
+  .tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink2); font-weight: 500; }
+  .tag.rec { border-color: var(--accent); color: var(--accent); }
+  .meta ul { margin: 0; padding-left: 18px; color: var(--ink2); }
+  .refs { padding: 0 32px 40px; }
+  .refs h2 { font-size: 16px; }
+  .strip { display: flex; gap: 12px; flex-wrap: wrap; }
+  .strip figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .strip img { height: 220px; display: block; cursor: zoom-in; }
+  .strip figcaption { color: var(--ink2); font-size: 12px; margin-top: 4px; }
+  dialog { border: 0; padding: 0; background: transparent; max-width: 96vw; max-height: 96vh; }
+  dialog::backdrop { background: rgba(0,0,0,.75); }
+  dialog img { max-width: 96vw; max-height: 96vh; display: block; border-radius: 8px; cursor: zoom-out; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Blueprint style cho Office isometric</h1>
+  <p>4 mẫu concept do Codex vẽ cùng style đã duyệt (gỗ sồi, kem, xanh sage, xanh dusty). Mỗi mẫu là một góc camera. Bấm ảnh để phóng to.</p>
+</header>
+<main>
+  <section class="card">
+    <img src=".cache/raw/mock3d-b-angle.1.png" alt="3D-1">
+    <div class="meta">
+      <h2>3D-1 · Look 3D, góc xoay ~15° <span class="tag rec">con đề xuất</span></h2>
+      <ul>
+        <li>Diorama 3D mềm, đổ bóng nhẹ, tường phòng mỗi dự án một màu (sage / dusty blue).</li>
+        <li>Toà nhà gần nằm ngang, vẫn thấy hai mặt đồ vật nên chiều sâu rõ.</li>
+        <li>Phòng dự án ở trên, lễ tân, bếp, vệ sinh, lounge ở dưới.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/mock3d-b-evening.1.png" alt="3D-2">
+    <div class="meta">
+      <h2>3D-2 · Như 3D-1, buổi tối <span class="tag">chế độ đêm</span></h2>
+      <ul>
+        <li>Đèn bàn, đèn thả, màn hình toả sáng: cách ngày/đêm của Office sẽ trông như vậy.</li>
+        <li>Góc nhìn dốc hơn một chút so với 3D-1.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/mock3d-c-front.1.png" alt="3D-3">
+    <div class="meta">
+      <h2>3D-3 · Look 3D, chính diện 3/4</h2>
+      <ul>
+        <li>Toà nhà ngang hoàn toàn, gọn nhất cho màn rộng; đồ vật chỉ thấy mặt trước.</li>
+        <li>Codex tự đảo bố cục (phòng dự án ở dưới): bố cục thật vẫn theo layout của app.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/jin3d-turn.1.png" alt="Jin 3D">
+    <div class="meta">
+      <h2>Jin · bản look 3D</h2>
+      <ul>
+        <li>Giữ đúng Jin, chuyển sang shading 3D mềm khớp với văn phòng 3D.</li>
+        <li>Nhân vật trong mẫu văn phòng là người minh hoạ; bộ thật sẽ là Jin + 5 người khác cùng look này.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<header>
+  <h1>Bản trước: style minh hoạ phẳng</h1>
+  <p>Để so sánh.</p>
+</header>
+<main>
+  <section class="card">
+    <img src=".cache/raw/mock-a-iso45.1.png" alt="Mẫu A">
+    <div class="meta">
+      <h2>A · Isometric 45° <span class="tag">giống renderer hiện tại</span></h2>
+      <ul>
+        <li>Dãy phòng chạy chéo, toàn cảnh thành dải dài, khoảng trống hai góc nhiều.</li>
+        <li>Góc iso chuẩn nên sprite và sàn dễ ghép nhất.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/mock-b-dimetric25.1.png" alt="Mẫu B">
+    <div class="meta">
+      <h2>B · Dimetric xoay ~25° <span class="tag">góc tốt nhất bản phẳng</span></h2>
+      <ul>
+        <li>Toà nhà nằm gần ngang, lấp đầy khung 16:9, vẫn có chiều sâu 2.5D.</li>
+        <li>Phòng dự án ở trên, bếp, vệ sinh, lounge ở dưới hành lang, đọc rõ từng phòng.</li>
+        <li>Nhân vật vẫn nhìn chéo 3/4 như bộ đã vẽ.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/mock-c-front34.1.png" alt="Mẫu C">
+    <div class="meta">
+      <h2>C · Chính diện 3/4 kiểu nhà búp bê</h2>
+      <ul>
+        <li>Toà nhà nằm ngang hoàn toàn, nhìn như mặt cắt, rất gọn cho màn rộng.</li>
+        <li>Codex trôi sang kiểu render 3D, nhân vật khác bộ đã duyệt: nếu chọn góc này phải chỉnh lại style.</li>
+        <li>Mặt bên của đồ vật ít thấy hơn, cảm giác 2.5D yếu hơn B.</li>
+      </ul>
+    </div>
+  </section>
+  <section class="card">
+    <img src=".cache/raw/mock-d-topdown.1.png" alt="Mẫu D">
+    <div class="meta">
+      <h2>D · Nhìn cao ~65°</h2>
+      <ul>
+        <li>Sàn thấy nhiều, tường thấp, gần với cảm giác bản pixel hiện tại.</li>
+        <li>Thực tế Codex ra gần giống B, nghiêng hơn một chút.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<section class="refs">
+  <h2>Style và nhân vật đã duyệt</h2>
+  <div class="strip">
+    <figure><img src=".cache/mock-scene.png" alt="Cảnh mẫu spike"><figcaption>Cảnh mẫu spike</figcaption></figure>
+    <figure><img src=".cache/raw/owner-turn.1.png" alt="Jin 4 hướng"><figcaption>Jin · 4 hướng</figcaption></figure>
+    <figure><img src=".cache/raw/owner-sit.1.png" alt="Jin ngồi và giơ tay"><figcaption>Jin · ngồi, giơ tay</figcaption></figure>
+    <figure><img src=".cache/out/owner-walk-se.gif" alt="Jin đi bộ"><figcaption>Jin · đi bộ</figcaption></figure>
+  </div>
+</section>
+<dialog id="zoom"><img alt=""></dialog>
+<script>
+  const dlg = document.getElementById('zoom')
+  const big = dlg.querySelector('img')
+  document.addEventListener('click', (e) => {
+    const t = e.target
+    if (t === big) { dlg.close(); return }
+    if (t instanceof HTMLImageElement) { big.src = t.src; big.alt = t.alt; dlg.showModal() }
+  })
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close() })
+</script>
+</body>
+</html>

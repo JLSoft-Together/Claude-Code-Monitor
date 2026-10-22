@@ -3,6 +3,7 @@
 // observa a simulação e a câmera; quem decide se toca (preferência, volume, aba oculta) é a UI.
 import type { SoundCue } from './api';
 import type { Camera } from './camera';
+import type { Projection } from './projection';
 import type { Character } from './sim/character';
 import type { Sim } from './sim/sim';
 
@@ -29,7 +30,12 @@ export class SoundCues {
     private readonly sim: Sim,
     private readonly camera: Camera,
     private readonly rng: () => number = Math.random,
+    private readonly proj?: Projection,
   ) {}
+
+  private at(x: number, y: number): { x: number; y: number } {
+    return this.proj ? this.proj.toView(x, y) : { x, y };
+  }
 
   update(now: number, emit: (cue: SoundCue) => void): void {
     const a = this.camera.screenToWorld(0, 0);
@@ -59,7 +65,8 @@ export class SoundCues {
       if (prev === undefined || prev > 0.01 || e.door <= 0.01) return;
       const spot = this.sim.spots.get(e.spotId);
       if (!spot) return;
-      emit({ kind: 'elevator', gain: this.inView(spot.x, spot.y, view, 24) ? 1 : 0.5, pan: this.pan(spot.x, view) });
+      const p = this.proj ? this.at(spot.x, spot.y) : spot;
+      emit({ kind: 'elevator', gain: this.inView(p.x, p.y, view, 24) ? 1 : 0.5, pan: this.pan(p.x, view) });
     });
   }
 
@@ -70,9 +77,11 @@ export class SoundCues {
     let n = 0;
     let sx = 0;
     for (const ch of this.sim.chars.values()) {
-      if (!typing(ch) || !this.inView(ch.x, ch.y, view)) continue;
+      if (!typing(ch)) continue;
+      const p = this.proj ? this.at(ch.x, ch.y) : ch;
+      if (!this.inView(p.x, p.y, view)) continue;
       n++;
-      sx += ch.x;
+      sx += p.x;
     }
     if (!n || now < this.nextKeysAt) return;
     if (this.rng() > Math.min(0.8, 0.3 + 0.12 * n)) return;
@@ -100,6 +109,7 @@ export class SoundCues {
       if (!k) continue;
       x /= k;
       y /= k;
+      if (this.proj) ({ x, y } = this.at(x, y));
       if (!this.inView(x, y, view, 24)) continue;
       if (g.kind === 'pingpong') {
         alive.add(g.id);

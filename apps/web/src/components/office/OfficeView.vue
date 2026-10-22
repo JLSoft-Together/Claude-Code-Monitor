@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Building2, CircleAlert } from 'lucide-vue-next'
+import { Building2, CircleAlert, LoaderCircle } from 'lucide-vue-next'
 import type { Selection, WorldApi } from '@ccm/habblaud/client/src/world/api'
 import { modalOpen } from '@ccm/habblaud/client/src/world/input'
 import { useRevealInWorkspace } from '../../composables/useRevealInWorkspace'
 import { isTyping } from '../../lib/shortcuts'
 import { officeFeed } from '../../office/feed'
 import { applyOfficeLocale, type OfficeLocale } from '../../office/i18n'
+import { CLASSIC_PACK, loadOfficePack } from '../../office/packs'
+import { loadIso, lookFromAgents, markIsoUsed, settleWithin, type IsoKit, type OfficeStyle } from '../../office/iso'
+import { scheduleIsoPreload, warmIsoArt } from '../../office/iso/preload'
+import { ISO_RELEASE_MS, LAYER_FADE_MS, READY_MAX_MS, SWITCH_ERROR_MS, SWITCH_OVERLAY_DELAY_MS, WARM_UP_MS, WORLD_ASSETS_WAIT_MS } from '../../office/switching'
+import { setRoomThemes } from '@ccm/habblaud/client/src/art/theme'
+import { loadWorldAssets, type WorldAssets } from '@ccm/habblaud/client/src/world/assets'
 import { useAgentsStore } from '../../stores/agents'
 import { useConnectionStore } from '../../stores/connection'
 import { officeRoomOf, useOfficeStore } from '../../stores/office'
@@ -30,11 +36,26 @@ const TOOLBAR_INSET = 48
 /** Canvas tint while a recorded moment is on screen (upstream `.is-replay`). */
 const REPLAY_FILTER = 'sepia(0.3) saturate(0.9) contrast(1.03)'
 
+interface Layer {
+  key: number
+  style: OfficeStyle
+  shown: boolean
+}
+
+interface Pending {
+  world: WorldApi | null
+  layer: Layer
+  offReady: (() => void) | null
+  release: (() => void) | null
+}
+
 const root = ref<HTMLElement | null>(null)
-const canvas = ref<HTMLCanvasElement | null>(null)
-const canvasKey = ref(0)
+const layers = ref<Layer[]>([])
+const canvasEls = new Map<number, HTMLCanvasElement>()
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
 const counts = ref<{ agents: number; rooms: number } | null>(null)
+const overlay = ref(false)
+const switchTo = ref<OfficeStyle>('pixel')
 
 let gen = 0
 /** A build got past the locale and wants snapshots; they flow only while the window is visible too. */
@@ -44,7 +65,107 @@ let world: WorldApi | null = null
 let offSelect: (() => void) | null = null
 let offSnapshot: (() => void) | null = null
 let roomFocusedFor: string | null = null
+let uninstallPersonas: (() => void) | null = null
 let selecting = false
+let layerSeq = 0
+let pending: Pending | null = null
+let shownSig: string | null = null
+let overlayTimer: ReturnType<typeof setTimeout> | null = null
+let shownStyle: OfficeStyle | null = null
+let releaseTimer: ReturnType<typeof setTimeout> | null = null
+let errorTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearRelease(): void {
+  if (releaseTimer) clearTimeout(releaseTimer)
+  releaseTimer = null
+}
+
+function armRelease(): void {
+  clearRelease()
+  releaseTimer = setTimeout(() => {
+    releaseTimer = null
+    if (shownStyle !== 'pixel' || pending || office.style !== 'pixel') return
+    void import('../../office/iso/isoArt').then((m) => m.releaseIsoArt())
+  }, ISO_RELEASE_MS)
+}
+
+function showSwitchError(style: OfficeStyle): void {
+  office.switchError = style
+  if (errorTimer) clearTimeout(errorTimer)
+  errorTimer = setTimeout(() => {
+    errorTimer = null
+    office.switchError = null
+  }, SWITCH_ERROR_MS)
+}
+const retireTimers = new Set<ReturnType<typeof setTimeout>>()
+
+function setCanvas(key: number, el: unknown): void {
+  if (el instanceof HTMLCanvasElement) canvasEls.set(key, el)
+  else canvasEls.delete(key)
+}
+
+function removeLayer(key: number): void {
+  layers.value = layers.value.filter((l) => l.key !== key)
+  canvasEls.delete(key)
+}
+
+function retireOthers(keep: number): void {
+  const old = layers.value.filter((l) => l.key !== keep).map((l) => l.key)
+  if (!old.length) return
+  const timer = setTimeout(() => {
+    retireTimers.delete(timer)
+    for (const k of old) removeLayer(k)
+  }, LAYER_FADE_MS)
+  retireTimers.add(timer)
+}
+
+function beginSwitching(to: OfficeStyle): void {
+  switchTo.value = to
+  office.switching = true
+  if (overlayTimer) return
+  overlayTimer = setTimeout(() => {
+    overlayTimer = null
+    if (office.switching) overlay.value = true
+  }, SWITCH_OVERLAY_DELAY_MS)
+}
+
+function endSwitching(): void {
+  if (overlayTimer) clearTimeout(overlayTimer)
+  overlayTimer = null
+  office.switching = false
+  overlay.value = false
+}
+
+function cancelPending(): void {
+  const p = pending
+  if (!p) return
+  pending = null
+  p.offReady?.()
+  p.world?.destroy()
+  removeLayer(p.layer.key)
+  p.release?.()
+}
+
+function whenReady(p: Pending, w: WorldApi): Promise<void> {
+  if (typeof w.onReady !== 'function') return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(done, READY_MAX_MS)
+    function done(): void {
+      clearTimeout(timer)
+      p.release = null
+      resolve()
+    }
+    p.release = done
+    p.offReady = w.onReady!(done)
+  })
+}
+
+function worldAssets(pack: string | undefined): Promise<WorldAssets | null | undefined> {
+  return settleWithin(
+    loadWorldAssets(undefined, { pack }).then((a) => ({ a })),
+    WORLD_ASSETS_WAIT_MS,
+  ).then((r) => (r ? r.a : undefined))
+}
 
 const officeLocale = (l: string): OfficeLocale => (l === 'vi' ? 'vi' : 'en')
 
@@ -54,6 +175,8 @@ function teardown(): void {
   offSelect = offSnapshot = null
   world?.destroy()
   world = null
+  uninstallPersonas?.()
+  uninstallPersonas = null
   office.world = null
   roomFocusedFor = null
 }
@@ -111,41 +234,106 @@ function syncSelection(id: string | null): void {
 /** Mount and language switch: locale first (world modules read `tr()` at load), then subscribe, import, create. */
 async function build(): Promise<void> {
   const my = ++gen
-  teardown()
-  state.value = 'loading'
+  cancelPending()
+  const want = office.style
+  const sig = `${want}|${locale.value}|${office.pack}`
+  if (world && sig === shownSig) {
+    endSwitching()
+    return
+  }
+  clearRelease()
+  if (world) beginSwitching(want)
+  else state.value = 'loading'
   try {
     await applyOfficeLocale(officeLocale(locale.value))
     if (my !== gen) return
     officeFeed.relocalize()
     wantFeed = true
     syncFeed()
+    await office.loadPacks()
+    if (my !== gen) return
+    const pack = await loadOfficePack(office.activePack)
+    if (my !== gen) return
+    setRoomThemes(pack.rooms)
+    office.packMissing = office.pack !== CLASSIC_PACK && !pack.rooms ? office.pack : null
+    const [iso, assets] = await Promise.all([loadIso(want).catch((e: unknown): IsoKit | null => {
+        if (world) throw e
+        return null
+      }), worldAssets(pack.assetPack)])
+    if (my !== gen) return
     const { createWorld } = await import('@ccm/habblaud/client/src/world')
     if (my !== gen) return
-    canvasKey.value++
+    const layer: Layer = { key: ++layerSeq, style: iso ? 'iso' : 'pixel', shown: false }
+    layers.value = [...layers.value, layer]
+    const p: Pending = { world: null, layer, offReady: null, release: null }
+    pending = p
     await nextTick()
-    const el = canvas.value
-    if (my !== gen || !el) return
-    const w: WorldApi = createWorld(el, officeFeed as unknown as Parameters<typeof createWorld>[1])
-    world = w
-    office.world = w
+    const el = canvasEls.get(layer.key)
+    if (my !== gen || pending !== p) return
+    if (!el) throw new Error('office canvas missing')
+    const base = assets === undefined ? { assetPack: pack.assetPack } : { assetPack: pack.assetPack, assets }
+    const opts = iso ? { ...base, projection: iso.projection, renderer: iso.createRenderer, maxZoom: iso.maxZoom, text: iso.text, warmUpMs: WARM_UP_MS } : { ...base, warmUpMs: WARM_UP_MS }
+    const w: WorldApi = createWorld(el, officeFeed as unknown as Parameters<typeof createWorld>[1], opts)
+    p.world = w
     w.setOptions({ ...office.options })
     w.setViewInsets?.({ top: TOOLBAR_INSET })
-    offSelect = w.onSelect(onWorldSelect)
-    // After the world's own listener, so a room is laid out before it is focused.
-    offSnapshot = officeFeed.on('snapshot', () => {
-      readCounts()
-      focusTerminalRoom()
-    })
-    readCounts()
-    state.value = 'ready'
-    syncSelection(ui.selectedAgentId)
-    focusTerminalRoom()
+    await whenReady(p, w)
+    if (my !== gen || pending !== p) return
+    promote(p, w, iso, my, sig)
   } catch {
     if (my !== gen) return
+    cancelPending()
+    if (world) {
+      endSwitching()
+      if (shownStyle && office.style !== shownStyle) {
+        showSwitchError(office.style)
+        office.setStyle(shownStyle)
+      }
+      return
+    }
     state.value = 'failed'
     wantFeed = false
     syncFeed()
   }
+}
+
+function promote(p: Pending, w: WorldApi, iso: IsoKit | null, my: number, sig: string): void {
+  pending = null
+  p.offReady?.()
+  teardown()
+  world = w
+  office.world = w
+  const layer = layers.value.find((l) => l.key === p.layer.key)
+  if (layer) layer.shown = true
+  retireOthers(p.layer.key)
+  if (iso) uninstallPersonas = iso.installPersonas(lookFromAgents(() => officeFeed.snapshot?.agents))
+  office.isoArtMissing = false
+  if (iso)
+    void iso.art.then(
+      (a) => {
+        if (my === gen) office.isoArtMissing = a.missing
+      },
+      () => {
+        if (my === gen) office.isoArtMissing = true
+      },
+    )
+  w.setOptions({ ...office.options })
+  offSelect = w.onSelect(onWorldSelect)
+  // After the world's own listener, so a room is laid out before it is focused.
+  offSnapshot = officeFeed.on('snapshot', () => {
+    readCounts()
+    focusTerminalRoom()
+  })
+  readCounts()
+  state.value = 'ready'
+  shownSig = sig
+  shownStyle = iso ? 'iso' : 'pixel'
+  endSwitching()
+  if (iso) markIsoUsed()
+  else armRelease()
+  syncSelection(ui.selectedAgentId)
+  focusTerminalRoom()
+  if (!iso && office.style === 'pixel') scheduleIsoPreload()
 }
 
 /** Key L toggles the timelapse while the office is on screen, unless a field, a dialog or a modifier owns the key. */
@@ -191,12 +379,38 @@ onBeforeUnmount(() => {
   // The timelapse child unmounts next and ends any replay; the bar starts closed on the next visit.
   office.timelapse = false
   gen++
+  cancelPending()
   teardown()
+  endSwitching()
+  for (const t of retireTimers) clearTimeout(t)
+  retireTimers.clear()
+  shownSig = null
+  shownStyle = null
+  clearRelease()
+  if (errorTimer) clearTimeout(errorTimer)
+  errorTimer = null
+  office.switchError = null
   wantFeed = false
   syncFeed()
 })
 
 watch(locale, () => void build())
+watch(
+  () => office.pack,
+  () => void build(),
+)
+watch(
+  () => office.style,
+  () => void build(),
+)
+watch(
+  () => office.isoIntent,
+  () => {
+    if (shownStyle !== 'pixel' || pending) return
+    void warmIsoArt()
+    armRelease()
+  },
+)
 // Theme tokens give the account colours; the world itself keeps Habblaud's palette.
 watch(
   () => settings.theme,
@@ -230,12 +444,17 @@ const waiting = computed(() => state.value === 'loading' || (state.value === 're
 <template>
   <div ref="root" class="relative h-full w-full min-w-0 overflow-hidden bg-canvas" data-office>
     <canvas
-      :key="canvasKey"
-      ref="canvas"
-      class="absolute inset-0 block h-full w-full [image-rendering:pixelated]"
+      v-for="l in layers"
+      :key="l.key"
+      :ref="(el) => setCanvas(l.key, el)"
+      class="absolute inset-0 block h-full w-full transition-opacity duration-(--ccm-dur-base) ease-out-quint motion-reduce:duration-(--ccm-dur-fast)"
+      :class="[l.style === 'pixel' ? '[image-rendering:pixelated]' : '', l.shown ? 'opacity-100' : 'pointer-events-none opacity-0']"
+      :data-office-style="l.style"
+      :data-office-layer="l.shown ? 'live' : 'pending'"
       :style="office.replaying ? { filter: REPLAY_FILTER } : undefined"
-      role="img"
-      :aria-label="ariaLabel"
+      :role="l.shown ? 'img' : undefined"
+      :aria-label="l.shown ? ariaLabel : undefined"
+      :aria-hidden="l.shown ? undefined : 'true'"
     />
 
     <div
@@ -254,6 +473,24 @@ const waiting = computed(() => state.value === 'loading' || (state.value === 're
         <p>{{ t('officeV60.loading') }}</p>
       </template>
     </div>
+
+    <Transition name="ccm-fade">
+      <div v-if="overlay" class="pointer-events-none absolute inset-0 flex items-center justify-center px-6" role="status" aria-live="polite" data-office-switching>
+        <p class="ccm-menu flex max-w-full items-center gap-2 px-3 py-1.5 text-xs text-ink">
+          <LoaderCircle :size="14" class="shrink-0 animate-spin text-ink-muted" aria-hidden="true" />
+          <span class="truncate">{{ t(`officeV63.switching.${switchTo}`) }}</span>
+        </p>
+      </div>
+    </Transition>
+
+    <Transition name="ccm-fade">
+      <div v-if="office.switchError" class="pointer-events-none absolute inset-x-0 bottom-12 flex justify-center px-4" role="alert" data-office-switch-error>
+        <p class="ccm-menu flex max-w-full items-center gap-2 px-3 py-1.5 text-xs text-ink">
+          <CircleAlert :size="14" class="shrink-0 text-st-error" aria-hidden="true" />
+          <span class="truncate">{{ t(`officeV63.switchFailed.${office.switchError}`) }}</span>
+        </p>
+      </div>
+    </Transition>
 
     <div v-if="empty" class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-4" role="status" aria-live="polite">
       <p class="ccm-menu max-w-full truncate px-3 py-1.5 text-xs text-ink" data-office-empty>{{ t('officeV60.empty') }}</p>

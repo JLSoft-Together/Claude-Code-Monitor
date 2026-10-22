@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "illustrations": {
+    "emptyOffice": {
+      "file": "illustrations/empty-office.png",
+      "w": 960,
+      "h": 540,
+      "scale": 2
+    }
+  },
+  "wallArt": [
+    {
+      "id": "painting-memphis-shapes",
+      "kind": "painting",
+      "file": "art/painting-memphis-shapes.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Shapes and squiggles",
+      "framed": {
+        "file": "art/framed/painting-memphis-shapes.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-palm-sunset",
+      "kind": "painting",
+      "file": "art/painting-palm-sunset.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Palm sunset",
+      "framed": {
+        "file": "art/framed/painting-palm-sunset.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-flamingo",
+      "kind": "painting",
+      "file": "art/painting-flamingo.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Flamingo",
+      "framed": {
+        "file": "art/framed/painting-flamingo.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-pastel-city",
+      "kind": "painting",
+      "file": "art/painting-pastel-city.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Pastel city",
+      "framed": {
+        "file": "art/framed/painting-pastel-city.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-fruit-bowl",
+      "kind": "painting",
+      "file": "art/painting-fruit-bowl.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Fruit bowl",
+      "framed": {
+        "file": "art/framed/painting-fruit-bowl.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-confetti",
+      "kind": "painting",
+      "file": "art/painting-confetti.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Confetti pattern",
+      "framed": {
+        "file": "art/framed/painting-confetti.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-cactus",
+      "kind": "painting",
+      "file": "art/painting-cactus.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Desert cactus",
+      "framed": {
+        "file": "art/framed/painting-cactus.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-ice-cream",
+      "kind": "painting",
+      "file": "art/painting-ice-cream.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Ice cream",
+      "framed": {
+        "file": "art/framed/painting-ice-cream.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wide-memphis-waves",
+      "kind": "painting",
+      "file": "art/painting-wide-memphis-waves.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Waves and shapes",
+      "framed": {
+        "file": "art/framed/painting-wide-memphis-waves.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-desert-dusk",
+      "kind": "painting",
+      "file": "art/painting-wide-desert-dusk.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Desert dusk",
+      "framed": {
+        "file": "art/framed/painting-wide-desert-dusk.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-shape-parade",
+      "kind": "painting",
+      "file": "art/painting-wide-shape-parade.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Shape parade",
+      "framed": {
+        "file": "art/framed/painting-wide-shape-parade.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "art/poster-coffee.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Coffee",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "art/poster-rocket.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Rocket",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "art/poster-code.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Code",
+      "variant": "code"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "art/poster-cat.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Cat",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "art/poster-bug.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "No bugs",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "art/poster-ship-it.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Ship it!",
+      "variant": "ship_it"
+    }
+  ]
+}

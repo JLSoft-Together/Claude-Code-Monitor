@@ -1,0 +1,379 @@
+{
+  "defaultModel": "codex image_generation",
+  "styles": {
+    "pixel": "Style: authentic pixel art made of crisp hard-edged square pixels on a perfectly regular grid, limited palette, flat color fills with 3-4 shades per material, no anti-aliasing, no gradients, no blur, no noise, no dithering. Cozy, warm timber lodge office pixel art with its own original look: dark pine log walls and plank floors (#5b3d2a), warm cream wool (#efe3c8), wool red plaid rugs and cushions (#b4473a), fern green armchairs and plants (#4f7d4a), grey stone hearth (#9a9488), deep forest green (#2f4a3a), soft candle-yellow lamp light (#f1c46b), glowing monitor screens. Original artwork: do not copy or imitate any existing game, tileset or artist. Outlines in dark blue-grey (#2b3245), never pure black. Light comes from the top-left. Absolutely no text, letters, numbers, logos or watermark.",
+    "chroma": "Background: one perfectly flat solid magenta color (#FF00FF) filling the entire background edge to edge, with no shadow, no floor, no gradient, no vignette and nothing else. The subject is isolated, centered, with a generous margin, and must not contain any magenta or pink.",
+    "wallart": "Style: a bold, simple illustration that will be displayed TINY as a framed picture on an office wall in a pixel art game (smaller than 64 pixels wide). Use large flat areas of strong saturated color, high contrast between neighbouring shapes, chunky iconic shapes and very few details; no thin lines, no small text. The artwork must fill the ENTIRE wide canvas edge to edge (full bleed), with no white or empty margins and no letterboxing: no frame, no border, no wall, no mat, no signature, no letters.",
+    "poster": "Style: a bold minimalist graphic poster that will be displayed TINY (about 12x16 pixels) on an office wall in a pixel art game. One single big iconic subject centered and filling most of the canvas, on a solid flat background color; strong saturated colors, high contrast, chunky simple shapes, no small details, no thin lines. Fill the whole canvas edge to edge: no frame, no border, no wall, no text, no letters, no numbers."
+  },
+  "assets": [
+    {
+      "id": "logo-mark",
+      "group": "brand",
+      "aspect": "1:1",
+      "styles": [
+        "pixel",
+        "chroma"
+      ],
+      "prompt": "A pixel art game icon of a charming little modern office building, designed to stay crisp as a tiny app icon. It is drawn on a coarse grid of big square pixels (the building is about 60 pixels wide and 70 pixels tall), every pixel exactly the same size and perfectly aligned to the grid, shown enlarged. Strictly front-facing elevation, as building sprites in classic top-down RPG and management games: perfectly straight vertical walls and horizontal edges, no perspective, no vanishing point, no slanted or diagonal lines, no side wall. A flat teal-blue roof seen from above as a simple rectangle with a light rim and straight vertical sides (not a trapezoid), directly on top of the facade, with one small potted plant on it. Light warm-grey facade with two honey-wood horizontal bands between the floors. Three floors with three big simple windows each: one solid flat color per window inside a dark frame, glowing warm yellow (two of them glowing bright blue like computer screens), with no mullions, no panes, no curtains and nothing drawn inside. A glass double door with a small teal awning in the middle of the ground floor. Only the building: nothing on the ground around it (no furniture, no sofas, no extra plants, no people). Simple, bold, symmetrical, cute; a compact rectangular silhouette, a bit taller than wide, that fills most of the square.",
+      "post": {
+        "kind": "native",
+        "colors": 28,
+        "balance": 0.5,
+        "merge": 12
+      },
+      "out": "brand/logo-detailed.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "empty-office",
+      "group": "illustrations",
+      "aspect": "16:9",
+      "styles": [
+        "pixel"
+      ],
+      "prompt": "A pixel art scene of a cozy, empty timber lodge office interior at dusk, in top-down 3/4 view like a cozy management game. Wide dark pine plank floor; log walls; a lounge corner with a big grey stone fireplace with a warm fire, a fern green sofa with wool red cushions on a red and cream plaid rug; two islands of chunky wooden desks with glowing monitors, keyboards and mugs, dark chairs pushed in; potted ferns; tall wooden shelves with books and binders; a water cooler; a small coffee counter with a kettle. Big windows along the back wall show a deep green pine forest under a warm orange dusk sky. Warm candle-yellow lamp light pools on the floor. Calm, quiet, inviting atmosphere, nobody there: no people, no characters, no animals.",
+      "post": {
+        "kind": "scene",
+        "w": 480,
+        "h": 270,
+        "colors": 32,
+        "scale": 2,
+        "despeckle": true,
+        "balance": 0.5
+      },
+      "out": "illustrations/empty-office.png"
+    },
+    {
+      "id": "painting-pine-ridge",
+      "group": "art",
+      "kind": "painting",
+      "title": "Pine ridge",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A landscape painting: three big layered dark green pine forest hills under a warm candle-yellow evening sky, one big pale sun, a grey stone mountain peak behind. Only a few large flat shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-pine-ridge.png"
+    },
+    {
+      "id": "painting-teapot",
+      "group": "art",
+      "kind": "painting",
+      "title": "Teapot",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: one big round wool-red enamel teapot with a white lid knob and a chunky spout, beside one cream mug, on a plain brown wooden table, against a flat deep forest green background. Very few big shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "gold"
+      },
+      "out": "art/painting-teapot.png"
+    },
+    {
+      "id": "painting-fox",
+      "group": "art",
+      "kind": "painting",
+      "title": "Red fox",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An animal painting: one big chunky orange-red fox sitting in profile with a white-tipped bushy tail, on white snow, against a flat dark pine green background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-fox.png"
+    },
+    {
+      "id": "painting-mushrooms",
+      "group": "art",
+      "kind": "painting",
+      "title": "Mushrooms",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A nature painting: three big chunky red-capped mushrooms with white spots and cream stems on a bright green moss mound, against a flat dark brown background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "black"
+      },
+      "out": "art/painting-mushrooms.png"
+    },
+    {
+      "id": "painting-plaid",
+      "group": "art",
+      "kind": "painting",
+      "title": "Wool plaid",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An abstract pattern painting: a bold chunky tartan plaid of wide wool red and dark green stripes crossing on a cream background, only a few broad bands.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 8,
+        "frame": "wood"
+      },
+      "out": "art/painting-plaid.png"
+    },
+    {
+      "id": "painting-snow-cabin",
+      "group": "art",
+      "kind": "painting",
+      "title": "Snowy cabin",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of one small brown log cabin with a snowy roof and two glowing yellow windows, among two dark pine trees, in white snow under a deep navy night sky with a big pale moon.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-snow-cabin.png"
+    },
+    {
+      "id": "painting-owl",
+      "group": "art",
+      "kind": "painting",
+      "title": "Night owl",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An animal painting: one big chubby brown owl with huge round yellow eyes perched on a thick branch, front view, centered, against a flat deep teal night background.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "gold"
+      },
+      "out": "art/painting-owl.png"
+    },
+    {
+      "id": "painting-village",
+      "group": "art",
+      "kind": "painting",
+      "title": "Hill village",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of three big chunky houses side by side with large triangular red and brown roofs, cream walls and big glowing yellow square windows, standing on a flat green hill under a flat warm orange dusk sky. Generic houses, no landmarks, very few shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "wood"
+      },
+      "out": "art/painting-village.png"
+    },
+    {
+      "id": "painting-wide-canoe-lake",
+      "group": "art",
+      "kind": "painting",
+      "title": "Canoe lake",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic landscape painting: a calm blue lake at golden hour with one small red canoe in the middle, layered dark green pine forests on both shores, soft grey mountains behind, a warm yellow sky.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 16,
+        "frame": "wood"
+      },
+      "out": "art/painting-wide-canoe-lake.png"
+    },
+    {
+      "id": "painting-wide-starry-peaks",
+      "group": "art",
+      "kind": "painting",
+      "title": "Starry peaks",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic night painting: a row of big grey and white stone mountain peaks under a deep navy sky with a few big stars and a crescent moon, a band of black-green pine trees along the bottom.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "black",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-wide-starry-peaks.png"
+    },
+    {
+      "id": "painting-wide-patchwork",
+      "group": "art",
+      "kind": "painting",
+      "title": "Patchwork quilt",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic abstract painting: a cozy patchwork quilt made of big square patches in wool red, fern green, cream, mustard yellow and dark brown, a few with simple bold triangles, flat colors.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "wood"
+      },
+      "out": "art/painting-wide-patchwork.png"
+    },
+    {
+      "id": "poster-code",
+      "group": "art",
+      "kind": "poster",
+      "variant": "code",
+      "title": "Code",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A dark code editor window icon filling most of the canvas: a dark charcoal rectangle with a wool red title bar, and inside it four thick horizontal bars of different lengths in bright green, candle yellow and cream, indented like lines of source code, on a solid warm cream background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-code.png"
+    },
+    {
+      "id": "poster-coffee",
+      "group": "art",
+      "kind": "poster",
+      "variant": "coffee",
+      "title": "Coffee",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big red enamel camping mug with a white rim, seen from the side with a chunky handle on the right, with ONE single short and thick white wisp of steam above it, on a solid fern green background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-coffee.png"
+    },
+    {
+      "id": "poster-rocket",
+      "group": "art",
+      "kind": "poster",
+      "variant": "rocket",
+      "title": "Rocket",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "One big chunky cream white rocket with a red pointed nose cone and two red fins and one round blue window, flying straight up and filling most of the height, a short big yellow flame below it, on a solid deep forest green background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-rocket.png"
+    },
+    {
+      "id": "poster-cat",
+      "group": "art",
+      "kind": "poster",
+      "variant": "cat",
+      "title": "Cat",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cute ginger orange cat head with pointy ears, big round green eyes and a small pink nose, front view, on a solid cream background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-cat.png"
+    },
+    {
+      "id": "poster-bug",
+      "group": "art",
+      "kind": "poster",
+      "variant": "bug",
+      "title": "No bugs",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cartoon green beetle bug seen from above with six black legs and two antennae, crossed out by a thick red prohibition circle with a diagonal bar, on a solid warm cream background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-bug.png"
+    },
+    {
+      "id": "poster-ship-it",
+      "group": "art",
+      "kind": "poster",
+      "variant": "ship_it",
+      "title": "Ship it!",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "One big chunky boat seen from the side: a wide bright red hull, one tall brown mast with one big white triangular sail, sailing on two rows of bold deep-blue waves, on a solid light sky-blue background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-ship-it.png"
+    }
+  ]
+}

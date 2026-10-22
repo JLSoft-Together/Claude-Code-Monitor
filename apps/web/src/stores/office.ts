@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { createOfficeSound } from '../office/sound'
+import { CLASSIC_PACK, OFFICE_PACK_KEY, fetchPackIndex, isPackId, readOfficePack, resolvePack, type OfficePackEntry } from '../office/packs'
+import { OFFICE_STYLES, readOfficeStyle, writeOfficeStyle, type OfficeStyle } from '../office/iso'
 import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
 // `world/api` only: the world entry calls Habblaud's `tr()` at load time and is imported lazily by OfficeView.
 import { DEFAULT_WORLD_OPTIONS, type WorldApi, type WorldOptions } from '@ccm/habblaud/client/src/world/api'
 
-export type OfficeOptionKey = 'showNames' | 'bubbles' | 'liveliness' | 'dayNight' | 'followSelected'
+export type OfficeOptionKey = 'showNames' | 'bubbles' | 'liveliness' | 'dayNight' | 'followSelected' | 'theme'
 export type OfficeOptions = Pick<WorldOptions, OfficeOptionKey>
 
 export const OFFICE_OPTIONS_KEY = 'ccm.office.options'
@@ -34,6 +36,7 @@ function readVolume(): number {
 }
 export const BUBBLES: readonly WorldOptions['bubbles'][] = ['all', 'important', 'none']
 export const LIVELINESS: readonly WorldOptions['liveliness'][] = ['calm', 'normal', 'lively']
+export const SEASONAL_THEMES: readonly WorldOptions['theme'][] = ['auto', 'none', 'christmas', 'halloween']
 
 const DEFAULTS: OfficeOptions = {
   showNames: DEFAULT_WORLD_OPTIONS.showNames,
@@ -41,6 +44,7 @@ const DEFAULTS: OfficeOptions = {
   liveliness: DEFAULT_WORLD_OPTIONS.liveliness,
   dayNight: DEFAULT_WORLD_OPTIONS.dayNight,
   followSelected: DEFAULT_WORLD_OPTIONS.followSelected,
+  theme: DEFAULT_WORLD_OPTIONS.theme,
 }
 
 /** Saved office options; every unknown or mistyped field falls back to Habblaud's default. */
@@ -59,6 +63,7 @@ export function readOfficeOptions(): OfficeOptions {
     liveliness: LIVELINESS.find((l) => l === raw.liveliness) ?? DEFAULTS.liveliness,
     dayNight: bool('dayNight'),
     followSelected: bool('followSelected'),
+    theme: SEASONAL_THEMES.find((v) => v === raw.theme) ?? DEFAULTS.theme,
   }
 }
 
@@ -133,5 +138,73 @@ export const useOfficeStore = defineStore('office', () => {
     timelapse.value = !timelapse.value
   }
 
-  return { options, world, sound, setSound, volume, setVolume, setOption, zoomBy, overview, timelapse, replaying, toggleTimelapse }
+  const pack = ref(readOfficePack())
+  const packs = ref<OfficePackEntry[]>([])
+  const packsLoaded = ref(false)
+  let packsLoading: Promise<void> | null = null
+  function loadPacks(): Promise<void> {
+    packsLoading ??= fetchPackIndex().then((list) => {
+      packs.value = list
+      packsLoaded.value = true
+    })
+    return packsLoading
+  }
+  const activePack = computed(() => (packsLoaded.value ? resolvePack(pack.value, packs.value) : CLASSIC_PACK))
+  function setPack(id: string): void {
+    const next = isPackId(id) ? id : CLASSIC_PACK
+    pack.value = next
+    try {
+      localStorage.setItem(OFFICE_PACK_KEY, next)
+    } catch {
+      return
+    }
+  }
+
+  const packMissing = ref<string | null>(null)
+
+  const fullscreen = ref(false)
+
+  const style = ref<OfficeStyle>(readOfficeStyle())
+  const isoArtMissing = ref(false)
+  const switching = ref(false)
+  const switchError = ref<OfficeStyle | null>(null)
+  const isoIntent = ref(0)
+  function noteIsoIntent(): void {
+    if (style.value === 'pixel') isoIntent.value++
+  }
+  function setStyle(next: OfficeStyle): void {
+    if (!OFFICE_STYLES.includes(next) || next === style.value) return
+    style.value = next
+    writeOfficeStyle(next)
+  }
+
+  return {
+    options,
+    world,
+    sound,
+    setSound,
+    volume,
+    setVolume,
+    setOption,
+    zoomBy,
+    overview,
+    timelapse,
+    replaying,
+    toggleTimelapse,
+    pack,
+    packs,
+    packsLoaded,
+    loadPacks,
+    activePack,
+    setPack,
+    packMissing,
+    fullscreen,
+    style,
+    isoArtMissing,
+    switching,
+    switchError,
+    isoIntent,
+    noteIsoIntent,
+    setStyle,
+  }
 })

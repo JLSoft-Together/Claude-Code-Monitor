@@ -13,7 +13,9 @@ import { shellAgeKey, shellBubbleAlpha, shellBubbleText, STORM_LIFT, unitHash } 
 import type { Sim } from '../sim/sim';
 import { buildAnim } from './anim';
 import { drawFxBanner } from './github-fx';
-import type { HeadInfo, Renderer } from './renderer';
+import type { HeadInfo } from './renderer';
+import type { Projection, WorldRenderer } from '../projection';
+import { Declutter, type DeclutterBox, type DeclutterItem } from './declutter';
 import { tr } from '../../../../shared/i18n';
 
 // A Pixelify Sans tem o "C" maiúsculo quase fechado (lê-se "Oopa" em vez de "Copa") em qualquer
@@ -30,6 +32,67 @@ const CORE_FONT = `600 11px ${UI_FONT}`;
 const CORE_FONT_SMALL = `600 9.5px ${UI_FONT}`;
 const signFont = (size: number) => `700 ${size}px ${UI_FONT}`;
 
+export interface OverlayTextStyle {
+  family: string;
+  padX: number;
+  padY: number;
+  declutter?: boolean;
+  iconLift?: number;
+}
+
+export interface OverlayFonts {
+  label: string;
+  bubble: string;
+  say: string;
+  float: string;
+  chip: string;
+  badge: string;
+  room: string;
+  core: string;
+  coreSmall: string;
+  sign: (size: number) => string;
+  banner?: string;
+}
+
+const UPSTREAM_FONTS: OverlayFonts = {
+  label: LABEL_FONT,
+  bubble: BUBBLE_FONT,
+  say: SAY_FONT,
+  float: FLOAT_FONT,
+  chip: CHIP_FONT,
+  badge: BADGE_FONT,
+  room: ROOM_FONT,
+  core: CORE_FONT,
+  coreSmall: CORE_FONT_SMALL,
+  sign: signFont,
+};
+
+export function styledFonts(family: string): OverlayFonts {
+  return {
+    label: `600 11px ${family}`,
+    bubble: `500 12px ${family}`,
+    say: `500 11px ${family}`,
+    float: `600 12px ${family}`,
+    chip: `600 8px ${family}`,
+    badge: `600 8px ${family}`,
+    room: `600 12px ${family}`,
+    core: `600 11.5px ${family}`,
+    coreSmall: `600 10px ${family}`,
+    sign: (size) => `600 ${size}px ${family}`,
+    banner: `600 11.5px ${family}`,
+  };
+}
+
+export const TEXT_REF = 'ĐẶỸÁÂgjpqỵ';
+
+export function textMetrics(ctx: Pick<CanvasRenderingContext2D, 'measureText'>, text: string, size: number): { asc: number; desc: number } {
+  const m = ctx.measureText(text);
+  const asc = m.actualBoundingBoxAscent;
+  const desc = m.actualBoundingBoxDescent;
+  if (Number.isFinite(asc) && Number.isFinite(desc) && asc + desc > 0) return { asc, desc };
+  return { asc: size * 0.72, desc: size * 0.5 };
+}
+
 /** Largura máxima dos balões (o de alerta é maior: o motivo é a informação acionável). */
 export const BUBBLE_MAX_W = 220;
 export const ALERT_MAX_W = 340;
@@ -38,6 +101,7 @@ const LABEL_H = 15;
 const RECENT_MS = 4000;
 /** Altura mínima (px CSS) da placa na tela para escrever o nome nela. */
 const SIGN_MIN_PX = 14;
+const SIGN_WORLD_MIN_PX = 11;
 /** Abaixo deste zoom (visão geral), os balões de atividade são racionados. */
 export const OVERVIEW_ZOOM = 1.8;
 /** Abaixo deste zoom (prédio inteiro numa tela pequena), só alertas/entregas, como ícone. */
@@ -185,6 +249,8 @@ export function rationBubbles(items: readonly { room: string; prio: number; chan
 export class Overlay {
   private widths = new Map<string, number>();
   private fitted = new Map<string, string>();
+  private metrics = new Map<string, { asc: number; desc: number }>();
+  private readonly f: OverlayFonts;
   private placed: number[] = [];
   private items: Item[] = [];
   /** Objetos reaproveitados entre frames (sem alocação no caminho quente). */
@@ -199,18 +265,59 @@ export class Overlay {
   private ox = 0;
   private oy = 0;
   private zoom = 1;
+  private declutter: Declutter | null = null;
+  private dItems: DeclutterItem[] = [];
+  private dLast = 0;
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
     private readonly sim: Sim,
-    private readonly renderer: Renderer,
+    private readonly renderer: WorldRenderer,
     private readonly camera: Camera,
-  ) {}
+    private readonly proj?: Projection,
+    private readonly text?: OverlayTextStyle,
+  ) {
+    this.f = text ? styledFonts(text.family) : UPSTREAM_FONTS;
+  }
 
   /** Descarta medições (ex.: depois que uma fonte carregou). */
   resetCaches(): void {
     this.widths.clear();
     this.fitted.clear();
+    this.metrics.clear();
+  }
+
+  private vmetrics(font: string): { asc: number; desc: number } {
+    let m = this.metrics.get(font);
+    if (!m) {
+      const { ctx } = this;
+      ctx.font = font;
+      ctx.textBaseline = 'middle';
+      const px = /(\d+(?:\.\d+)?)px/.exec(font);
+      m = textMetrics(ctx, TEXT_REF, px ? Number(px[1]) : 12);
+      this.metrics.set(font, m);
+    }
+    return m;
+  }
+
+  private boxH(font: string, padY: number): number {
+    const m = this.vmetrics(font);
+    return Math.ceil(m.asc + m.desc + 2 * padY);
+  }
+
+  private midY(font: string, top: number, h: number, upstream: number): number {
+    if (!this.text) return upstream;
+    const m = this.vmetrics(font);
+    return top + (h - m.asc - m.desc) / 2 + m.asc;
+  }
+
+  private labelPad(): { x: number; y: number } {
+    const t = this.text;
+    return t ? { x: Math.round(t.padX * 0.75), y: Math.round(t.padY * 0.5) } : { x: 5, y: 0 };
+  }
+
+  private labelH(): number {
+    return this.text ? this.boxH(this.f.label, this.labelPad().y) : LABEL_H;
   }
 
   private measure(font: string, text: string): number {
@@ -286,7 +393,8 @@ export class Overlay {
     // ---- seleção de sala
     if (sel.room) {
       const room = this.sim.rooms.get(sel.room);
-      if (room && room.present) {
+      if (room && room.present && this.proj) this.drawRoomFrameProjected(room.layout.rect, room.theme.accent, now);
+      else if (room && room.present) {
         const r = room.layout.rect;
         const ax = this.sx(r.x * TILE);
         const ay = this.sy(r.y * TILE);
@@ -326,7 +434,7 @@ export class Overlay {
       const above = labeled && this.labelAbove(ch);
       const b = this.bubbleFor(ch, head, now, opts, selected, hovered);
       if (b) {
-        b.extraLift = above ? LABEL_H + 3 : 0;
+        b.extraLift = above ? this.labelH() + 3 : 0;
         items.push(b);
       }
       if (labeled) {
@@ -347,6 +455,8 @@ export class Overlay {
 
     this.ration(zoom);
 
+    if (this.text?.declutter) this.drawDecluttered(now, sel);
+    else {
     // ---- posiciona (prioridade decrescente) e desenha (crescente: o mais importante por cima)
     items.sort((a, b) => b.prio - a.prio || (a.type === b.type ? a.head.feetY - b.head.feetY : a.type === 'bubble' ? -1 : 1));
     let n = 0;
@@ -360,9 +470,105 @@ export class Overlay {
       if (it.type === 'bubble') this.drawBubble(it, now);
       else this.drawLabel(it, sel);
     }
+    }
     this.drawChats(now);
     this.drawFloaters(now);
     ctx.textBaseline = 'alphabetic';
+  }
+
+  private declutterRank(it: Item, sel: { agent: string | null; hover: string | null }): number {
+    const ch = it.ch;
+    const tier = sel.agent === ch.id ? 6 : sel.hover === ch.id ? 5 : ch.mode === 'wait' || ch === this.sim.visitor ? 4 : ch.info.kind === 'main' ? 3 : ch.mode === 'work' ? 2 : 1;
+    return tier * 1000 + (it.type === 'bubble' ? 500 : 0) + it.prio;
+  }
+
+  private labelCands(l: Label): DeclutterBox[] {
+    const { nameW, chipW, badgeW, codexW } = this.labelWidth(l);
+    const w = Math.round(nameW + 2 * this.labelPad().x + chipW + (badgeW ? badgeW + 3 : 0) + (codexW ? codexW + 3 : 0));
+    const h = this.labelH();
+    const x = Math.round(this.sx(l.head.x) - w / 2);
+    const below = Math.round(this.sy(l.head.feetY) + 3);
+    const over = Math.round(this.sy(l.head.y) - this.iconLift(l.ch) * this.zoom - h - 3);
+    const first = l.above ? over : below;
+    const second = l.above ? below : over;
+    const s = l.above ? -1 : 1;
+    const half = Math.round(h / 2);
+    l.w = w;
+    l.h = h;
+    l.x = x;
+    return [first, first + s * half, first - s * half, first + s * h, first - s * h, second].map((y) => ({ x, y, w, h }));
+  }
+
+  private bubbleCands(b: Bubble, keepText: boolean): { cands: DeclutterBox[]; full: number } {
+    const cands: DeclutterBox[] = [];
+    let full = 0;
+    if (!b.chip && b.text) {
+      this.layoutBubble(b);
+      cands.push({ x: b.x, y: b.y, w: b.w, h: b.h }, { x: b.x, y: b.y - b.h - 6, w: b.w, h: b.h });
+      full = 2;
+      if (keepText) return { cands, full };
+    }
+    b.chip = true;
+    this.layoutBubble(b);
+    cands.push({ x: b.x, y: b.y, w: b.w, h: b.h }, { x: b.x, y: b.y - b.h - 6, w: b.w, h: b.h });
+    return { cands, full };
+  }
+
+  private drawDecluttered(now: number, sel: { agent: string | null; hover: string | null }): void {
+    const items = this.items;
+    const d = (this.declutter ??= new Declutter());
+    const dt = this.dLast ? Math.max(0, Math.min(100, now - this.dLast)) : 0;
+    this.dLast = now;
+    const ins = this.dItems;
+    ins.length = items.length;
+    const fulls: number[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const waiting = it.ch.mode === 'wait' || (it.type === 'bubble' && it.tone === 'alert');
+      const forced = sel.agent === it.ch.id || sel.hover === it.ch.id || waiting;
+      let cands: DeclutterBox[];
+      if (it.type === 'bubble') {
+        const r = this.bubbleCands(it, waiting);
+        cands = r.cands;
+        fulls[i] = r.full;
+      } else {
+        cands = this.labelCands(it);
+        fulls[i] = 0;
+      }
+      const prev = ins[i];
+      if (prev) {
+        prev.id = `${it.type === 'bubble' ? 'b' : 'l'}:${it.ch.id}`;
+        prev.rank = this.declutterRank(it, sel);
+        prev.forced = forced;
+        prev.cands = cands;
+      } else ins[i] = { id: `${it.type === 'bubble' ? 'b' : 'l'}:${it.ch.id}`, rank: this.declutterRank(it, sel), forced, cands };
+    }
+    const res = d.run(ins, this.placed, now, dt);
+    const order: number[] = [];
+    for (let i = 0; i < items.length; i++) if (res[i].index >= 0) order.push(i);
+    order.sort((a, b) => ins[a].rank - ins[b].rank);
+    const { ctx } = this;
+    for (const i of order) {
+      const it = items[i];
+      const r = res[i];
+      const box = ins[i].cands[r.index];
+      if (it.type === 'bubble') {
+        const full = r.index < fulls[i];
+        it.chip = !full;
+        this.layoutBubble(it);
+        it.lifted = r.index % 2 === 1;
+        it.y = box.y;
+        it.alpha *= r.alpha;
+        this.drawBubble(it, now);
+      } else {
+        it.x = box.x;
+        it.y = box.y;
+        ctx.save();
+        ctx.globalAlpha = r.alpha;
+        this.drawLabel(it, sel);
+        ctx.restore();
+      }
+    }
   }
 
   /** Quem senta virado para a câmera atrás de uma mesa: a etiqueta nos pés cobriria a tela do colega. */
@@ -419,9 +625,10 @@ export class Overlay {
       const anim = room ? buildAnim(room.phase, room.progress(now)) : null;
       // texto da placa quando ela fica grande o bastante para ler; senão, o nome flutuante
       const rect = this.renderer.signRect(vis);
-      const text = room ? room.info.name : vis.id === 'core:recepcao' ? 'Habblaud' : null;
-      const readable = !!rect && rect.h * zoom >= SIGN_MIN_PX;
-      if (readable && rect && text && (!anim || anim.sign >= 1)) {
+      const text = room ? room.info.name : vis.id === 'core:recepcao' ? 'Orrery' : null;
+      const inWorld = !!this.proj && !!rect;
+      const readable = !!rect && rect.h * zoom >= (inWorld ? SIGN_WORLD_MIN_PX : SIGN_MIN_PX);
+      if (readable && rect && text && !inWorld && (!anim || anim.sign >= 1)) {
         const ax = this.sx(rect.x);
         const ay = this.sy(rect.y);
         const w = rect.w * zoom;
@@ -431,9 +638,10 @@ export class Overlay {
           this.place(ax, ay, w, h);
         }
       }
-      if (room ? readable : zoom >= 1.4) continue;
-      const cx = this.sx((r.x + r.w / 2) * TILE);
-      const cy = this.sy(r.y * TILE + 6);
+      if (room || inWorld ? readable : zoom >= 1.4 && !this.proj) continue;
+      const anchor = this.proj ? this.roomTop(r, 6) : null;
+      const cx = anchor ? anchor.x : this.sx((r.x + r.w / 2) * TILE);
+      const cy = anchor ? anchor.y : this.sy(r.y * TILE + 6);
       if (cx < -200 || cx > vw + 200 || cy < -40 || cy > vh + 40) continue;
       if (room) {
         // endereço antigo de uma mudança: o nome já está na sala nova
@@ -447,7 +655,8 @@ export class Overlay {
 
   /** Altura dos ícones sobre a cabeça, contando o balão "!" de quem viu o CI falhar (render/github-fx.ts). */
   private iconLift(ch: Character): number {
-    const lift = headIconLift(ch);
+    const base = headIconLift(ch);
+    const lift = base > 0 && this.text?.iconLift ? base + this.text.iconLift : base;
     return this.sim.roomFx.active.size && this.sim.roomFx.alarmOwner(ch.id, this.sim.now) ? Math.max(lift, 13) : lift;
   }
 
@@ -460,12 +669,39 @@ export class Overlay {
       const room = this.sim.rooms.get(fx.roomId);
       if (!room || !room.present || now >= fx.end) continue;
       const r = room.layout.rect;
-      const cx = this.sx((r.x + r.w / 2) * TILE);
-      const top = this.sy((r.y + 2) * TILE) + 4;
+      const anchor = this.proj ? this.roomTop(r, 2 * TILE) : null;
+      const cx = anchor ? anchor.x : this.sx((r.x + r.w / 2) * TILE);
+      const top = anchor ? anchor.y + 4 : this.sy((r.y + 2) * TILE) + 4;
       if (cx < -200 || cx > camera.viewW + 200 || top < -40 || top > camera.viewH + 40) continue;
-      const b = drawFxBanner(this.ctx, fx, cx, top, r.w * TILE * zoom - 12, now, (f, t, w) => this.fit(f, t, w), (f, t) => this.measure(f, t));
+      const b = drawFxBanner(this.ctx, fx, cx, top, r.w * TILE * zoom - 12, now, (f, t, w) => this.fit(f, t, w), (f, t) => this.measure(f, t), this.text ? this.f.banner : undefined);
       if (b) this.place(b.x, b.y, b.w, b.h);
     }
+  }
+
+  private roomTop(r: { x: number; y: number; w: number; h: number }, dy: number): { x: number; y: number } {
+    const b = this.proj!.bounds({ x: r.x * TILE, y: r.y * TILE + dy, w: r.w * TILE, h: r.h * TILE - dy });
+    return { x: this.sx(b.x + b.w / 2), y: this.sy(b.y) };
+  }
+
+  private drawRoomFrameProjected(r: { x: number; y: number; w: number; h: number }, accent: string, now: number): void {
+    const { ctx } = this;
+    const rect = { x: r.x * TILE, y: r.y * TILE, w: r.w * TILE, h: r.h * TILE };
+    const pts = this.proj!.roomOutline?.(rect) ?? [
+      this.proj!.toView(rect.x, rect.y),
+      this.proj!.toView(rect.x + rect.w, rect.y),
+      this.proj!.toView(rect.x + rect.w, rect.y + rect.h),
+      this.proj!.toView(rect.x, rect.y + rect.h),
+    ];
+    ctx.save();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.85 + Math.sin(now / 300) * 0.15;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(this.sx(p.x), this.sy(p.y)) : ctx.moveTo(this.sx(p.x), this.sy(p.y))));
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
   }
 
   private countIn(roomId: string): number {
@@ -478,10 +714,10 @@ export class Overlay {
     const { ctx } = this;
     // encolhe a fonte até 7px; abaixo disso, corta com reticências
     let size = Math.min(18, Math.max(7, Math.floor(h * 0.72)));
-    let font = signFont(size);
+    let font = this.f.sign(size);
     while (size > 7 && this.measure(font, text) > w - 4) {
       size--;
-      font = signFont(size);
+      font = this.f.sign(size);
     }
     const t = this.fit(font, text, w - 4);
     ctx.font = font;
@@ -510,15 +746,18 @@ export class Overlay {
   }
 
   private drawRoomPill(name: string, cx: number, cy: number, maxW: number, accounts: string[], count: number, accent: string, lit: boolean): void {
-    const { ctx } = this;
+    const { ctx, f } = this;
+    const t = this.text;
+    const lead = t ? 4 + t.padX : 10;
+    const pads = lead + (t ? t.padX : 8);
     let dots = accounts.filter((a) => this.sim.accounts.has(a));
     let countText = count > 0 ? String(count) : '';
-    let cw = countText ? this.measure(LABEL_FONT, countText) + 14 : 0;
+    let cw = countText ? this.measure(f.label, countText) + 14 : 0;
     // nome cortado para caber na largura da coluna; com pouco espaço, o nome vale mais que a
     // contagem e as bolinhas; sem espaço nem para 3 letras, pílula compacta (só contagem)
-    let text = this.fit(ROOM_FONT, name, Math.min(180, maxW - (18 + dots.length * 10 + cw)));
+    let text = this.fit(f.room, name, Math.min(180, maxW - (pads + dots.length * 10 + cw)));
     if (text.length < Math.min(7, name.length)) {
-      const alone = this.fit(ROOM_FONT, name, maxW - 18);
+      const alone = this.fit(f.room, name, maxW - pads);
       if (alone.length >= 4) {
         text = alone;
         dots = [];
@@ -526,12 +765,12 @@ export class Overlay {
         cw = 0;
       }
     }
-    const extras = 18 + dots.length * 10 + cw;
+    const extras = pads + dots.length * 10 + cw;
     // Só vira pílula compacta quando o nome precisou ser cortado (nomes curtos como "app" cabem inteiros).
     const compact = text !== name && text.length < 4;
-    const tw = compact ? 0 : this.measure(ROOM_FONT, text);
+    const tw = compact ? 0 : this.measure(f.room, text);
     const w = Math.round(compact ? Math.max(12, 10 + cw + dots.length * 10) : tw + extras);
-    const h = 22;
+    const h = t ? this.boxH(f.room, t.padY) : 22;
     const x = Math.round(cx - w / 2);
     const y = Math.round(cy - h - 4);
     ctx.save();
@@ -548,12 +787,12 @@ export class Overlay {
     ctx.beginPath();
     ctx.roundRect(x, y, 4, h, [7, 0, 0, 7]);
     ctx.fill();
-    let dx = x + 10;
+    let dx = x + lead;
     if (!compact) {
-      ctx.font = ROOM_FONT;
+      ctx.font = f.room;
       ctx.fillStyle = '#f3f5fa';
-      ctx.fillText(text, x + 10, y + h / 2 + 1);
-      dx = x + 10 + tw + 8;
+      ctx.fillText(text, x + lead, this.midY(f.room, y, h, y + h / 2 + 1));
+      dx = x + lead + tw + 8;
     }
     for (const id of dots) {
       accountDot(ctx, dx + 3, y + h / 2, 3.5, this.sim.accounts.get(id)!);
@@ -562,25 +801,28 @@ export class Overlay {
     if (countText) {
       ctx.fillStyle = 'rgba(255,255,255,0.14)';
       ctx.beginPath();
-      ctx.roundRect(dx + 2, y + 4, cw - 4, h - 8, 5);
+      const inset = t ? Math.max(3, t.padY) : 4;
+      ctx.roundRect(dx + 2, y + inset, cw - 4, h - 2 * inset, 5);
       ctx.fill();
-      ctx.font = LABEL_FONT;
+      ctx.font = f.label;
       ctx.fillStyle = '#dfe5f2';
-      ctx.fillText(countText, dx + 7, y + h / 2 + 0.5);
+      ctx.fillText(countText, dx + 7, this.midY(f.label, y, h, y + h / 2 + 0.5));
     }
     ctx.restore();
     this.place(x, y, w, h);
   }
 
   private drawCorePill(name: string, cx: number, cy: number, maxW: number): void {
-    const { ctx } = this;
+    const { ctx, f } = this;
+    const t = this.text;
+    const px = t ? t.padX : 7;
     // fonte um pouco menor antes de cortar o nome
-    const font = this.measure(CORE_FONT, name) <= maxW - 14 ? CORE_FONT : CORE_FONT_SMALL;
-    const text = this.fit(font, name, maxW - 14);
+    const font = this.measure(f.core, name) <= maxW - 2 * px ? f.core : f.coreSmall;
+    const text = this.fit(font, name, maxW - 2 * px);
     if (text.length < 3) return;
     const tw = this.measure(font, text);
-    const w = Math.round(tw + 14);
-    const h = 18;
+    const w = Math.round(tw + 2 * px);
+    const h = t ? this.boxH(font, t.padY) : 18;
     const x = Math.round(cx - w / 2);
     const y = Math.round(cy - h - 4);
     ctx.fillStyle = 'rgba(22,27,40,0.62)';
@@ -589,7 +831,7 @@ export class Overlay {
     ctx.fill();
     ctx.font = font;
     ctx.fillStyle = '#e8ecf5';
-    ctx.fillText(text, x + 7, y + h / 2 + 1);
+    ctx.fillText(text, x + px, this.midY(font, y, h, y + h / 2 + 1));
     this.place(x, y, w, h);
   }
 
@@ -684,19 +926,21 @@ export class Overlay {
     const headX = this.sx(b.head.x);
     const headY = this.sy(b.head.y);
     const say = b.tone === 'say';
-    const iconW = b.icon && !say ? this.measure(BUBBLE_FONT, b.icon) + 4 : 0;
+    const { f, text: t } = this;
+    const padW = t ? 2 * t.padX : 14;
+    const iconW = b.icon && !say ? this.measure(f.bubble, b.icon) + 4 : 0;
     if (b.chip || !b.text) {
       b.fitted = '';
-      b.w = Math.round(Math.max(20, (say ? this.measure(BUBBLE_FONT, b.icon) + 4 : iconW) + 10));
+      b.w = Math.round(Math.max(20, (say ? this.measure(f.bubble, b.icon) + 4 : iconW) + (t ? padW - 4 : 10)));
     } else if (say) {
-      b.fitted = this.fit(SAY_FONT, b.text, SAY_MAX_W - 14);
-      b.w = Math.round(Math.min(SAY_MAX_W, this.measure(SAY_FONT, b.fitted) + 14));
+      b.fitted = this.fit(f.say, b.text, SAY_MAX_W - padW);
+      b.w = Math.round(Math.min(SAY_MAX_W, this.measure(f.say, b.fitted) + padW));
     } else {
       const maxW = b.tone === 'alert' ? ALERT_MAX_W : BUBBLE_MAX_W;
-      b.fitted = this.fit(BUBBLE_FONT, b.text, maxW - 16 - iconW);
-      b.w = Math.round(Math.min(maxW, this.measure(BUBBLE_FONT, b.fitted) + iconW + 14));
+      b.fitted = this.fit(f.bubble, b.text, maxW - (t ? padW : 16) - iconW);
+      b.w = Math.round(Math.min(maxW, this.measure(f.bubble, b.fitted) + iconW + padW));
     }
-    b.h = say && !b.chip ? SAY_H : BUBBLE_H;
+    b.h = t ? this.boxH(say && !b.chip ? f.say : f.bubble, t.padY) : say && !b.chip ? SAY_H : BUBBLE_H;
     b.x = Math.max(4, Math.min(camera.viewW - b.w - 4, Math.round(headX - b.w / 2)));
     b.y = Math.round(headY - lift - b.h - 6);
   }
@@ -784,23 +1028,25 @@ export class Overlay {
     ctx.fillStyle = bg;
     ctx.fillRect(tailX - 4, y + h - 2, 8, 2);
     // conteúdo
-    ctx.font = tone === 'say' && !b.chip ? SAY_FONT : BUBBLE_FONT;
+    const font = tone === 'say' && !b.chip ? this.f.say : this.f.bubble;
+    const ty = this.midY(font, y, h, y + h / 2 + 1);
+    ctx.font = font;
     ctx.fillStyle = fg;
     if (tone === 'say' && !b.chip && b.fitted) {
       ctx.textAlign = 'center';
-      ctx.fillText(b.fitted, x + w / 2, y + h / 2 + 1);
+      ctx.fillText(b.fitted, x + w / 2, ty);
       ctx.textAlign = 'left';
     } else if (b.chip || !b.fitted) {
       ctx.textAlign = 'center';
-      ctx.fillText(b.icon || '…', x + w / 2, y + h / 2 + 1);
+      ctx.fillText(b.icon || '…', x + w / 2, ty);
       ctx.textAlign = 'left';
     } else {
-      let tx = x + 7;
+      let tx = x + (this.text ? this.text.padX : 7);
       if (b.icon) {
-        ctx.fillText(b.icon, tx, y + h / 2 + 1);
-        tx += this.measure(BUBBLE_FONT, b.icon) + 4;
+        ctx.fillText(b.icon, tx, ty);
+        tx += this.measure(this.f.bubble, b.icon) + 4;
       }
-      ctx.fillText(b.fitted, tx, y + h / 2 + 1);
+      ctx.fillText(b.fitted, tx, ty);
     }
     ctx.restore();
   }
@@ -846,7 +1092,7 @@ export class Overlay {
     if (!fl.length || this.zoom < TINY_ZOOM) return;
     const { ctx } = this;
     ctx.save();
-    ctx.font = FLOAT_FONT;
+    ctx.font = this.f.float;
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
     for (const f of fl) {
@@ -872,19 +1118,20 @@ export class Overlay {
   private labelWidth(l: Label): { nameW: number; chipW: number; badgeW: number; codexW: number } {
     const ch = l.ch;
     const acc = this.sim.accounts.get(ch.info.account);
-    const nameW = this.measure(LABEL_FONT, ch.info.name);
+    const f = this.f;
+    const nameW = this.measure(f.label, ch.info.name);
     const chipW = acc ? 13 : 0;
     const visitor = ch === this.sim.visitor;
-    const badgeW = visitor ? this.measure(BADGE_FONT, visitorBadge()) + 7 : ch.info.kind === 'sub' && !l.compact ? this.measure(BADGE_FONT, 'SUB') + 7 : 0;
-    const codexW = ch.info.provider === 'codex' && !l.compact ? this.measure(BADGE_FONT, CODEX_BADGE) + 7 : 0;
+    const badgeW = visitor ? this.measure(f.badge, visitorBadge()) + 7 : ch.info.kind === 'sub' && !l.compact ? this.measure(f.badge, 'SUB') + 7 : 0;
+    const codexW = ch.info.provider === 'codex' && !l.compact ? this.measure(f.badge, CODEX_BADGE) + 7 : 0;
     return { nameW, chipW, badgeW, codexW };
   }
 
   /** Posiciona a etiqueta: nos pés (ou acima da cabeça); se colidir, tenta o outro lado. */
   private placeLabel(l: Label): boolean {
     const { nameW, chipW, badgeW, codexW } = this.labelWidth(l);
-    const w = Math.round(nameW + 10 + chipW + (badgeW ? badgeW + 3 : 0) + (codexW ? codexW + 3 : 0));
-    const h = LABEL_H;
+    const w = Math.round(nameW + (this.text ? 2 * this.labelPad().x : 10) + chipW + (badgeW ? badgeW + 3 : 0) + (codexW ? codexW + 3 : 0));
+    const h = this.labelH();
     const x = Math.round(this.sx(l.head.x) - w / 2);
     const below = Math.round(this.sy(l.head.feetY) + 3);
     const iconLift = this.iconLift(l.ch) * this.zoom;
@@ -903,7 +1150,7 @@ export class Overlay {
   }
 
   private drawLabel(l: Label, sel: { agent: string | null; hover: string | null }): void {
-    const { ctx } = this;
+    const { ctx, f } = this;
     const ch = l.ch;
     const acc = this.sim.accounts.get(ch.info.account);
     const sub = ch.info.kind === 'sub';
@@ -915,7 +1162,7 @@ export class Overlay {
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, 7.5);
     ctx.fill();
-    let cx = x + 4;
+    let cx = x + (this.text ? this.labelPad().x - 1 : 4);
     if (acc && codex) {
       // Codex: chip vazado de cantos em degrau (fundo escuro, borda e letra na cor da conta), como nos painéis.
       steppedRect(ctx, cx, y + h / 2 - 5, 10, 10, 2);
@@ -925,10 +1172,10 @@ export class Overlay {
       ctx.strokeStyle = acc.color;
       steppedRect(ctx, cx + 0.75, y + h / 2 - 4.25, 8.5, 8.5, 1.6);
       ctx.stroke();
-      ctx.font = CHIP_FONT;
+      ctx.font = f.chip;
       ctx.textAlign = 'center';
       ctx.fillStyle = acc.color;
-      ctx.fillText(acc.short.slice(0, 1), cx + 5, y + h / 2 + 0.5);
+      ctx.fillText(acc.short.slice(0, 1), cx + 5, this.midY(f.chip, y, h, y + h / 2 + 0.5));
       ctx.textAlign = 'left';
       cx += chipW;
     } else if (acc) {
@@ -936,25 +1183,25 @@ export class Overlay {
       ctx.arc(cx + 5, y + h / 2, 5, 0, Math.PI * 2);
       ctx.fillStyle = acc.color;
       ctx.fill();
-      ctx.font = CHIP_FONT;
+      ctx.font = f.chip;
       ctx.textAlign = 'center';
       ctx.fillStyle = luminance(acc.color) > 0.62 ? '#1d2330' : '#ffffff';
-      ctx.fillText(acc.short.slice(0, 1), cx + 5, y + h / 2 + 0.5);
+      ctx.fillText(acc.short.slice(0, 1), cx + 5, this.midY(f.chip, y, h, y + h / 2 + 0.5));
       ctx.textAlign = 'left';
       cx += chipW;
     }
-    ctx.font = LABEL_FONT;
+    ctx.font = f.label;
     ctx.fillStyle = '#f5f7fb';
-    ctx.fillText(ch.info.name, cx + 1, y + h / 2 + 0.5);
+    ctx.fillText(ch.info.name, cx + 1, this.midY(f.label, y, h, y + h / 2 + 0.5));
     cx += nameW + 4;
     if (badgeW) {
       ctx.fillStyle = ch.appearance.lanyard ?? '#f2b33d';
       ctx.beginPath();
       ctx.roundRect(cx, y + 3, badgeW, h - 6, 4);
       ctx.fill();
-      ctx.font = BADGE_FONT;
+      ctx.font = f.badge;
       ctx.fillStyle = '#2a2000';
-      ctx.fillText(ch === this.sim.visitor ? visitorBadge() : 'SUB', cx + 3.5, y + h / 2 + 0.5);
+      ctx.fillText(ch === this.sim.visitor ? visitorBadge() : 'SUB', cx + 3.5, this.midY(f.badge, y, h, y + h / 2 + 0.5));
       cx += badgeW + 3;
     } else if (sub) {
       // selo compacto: pontinho na cor do crachá
@@ -968,9 +1215,9 @@ export class Overlay {
       ctx.beginPath();
       ctx.roundRect(cx, y + 3, codexW, h - 6, 3);
       ctx.fill();
-      ctx.font = BADGE_FONT;
+      ctx.font = f.badge;
       ctx.fillStyle = '#e8ecf5';
-      ctx.fillText(CODEX_BADGE, cx + 3.5, y + h / 2 + 0.5);
+      ctx.fillText(CODEX_BADGE, cx + 3.5, this.midY(f.badge, y, h, y + h / 2 + 0.5));
     }
   }
 }

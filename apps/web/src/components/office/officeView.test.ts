@@ -23,13 +23,42 @@ type FakeWorld = {
   setPlayback: ReturnType<typeof vi.fn>
   screenPositionOf: () => null
   destroy: ReturnType<typeof vi.fn>
+  readyCbs: Set<() => void>
+  onReady?: (cb: () => void) => () => void
+  fireReady: () => void
 }
 
 const h = vi.hoisted(() => {
   const worlds: FakeWorld[] = []
   const locale = { gate: null as Promise<void> | null }
   const reveal = { show: (_terminalId: string): boolean => false }
-  return { worlds, locale, reveal }
+  const packs = { index: [] as { id: string; name: { en: string; vi: string }; preview: string | null }[], rooms: {} as Record<string, unknown[] | null> }
+  const ready = { manual: false }
+  return { worlds, locale, reveal, packs, ready }
+})
+
+vi.mock('../../office/iso/preload', () => ({ scheduleIsoPreload: vi.fn(() => true), warmIsoArt: vi.fn(async () => undefined) }))
+
+vi.mock('../../office/iso/isoArt', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../office/iso/isoArt')>()
+  return { ...real, releaseIsoArt: vi.fn(() => 0) }
+})
+
+vi.mock('../../office/packs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../office/packs')>()
+  const { parseRoomThemes } = await import('@ccm/habblaud/client/src/art/theme')
+  return {
+    ...real,
+    fetchPackIndex: vi.fn(async () => h.packs.index),
+    loadOfficePack: vi.fn(async (id: string) =>
+      id === real.CLASSIC_PACK ? { id, assetPack: undefined, rooms: null } : { id, assetPack: `themes/${id}`, rooms: parseRoomThemes(h.packs.rooms[id] ?? null) },
+    ),
+  }
+})
+
+vi.mock('@ccm/habblaud/client/src/world/assets', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@ccm/habblaud/client/src/world/assets')>()
+  return { ...real, loadWorldAssets: vi.fn(async () => null) }
 })
 
 vi.mock('../../composables/useRevealInWorkspace', () => ({
@@ -62,7 +91,18 @@ vi.mock('@ccm/habblaud/client/src/world', () => ({
       setPlayback: vi.fn(),
       screenPositionOf: () => null,
       destroy: vi.fn(),
+      readyCbs: new Set(),
+      fireReady: () => {
+        const cbs = [...w.readyCbs]
+        w.readyCbs.clear()
+        for (const cb of cbs) cb()
+      },
     }
+    if (h.ready.manual)
+      w.onReady = (cb) => {
+        w.readyCbs.add(cb)
+        return () => void w.readyCbs.delete(cb)
+      }
     h.worlds.push(w)
     return w
   }),
@@ -85,8 +125,15 @@ const { useSettingsStore } = await import('../../stores/settings')
 const { useOfficeStore, OFFICE_OPTIONS_KEY } = await import('../../stores/office')
 const { modalOpen } = await import('@ccm/habblaud/client/src/world/input')
 const officeI18n = (await import('../../i18n/office-v60')).default
+const officeI18nV62 = (await import('../../i18n/office-v62')).default
 const OfficeView = (await import('./OfficeView.vue')).default
 const OfficeOptions = (await import('./OfficeOptions.vue')).default
+const { setRoomThemes, roomTheme } = await import('@ccm/habblaud/client/src/art/theme')
+const { OFFICE_PACK_KEY } = await import('../../office/packs')
+const { WARM_UP_MS, SWITCH_OVERLAY_DELAY_MS, LAYER_FADE_MS } = await import('../../office/switching')
+const { scheduleIsoPreload, warmIsoArt } = await import('../../office/iso/preload')
+const { releaseIsoArt } = await import('../../office/iso/isoArt')
+const { ISO_RELEASE_MS, SWITCH_ERROR_MS } = await import('../../office/switching')
 
 let w: VueWrapper | null = null
 let pinia: Pinia
@@ -110,8 +157,15 @@ const world = (): FakeWorld => h.worlds.at(-1)!
 
 beforeEach(() => {
   localStorage.clear()
+  h.packs.index = []
+  h.packs.rooms = {}
+  setRoomThemes(null)
   h.worlds.length = 0
   h.locale.gate = null
+  h.ready.manual = false
+  vi.mocked(scheduleIsoPreload).mockClear()
+  vi.mocked(warmIsoArt).mockClear()
+  vi.mocked(releaseIsoArt).mockClear()
   vi.mocked(createWorld).mockClear()
   vi.mocked(applyOfficeLocale).mockClear()
   i18n.global.locale.value = 'en'
@@ -614,5 +668,486 @@ describe('Office timelapse', () => {
     expect(officeFeed.replaying).toBe(false)
     expect(useOfficeStore().replaying).toBe(false)
     expect(useOfficeStore().timelapse).toBe(false)
+  })
+})
+
+const PACK_ROOM = { carpet: '#a1b2c3', carpet2: '#99aabb', wall: { base: '#f3eee4', trim: '#c9a77c', pattern: 'wood_panel' }, accent: '#7c8b5a', deskVariant: 'wood', chairVariant: 'green' }
+const JAPANDI = { id: 'japandi', name: { en: 'Japandi', vi: 'Japandi' }, preview: '/assets/themes/japandi/preview.png' }
+const NIGHT = { id: 'night-shift', name: { en: 'Night shift', vi: 'Ca đêm' }, preview: '/assets/themes/night-shift/preview.png' }
+
+describe('Office theme packs', () => {
+  const lastOpts = () => vi.mocked(createWorld).mock.calls.at(-1)![2]
+
+  it('builds the classic office by default', async () => {
+    await mountView()
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+    expect(roomTheme(0).carpet).toBe('#c9d1dc')
+    expect(useOfficeStore().packMissing).toBeNull()
+  })
+
+  it('loads the saved pack: wall art from its folder, rooms from its theme', async () => {
+    h.packs.index = [JAPANDI]
+    h.packs.rooms = { japandi: [PACK_ROOM] }
+    localStorage.setItem(OFFICE_PACK_KEY, 'japandi')
+    setup()
+    await mountView()
+    expect(lastOpts()).toEqual({ assetPack: 'themes/japandi', assets: null, warmUpMs: WARM_UP_MS })
+    expect(roomTheme(0).carpet).toBe('#a1b2c3')
+    expect(roomTheme(5).carpet).toBe('#a1b2c3')
+  })
+
+  it('falls back to classic for a pack the index does not list', async () => {
+    localStorage.setItem(OFFICE_PACK_KEY, 'seaside')
+    setup()
+    await mountView()
+    const office = useOfficeStore()
+    expect(office.activePack).toBe('classic')
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+    expect(office.packMissing).toBe('seaside')
+  })
+
+  it('keeps the classic rooms when a listed pack has no valid theme yet', async () => {
+    h.packs.index = [JAPANDI]
+    h.packs.rooms = { japandi: [{ ...PACK_ROOM, deskVariant: 'glass' }] }
+    localStorage.setItem(OFFICE_PACK_KEY, 'japandi')
+    setup()
+    await mountView()
+    expect(roomTheme(0).carpet).toBe('#c9d1dc')
+    expect(useOfficeStore().packMissing).toBe('japandi')
+  })
+
+  it('ignores a malformed saved id', () => {
+    localStorage.setItem(OFFICE_PACK_KEY, '../etc')
+    setup()
+    expect(useOfficeStore().pack).toBe('classic')
+  })
+
+  it('rebuilds the world when the pack changes, seasonal theme still applied', async () => {
+    h.packs.index = [JAPANDI, NIGHT]
+    h.packs.rooms = { japandi: [PACK_ROOM], 'night-shift': [{ ...PACK_ROOM, carpet: '#1d2240', carpet2: '#232a4d' }] }
+    localStorage.setItem(OFFICE_OPTIONS_KEY, JSON.stringify({ theme: 'halloween' }))
+    setup()
+    await mountView()
+    const first = world()
+    const office = useOfficeStore()
+    office.setPack('night-shift')
+    await flushPromises()
+    expect(localStorage.getItem(OFFICE_PACK_KEY)).toBe('night-shift')
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(createWorld).toHaveBeenCalledTimes(2)
+    expect(lastOpts()).toEqual({ assetPack: 'themes/night-shift', assets: null, warmUpMs: WARM_UP_MS })
+    expect(roomTheme(0).carpet).toBe('#1d2240')
+    expect(world().setOptions).toHaveBeenCalledWith(expect.objectContaining({ theme: 'halloween' }))
+    office.setPack('classic')
+    await flushPromises()
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+    expect(roomTheme(0).carpet).toBe('#c9d1dc')
+  })
+
+  it('validates the seasonal theme option', () => {
+    localStorage.setItem(OFFICE_OPTIONS_KEY, JSON.stringify({ theme: 'easter' }))
+    setup()
+    expect(useOfficeStore().options.theme).toBe('auto')
+    localStorage.setItem(OFFICE_OPTIONS_KEY, JSON.stringify({ theme: 'christmas' }))
+    setup()
+    expect(useOfficeStore().options.theme).toBe('christmas')
+  })
+
+  it('picks a pack and a seasonal theme from the options popover', async () => {
+    h.packs.index = [JAPANDI, NIGHT]
+    w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    await w.find('button[aria-haspopup="dialog"]').trigger('click')
+    await flushPromises()
+    const cards = w.findAll('[data-office-pack]')
+    expect(cards.map((c) => c.attributes('data-office-pack'))).toEqual(['classic', 'japandi', 'night-shift'])
+    expect(cards[0]!.attributes('aria-checked')).toBe('true')
+    await cards[1]!.trigger('click')
+    expect(useOfficeStore().pack).toBe('japandi')
+    expect(localStorage.getItem(OFFICE_PACK_KEY)).toBe('japandi')
+    expect(w.find('[data-office-pack="japandi"]').attributes('aria-checked')).toBe('true')
+    await w.find('[data-office-packs] [role="radiogroup"]').trigger('keydown', { key: 'ArrowRight' })
+    expect(useOfficeStore().pack).toBe('night-shift')
+    const halloween = w.findAll('[role="radio"]').find((b) => b.text() === 'Halloween')!
+    await halloween.trigger('click')
+    expect(useOfficeStore().options.theme).toBe('halloween')
+  })
+
+  it('tells the owner when the chosen pack is not installed', async () => {
+    useOfficeStore().packMissing = 'seaside'
+    w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    await w.find('button[aria-haspopup="dialog"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-office-pack-missing]').text()).toContain('seaside')
+  })
+})
+
+describe('Office full screen', () => {
+  it('puts the map region (canvas + floating Office controls) in full screen from a toolbar button and Shift+F', async () => {
+    const src = (await import('../AgentMap.vue?raw')).default
+    expect(src).toContain('const officeFs = useFullscreen(canvas)')
+    const start = src.indexOf('data-office-fullscreen-toggle')
+    expect(start).toBeGreaterThan(-1)
+    const button = src.slice(src.lastIndexOf('<button', start), src.indexOf('</button>', start))
+    expect(button).toContain('aria-keyshortcuts="Shift+F"')
+    expect(button).toContain(':aria-pressed="officeFullscreen"')
+    expect(src).toMatch(/e\.code !== 'KeyF' \|\| !e\.shiftKey/)
+    expect(src).toMatch(/if \(v !== 'office'\) void officeFs\.exit\(\)/)
+    const region = src.slice(src.indexOf('ref="canvas"'), src.indexOf('<ToolTimeline'))
+    expect(region).toContain('data-office-fullscreen')
+    const toolbar = src.indexOf('<OfficeOptions />')
+    expect(toolbar).toBeGreaterThan(src.indexOf('ref="canvas"'))
+  })
+
+  it('renders the options popover and the timelapse bar inside the full screen element (no teleport)', async () => {
+    const options = (await import('./OfficeOptions.vue?raw')).default
+    const view = (await import('./OfficeView.vue?raw')).default
+    const lapse = (await import('./OfficeTimelapse.vue?raw')).default
+    for (const src of [options, view, lapse]) expect(src).not.toContain('Teleport')
+  })
+
+  it('has every v62 office string in English and Vietnamese', () => {
+    type Tree = { [k: string]: Tree | string }
+    const keys = (t: Tree, p = ''): string[] => Object.entries(t).flatMap(([k, v]) => (typeof v === 'string' ? [`${p}${k}`] : keys(v, `${p}${k}.`)))
+    const en = keys(officeI18nV62.en as unknown as Tree)
+    expect(keys(officeI18nV62.vi as unknown as Tree)).toEqual(en)
+    for (const k of en) {
+      expect(i18n.global.te(k, 'en')).toBe(true)
+      expect(i18n.global.te(k, 'vi')).toBe(true)
+    }
+  })
+})
+
+describe('Office style', () => {
+  const lastOpts = () => vi.mocked(createWorld).mock.calls.at(-1)![2] as Record<string, unknown>
+
+  it('without the dev flag the world gets no projection and no renderer', async () => {
+    await mountView()
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+  })
+
+  it('with ccm.office.style=iso the world gets the iso projection and renderer factory', async () => {
+    const { OFFICE_STYLE_KEY } = await import('../../office/iso')
+    const { isoProjection } = await import('../../office/iso/projection')
+    const { createIsoRenderer, isoMaxZoom } = await import('../../office/iso/IsoRenderer')
+    const { ISO_TEXT } = await import('../../office/iso/fonts')
+    localStorage.setItem(OFFICE_STYLE_KEY, 'iso')
+    const fetchMock = vi.fn(async () => new Response(null, { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await mountView()
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(1), { timeout: 5000 })
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, projection: isoProjection, renderer: createIsoRenderer, maxZoom: isoMaxZoom, text: ISO_TEXT, warmUpMs: WARM_UP_MS })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/assets/iso3d/manifest.json'))
+    await vi.waitFor(() => expect(useOfficeStore().isoArtMissing).toBe(true))
+    expect(world().canvas.dataset.officeStyle).toBe('iso')
+    expect(world().canvas.className).not.toContain('pixelated')
+    vi.unstubAllGlobals()
+  })
+
+  it('any other flag value keeps the pixel office', async () => {
+    localStorage.setItem('ccm.office.style', 'pixel')
+    await mountView()
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+    expect(world().canvas.className).toContain('pixelated')
+  })
+
+  it('switching the style persists it and rebuilds the world each way', async () => {
+    const { OFFICE_STYLE_KEY } = await import('../../office/iso')
+    const { isoProjection } = await import('../../office/iso/projection')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    await mountView()
+    const first = world()
+    const office = useOfficeStore()
+    expect(office.style).toBe('pixel')
+    office.setStyle('iso')
+    expect(localStorage.getItem(OFFICE_STYLE_KEY)).toBe('iso')
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(lastOpts().projection).toBe(isoProjection)
+    office.setStyle('iso')
+    await flushPromises()
+    expect(createWorld).toHaveBeenCalledTimes(2)
+    office.setStyle('pixel')
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(3), { timeout: 5000 })
+    expect(lastOpts()).toEqual({ assetPack: undefined, assets: null, warmUpMs: WARM_UP_MS })
+    expect(office.isoArtMissing).toBe(false)
+    expect(localStorage.getItem(OFFICE_STYLE_KEY)).toBe('pixel')
+    office.setStyle('voxel' as never)
+    expect(office.style).toBe('pixel')
+    vi.unstubAllGlobals()
+  })
+
+  it('restores the saved style in a new store', async () => {
+    localStorage.setItem('ccm.office.style', 'iso')
+    setup()
+    expect(useOfficeStore().style).toBe('iso')
+  })
+
+  it('picks the style from the options popover and notes missing 3D art', async () => {
+    w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    await w.find('button[aria-haspopup="dialog"]').trigger('click')
+    await flushPromises()
+    const radios = w.findAll('[data-office-style] [role="radio"]')
+    expect(radios.map((r) => r.text())).toEqual(['Pixel', '3D (beta)'])
+    await radios[1]!.trigger('click')
+    expect(useOfficeStore().style).toBe('iso')
+    expect(localStorage.getItem('ccm.office.style')).toBe('iso')
+    expect(w.find('[data-office-style-missing]').exists()).toBe(false)
+    useOfficeStore().isoArtMissing = true
+    await flushPromises()
+    expect(w.find('[data-office-style-missing]').text()).toContain('3D art is not installed')
+  })
+
+  it('has every v63 office string in English and Vietnamese', async () => {
+    const v63 = (await import('../../i18n/office-v63')).default
+    type Tree = { [k: string]: Tree | string }
+    const keys = (t: Tree, p = ''): string[] => Object.entries(t).flatMap(([k, v]) => (typeof v === 'string' ? [`${p}${k}`] : keys(v, `${p}${k}.`)))
+    const en = keys(v63.en as unknown as Tree)
+    expect(keys(v63.vi as unknown as Tree)).toEqual(en)
+    for (const k of en) {
+      expect(i18n.global.te(k, 'en')).toBe(true)
+      expect(i18n.global.te(k, 'vi')).toBe(true)
+    }
+  })
+})
+
+describe('Office style switch: loading overlay, cancel, preload', () => {
+  const canvases = () => w!.findAll('canvas')
+  const overlayEl = () => w!.find('[data-office-switching]')
+
+  async function mountReady(): Promise<FakeWorld> {
+    h.ready.manual = true
+    await mountView()
+    const first = world()
+    expect(useOfficeStore().world).toBeNull()
+    first.fireReady()
+    await flushPromises()
+    expect(useOfficeStore().world).toStrictEqual(first)
+    return first
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps the current office on screen and shows the overlay only after 150 ms, until the new world is ready', async () => {
+    const first = await mountReady()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    i18n.global.locale.value = 'vi'
+    await flushPromises()
+    expect(createWorld).toHaveBeenCalledTimes(2)
+    const next = world()
+    const office = useOfficeStore()
+    expect(office.switching).toBe(true)
+    expect(first.destroy).not.toHaveBeenCalled()
+    expect(office.world).toStrictEqual(first)
+    expect(canvases()).toHaveLength(2)
+    expect(canvases()[1]!.attributes('data-office-layer')).toBe('pending')
+    expect(canvases()[1]!.classes()).toContain('opacity-0')
+    vi.advanceTimersByTime(SWITCH_OVERLAY_DELAY_MS - 1)
+    await nextTick()
+    expect(overlayEl().exists()).toBe(false)
+    vi.advanceTimersByTime(1)
+    await nextTick()
+    expect(overlayEl().exists()).toBe(true)
+    expect(overlayEl().text()).toBe('Đang tải văn phòng pixel…')
+    expect(overlayEl().attributes('role')).toBe('status')
+    next.fireReady()
+    await flushPromises()
+    expect(overlayEl().exists()).toBe(false)
+    expect(office.switching).toBe(false)
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(office.world).toStrictEqual(next)
+    expect(canvases()).toHaveLength(2)
+    expect(canvases()[1]!.attributes('data-office-layer')).toBe('live')
+    vi.advanceTimersByTime(LAYER_FADE_MS)
+    await nextTick()
+    expect(canvases()).toHaveLength(1)
+    expect(next.canvas).toBe(canvases()[0]!.element)
+  })
+
+  it('never shows the overlay for a switch faster than 150 ms', async () => {
+    await mountReady()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    i18n.global.locale.value = 'vi'
+    await flushPromises()
+    vi.advanceTimersByTime(100)
+    world().fireReady()
+    await flushPromises()
+    vi.advanceTimersByTime(500)
+    await nextTick()
+    expect(overlayEl().exists()).toBe(false)
+    expect(useOfficeStore().switching).toBe(false)
+  })
+
+  it('switching back mid-load cancels cleanly: no second world, nothing leaked', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    const first = await mountReady()
+    const office = useOfficeStore()
+    office.setStyle('iso')
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    const pendingWorld = world()
+    expect(office.switching).toBe(true)
+    expect(canvases()).toHaveLength(2)
+    expect(pendingWorld.readyCbs.size).toBe(1)
+    office.setStyle('pixel')
+    await flushPromises()
+    expect(pendingWorld.destroy).toHaveBeenCalledTimes(1)
+    expect(pendingWorld.readyCbs.size).toBe(0)
+    expect(first.destroy).not.toHaveBeenCalled()
+    expect(createWorld).toHaveBeenCalledTimes(2)
+    expect(office.world).toStrictEqual(first)
+    expect(office.switching).toBe(false)
+    expect(canvases()).toHaveLength(1)
+    expect(canvases()[0]!.attributes('data-office-style')).toBe('pixel')
+    pendingWorld.fireReady()
+    await flushPromises()
+    expect(office.world).toStrictEqual(first)
+    w!.unmount()
+    w = null
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(pendingWorld.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('unmounting mid-switch destroys both worlds once', async () => {
+    const first = await mountReady()
+    i18n.global.locale.value = 'vi'
+    await flushPromises()
+    const next = world()
+    expect(next).not.toBe(first)
+    w!.unmount()
+    w = null
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(next.destroy).toHaveBeenCalledTimes(1)
+    expect(useOfficeStore().switching).toBe(false)
+  })
+
+  it('schedules the background 3D preload once the pixel office is ready, not for the 3D office', async () => {
+    await mountReady()
+    expect(scheduleIsoPreload).toHaveBeenCalledTimes(1)
+    w!.unmount()
+    w = null
+    vi.mocked(scheduleIsoPreload).mockClear()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    localStorage.setItem('ccm.office.style', 'iso')
+    setup()
+    h.ready.manual = false
+    await mountView()
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    await flushPromises()
+    expect(scheduleIsoPreload).not.toHaveBeenCalled()
+  })
+
+  it('the first open of a 3D office waits for its first frame behind the loading state', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    localStorage.setItem('ccm.office.style', 'iso')
+    setup()
+    h.ready.manual = true
+    await mountView()
+    await vi.waitFor(() => expect(createWorld).toHaveBeenCalledTimes(1), { timeout: 5000 })
+    await flushPromises()
+    expect(w!.find('[data-office-state]').exists()).toBe(true)
+    expect(canvases()[0]!.attributes('data-office-layer')).toBe('pending')
+    world().fireReady()
+    await flushPromises()
+    expect(canvases()[0]!.attributes('data-office-layer')).toBe('live')
+    expect(canvases()[0]!.attributes('data-office-style')).toBe('iso')
+    expect(overlayEl().exists()).toBe(false)
+  })
+
+  it('disables the style control while a switch is loading', async () => {
+    w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    await w.find('button[aria-haspopup="dialog"]').trigger('click')
+    await flushPromises()
+    const office = useOfficeStore()
+    office.switching = true
+    await nextTick()
+    const radios = w.findAll('[data-office-style] [role="radio"]')
+    expect(radios.every((r) => (r.element as HTMLButtonElement).disabled)).toBe(true)
+    expect(w.find('[data-office-style] [role="radiogroup"]').attributes('aria-disabled')).toBe('true')
+    await radios[1]!.trigger('click')
+    expect(office.style).toBe('pixel')
+    office.switching = false
+    await nextTick()
+    await radios[1]!.trigger('click')
+    expect(office.style).toBe('iso')
+  })
+})
+
+describe('Office style switch: failure, intent, release', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('a failed switch puts the old style back in the store and the control, with a short error note', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    await mountView()
+    const first = world()
+    const office = useOfficeStore()
+    vi.mocked(createWorld).mockImplementationOnce(() => {
+      throw new Error('iso failed')
+    })
+    office.setStyle('iso')
+    await vi.waitFor(() => expect(office.style).toBe('pixel'), { timeout: 5000 })
+    await flushPromises()
+    expect(localStorage.getItem('ccm.office.style')).toBe('pixel')
+    expect(office.world).toStrictEqual(first)
+    expect(first.destroy).not.toHaveBeenCalled()
+    expect(office.switching).toBe(false)
+    expect(w!.findAll('canvas')).toHaveLength(1)
+    const note = w!.find('[data-office-switch-error]')
+    expect(note.attributes('role')).toBe('alert')
+    expect(note.text()).toBe(i18n.global.t('officeV63.switchFailed.iso'))
+    expect(createWorld).toHaveBeenCalledTimes(2)
+  })
+
+  it('error note hides after a few seconds', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    await mountView()
+    const office = useOfficeStore()
+    vi.mocked(createWorld).mockImplementationOnce(() => {
+      throw new Error('iso failed')
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+    office.setStyle('iso')
+    await vi.waitFor(() => expect(office.switchError).toBe('iso'), { timeout: 5000 })
+    vi.advanceTimersByTime(SWITCH_ERROR_MS)
+    await nextTick()
+    expect(office.switchError).toBeNull()
+    expect(w!.find('[data-office-switch-error]').exists()).toBe(false)
+  })
+
+  it('decodes the 3D art only on intent, and releases it a minute after the pixel office is back', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await mountView()
+    const office = useOfficeStore()
+    expect(warmIsoArt).not.toHaveBeenCalled()
+    office.noteIsoIntent()
+    await nextTick()
+    expect(warmIsoArt).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(ISO_RELEASE_MS - 1)
+    await flushPromises()
+    expect(releaseIsoArt).not.toHaveBeenCalled()
+    office.noteIsoIntent()
+    await nextTick()
+    vi.advanceTimersByTime(ISO_RELEASE_MS - 1)
+    await flushPromises()
+    expect(releaseIsoArt).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    await vi.waitFor(() => expect(releaseIsoArt).toHaveBeenCalledTimes(1))
+  })
+
+  it('opening the options popover or pointing at the style control counts as intent, only in pixel', async () => {
+    w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
+    const office = useOfficeStore()
+    await w.find('button[aria-haspopup="dialog"]').trigger('click')
+    await flushPromises()
+    expect(office.isoIntent).toBe(1)
+    await w.find('[data-office-style]').trigger('pointerenter')
+    expect(office.isoIntent).toBe(2)
+    office.setStyle('iso')
+    await w.find('[data-office-style]').trigger('pointerenter')
+    expect(office.isoIntent).toBe(2)
   })
 })

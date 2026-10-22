@@ -1,0 +1,377 @@
+{
+  "defaultModel": "codex image_generation",
+  "styles": {
+    "pixel": "Style: authentic pixel art made of crisp hard-edged square pixels on a perfectly regular grid, limited palette, flat color fills with 3-4 shades per material, no anti-aliasing, no gradients, no blur, no noise, no dithering. Playful, bright retro eighties office pixel art with its own original look: warm cream walls (#f4ecd8) with bold geometric patterns of triangles, circles, zigzags, black squiggles (#262626) and confetti dots, a light speckled terrazzo floor, teal (#2fb5a6) desks and sofas, bubblegum pink (#f07aa8) and sunny yellow (#f6c945) accents, lavender (#a593e0) and coral (#ef8354) details, glass block partitions, glowing teal monitor screens, potted cacti and palms. Original artwork: do not copy or imitate any existing game, tileset or artist. Outlines in dark blue-grey (#2b3245), never pure black. Light comes from the top-left. Absolutely no text, letters, numbers, logos or watermark.",
+    "chroma": "Background: one perfectly flat solid magenta color (#FF00FF) filling the entire background edge to edge, with no shadow, no floor, no gradient, no vignette and nothing else. The subject is isolated, centered, with a generous margin, and must not contain any magenta or pink.",
+    "wallart": "Style: a bold, simple illustration that will be displayed TINY as a framed picture on an office wall in a pixel art game (smaller than 64 pixels wide). Use large flat areas of strong saturated color, high contrast between neighbouring shapes, chunky iconic shapes and very few details; no thin lines, no small text. The artwork must fill the ENTIRE wide canvas edge to edge (full bleed), with no white or empty margins and no letterboxing: no frame, no border, no wall, no mat, no signature, no letters.",
+    "poster": "Style: a bold minimalist graphic poster that will be displayed TINY (about 12x16 pixels) on an office wall in a pixel art game. One single big iconic subject centered and filling most of the canvas, on a solid flat background color; strong saturated colors, high contrast, chunky simple shapes, no small details, no thin lines. Fill the whole canvas edge to edge: no frame, no border, no wall, no text, no letters, no numbers."
+  },
+  "assets": [
+    {
+      "id": "logo-mark",
+      "group": "brand",
+      "aspect": "1:1",
+      "styles": [
+        "pixel",
+        "chroma"
+      ],
+      "prompt": "A pixel art game icon of a charming little modern office building, designed to stay crisp as a tiny app icon. It is drawn on a coarse grid of big square pixels (the building is about 60 pixels wide and 70 pixels tall), every pixel exactly the same size and perfectly aligned to the grid, shown enlarged. Strictly front-facing elevation, as building sprites in classic top-down RPG and management games: perfectly straight vertical walls and horizontal edges, no perspective, no vanishing point, no slanted or diagonal lines, no side wall. A flat teal-blue roof seen from above as a simple rectangle with a light rim and straight vertical sides (not a trapezoid), directly on top of the facade, with one small potted plant on it. Light warm-grey facade with two honey-wood horizontal bands between the floors. Three floors with three big simple windows each: one solid flat color per window inside a dark frame, glowing warm yellow (two of them glowing bright blue like computer screens), with no mullions, no panes, no curtains and nothing drawn inside. A glass double door with a small teal awning in the middle of the ground floor. Only the building: nothing on the ground around it (no furniture, no sofas, no extra plants, no people). Simple, bold, symmetrical, cute; a compact rectangular silhouette, a bit taller than wide, that fills most of the square.",
+      "post": {
+        "kind": "native",
+        "colors": 28,
+        "balance": 0.5,
+        "merge": 12
+      },
+      "out": "brand/logo-detailed.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "empty-office",
+      "group": "illustrations",
+      "aspect": "16:9",
+      "styles": [
+        "pixel"
+      ],
+      "prompt": "A pixel art scene of a cheerful, empty retro eighties office interior in the afternoon, in top-down 3/4 view like a cozy management game. A light speckled terrazzo floor; two islands of teal desks with glowing teal monitors, keyboards and mugs, pink office chairs pushed in; a lounge corner with a curvy yellow sofa, pink and teal cushions and a round rug with black squiggles; potted cacti and palms in yellow and pink pots; tall shelves with colorful binders; a water cooler with a teal jug; a small coffee counter; a glass block partition. Big windows along the back wall show a bright sky with a few clouds. Cream walls decorated with big triangles, circles and zigzags. Bright, playful, inviting atmosphere, nobody there: no people, no characters, no animals. Keep it simple: big flat shapes, few details.",
+      "post": {
+        "kind": "scene",
+        "w": 480,
+        "h": 270,
+        "colors": 32,
+        "scale": 2,
+        "despeckle": true,
+        "balance": 0.5
+      },
+      "out": "illustrations/empty-office.png"
+    },
+    {
+      "id": "painting-memphis-shapes",
+      "group": "art",
+      "kind": "painting",
+      "title": "Shapes and squiggles",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A bold abstract painting on a flat cream background: one big teal circle, one big pink triangle, one yellow zigzag stripe and one thick black wavy squiggle line, plus a few big black confetti dots. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "black"
+      },
+      "out": "art/painting-memphis-shapes.png"
+    },
+    {
+      "id": "painting-palm-sunset",
+      "group": "art",
+      "kind": "painting",
+      "title": "Palm sunset",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A landscape painting: a huge sunny yellow sun with horizontal pink stripes setting over a flat teal sea, two black palm tree silhouettes on the left, a lavender sky. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "white"
+      },
+      "out": "art/painting-palm-sunset.png"
+    },
+    {
+      "id": "painting-flamingo",
+      "group": "art",
+      "kind": "painting",
+      "title": "Flamingo",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An animal painting: one big bubblegum pink flamingo standing on one leg in the center, on a flat teal background with a big yellow circle behind it. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 7,
+        "frame": "gold"
+      },
+      "out": "art/painting-flamingo.png"
+    },
+    {
+      "id": "painting-pastel-city",
+      "group": "art",
+      "kind": "painting",
+      "title": "Pastel city",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A city painting: a row of five chunky blocky buildings in pink, yellow, teal, lavender and cream, each with a few big black square windows, under a flat sky blue sky with one big white cloud. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-pastel-city.png"
+    },
+    {
+      "id": "painting-fruit-bowl",
+      "group": "art",
+      "kind": "painting",
+      "title": "Fruit bowl",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: a big yellow bowl holding one big pink grapefruit and one big teal pear, on a flat lavender background with a few big black dots. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "white"
+      },
+      "out": "art/painting-fruit-bowl.png"
+    },
+    {
+      "id": "painting-confetti",
+      "group": "art",
+      "kind": "painting",
+      "title": "Confetti pattern",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A pattern painting: a flat yellow background with only about ten big shapes spread evenly with lots of yellow space between them: big pink triangles, big teal circles and thick black squiggles. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 8,
+        "frame": "black"
+      },
+      "out": "art/painting-confetti.png"
+    },
+    {
+      "id": "painting-cactus",
+      "group": "art",
+      "kind": "painting",
+      "title": "Desert cactus",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A desert landscape painting: one tall teal cactus with two arms in the center, a flat pink sand ground, a big yellow sun and a flat lavender sky, a black zigzag mountain line on the horizon. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-cactus.png"
+    },
+    {
+      "id": "painting-ice-cream",
+      "group": "art",
+      "kind": "painting",
+      "title": "Ice cream",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: one big ice cream cone with a pink scoop and a teal scoop on top of a yellow waffle cone, in the center, on a flat cream background with black confetti dots. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "gold"
+      },
+      "out": "art/painting-ice-cream.png"
+    },
+    {
+      "id": "painting-wide-memphis-waves",
+      "group": "art",
+      "kind": "painting",
+      "title": "Waves and shapes",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic abstract painting on a flat cream background: three big teal wave bands across the bottom, a big pink half circle, a yellow triangle, a lavender circle and two thick black wavy squiggle lines spread left to right. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "black"
+      },
+      "out": "art/painting-wide-memphis-waves.png"
+    },
+    {
+      "id": "painting-wide-desert-dusk",
+      "group": "art",
+      "kind": "painting",
+      "title": "Desert dusk",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic landscape painting: flat pink and coral desert mesas, a huge yellow sun on the right, a flat lavender and teal striped sky in a few horizontal bands, a teal cactus on the left. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 16,
+        "frame": "wood"
+      },
+      "out": "art/painting-wide-desert-dusk.png"
+    },
+    {
+      "id": "painting-wide-shape-parade",
+      "group": "art",
+      "kind": "painting",
+      "title": "Shape parade",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic pattern painting: a flat teal background with a row of big bold shapes spaced across it: a yellow circle, a pink triangle, a cream square, a lavender half circle and a coral zigzag, with black confetti dots between them. Retro eighties playful look: very few elements, big flat shapes, bold geometric accents.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "white"
+      },
+      "out": "art/painting-wide-shape-parade.png"
+    },
+    {
+      "id": "poster-coffee",
+      "group": "art",
+      "kind": "poster",
+      "variant": "coffee",
+      "title": "Coffee",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big white coffee mug with teal stripes, full of dark brown coffee, seen from the side with a chunky handle on the right, ONE single short thick white wisp of steam above it, on a solid bubblegum pink background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#262626"
+      },
+      "out": "art/poster-coffee.png"
+    },
+    {
+      "id": "poster-rocket",
+      "group": "art",
+      "kind": "poster",
+      "variant": "rocket",
+      "title": "Rocket",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big pink and white cartoon rocket with a round teal window flying straight up, a bright yellow flame below it, on a solid dark purple background with two tiny white stars.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#262626"
+      },
+      "out": "art/poster-rocket.png"
+    },
+    {
+      "id": "poster-code",
+      "group": "art",
+      "kind": "poster",
+      "variant": "code",
+      "title": "Code",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A dark code editor window icon: a dark charcoal rectangle with a cream title bar, and inside it four thick horizontal bars of different lengths in teal, pink and yellow, indented like lines of source code, on a solid sunny yellow background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#262626"
+      },
+      "out": "art/poster-code.png"
+    },
+    {
+      "id": "poster-cat",
+      "group": "art",
+      "kind": "poster",
+      "variant": "cat",
+      "title": "Cat",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A cute black cat head with pointy ears, big round yellow eyes and a small pink nose, front view, the whole head including both ears fully visible and centered with some margin, on a solid teal background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#262626"
+      },
+      "out": "art/poster-cat.png"
+    },
+    {
+      "id": "poster-bug",
+      "group": "art",
+      "kind": "poster",
+      "variant": "bug",
+      "title": "No bugs",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cartoon teal beetle bug seen from above with six black legs and two antennae, crossed out by a thick red prohibition circle with a diagonal bar, on a solid cream background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#262626"
+      },
+      "out": "art/poster-bug.png"
+    },
+    {
+      "id": "poster-ship-it",
+      "group": "art",
+      "kind": "poster",
+      "variant": "ship_it",
+      "title": "Ship it!",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A simple chunky toy cargo ship seen from the side, centered with a small margin on the left and right: a tall bright pink hull, one white cabin block at the back and two big yellow and teal containers on deck, floating on one thick band of teal water at the bottom, on a solid light sky-blue background. Very simple, few shapes.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#262626"
+      },
+      "out": "art/poster-ship-it.png"
+    }
+  ]
+}

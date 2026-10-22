@@ -290,6 +290,7 @@ export function drawFxBanner(
   now: number,
   fit: (font: string, text: string, maxW: number) => string,
   measure: (font: string, text: string) => number,
+  font: string = BANNER_FONT,
 ): BannerRect | null {
   const fade = fxFade(fx, now);
   if (fade <= 0) return null;
@@ -300,10 +301,10 @@ export function drawFxBanner(
   const wave = !still && party ? Math.sin((now - fx.start) / 320) * 1.5 : 0;
   const y = Math.round(top - enter * 10 + wave);
   const notch = 6;
-  const text = maxW >= 70 ? fit(BANNER_FONT, `${emoji} ${fx.text}`, maxW - 24 - 2 * notch) : '';
+  const text = maxW >= 70 ? fit(font, `${emoji} ${fx.text}`, maxW - 24 - 2 * notch) : '';
   ctx.save();
   ctx.globalAlpha = fade;
-  ctx.font = BANNER_FONT;
+  ctx.font = font;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
   const pulse = still ? 0 : 0.5 + 0.5 * Math.sin(((now - fx.start) / 700) * Math.PI * 2);
@@ -326,7 +327,7 @@ export function drawFxBanner(
     ctx.restore();
     return { x: cx - r, y, w: 2 * r, h: 2 * r };
   }
-  const tw = measure(BANNER_FONT, text);
+  const tw = measure(font, text);
   const w = Math.round(tw + 24 + 2 * notch);
   const x = Math.round(cx - w / 2);
   const h = BANNER_H;

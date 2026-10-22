@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "scale": 2,
+  "wallArt": [
+    {
+      "id": "painting-dawn-lake",
+      "kind": "painting",
+      "file": "painting-dawn-lake.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Dawn lake"
+    },
+    {
+      "id": "painting-arcs",
+      "kind": "painting",
+      "file": "painting-arcs.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Arcs"
+    },
+    {
+      "id": "painting-sailboat",
+      "kind": "painting",
+      "file": "painting-sailboat.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Sailboat"
+    },
+    {
+      "id": "painting-lemon-tree",
+      "kind": "painting",
+      "file": "painting-lemon-tree.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Lemon tree"
+    },
+    {
+      "id": "painting-pine-path",
+      "kind": "painting",
+      "file": "painting-pine-path.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Pine path"
+    },
+    {
+      "id": "painting-circles",
+      "kind": "painting",
+      "file": "painting-circles.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Circles"
+    },
+    {
+      "id": "painting-dunes",
+      "kind": "painting",
+      "file": "painting-dunes.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Dunes"
+    },
+    {
+      "id": "painting-tulips",
+      "kind": "painting",
+      "file": "painting-tulips.webp",
+      "w": 104,
+      "h": 64,
+      "tiles": 2,
+      "title": "Tulip field"
+    },
+    {
+      "id": "painting-wide-hills",
+      "kind": "painting",
+      "file": "painting-wide-hills.webp",
+      "w": 232,
+      "h": 88,
+      "tiles": 4,
+      "title": "Green hills"
+    },
+    {
+      "id": "painting-wide-lighthouse",
+      "kind": "painting",
+      "file": "painting-wide-lighthouse.webp",
+      "w": 232,
+      "h": 88,
+      "tiles": 4,
+      "title": "Lighthouse coast"
+    },
+    {
+      "id": "painting-wide-horizon",
+      "kind": "painting",
+      "file": "painting-wide-horizon.webp",
+      "w": 232,
+      "h": 88,
+      "tiles": 4,
+      "title": "Horizon bands"
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "poster-code.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Code",
+      "variant": "code"
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "poster-coffee.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Coffee",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "poster-rocket.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Rocket",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "poster-cat.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Cat",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "poster-bug.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Bug",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "poster-ship-it.webp",
+      "w": 48,
+      "h": 64,
+      "tiles": 1,
+      "title": "Ship it",
+      "variant": "ship_it"
+    }
+  ]
+}

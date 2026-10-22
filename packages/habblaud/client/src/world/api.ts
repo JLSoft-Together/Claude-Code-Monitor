@@ -98,6 +98,7 @@ export interface WorldApi {
    * câmera; ao voltar, a simulação avança o tempo que passou (como com a aba em segundo plano).
    */
   setSuspended?(suspended: boolean): void;
+  onReady?(cb: () => void): () => void;
   destroy(): void;
 }
 

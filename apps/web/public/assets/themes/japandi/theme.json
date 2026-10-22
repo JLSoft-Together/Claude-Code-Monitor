@@ -1,0 +1,17 @@
+{
+  "id": "japandi",
+  "version": 1,
+  "name": { "en": "Japandi", "vi": "Japandi" },
+  "description": { "en": "Calm oak, rice paper and moss.", "vi": "Gỗ sồi, giấy dó và rêu, yên tĩnh." },
+  "outline": "#2b3245",
+  "rooms": [
+    { "carpet": "#d9c3a0", "carpet2": "#cfb68f", "wall": { "base": "#f5efe4", "trim": "#b3936a", "pattern": "wood_panel" }, "accent": "#9a5a38", "deskVariant": "wood", "chairVariant": "gray" },
+    { "carpet": "#c3c9ad", "carpet2": "#b7bf9f", "wall": { "base": "#f1f2e8", "trim": "#7c8b5a", "pattern": "plain" }, "accent": "#5a6b3c", "deskVariant": "white", "chairVariant": "green" },
+    { "carpet": "#dcbfae", "carpet2": "#d2b19e", "wall": { "base": "#f8efe8", "trim": "#b8735a", "pattern": "plain" }, "accent": "#b0452c", "deskVariant": "wood", "chairVariant": "red" },
+    { "carpet": "#bfc6c8", "carpet2": "#b2babd", "wall": { "base": "#eef0ef", "trim": "#8ba4ae", "pattern": "tiles" }, "accent": "#3f5f78", "deskVariant": "white", "chairVariant": "blue" },
+    { "carpet": "#b0aba3", "carpet2": "#a59f96", "wall": { "base": "#ece8e1", "trim": "#5a5650", "pattern": "wood_panel" }, "accent": "#b0301c", "deskVariant": "dark", "chairVariant": "black" },
+    { "carpet": "#bccbc6", "carpet2": "#afc0ba", "wall": { "base": "#eff4f1", "trim": "#5d7874", "pattern": "stripes" }, "accent": "#4b6b66", "deskVariant": "wood", "chairVariant": "green" },
+    { "carpet": "#e3c7a8", "carpet2": "#d9ba98", "wall": { "base": "#faf1e6", "trim": "#c98a55", "pattern": "plain" }, "accent": "#b8530f", "deskVariant": "white", "chairVariant": "gray" },
+    { "carpet": "#b9bfcc", "carpet2": "#adb4c3", "wall": { "base": "#eef0f5", "trim": "#6b7894", "pattern": "glass" }, "accent": "#0f3561", "deskVariant": "dark", "chairVariant": "blue" }
+  ]
+}

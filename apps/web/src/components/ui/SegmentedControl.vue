@@ -10,9 +10,10 @@ export interface Segment<V> {
   title?: string
 }
 
-const props = withDefaults(defineProps<{ options: Segment<T>[]; label: string; fill?: boolean; iconOnly?: boolean }>(), {
+const props = withDefaults(defineProps<{ options: Segment<T>[]; label: string; fill?: boolean; iconOnly?: boolean; disabled?: boolean }>(), {
   fill: false,
   iconOnly: false,
+  disabled: false,
 })
 const model = defineModel<T>({ required: true })
 
@@ -37,7 +38,7 @@ onBeforeUnmount(() => observer?.disconnect())
 
 function onKey(e: KeyboardEvent): void {
   const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
-  if (!step) return
+  if (!step || props.disabled) return
   e.preventDefault()
   const n = props.options.length
   const at = props.options.findIndex((o) => o.value === model.value)
@@ -50,10 +51,11 @@ function onKey(e: KeyboardEvent): void {
 <template>
   <div
     ref="root"
-    class="relative rounded-control bg-fill p-0.5"
-    :class="fill ? 'grid auto-cols-fr grid-flow-col' : 'inline-flex'"
+    class="relative rounded-control bg-fill p-0.5 transition-opacity duration-(--ccm-dur-fast) ease-out-quint"
+    :class="[fill ? 'grid auto-cols-fr grid-flow-col' : 'inline-flex', disabled ? 'opacity-50' : '']"
     role="radiogroup"
     :aria-label="label"
+    :aria-disabled="disabled || undefined"
     @keydown="onKey"
   >
     <span
@@ -73,8 +75,9 @@ function onKey(e: KeyboardEvent): void {
       :title="o.title ?? (iconOnly ? o.label : undefined)"
       :tabindex="model === o.value ? 0 : -1"
       :lang="o.lang"
-      class="relative inline-flex h-6 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-inner px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-(--ccm-dur-fast) ease-out-quint"
-      :class="model === o.value ? (thumb ? 'text-ink' : 'bg-control text-ink shadow-control') : 'text-ink-muted hover:text-ink'"
+      :disabled="disabled"
+      class="relative inline-flex h-6 min-w-0 cursor-pointer disabled:cursor-default items-center justify-center gap-1.5 rounded-inner px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-(--ccm-dur-fast) ease-out-quint"
+      :class="model === o.value ? (thumb ? 'text-ink' : 'bg-control text-ink shadow-control') : disabled ? 'text-ink-muted' : 'text-ink-muted hover:text-ink'"
       @click="model = o.value"
     >
       <component :is="o.icon" v-if="o.icon" :size="14" :class="o.iconClass" aria-hidden="true" />

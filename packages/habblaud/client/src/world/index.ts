@@ -7,20 +7,23 @@ import { DEFAULT_WORLD_OPTIONS, seasonalThemeFor, type Selection, type SocialEve
 import { loadWorldAssets, type WorldAssets } from './assets';
 import { Camera, overviewFrame } from './camera';
 import { createDebug, type WorldDebug } from './debug';
-import { BUILDING_H, COL_W } from './constants';
+import { BUILDING_H, COL_W, ZOOM_MAX } from './constants';
 import { RECEPTION_ID } from './layout/core';
 import { inRect } from './layout/geometry';
 import { attachInput, type Hit } from './input';
 import type { AgentInfo } from '../../../shared/types';
 import { rebaseSnapshot } from './playback';
-import { Overlay } from './render/overlay';
+import { Overlay, type OverlayTextStyle } from './render/overlay';
 import { Renderer } from './render/renderer';
 import { Sim, type VisitLight } from './sim/sim';
 import { NO_INTENT, VISITOR_ID, visitorInfo, type VisitorIntent } from './sim/visitor';
 import { SoundCues } from './sound-cues';
+import type { Projection, RendererFactory, WorldRenderer } from './projection';
 
 export * from './api';
 export type { WorldDebug } from './debug';
+export type { Projection, RendererFactory, ViewPoint, ViewRect, WorldRenderer } from './projection';
+export type { OverlayTextStyle } from './render/overlay';
 
 const art: ArtModule = artModule;
 
@@ -48,17 +51,30 @@ export interface CreateWorldOptions {
    * visitante andando com o teclado e o clique (a câmera o segue) e as carteiras da vida social na chave `world:`.
    */
   visit?: boolean;
+  assetPack?: string;
+  projection?: Projection;
+  renderer?: RendererFactory;
+  maxZoom?: (view: { w: number; h: number }) => number;
+  text?: OverlayTextStyle;
+  warmUpMs?: number;
+  assets?: WorldAssets | null;
 }
 
 export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: CreateWorldOptions = {}): WorldApi & { debug: WorldDebug; visit: VisitWorld } {
   let options: WorldOptions = { ...DEFAULT_WORLD_OPTIONS };
   const visitMode = !!o.visit;
   const camera = new Camera();
+  const proj = o.projection;
+  const makeRenderer = (): WorldRenderer => (o.renderer ? o.renderer(canvas, art, sim, camera) : new Renderer(canvas, art, sim, camera));
   // Simulação e desenho são recriados quando o timelapse entra, pula ou sai (rebuild).
   let sim = new Sim(art, () => options, undefined, { visit: visitMode });
-  let renderer = new Renderer(canvas, art, sim, camera);
-  let overlay = new Overlay(renderer.ctx, sim, renderer, camera);
-  let assets: WorldAssets | null = null;
+  let renderer = makeRenderer();
+  if (o.warmUpMs && o.warmUpMs > 0) renderer.warmUp?.(o.warmUpMs);
+  let overlay = new Overlay(renderer.ctx, sim, renderer, camera, proj, o.text);
+  let assets: WorldAssets | null = o.assets ?? null;
+  if (assets) renderer.setAssets(assets);
+  const readyCbs = new Set<() => void>();
+  let ready = false;
   /** Timelapse ligado: relógio próprio do mundo (`worldNow`), acelerado pelo fator de animação. */
   let playback: WorldPlayback | null = null;
   let worldNow = 0;
@@ -67,7 +83,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   const socialCbs = new Set<(e: SocialEvent) => void>();
   const soundCbs = new Set<(c: SoundCue) => void>();
   const roomMenuCbs = new Set<(roomId: string, at: { x: number; y: number }) => void>();
-  let cues = new SoundCues(sim, camera);
+  let cues = new SoundCues(sim, camera, undefined, proj);
   let selection: Selection = null;
   let hover: string | null = null;
   let mouse: { x: number; y: number } | null = null;
@@ -98,13 +114,20 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     updateBounds();
   };
 
-  const buildingRect = () => ({ x: 0, y: 0, w: sim.building.cols * COL_W * TILE, h: BUILDING_H * TILE });
+  const buildingRect = () => {
+    const r = { x: 0, y: 0, w: sim.building.cols * COL_W * TILE, h: BUILDING_H * TILE };
+    return proj ? proj.bounds(r, 3 * TILE) : r;
+  };
 
   const updateBounds = () => {
     const b = buildingRect();
     camera.bounds = { x: b.x - 7 * TILE, y: b.y - 6 * TILE, w: b.w + 14 * TILE, h: b.h + 18 * TILE };
     const fit = camera.fitZoom(b, 16);
     camera.minZoom = Math.min(1, Math.max(0.25, fit));
+    if (o.maxZoom) {
+      camera.maxZoom = Math.max(camera.minZoom, Math.min(ZOOM_MAX, o.maxZoom({ w: camera.viewW, h: camera.viewH })));
+      if (camera.zoom > camera.maxZoom) camera.zoom = camera.maxZoom;
+    }
     camera.clamp();
   };
 
@@ -150,12 +173,19 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     if (!same) emitSelect();
   };
 
+  const personTarget = (ch: { x: number; y: number }) => {
+    if (!proj) return { x: ch.x, y: ch.y - 12 };
+    const p = proj.toView(ch.x, ch.y);
+    return { x: p.x, y: p.y - 12 };
+  };
+
   const focusAgent = (id: string, opts: { follow?: boolean } = {}) => {
     const ch = sim.person(id);
     if (!ch) return;
     userMoved = true;
     const zoom = Math.max(camera.zoom, camera.snapZoom(3));
-    const c = camera.centerFor(ch.x, ch.y - 12, zoom);
+    const pt = personTarget(ch);
+    const c = camera.centerFor(pt.x, pt.y, zoom);
     camera.animateTo(c.x, c.y, zoom, Date.now(), 420);
     camera.follow = opts.follow ? id : null;
   };
@@ -166,7 +196,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     userMoved = true;
     camera.follow = null;
     const r = room.layout.rect;
-    const rect = { x: r.x * TILE, y: r.y * TILE - 8, w: r.w * TILE, h: r.h * TILE + 16 };
+    const rect = proj ? proj.bounds({ x: r.x * TILE, y: r.y * TILE, w: r.w * TILE, h: r.h * TILE }, 3 * TILE) : { x: r.x * TILE, y: r.y * TILE - 8, w: r.w * TILE, h: r.h * TILE + 16 };
     const fit = camera.fitZoom(rect, 40);
     const zoom = Math.min(4, Math.max(camera.minZoom, camera.snapZoom(fit, 'down')));
     const c = camera.centerFor(rect.x + rect.w / 2, rect.y + rect.h / 2, zoom);
@@ -194,8 +224,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       }
     }
     if (best) return { type: 'agent', id: best };
-    const tx = Math.floor(w.x / TILE);
-    const ty = Math.floor(w.y / TILE);
+    const g = proj ? proj.toWorld(w.x, w.y) : w;
+    const tx = Math.floor(g.x / TILE);
+    const ty = Math.floor(g.y / TILE);
     for (const room of sim.rooms.values()) if (room.present && !room.ghost && inRect(room.layout.rect, tx, ty)) return { type: 'room', id: room.id };
     return null;
   };
@@ -211,7 +242,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   const visitClick = (hit: Hit, at: { x: number; y: number }) => {
     if (hit?.type === 'agent') return setSelection(hit);
     setSelection(null);
-    const w = camera.screenToWorld(at.x, at.y);
+    const s = camera.screenToWorld(at.x, at.y);
+    const w = proj ? proj.toWorld(s.x, s.y) : s;
     if (sim.visitorWalkTo(Math.floor(w.x / TILE), Math.floor(w.y / TILE))) followVisitor();
   };
   const followVisitor = () => {
@@ -260,11 +292,12 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   const offSnapshot = store.on('snapshot', onSnapshot);
   if (store.snapshot) onSnapshot();
 
-  void loadWorldAssets(abort.signal).then((a) => {
-    if (!a) return;
-    assets = a;
-    renderer.setAssets(a);
-  });
+  if (o.assets === undefined)
+    void loadWorldAssets(abort.signal, { pack: o.assetPack }).then((a) => {
+      if (!a) return;
+      assets = a;
+      renderer.setAssets(a);
+    });
 
   // medições de texto em cache: refaz quando alguma fonte termina de carregar
   if (document.fonts) document.fonts.addEventListener?.('loadingdone', () => overlay.resetCaches(), { signal: abort.signal });
@@ -304,10 +337,17 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       if (visitMode && sim.visitor && (sim.visitorIntent.dx || sim.visitorIntent.dy) && camera.follow !== VISITOR_ID) followVisitor();
       const followCh = camera.follow ? sim.person(camera.follow) : undefined;
       if (camera.follow && !followCh) camera.follow = null;
-      camera.update(real, followCh ? camera.centerFor(followCh.x, followCh.y - 12, camera.zoom) : null, realDt);
+      const followPt = followCh ? personTarget(followCh) : null;
+      camera.update(real, followPt ? camera.centerFor(followPt.x, followPt.y, camera.zoom) : null, realDt);
       renderer.frame(now, dt, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
       overlay.draw(now, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
       renderer.pruneHeads();
+      if (!ready && (renderer.settled?.() ?? true)) {
+        ready = true;
+        const cbs = [...readyCbs];
+        readyCbs.clear();
+        for (const cb of cbs) cb();
+      }
       // No timelapse o mundo fica mudo: o teclado e o elevador em alta velocidade só fariam barulho.
       if (soundCbs.size && !playback) cues.update(now, (c) => soundCbs.forEach((cb) => cb(c)));
       if (mouse) {
@@ -340,7 +380,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     const sx = e.clientX - r.left;
     const sy = e.clientY - r.top;
     const hit = pick(sx, sy);
-    const w = camera.screenToWorld(sx, sy);
+    const sw = camera.screenToWorld(sx, sy);
+    const w = proj ? proj.toWorld(sw.x, sw.y) : sw;
     const roomId =
       hit?.type === 'room'
         ? hit.id
@@ -372,15 +413,15 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     // As carteiras ao vivo gravam a cada 5 s: não perde o que mudou desde a última vez (no replay, não grava nada).
     sim.social.wallets.save(Date.now());
     sim = new Sim(art, () => options, playback ? null : undefined, { visit: visitMode });
-    renderer = new Renderer(canvas, art, sim, camera);
+    renderer = makeRenderer();
     if (assets) renderer.setAssets(assets);
     if (playback) {
       const p = playback;
       renderer.clock = () => p.clock();
     }
-    overlay = new Overlay(renderer.ctx, sim, renderer, camera);
+    overlay = new Overlay(renderer.ctx, sim, renderer, camera, proj, o.text);
     debug = createDebug(sim, renderer, camera, markMoved);
-    cues = new SoundCues(sim, camera);
+    cues = new SoundCues(sim, camera, undefined, proj);
     lastCols = -1;
     setHover(null);
   };
@@ -410,6 +451,14 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
         userMoved = true;
         camera.zoomAt(target, camera.viewW / 2, camera.viewH / 2, Date.now(), true);
       }
+    },
+    onReady: (cb) => {
+      if (ready) {
+        cb();
+        return () => {};
+      }
+      readyCbs.add(cb);
+      return () => void readyCbs.delete(cb);
     },
     getOptions: () => ({ ...options }),
     setOptions: (o) => {
@@ -473,6 +522,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       canvas.removeEventListener('contextmenu', onContextMenu);
       document.removeEventListener('visibilitychange', onVisibility);
       selectCbs.clear();
+      readyCbs.clear();
       hoverCbs.clear();
       socialCbs.clear();
       soundCbs.clear();

@@ -1,0 +1,44 @@
+{
+ "defaultBlocks": [
+  "row",
+  "cam",
+  "style3d",
+  "chroma"
+ ],
+ "defaultRefs": [
+  ".cache/refs/m-plant.1.png",
+  ".cache/refs/b-plants-t.1.png",
+  ".cache/refs/b-plants-s.1.png",
+  ".cache/refs/ref-room.png"
+ ],
+ "defaultRefNote": "The first three attached images are approved sprites of THIS office furniture set (tall plant, a row of tall plants and a floor lamp, a row of small plants): copy exactly their rendering, materials, soft light from the upper left, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects, nothing else from the images.",
+ "blocks": {
+  "cam": "CAMERA (critical): front three-quarter view, the camera is due SOUTH of the object looking north and down at about 45 degrees, orthographic (no perspective convergence, no vanishing points). The object's front face points straight at the camera. All horizontal edges of the object (front edge, back edge, top edges) are perfectly HORIZONTAL in the image; vertical edges perfectly vertical; NO isometric diagonal, NO rotation, no side face visible. We see the top surfaces foreshortened (about 0.7 of their real depth) above the front face.",
+  "style3d": "STYLE: soft stylized 3D render of cozy miniature office furniture and seasonal decorations, like a polished diorama in a modern management game: smooth rounded forms, soft global illumination, gentle ambient occlusion, subtle bevels and matte materials (light oak wood, cream, sage green and dusty blue fabric, brushed metal, clear glass). Soft key light from the upper left. Clean, calm, high readability at small size. NOT pixel art, NOT photorealistic, NOT flat vector. Original design, no text, no letters, no numbers, no logos, no watermark, no signature.",
+  "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no floor plane, no ground shadow, no cast shadow, no vignette, no frame. Every object is fully visible with generous empty margin on every side and is never cropped. Do not use magenta, pink, purple or violet anywhere on the objects (use charcoal, warm brown, deep plum-brown or slate grey instead).",
+  "row": "LAYOUT: the objects stand side by side in ONE horizontal row, each centred in its own equal-width column, separated by WIDE empty gaps of background, none touching or overlapping, all bottoms on the same baseline, all at the same consistent real-world scale as the attached reference furniture.",
+  "wallcam": "CAMERA (critical): straight-on FRONT ELEVATION view of an object mounted flat on a wall, orthographic, the wall plane is parallel to the image, so the object is a clean upright rectangle with horizontal and vertical edges, only a thin hint of depth at its bottom edge. No floor, no wall drawn."
+ },
+ "items": {
+  "s-floor": {
+   "aspect": "16:9",
+   "prompt": "Exactly 4 isolated seasonal decoration objects for a cozy office game in ONE row, 4 equal columns, each standing on one floor tile (70 cm square), at the same real-world scale as the reference plants. Column 1 (Christmas): a small Christmas fir tree about 1.6 m tall in a light oak planter box, soft rounded stylized tiers of deep green needles, warm cream fairy lights, round red and gold baubles, a gold star on top, and two small wrapped presents at its base (one red with a gold ribbon, one gold with a red ribbon). Column 2 (Christmas): ONE wrapped present box about 40 cm wide and 30 cm tall, glossy red paper, cream ribbon crossing over the top and down the front, a gold bow on top; we see its top surface foreshortened above its front face. Column 3 (Halloween): a carved jack-o'-lantern pumpkin about 45 cm wide sitting on the floor, rounded orange ribbed body, short curly green stem, its carved face (triangle eyes, toothy smile) faces the camera and glows warm yellow from a candle inside. Column 4 (Halloween): a cute friendly cartoon ghost about 1.1 m tall hovering a little above the floor, opaque soft white sheet body with a gently wavy hem, two small stubby arms, round dark eyes and a small open 'o' mouth, cute not scary, pale blue-grey shading, no transparency."
+  },
+  "s-wall": {
+   "aspect": "16:9",
+   "blocks": [
+    "row",
+    "wallcam",
+    "style3d",
+    "chroma"
+   ],
+   "refs": [
+    ".cache/refs/w-1.1.png",
+    ".cache/refs/m-plant.1.png",
+    ".cache/refs/ref-room.png"
+   ],
+   "refNote": "The first attached image shows approved wall-mounted items of THIS set (window, whiteboard, clock, TV) seen straight-on: copy exactly their rendering, materials, soft light from the upper left and front elevation view. The second is an approved plant sprite (materials, palette). The third shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 2 isolated wall-hung seasonal decorations in ONE row, 2 equal columns, front elevation, each hanging flat against an (invisible) wall. Column 1 (Christmas): a round Christmas wreath about 45 cm in diameter, a thick ring of soft rounded stylized evergreen needles, clusters of glossy red berries, a few small gold baubles, and a red velvet bow with two ribbon tails at the BOTTOM of the ring; the centre of the ring is an empty hole showing the background. Column 2 (Halloween): a cute cartoon bat decoration with its wings spread wide, about 55 cm wingspan and 25 cm tall, soft rounded body and scalloped wings in dark charcoal grey with warm brown-grey highlights (no purple), small pointed ears, two glowing orange eyes, a tiny friendly smile, cute not scary."
+  }
+ }
+}

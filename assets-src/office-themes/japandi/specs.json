@@ -1,0 +1,397 @@
+{
+  "defaultModel": "codex image_generation",
+  "styles": {
+    "pixel": "Style: authentic pixel art made of crisp hard-edged square pixels on a perfectly regular grid, limited palette, flat color fills with 3-4 shades per material, no anti-aliasing, no gradients, no blur, no noise, no dithering. Calm, minimal, airy modern office pixel art with its own original look, warm and quiet: pale oak wood (#c9a77c), warm rice-paper off-white walls and panels (#f3eee4), soft linen beige fabrics (#dccdb4), muted moss green plants and cushions (#7c8b5a), matte charcoal metal and lamps (#3a3a3a), clay terracotta pots and small accents (#b8735a), light stone grey (#a9a49a); very few objects, lots of calm empty space. Original artwork: do not copy or imitate any existing game, tileset or artist. Outlines in dark blue-grey (#2b3245), never pure black. Light comes from the top-left. Absolutely no text, letters, numbers, logos or watermark.",
+    "chroma": "Background: one perfectly flat solid magenta color (#FF00FF) filling the entire background edge to edge, with no shadow, no floor, no gradient, no vignette and nothing else. The subject is isolated, centered, with a generous margin, and must not contain any magenta or pink.",
+    "wallart": "Style: a bold, simple illustration that will be displayed TINY as a framed picture on an office wall in a pixel art game (smaller than 64 pixels wide). Use large flat areas of strong saturated color, high contrast between neighbouring shapes, chunky iconic shapes and very few details; no thin lines, no small text. The artwork must fill the ENTIRE wide canvas edge to edge (full bleed), with no white or empty margins and no letterboxing: no frame, no border, no wall, no mat, no signature, no letters.",
+    "poster": "Style: a bold minimalist graphic poster that will be displayed TINY (about 12x16 pixels) on an office wall in a pixel art game. One single big iconic subject centered and filling most of the canvas, on a solid flat background color; strong saturated colors, high contrast, chunky simple shapes, no small details, no thin lines. Fill the whole canvas edge to edge: no frame, no border, no wall, no text, no letters, no numbers."
+  },
+  "assets": [
+    {
+      "id": "logo-mark",
+      "group": "brand",
+      "aspect": "1:1",
+      "styles": [
+        "pixel",
+        "chroma"
+      ],
+      "prompt": "A pixel art game icon of a charming little modern office building, designed to stay crisp as a tiny app icon. It is drawn on a coarse grid of big square pixels (the building is about 60 pixels wide and 70 pixels tall), every pixel exactly the same size and perfectly aligned to the grid, shown enlarged. Strictly front-facing elevation, as building sprites in classic top-down RPG and management games: perfectly straight vertical walls and horizontal edges, no perspective, no vanishing point, no slanted or diagonal lines, no side wall. A flat teal-blue roof seen from above as a simple rectangle with a light rim and straight vertical sides (not a trapezoid), directly on top of the facade, with one small potted plant on it. Light warm-grey facade with two honey-wood horizontal bands between the floors. Three floors with three big simple windows each: one solid flat color per window inside a dark frame, glowing warm yellow (two of them glowing bright blue like computer screens), with no mullions, no panes, no curtains and nothing drawn inside. A glass double door with a small teal awning in the middle of the ground floor. Only the building: nothing on the ground around it (no furniture, no sofas, no extra plants, no people). Simple, bold, symmetrical, cute; a compact rectangular silhouette, a bit taller than wide, that fills most of the square.",
+      "post": {
+        "kind": "native",
+        "colors": 28,
+        "balance": 0.5,
+        "merge": 12
+      },
+      "out": "brand/logo-detailed.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "empty-office",
+      "group": "illustrations",
+      "aspect": "16:9",
+      "styles": [
+        "pixel"
+      ],
+      "prompt": "A pixel art scene of a calm, empty, minimal modern office interior in soft late-afternoon light, in top-down 3/4 view like a cozy management game. Pale oak wooden floor boards; a quiet lounge corner with a low linen-beige sofa, moss green cushions and a round woven rug; two islands of pale oak desks with glowing soft blue monitors, keyboards and clay mugs, charcoal office chairs pushed in; potted plants in clay terracotta pots; low open oak shelves with a few stoneware vases and neutral boxes; a water cooler with a pale jug; a small oak coffee counter. Big windows along the back wall with thin charcoal frames and rice-paper panels show a pale peach sky over soft distant green hills. Warm paper lamp light pools on the floor. Calm, quiet, uncluttered atmosphere, nobody there: no people, no characters, no animals.",
+      "post": {
+        "kind": "scene",
+        "w": 480,
+        "h": 270,
+        "colors": 32,
+        "scale": 2,
+        "despeckle": true,
+        "balance": 0.5
+      },
+      "out": "illustrations/empty-office.png"
+    },
+    {
+      "id": "painting-misty-hills",
+      "group": "art",
+      "kind": "painting",
+      "title": "Misty hills",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A calm landscape painting: three layers of big rounded hills in moss green, sage and pale grey-green fading into a pale cream sky, with one big round clay-red sun in the upper right. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-misty-hills.png"
+    },
+    {
+      "id": "painting-tea-bowl",
+      "group": "art",
+      "kind": "painting",
+      "title": "Tea bowl",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: one big wide clay terracotta tea bowl with a pale green inside, sitting on a pale oak table edge, against a flat warm off-white background. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "black"
+      },
+      "out": "art/painting-tea-bowl.png"
+    },
+    {
+      "id": "painting-ink-circle",
+      "group": "art",
+      "kind": "painting",
+      "title": "Ink circle",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A bold minimalist abstract painting: one huge thick charcoal brush ring, slightly open at one side, on a flat warm rice-paper cream background, with one small solid clay-red square in a lower corner. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "white"
+      },
+      "out": "art/painting-ink-circle.png"
+    },
+    {
+      "id": "painting-heron",
+      "group": "art",
+      "kind": "painting",
+      "title": "White heron",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An animal painting: one big white heron standing on one leg in calm shallow moss-green water, seen from the side, against a flat pale peach sky. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "wood"
+      },
+      "out": "art/painting-heron.png"
+    },
+    {
+      "id": "painting-rooftops",
+      "group": "art",
+      "kind": "painting",
+      "title": "Village roofs",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A simple town painting seen close up: three big chunky houses side by side filling the whole canvas, each with a huge steep dark charcoal triangle roof taking half the height and a pale cream wall, the middle house with a clay-red door, a narrow flat pale blue-grey sky strip above and a moss green ground strip below. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-rooftops.png"
+    },
+    {
+      "id": "painting-stones",
+      "group": "art",
+      "kind": "painting",
+      "title": "River stones",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A minimalist painting of three big smooth rounded stones stacked on top of each other, in charcoal, warm grey and pale oak beige, balanced in the center, against a flat soft moss green background. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-stones.png"
+    },
+    {
+      "id": "painting-bamboo",
+      "group": "art",
+      "kind": "painting",
+      "title": "Bamboo stems",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of three thick straight green bamboo stalks rising vertically, with a few big chunky leaves, against a flat warm cream background, with a dark charcoal ground strip at the bottom. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "white"
+      },
+      "out": "art/painting-bamboo.png"
+    },
+    {
+      "id": "painting-persimmons",
+      "group": "art",
+      "kind": "painting",
+      "title": "Persimmons",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: three big round orange persimmons with small dark green leaf caps on a dark charcoal tray, against a flat pale oak beige background. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-persimmons.png"
+    },
+    {
+      "id": "painting-sleeping-cat",
+      "group": "art",
+      "kind": "painting",
+      "title": "Sleeping cat",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "An animal painting: one big plump grey cat curled up asleep in a round ball on a moss green cushion, against a flat warm cream background. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "wood"
+      },
+      "out": "art/painting-sleeping-cat.png"
+    },
+    {
+      "id": "painting-wide-ridges",
+      "group": "art",
+      "kind": "painting",
+      "title": "Layered ridges",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic landscape painting: many overlapping layers of mountain ridges in moss green, slate grey-green and pale blue-grey, receding into a pale cream sky with soft mist bands between them, a small clay-red sun low on the left. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 16,
+        "frame": "wood"
+      },
+      "out": "art/painting-wide-ridges.png"
+    },
+    {
+      "id": "painting-wide-moon-reeds",
+      "group": "art",
+      "kind": "painting",
+      "title": "Moon over reeds",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic night painting: a huge pale cream full moon in a deep charcoal-blue sky, a calm dark lake reflecting it, and tall dark reed silhouettes along the bottom edge. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "black",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-wide-moon-reeds.png"
+    },
+    {
+      "id": "painting-wide-maple-branch",
+      "group": "art",
+      "kind": "painting",
+      "title": "Maple branch",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic painting: one long dark charcoal branch crossing the whole canvas from the left, with clusters of big clay-red and orange leaves, on a flat warm rice-paper cream background. Muted calm colours, only four or five big flat colour areas, no small details.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "white"
+      },
+      "out": "art/painting-wide-maple-branch.png"
+    },
+    {
+      "id": "poster-code",
+      "group": "art",
+      "kind": "poster",
+      "variant": "code",
+      "title": "Code",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A tall portrait poster of a big dark charcoal code editor window icon, centered with a clear margin of background all around it: a pale cream title bar at the top with three small round dots in clay, oak and moss, and inside the dark window four thick short horizontal bars of different lengths in bright moss green, clay orange, cream and pale oak, indented at different depths like lines of source code, on a solid warm clay terracotta background. Tall vertical composition, the window taller than wide.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-code.png"
+    },
+    {
+      "id": "poster-coffee",
+      "group": "art",
+      "kind": "poster",
+      "variant": "coffee",
+      "title": "Coffee",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big clay terracotta coffee cup without a saucer full of dark brown coffee, seen from the side with a chunky handle on the right, with ONE single short and thick white wisp of steam above it, on a solid soft moss green background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-coffee.png"
+    },
+    {
+      "id": "poster-rocket",
+      "group": "art",
+      "kind": "poster",
+      "variant": "rocket",
+      "title": "Rocket",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cream and clay-red cartoon rocket with a round charcoal window flying straight up, a bright orange-yellow flame below it, on a solid dark charcoal background with two tiny cream stars.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-rocket.png"
+    },
+    {
+      "id": "poster-cat",
+      "group": "art",
+      "kind": "poster",
+      "variant": "cat",
+      "title": "Cat",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cute charcoal grey cat head with pointy ears, big round amber eyes and a small pink nose, front view, on a solid pale oak beige background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-cat.png"
+    },
+    {
+      "id": "poster-bug",
+      "group": "art",
+      "kind": "poster",
+      "variant": "bug",
+      "title": "No bugs",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cartoon moss green beetle bug seen from above with six charcoal legs and two antennae, crossed out by a thick clay-red prohibition circle with a diagonal bar, on a solid warm off-white background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-bug.png"
+    },
+    {
+      "id": "poster-ship-it",
+      "group": "art",
+      "kind": "poster",
+      "variant": "ship_it",
+      "title": "Ship it!",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A tall portrait poster: one short chunky cartoon boat seen from the side, compact enough to fit the narrow canvas width: a clay-red hull, a cream cabin, two big stacked containers in pale oak and moss green on deck, sitting on two rows of bold slate-blue waves in the lower third, under a solid pale cream sky with a small clay-red sun in the top corner. Tall vertical composition.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#2b3245"
+      },
+      "out": "art/poster-ship-it.png"
+    }
+  ]
+}

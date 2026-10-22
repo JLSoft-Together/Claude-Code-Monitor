@@ -39,14 +39,35 @@ interface Manifest {
   brand?: { signage?: ManifestFile; mark?: ManifestFile };
 }
 
-function loadImage(file: string): Promise<HTMLImageElement | null> {
+export interface WorldAssetsOptions {
+  pack?: string;
+}
+
+const PACK_DIR = /^[a-z0-9-]+(\/[a-z0-9-]+)*$/;
+
+export function packDir(pack: string | undefined): string | null {
+  return typeof pack === 'string' && PACK_DIR.test(pack) ? pack : null;
+}
+
+function loadImage(file: string, dir: string | null = null): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.decoding = 'async';
     img.onload = () => resolve(img.naturalWidth > 0 ? img : null);
     img.onerror = () => resolve(null);
-    img.src = `/assets/${file.replace(/^\/+/, '')}`;
+    img.src = `/assets/${dir ? `${dir}/` : ''}${file.replace(/^\/+/, '')}`;
   });
+}
+
+async function readManifest(url: string, signal?: AbortSignal): Promise<Manifest | null> {
+  try {
+    const res = await fetch(url, { signal, cache: 'no-cache' });
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
+    const m: unknown = await res.json();
+    return m && typeof m === 'object' ? (m as Manifest) : null;
+  } catch {
+    return null;
+  }
 }
 
 function validFile(f: unknown): f is ManifestFile {
@@ -55,15 +76,22 @@ function validFile(f: unknown): f is ManifestFile {
   return typeof o.file === 'string' && o.file.length > 0 && !o.file.includes('..');
 }
 
-export async function loadWorldAssets(signal?: AbortSignal): Promise<WorldAssets | null> {
+export async function loadWorldAssets(signal?: AbortSignal, opts: WorldAssetsOptions = {}): Promise<WorldAssets | null> {
   try {
-    const res = await fetch('/assets/manifest.json', { signal, cache: 'no-cache' });
-    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
-    const m = (await res.json()) as Manifest;
+    const dir = packDir(opts.pack);
+    const [classic, packed] = await Promise.all([
+      readManifest('/assets/manifest.json', signal),
+      dir ? readManifest(`/assets/${dir}/manifest.json`, signal) : Promise.resolve(null),
+    ]);
+    const packArt = packed && Array.isArray(packed.wallArt) && packed.wallArt.length > 0 ? packed.wallArt : null;
+    const usePack = !!packArt;
+    const m: Manifest | null = packArt ? { wallArt: packArt, brand: classic?.brand } : classic;
+    if (!m) return null;
+    const artDir = usePack ? dir : null;
     const wallArt: WallArtAsset[] = [];
     const list = Array.isArray(m.wallArt) ? m.wallArt : [];
-    const imgs = await Promise.all(list.map((a) => (validFile(a) ? loadImage(a.file) : Promise.resolve(null))));
-    const framed = await Promise.all(list.map((a) => (validFile(a.framed) ? loadImage(a.framed.file) : Promise.resolve(null))));
+    const imgs = await Promise.all(list.map((a) => (validFile(a) ? loadImage(a.file, artDir) : Promise.resolve(null))));
+    const framed = await Promise.all(list.map((a) => (validFile(a.framed) ? loadImage(a.framed.file, artDir) : Promise.resolve(null))));
     list.forEach((a, i) => {
       const img = imgs[i];
       if (!img || (a.kind !== 'painting' && a.kind !== 'poster')) return;
