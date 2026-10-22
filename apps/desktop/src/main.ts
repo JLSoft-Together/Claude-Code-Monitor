@@ -436,10 +436,11 @@ async function confirmBox(win: BrowserWindow | null | undefined, opts: Electron.
   return response === 0
 }
 
-/** Unsaved file editors (v42): Save / Don't save / Cancel; a failed save cancels the quit. */
+/** Unsaved file editors (v42): Save / Don't save / Cancel; a failed save cancels the quit. v62: auto save saves first, asks only on failure. */
 async function confirmUnsaved(): Promise<boolean> {
   const files = editors?.files() ?? []
   if (!files.length) return true
+  if (editors!.autoSave() && (await editors!.saveAll())) return true
   if (mainWindow && !mainWindow.isVisible()) showMain()
   const opts: Electron.MessageBoxOptions = {
     type: 'warning',

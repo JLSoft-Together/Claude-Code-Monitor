@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
+import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
 import { useWorkspaceStore, type SaveOutcome } from '../../stores/workspace'
 import { changedLines, escapeHtml, findMatches, grammarFor, isHtml, isMarkdown, renderLine, splitLines, type CodeToken, type Match } from '../../lib/codeView'
 import { blockPatch } from '../../lib/diffBlocks'
@@ -100,6 +101,8 @@ const editorDoc = shallowRef('')
 let knownMtime: number | null = null
 let focusEditor = false
 const saving = ref(false)
+/** v62: auto saves skip the Saving… / Saved flashes; the ● going away says it. */
+const quietSave = ref(false)
 const savedFlash = ref(false)
 const editNotice = ref<{ kind: 'error' | 'info'; text: string } | null>(null)
 const conflict = shallowRef<{ text: string | null; mtimeMs: number } | null>(null)
@@ -108,7 +111,15 @@ const compareText = shallowRef<string | null>(null)
 const liveText = shallowRef<string | null>(null)
 let liveTimer: ReturnType<typeof setTimeout> | null = null
 let savedTimer: ReturnType<typeof setTimeout> | null = null
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+let autoSaveAgain = false
 const saveKey = isMac ? '⌘S' : 'Ctrl+S'
+const saveTitle = computed(() => {
+  const hint = t('editor.saveHint', { key: saveKey })
+  const mode = settings.autoSave
+  if (mode === 'off') return hint
+  return `${hint} · ${t(`editor.autoSave.${mode}`, { s: settings.autoSaveDelay / 1000 })}`
+})
 
 // Change markers vs HEAD (IntelliJ gutter): bars beside the line numbers, popup with the old text.
 const changes = useFileChanges(
@@ -405,6 +416,7 @@ function finishEdit(): void {
   compareText.value = null
   void paintText(pending.value ?? baseText.value, loadSeq, true).then(() => jumpTo(editorLine ?? undefined))
   void nextTick(() => root.value?.focus({ preventScroll: true }))
+  autoSaveOn('focusOut')
 }
 
 let editorLine: number | null = null
@@ -421,6 +433,13 @@ watch(editor, (api) => {
 })
 
 function onEditorChange(): void {
+  if (firesOn(settings.autoSave, 'edit')) {
+    cancelAutoSave()
+    autoSaveTimer = setTimeout(() => {
+      autoSaveTimer = null
+      void autoSave()
+    }, settings.autoSaveDelay)
+  }
   if (!isXmlPreview.value) return
   if (liveTimer) clearTimeout(liveTimer)
   liveTimer = setTimeout(() => {
@@ -438,13 +457,63 @@ watch(dirty, (d) => {
   }
 })
 
-async function save(): Promise<SaveOutcome> {
+function cancelAutoSave(): void {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+}
+
+/** v62 auto save: never over a conflict (the bar waits for Reload / Keep mine), retried once a running save ends. */
+async function autoSave(): Promise<void> {
+  if (!dirty.value || conflict.value || block.value) return
+  if (saving.value) {
+    autoSaveAgain = true
+    return
+  }
+  await save({ quiet: true })
+}
+
+function autoSaveOn(trigger: AutoSaveTrigger): void {
+  if (!firesOn(settings.autoSave, trigger)) return
+  cancelAutoSave()
+  void autoSave()
+}
+
+function onFocusOut(e: FocusEvent): void {
+  const next = e.relatedTarget as Node | null
+  if (next && root.value?.contains(next)) return
+  // Focus leaving the whole window is a window change, handled by onWindowBlur.
+  if (next || document.hasFocus()) autoSaveOn('focusOut')
+}
+
+function onWindowBlur(): void {
+  autoSaveOn('windowBlur')
+}
+
+function onVisibility(): void {
+  if (document.visibilityState === 'hidden') autoSaveOn('windowBlur')
+}
+
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) autoSaveOn('focusOut')
+  },
+)
+
+async function save(opts: { quiet?: boolean } = {}): Promise<SaveOutcome> {
   const text = editing.value && editor.value ? editor.value.text() : pending.value
   if (text === null || !dirty.value) return { ok: true }
   if (saving.value) return { ok: false, error: t('editor.saving') }
+  if (!opts.quiet) cancelAutoSave()
   saving.value = true
+  quietSave.value = !!opts.quiet
   const res = await fileWrite(view.value?.path ?? props.path, text, knownMtime ?? undefined)
   saving.value = false
+  quietSave.value = false
+  if (autoSaveAgain) {
+    autoSaveAgain = false
+    if (res.ok) void nextTick(() => autoSave())
+  }
   if (!res.ok) {
     const message = t(`editor.error.${res.error}`)
     editNotice.value = { kind: 'error', text: message }
@@ -462,9 +531,11 @@ async function save(): Promise<SaveOutcome> {
   conflict.value = null
   compareText.value = null
   editNotice.value = null
-  savedFlash.value = true
-  if (savedTimer) clearTimeout(savedTimer)
-  savedTimer = setTimeout(() => (savedFlash.value = false), 1500)
+  if (!opts.quiet) {
+    savedFlash.value = true
+    if (savedTimer) clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => (savedFlash.value = false), 1500)
+  }
   changes.reload()
   return { ok: true }
 }
@@ -476,6 +547,7 @@ async function checkDisk(): Promise<void> {
   const action = diskChangeAction(next, knownMtime, dirty.value)
   if (action === 'ignore') return
   if (action === 'conflict') {
+    cancelAutoSave()
     conflict.value = { text: next?.kind === 'text' ? (next.text ?? '') : null, mtimeMs: next?.mtimeMs ?? 0 }
     return
   }
@@ -492,6 +564,7 @@ async function checkDisk(): Promise<void> {
 }
 
 function reloadFromDisk(): void {
+  cancelAutoSave()
   const c = conflict.value
   conflict.value = null
   compareText.value = null
@@ -847,6 +920,8 @@ const resize = new ResizeObserver(([entry]) => {
 onMounted(async () => {
   if (props.paneKey) workspace.registerSaver(props.paneKey, save)
   window.addEventListener('keydown', onWindowKey, true)
+  window.addEventListener('blur', onWindowBlur)
+  document.addEventListener('visibilitychange', onVisibility)
   if (root.value) resize.observe(root.value)
   await load()
   if (props.line && rendered.value) mdPreview.value = false
@@ -861,7 +936,10 @@ onBeforeUnmount(() => {
   }
   if (liveTimer) clearTimeout(liveTimer)
   if (savedTimer) clearTimeout(savedTimer)
+  cancelAutoSave()
   window.removeEventListener('keydown', onWindowKey, true)
+  window.removeEventListener('blur', onWindowBlur)
+  document.removeEventListener('visibilitychange', onVisibility)
   resize.disconnect()
   if (stackTimer) clearTimeout(stackTimer)
   offChange()
@@ -917,7 +995,7 @@ function pickHead(id: string): void {
 </script>
 
 <template>
-  <section ref="root" tabindex="-1" class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-well shadow-card outline-none" :aria-label="t('workspace.viewer.title')">
+  <section ref="root" tabindex="-1" class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-well shadow-card outline-none" :aria-label="t('workspace.viewer.title')" @focusout="onFocusOut">
     <div class="ccm-material @container flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-2 select-none" role="toolbar" :aria-label="t('workspace.viewer.toolbar')" data-pane-head>
       <FileText :size="15" class="mr-1 shrink-0 text-agent-file @max-[300px]:mr-0" aria-hidden="true" />
       <span class="min-w-0 truncate text-xs font-semibold text-ink" :title="view?.path ?? path">{{ name }}</span>
@@ -1008,7 +1086,7 @@ function pickHead(id: string): void {
       </button>
       <template v-if="canEdit">
         <span class="mx-1 h-4 w-px shrink-0 bg-line @max-[360px]:hidden" aria-hidden="true" />
-        <span v-if="saving" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-ink-muted" role="status">
+        <span v-if="saving && !quietSave" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-ink-muted" role="status">
           <LoaderCircle :size="13" class="animate-spin" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.saving') }}</span>
         </span>
         <span v-else-if="savedFlash" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-success" role="status" data-file-saved>
@@ -1019,7 +1097,7 @@ function pickHead(id: string): void {
           type="button"
           class="ccm-btn-plain shrink-0 @max-[360px]:hidden"
           :disabled="!dirty || saving"
-          :title="t('editor.saveHint', { key: saveKey })"
+          :title="saveTitle"
           :aria-label="t('editor.save')"
           data-file-save
           data-more="save"

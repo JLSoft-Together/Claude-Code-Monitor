@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { STUCK_CHOICES } from '@ccm/shared'
 import { i18n, initialLocale, type Locale } from '../i18n'
 import { readLook } from '../lib/appearance'
+import { AUTO_SAVE_DELAY_DEFAULT, AUTO_SAVE_DELAYS, isAutoSaveMode, type AutoSaveMode } from '../lib/autoSave'
 import { desktop } from '../lib/desktop'
 import { setDustEnabled } from '../lib/dust'
 import { clampCodeSize, CODE_SIZE_DEFAULT, fontEntry, fontStack, isFontId } from '../lib/fonts'
@@ -72,6 +73,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const keyHints = ref(read('ccm.keyHints') !== '0')
   const breakReminder = ref(read('ccm.breakReminder') !== '0')
   const minimap = ref(read('ccm.minimap') !== '0')
+  const autoSave = ref<AutoSaveMode>(isAutoSaveMode(read('ccm.autoSave')) ? (read('ccm.autoSave') as AutoSaveMode) : 'off')
+  const autoSaveDelay = ref(AUTO_SAVE_DELAYS.includes(Number(read('ccm.autoSaveDelay'))) ? Number(read('ccm.autoSaveDelay')) : AUTO_SAVE_DELAY_DEFAULT)
   const dimInactive = ref(read('ccm.workspace.dim') === '1')
   const dustEffect = ref(read('ccm.dust') === '1')
   const fileIcons = ref<FileIconStyle>(isFileIconStyle(read('ccm.fileIcons')) ? (read('ccm.fileIcons') as FileIconStyle) : 'atom')
@@ -98,6 +101,8 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(keyHints, (value) => persist('ccm.keyHints', value ? '1' : '0'))
   watch(breakReminder, (value) => persist('ccm.breakReminder', value ? '1' : '0'))
   watch(minimap, (value) => persist('ccm.minimap', value ? '1' : '0'))
+  watch(autoSave, (value) => persist('ccm.autoSave', value))
+  watch(autoSaveDelay, (value) => persist('ccm.autoSaveDelay', String(value)))
   watch(dimInactive, (value) => persist('ccm.workspace.dim', value ? '1' : '0'))
   watch(dustEffect, (value) => persist('ccm.dust', value ? '1' : '0'))
   watch(dustEffect, setDustEnabled, { flush: 'sync', immediate: true })
@@ -220,6 +225,8 @@ export const useSettingsStore = defineStore('settings', () => {
     hideTools,
     keyHints,
     minimap,
+    autoSave,
+    autoSaveDelay,
     dimInactive,
     dustEffect,
     fileIcons,

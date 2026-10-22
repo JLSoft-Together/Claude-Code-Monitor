@@ -8,6 +8,8 @@ export interface DirtyFile {
 
 export interface EditorTracker {
   files: () => DirtyFile[]
+  /** v62: every page holding unsaved editors has auto save on, so quit saves them instead of asking. */
+  autoSave: () => boolean
   /** Asks every page holding unsaved editors to save them; true only when all of them did. */
   saveAll: (timeoutMs?: number) => Promise<boolean>
   dispose: () => void
@@ -24,11 +26,11 @@ export function cleanDirty(raw: unknown): DirtyFile[] {
 }
 
 export function createEditorTracker(deps: { ipcMain: IpcMain; isAppSender: (event: IpcMainEvent) => boolean }): EditorTracker {
-  const byPage = new Map<number, { contents: WebContents; files: DirtyFile[] }>()
+  const byPage = new Map<number, { contents: WebContents; files: DirtyFile[]; autoSave: boolean }>()
   let seq = 0
   const pending = new Map<number, (ok: boolean) => void>()
 
-  const onDirty = (event: IpcMainEvent, raw: unknown): void => {
+  const onDirty = (event: IpcMainEvent, raw: unknown, autoSave?: unknown): void => {
     if (!deps.isAppSender(event)) return
     const contents = event.sender
     const files = cleanDirty(raw)
@@ -41,7 +43,7 @@ export function createEditorTracker(deps: { ipcMain: IpcMain; isAppSender: (even
       contents.once('destroyed', () => byPage.delete(id))
       contents.on('did-navigate', () => byPage.delete(id))
     }
-    byPage.set(contents.id, { contents, files })
+    byPage.set(contents.id, { contents, files, autoSave: autoSave === true })
   }
   const onReply = (event: IpcMainEvent, id: unknown, ok: unknown): void => {
     if (!deps.isAppSender(event) || typeof id !== 'number') return
@@ -67,6 +69,7 @@ export function createEditorTracker(deps: { ipcMain: IpcMain; isAppSender: (even
 
   return {
     files: () => [...byPage.values()].flatMap((p) => p.files),
+    autoSave: () => byPage.size > 0 && [...byPage.values()].every((p) => p.autoSave),
     saveAll: async (timeoutMs = 15_000) => {
       const pages = [...byPage.values()]
       const results = await Promise.all(pages.map((p) => askPage(p.contents, timeoutMs)))
