@@ -44,7 +44,7 @@ const info = usePaneInfo()
 const workspace = useWorkspaceStore()
 const paneOf = (k: string): Pane | undefined => workspace.panes.find((p) => p.key === k)
 
-const BADGE: Record<string, string> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', idle: 'idle' }
+const BADGE: Record<string, string> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', idle: 'idle', parked: 'stale' }
 const badgeOf = (s: RailState | null): string | undefined => (s ? BADGE[s] : undefined)
 const inkOf = (s: RailState | null): string => (s === 'failed' ? 'text-st-error' : s === 'asked' ? 'text-st-waiting' : 'text-ink-muted')
 const FLASH_INK: Record<string, string> = { failed: 'text-st-error', asked: 'text-st-waiting', done: 'text-st-done' }

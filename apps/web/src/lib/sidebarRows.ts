@@ -35,6 +35,7 @@ type SessionInfo = Pick<TerminalSession, 'status'>
 /** Glyph + i18n key for a row; null for viewer panes, which have no lifecycle. */
 export function rowStatus(pane: Pane, session: SessionInfo | undefined): RowStatus {
   if (!isTerm(pane)) return null
+  if (pane.state === 'parked') return { kind: 'status', status: 'stale', label: 'workspace.state.parked' }
   if (pane.state === 'starting') return { kind: 'starting', label: 'workspace.state.starting' }
   if (pane.state === 'exited') return { kind: 'status', status: 'completed', label: 'workspace.state.exited' }
   if (pane.state === 'error' || pane.state === 'gone') return { kind: 'status', status: 'error', label: 'workspace.state.error' }

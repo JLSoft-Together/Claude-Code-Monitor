@@ -12,6 +12,7 @@ export interface TabMenuCtx {
   zoomed?: boolean
   zoomKeys?: string
   dim?: boolean
+  parked?: number
 }
 
 const A = 'workspace.tabActions.'
@@ -19,6 +20,7 @@ const MOVE = 'move:'
 
 export function tabMenu(ctx: TabMenuCtx, t: T): MenuEntry[] {
   const entries: MenuEntry[] = []
+  if (ctx.parked) entries.push({ id: 'wake', label: t('workspace.parked.wakeTab', { n: ctx.parked }) }, { separator: true })
   if (!ctx.active) entries.push({ id: 'open', label: t(`${A}open`) })
   entries.push({ id: 'rename', label: t(`${A}rename`), shortcut: 'F2' })
   if (ctx.panes > 1) entries.push({ id: 'ungroup', label: t(`${A}ungroup`) })

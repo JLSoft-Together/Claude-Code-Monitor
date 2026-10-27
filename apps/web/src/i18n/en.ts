@@ -22,6 +22,7 @@ import v52 from './workspace-v52'
 import v52Pane from './workspace-v52-pane'
 import v52Tabs from './workspace-v52-tabs'
 import v52Rail from './workspace-v52-rail'
+import v64Restore from './workspace-v64-restore'
 import v52Mission from './workspace-v52-mission'
 import monitorV53 from './monitor-v53'
 import sessionV53 from './session-v53'
@@ -85,6 +86,7 @@ export default {
     ...v52Pane.en,
     ...v52Tabs.en,
     ...v52Rail.en,
+    ...v64Restore.en,
     ...v52Mission.en,
     tabs: 'Terminals',
     newLabel: 'New terminal or tab',
@@ -101,6 +103,7 @@ export default {
     preset: { claude: 'Claude Code', codex: 'Codex', shell: 'Shell' },
     state: {
       starting: 'Starting…',
+      parked: 'Asleep',
       running: 'Running',
       exited: 'Exited ({code})',
       error: 'Error',

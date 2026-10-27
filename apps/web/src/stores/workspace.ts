@@ -23,7 +23,7 @@ import type { SavedLayout } from '../lib/projects'
 import { dirKey } from './favorites'
 import { openedLinkId, usePeersStore } from './peers'
 
-export type PaneState = 'starting' | 'running' | 'exited' | 'gone' | 'error'
+export type PaneState = 'parked' | 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
 /** Missing = 'term' (state saved before v21). */
 export type PaneKind = 'term' | 'browser' | 'file' | 'changes' | 'log' | 'run'
@@ -297,6 +297,34 @@ export interface LastWorkspace {
   tabs: Tab[]
 }
 
+export interface LastProject {
+  key: string
+  cwd?: string
+  sessions: number
+}
+
+const projectKey = (cwd: string | undefined): string => cwd ?? ''
+
+function lastTabProject(snap: LastWorkspace, tab: Tab): string | undefined {
+  return tab.project ?? snap.panes.find((p) => p.key === leaves(tab.root)[0])?.cwd
+}
+
+export function lastProjectsOf(snap: LastWorkspace): LastProject[] {
+  const byKey = new Map<string, LastProject>()
+  const paneOf = new Map(snap.panes.map((p) => [p.key, p]))
+  for (const tab of snap.tabs) {
+    const cwd = lastTabProject(snap, tab)
+    const key = projectKey(cwd)
+    const entry = byKey.get(key) ?? { key, cwd, sessions: 0 }
+    for (const k of leaves(tab.root)) {
+      const p = paneOf.get(k)
+      if (p && isTerm(p)) entry.sessions++
+    }
+    byKey.set(key, entry)
+  }
+  return [...byKey.values()]
+}
+
 function loadLast(): LastWorkspace | null {
   try {
     const raw = JSON.parse(readLocal(LAST_KEY) ?? 'null') as LastWorkspace | null
@@ -351,6 +379,7 @@ interface SavedPane extends ViewFields {
   ranCommand?: boolean
   command?: string
   openedBy?: string
+  parked?: boolean
 }
 
 interface Saved {
@@ -369,7 +398,7 @@ function loadSaved(): Saved {
     const list = Array.isArray(raw) ? raw : (raw.panes ?? [])
     const panes = list
       .map((p) => cleanPane(p))
-      .filter((p): p is SavedPane => !!p && (!isTerm(p) || !!p.sessionId))
+      .filter((p): p is SavedPane => !!p && (!isTerm(p) || !!p.sessionId || p.parked === true))
       .map((p) => ({
         ...p,
         resume: agentId(p.resume),
@@ -377,6 +406,7 @@ function loadSaved(): Saved {
         ranCommand: p.ranCommand === true || undefined,
         command: typeof p.command === 'string' ? p.command.slice(0, 300) : undefined,
         openedBy: typeof p.openedBy === 'string' && p.openedBy && p.openedBy !== p.key ? p.openedBy.slice(0, 64) : undefined,
+        parked: isTerm(p) && !p.sessionId && p.parked === true ? true : undefined,
       }))
     const known = new Set(panes.map((p) => p.key))
     const rawTabs = Array.isArray(raw) ? panes.map((p) => ({ key: `t${p.key}`, root: { pane: p.key }, focus: p.key })) : (raw.tabs ?? [])
@@ -434,7 +464,7 @@ const newKey = (prefix: string): string => `${prefix}${Date.now().toString(36)}$
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const saved = loadSaved()
-  const panes = ref<Pane[]>(saved.panes.map((p) => ({ ...p, state: isTerm(p) ? 'starting' : 'running' })))
+  const panes = ref<Pane[]>(saved.panes.map(({ parked, ...p }) => ({ ...p, state: parked ? 'parked' : isTerm(p) ? 'starting' : 'running' })))
   const tabs = ref<Tab[]>(saved.tabs)
   const activeKey = ref<string | null>(panes.value.some((p) => p.key === saved.active) ? saved.active : (tabs.value[0]?.focus ?? null))
 
@@ -458,7 +488,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(
     [panes, tabs, activeKey],
     () => {
-      const kept = panes.value.filter((p) => !isTerm(p) || (p.sessionId && p.state !== 'gone'))
+      const kept = panes.value.filter((p) => !isTerm(p) || p.state === 'parked' || (p.sessionId && p.state !== 'gone'))
       const data: Saved = {
         panes: kept.map((p) => ({
           key: p.key,
@@ -470,6 +500,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           ranCommand: p.ranCommand,
           command: p.command,
           openedBy: p.openedBy,
+          parked: p.state === 'parked' || undefined,
           ...viewOf(p),
         })),
         tabs: tabs.value,
@@ -832,13 +863,25 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     lastSeen.value[key] = at
   }
 
-  function restoreLast(): void {
+  const lastProjects = computed<LastProject[]>(() => (last.value ? lastProjectsOf(last.value) : []))
+
+  function restoreLast(run?: ReadonlySet<string>): void {
     const snap = last.value
     last.value = null
     writeLocal(LAST_KEY, 'null')
     if (!snap) return
+    const sleeping = new Set<string>()
+    if (run) for (const tab of snap.tabs) if (!run.has(projectKey(lastTabProject(snap, tab)))) for (const k of leaves(tab.root)) sleeping.add(k)
     const keys = new Map<string, string>()
-    for (const p of snap.panes) keys.set(p.key, (isTerm(p) ? addPane(p.preset, p.cwd, p.resume) : addView(viewOf(p), p.cwd)).key)
+    for (const p of snap.panes) {
+      if (!isTerm(p)) {
+        keys.set(p.key, addView(viewOf(p), p.cwd).key)
+        continue
+      }
+      const pane = addPane(p.preset, p.cwd, p.resume)
+      if (sleeping.has(p.key)) update(pane.key, { state: 'parked' })
+      keys.set(p.key, pane.key)
+    }
     const remap = (n: LayoutNode): LayoutNode => ('pane' in n ? { pane: keys.get(n.pane)! } : { ...n, a: remap(n.a), b: remap(n.b) })
     for (const tab of snap.tabs) {
       const zoom = tab.zoom ? keys.get(tab.zoom) : undefined
@@ -852,6 +895,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       })
     }
     activeKey.value = tabs.value[0]?.focus ?? null
+  }
+
+  function wake(keys: readonly string[]): void {
+    for (const key of keys) {
+      const pane = panes.value.find((p) => p.key === key)
+      if (pane?.state === 'parked') pane.state = 'starting'
+    }
   }
 
   function dismissLast(): void {
@@ -1260,6 +1310,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveFiles,
     resumeSession,
     restoreLast,
+    lastProjects,
+    wake,
     dismissLast,
     runScript,
     openLayout,

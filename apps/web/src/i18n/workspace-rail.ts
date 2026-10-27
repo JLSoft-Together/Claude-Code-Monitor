@@ -2,7 +2,7 @@
 const en = {
   rail: {
     title: 'Projects',
-    state: { failed: 'Failed', asked: 'Needs you', ended: 'Ended', working: 'Working', subagents: 'Waiting on subagents', done: 'Finished', starting: 'Starting…', idle: 'Ready' },
+    state: { failed: 'Failed', asked: 'Needs you', ended: 'Ended', working: 'Working', subagents: 'Waiting on subagents', done: 'Finished', starting: 'Starting…', idle: 'Ready', parked: 'Asleep' },
     needs: '{n} needs you | {n} need you',
     worktree: 'worktree',
     folder: 'folder',
@@ -74,7 +74,7 @@ const en = {
 const vi: typeof en = {
   rail: {
     title: 'Dự án',
-    state: { failed: 'Lỗi', asked: 'Cần bạn', ended: 'Đã kết thúc', working: 'Đang chạy', subagents: 'Chờ subagent', done: 'Đã xong', starting: 'Đang khởi động…', idle: 'Sẵn sàng' },
+    state: { failed: 'Lỗi', asked: 'Cần bạn', ended: 'Đã kết thúc', working: 'Đang chạy', subagents: 'Chờ subagent', done: 'Đã xong', starting: 'Đang khởi động…', idle: 'Sẵn sàng', parked: 'Đang ngủ' },
     needs: '{n} cần bạn | {n} cần bạn',
     worktree: 'worktree',
     folder: 'thư mục',

@@ -27,7 +27,7 @@ const { activityOf, peerView } = usePaneInfo()
 const isStop = useRailTabStop()
 const stop = computed(() => (isStop(props.group.key) ? 0 : -1))
 
-const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed' }
+const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', parked: 'stale' }
 const FLASH: Partial<Record<RailState, string>> = { asked: 'text-st-waiting', done: 'text-st-done', failed: 'text-st-error' }
 const TONE: Partial<Record<RailState, string>> = { asked: 'text-st-waiting', failed: 'text-st-error' }
 const unstamp = (el: Element): void => el.removeAttribute('data-rail-group-line')

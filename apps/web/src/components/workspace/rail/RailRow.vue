@@ -73,7 +73,7 @@ const sweep = usePeerSweep(() => props.row.peer)
 const busy = computed(() => isBusyState(props.row.state))
 
 // StatusIcon statuses; idle draws no badge, starting a spinner.
-const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed' }
+const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', parked: 'stale' }
 const FLASH: Partial<Record<RailState, string>> = { asked: 'text-st-waiting', done: 'text-st-done', failed: 'text-st-error' }
 
 const flashKey = ref(0)

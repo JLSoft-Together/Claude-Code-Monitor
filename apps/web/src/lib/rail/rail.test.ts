@@ -111,6 +111,8 @@ describe('rail state', () => {
     expect(groupState(['ended', 'done', 'idle'])).toBe('done')
     expect(groupState(['idle', 'ended'])).toBe('ended')
     expect(groupState([])).toBe('idle')
+    expect(groupState(['parked', 'idle'])).toBe('idle')
+    expect(groupState(['parked', 'parked'])).toBe('parked')
   })
 
   it('maps run badges: building / running work, a failed run needs you', () => {

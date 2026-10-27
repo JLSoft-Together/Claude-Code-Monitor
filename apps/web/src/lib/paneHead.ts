@@ -13,11 +13,13 @@ export const STATE_BADGE: Record<RailState, AnyStatus> = {
   done: 'completed',
   starting: 'idle',
   idle: 'idle',
+  parked: 'stale',
 }
 
-export type ProcessChip = 'starting' | 'exited' | 'error'
+export type ProcessChip = 'parked' | 'starting' | 'exited' | 'error'
 
 export function processChip(state: PaneState): ProcessChip | null {
+  if (state === 'parked') return 'parked'
   if (state === 'starting') return 'starting'
   if (state === 'exited') return 'exited'
   if (state === 'error' || state === 'gone') return 'error'

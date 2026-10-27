@@ -23,6 +23,7 @@ import v52 from './workspace-v52'
 import v52Pane from './workspace-v52-pane'
 import v52Tabs from './workspace-v52-tabs'
 import v52Rail from './workspace-v52-rail'
+import v64Restore from './workspace-v64-restore'
 import v52Mission from './workspace-v52-mission'
 import monitorV53 from './monitor-v53'
 import sessionV53 from './session-v53'
@@ -86,6 +87,7 @@ const vi: typeof en = {
     ...v52Pane.vi,
     ...v52Tabs.vi,
     ...v52Rail.vi,
+    ...v64Restore.vi,
     ...v52Mission.vi,
     tabs: 'Terminal',
     newLabel: 'Terminal hoặc tab mới',
@@ -102,6 +104,7 @@ const vi: typeof en = {
     preset: { claude: 'Claude Code', codex: 'Codex', shell: 'Shell' },
     state: {
       starting: 'Đang khởi động…',
+      parked: 'Đang ngủ',
       running: 'Đang chạy',
       exited: 'Đã thoát ({code})',
       error: 'Lỗi',
