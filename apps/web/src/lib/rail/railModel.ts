@@ -7,7 +7,7 @@ import { leaves } from '../splitLayout'
 import { applyOrder } from './railOrder'
 import type { RepoFacts } from './repo'
 
-export type RailState = 'failed' | 'asked' | 'ended' | 'working' | 'subagents' | 'done' | 'starting' | 'idle'
+export type RailState = 'failed' | 'asked' | 'ended' | 'working' | 'subagents' | 'done' | 'starting' | 'idle' | 'parked'
 export const needsUser = (s: RailState): boolean => s === 'asked' || s === 'failed'
 export const isBusyState = (s: RailState): boolean => s === 'working' || s === 'subagents'
 
@@ -135,6 +135,7 @@ export interface RailInput {
 }
 
 export function paneState(pane: Pane, session: RailSession | undefined): RailState {
+  if (pane.state === 'parked') return 'parked'
   if (pane.state === 'starting') return 'starting'
   if (pane.state === 'error' || pane.state === 'gone' || session?.status === 'error') return 'failed'
   if (pane.attention === 'waiting' || session?.status === 'waiting') return 'asked'
@@ -145,9 +146,10 @@ export function paneState(pane: Pane, session: RailSession | undefined): RailSta
   return 'idle'
 }
 
-const GROUP_RANK: readonly RailState[] = ['failed', 'asked', 'working', 'subagents', 'starting', 'done', 'ended', 'idle']
+const GROUP_RANK: readonly RailState[] = ['failed', 'asked', 'working', 'subagents', 'starting', 'done', 'ended', 'idle', 'parked']
 
 export function groupState(states: readonly RailState[]): RailState {
+  if (!states.length) return 'idle'
   let best = GROUP_RANK.length - 1
   for (const s of states) best = Math.min(best, GROUP_RANK.indexOf(s))
   return GROUP_RANK[best]!

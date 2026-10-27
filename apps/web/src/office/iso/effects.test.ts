@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cobwebSide, drawBang, drawBeacon, drawCobweb, drawPopcornBucket, PING_ARC, PING_PERIOD, pingPongBall, softGlow } from './effects'
 import { FX_SCALE, IsoParticles } from './particles'
-import { LIVE_MAX, liveGrid, LiveScreens } from './screens'
+import { LIVE_MAX, LIVE_PER_FRAME, liveGrid, LiveScreens } from './screens'
 
 type Call = { op: string; args: unknown[]; state: Record<string, unknown> }
 
@@ -157,6 +157,24 @@ describe('iso live screens', () => {
     live.paint(plain.ctx, { x: 0, y: 0, w: 10, h: 10 }, 10, 10, () => {}, false)
     expect(plain.calls.filter((c) => c.op === 'fillRect')).toHaveLength(0)
     expect(canvas.width).toBe(60)
+  })
+
+  it('repaint at most a few cached screens per frame, taking turns', () => {
+    vi.stubGlobal('OffscreenCanvas', undefined)
+    vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => recorder().ctx }) })
+    const live = new LiveScreens()
+    const owners = Array.from({ length: 2 * LIVE_PER_FRAME }, () => ({}))
+    const frame = (now: number): number[] => {
+      const drawn: number[] = []
+      owners.forEach((o, i) => live.paintCached(recorder().ctx, o, now, { x: 0, y: 0, w: 4, h: 4 }, 4, 4, () => drawn.push(i)))
+      return drawn
+    }
+    expect(frame(0)).toHaveLength(owners.length)
+    expect(frame(200)).toEqual([0, 1, 2])
+    expect(frame(400)).toEqual([3, 4, 5])
+    expect(frame(600)).toEqual([0, 1, 2])
+    expect(frame(700)).toEqual([3, 4, 5])
+    expect(frame(720)).toEqual([])
   })
 
   it('without a scratch canvas it draws straight into the target', () => {

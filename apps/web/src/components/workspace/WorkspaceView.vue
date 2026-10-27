@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, CircleHelp, FolderOpen, GraduationCap, History, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, CircleHelp, FolderOpen, GraduationCap, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
@@ -49,6 +49,7 @@ import QuickOpen from './QuickOpen.vue'
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
+import RestorePicker from './RestorePicker.vue'
 import ViewPaneControls from './ViewPaneControls.vue'
 import WorkspaceSidebar from './WorkspaceSidebar.vue'
 import SideResizer from './SideResizer.vue'
@@ -541,8 +542,8 @@ function openLayout(layout: SavedLayout): void {
   })
 }
 
-function restoreLast(): void {
-  adoptNew(() => workspace.restoreLast())
+function restoreLast(run?: ReadonlySet<string>): void {
+  adoptNew(() => workspace.restoreLast(run))
 }
 
 // "Open on start": the first terminal opened in a project during this window's life brings its start layout along.
@@ -1462,6 +1463,10 @@ function agentPaneOf(tab: Tab): Pane | undefined {
   return agents.find((p) => p.key === tab.focus) ?? agents[0]
 }
 
+function parkedIn(tab: Tab): string[] {
+  return leaves(tab.root).filter((k) => paneOf(k)?.state === 'parked')
+}
+
 function openTabMenu(tab: Tab, at: DOMRect): void {
   const mates = projectMates(tab)
   const entries = tabMenu(
@@ -1474,6 +1479,7 @@ function openTabMenu(tab: Tab, at: DOMRect): void {
       zoomed: !!tabZoom(tab),
       zoomKeys: shortcutText('wsZoom', isMac),
       dim: settings.dimInactive,
+      parked: parkedIn(tab).length,
     },
     t,
   )
@@ -1500,6 +1506,9 @@ function pickTabAction(id: string, key: string): void {
   const target = moveTargetOf(id)
   if (target) return mergeTabInto(tab, target)
   switch (id) {
+    case 'wake':
+      workspace.wake(parkedIn(tab))
+      break
     case 'open':
       workspace.activateTab(tab.key)
       break
@@ -1995,20 +2004,14 @@ onBeforeUnmount(() => {
           <h2 class="text-base font-semibold text-ink">{{ t('workspace.empty.title') }}</h2>
           <p class="mt-1 text-sm text-ink-muted">{{ t('workspace.empty.body') }}</p>
         </div>
-        <section v-if="lastSummary" class="flex items-center gap-3 rounded-control bg-surface p-3 shadow-card" :aria-label="t('workspace.restore.title')">
-          <History :size="18" class="shrink-0 text-accent-ink" aria-hidden="true" />
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-ink">{{ t('workspace.restore.title') }}</p>
-            <p class="text-xs text-ink-muted">
-              {{ t('workspace.restore.summary', { tabs: lastSummary.tabs }, lastSummary.tabs) }}
-              <template v-if="lastSummary.agents"> · {{ t('workspace.restore.agents', { n: lastSummary.agents }, lastSummary.agents) }}</template>
-            </p>
-          </div>
-          <button type="button" class="ccm-btn ccm-btn-primary shrink-0" @click="restoreLast()">{{ t('workspace.restore.action') }}</button>
-          <button type="button" class="ccm-btn-plain shrink-0" :title="t('workspace.restore.dismiss')" :aria-label="t('workspace.restore.dismiss')" @click="workspace.dismissLast()">
-            <X :size="14" aria-hidden="true" />
-          </button>
-        </section>
+        <RestorePicker
+          v-if="lastSummary"
+          :projects="workspace.lastProjects"
+          :tabs="lastSummary.tabs"
+          :agents="lastSummary.agents"
+          @restore="restoreLast"
+          @dismiss="workspace.dismissLast()"
+        />
         <div class="ccm-group p-2">
           <LaunchPicker ref="emptyPicker" data-tour="ws-new" @launch="launch" @browser="openBrowserTab" @open-file="openFileTab" />
         </div>

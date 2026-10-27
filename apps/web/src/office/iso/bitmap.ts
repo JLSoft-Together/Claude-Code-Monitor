@@ -15,3 +15,14 @@ export function frozen(src: CanvasImageSource): CanvasImageSource {
   if (typeof HTMLCanvasElement === 'undefined' || !(src instanceof HTMLCanvasElement)) return src
   return snapshot(src) ?? src
 }
+
+const once = new WeakMap<object, CanvasImageSource>()
+
+export function frozenOnce(src: CanvasImageSource): CanvasImageSource {
+  let hit = once.get(src)
+  if (!hit) {
+    hit = frozen(src)
+    once.set(src, hit)
+  }
+  return hit
+}

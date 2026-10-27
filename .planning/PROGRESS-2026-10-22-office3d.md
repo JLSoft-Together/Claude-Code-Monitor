@@ -41,3 +41,44 @@ contract art `.planning/CONTRACT-v63-office3d-assets.md`, tài liệu `docs/offi
   - Test: office 25/273, habblaud 55/538, typecheck web OK.
 - [ ] Monitor → Sơ đồ (Vue Flow) ăn ~185% CPU với demo 46 agent → ứng viên tối ưu tiếp.
 - [x] 16:00 Handoff mới: `.planning/HANDOFF-2026-10-27-1600.md`.
+- [x] 15:25 Đã push `feat/office-3d` (`418622f`) và merge vào `master` (`5c4c9ef`, đã push). Handoff mới: `.planning/HANDOFF-2026-10-27-1525.md` (thay HANDOFF-2026-10-27-1600, tên đó ghi giờ sai).
+
+## Phiên 2026-10-27 chiều (sau HANDOFF-2026-10-27-1525): tối ưu Monitor → Sơ đồ
+- [x] Đo dev Electron (4417, demo 8×4, cờ `--disable-features=CalculateNativeWinOcclusion` để cửa sổ bị che vẫn vẽ; script `D:/tmp/ccm-prof/restart.sh`, `t30.mjs` trước/sau, `t25.mjs` tắt từng lớp, `m.ps1` CPU).
+- [x] Sửa (chưa commit): `DoneTray.vue` `dots` ổn định (computed giữ mảng cũ) → TransitionGroup thôi đo lại; `SubPill`/`MainNode` bỏ `<Transition mode="out-in">` đổi chữ → key + `.ccm-swap-in` (CSS keyframe, `style.css`); `SessionList.vue` TransitionGroup theo `sortedIds` + `CardById`; `TreeEdge.vue` chấm chạy ghi `transform` thẳng DOM; `AgentMap.vue` `edges` giữ mảng cũ khi không đổi (`sameEdge`); `lib/format.ts` cache `Intl.NumberFormat`.
+- [x] Kết quả cùng điều kiện: forced reflow 37→4/s, getBoundingClientRect 331→16/s, style recalc 142→60/s. CPU tổng renderer không giảm (~110%) vì nặng nhất là vẽ khung: tắt mọi animation 117→47%, chỉ tắt spinner trạng thái 117→92%, ẩn danh sách session 117→66%. `will-change` cho spinner không giúp.
+- [ ] Ứng viên tiếp (cần chủ nhân chốt vì đụng rule animate): giới hạn spinner chạy liên tục (vd chỉ node đang chọn / hover, còn lại icon tĩnh + chấm breathe chậm), giảm frame của animation vô hạn.
+- [x] Test web 1202/1203 (1 test thời gian `usePaneAttachments` fail khi máy tải nặng, chạy riêng 8/8). Typecheck web OK. Dev đã tắt, cổng trống.
+
+## 2026-10-27 16:05 — v64 restore chọn project + pane ngủ (chủ nhân chọn "Chọn project khi restore", pane ngủ "chỉ khi bấm")
+- [x] Plan `.planning/PLAN-v64-restore-parked.md`. Code xong (chưa commit): store `parked` + `restoreLast(run)` + `wake`, `RestorePicker.vue`, thẻ ngủ trong `TermPane`, menu tab "Chạy cả tab", rail/sidebar/Mission hiện "Đang ngủ".
+- [x] Test web 113/1209 pass (thêm `workspaceRestore.test.ts` 6 test, `rail.test.ts` thêm case parked). Typecheck web OK.
+- [ ] Chủ nhân thử trên app thật: mở lại app → banner có checkbox project → pane không tích hiện thẻ "Đang ngủ".
+
+## 2026-10-27 16:30 — giảm animation (chủ nhân: "giảm animation cũng được, hoặc anim đơn giản") + Monitor ẩn panel Sessions khi mở app
+- [x] Không còn animation vô hạn lúc bình thường: `StatusIcon` spinner → `.ccm-spin-once` (xoay 1 vòng khi đổi trạng thái); `ccm-breathe` / `ccm-pulse` 3 nhịp, `ccm-caret` 4 nhịp (`style.css`). Giữ infinite: `.ccm-spin` của LoaderCircle đang tải, `ccm-shimmer` (skeleton / thanh Run).
+- [x] `TokenCount.vue`: bỏ đếm dần (`useCountUp`) + phát sáng; badge "+N" chỉ hiện 1 lần mỗi đợt (`burst`, gom trong 1.5 s), chỉ mờ dần (`ccm-quota-fade` 1.6 s).
+- [x] Node Sơ đồ di chuyển 300→220 ms (`.ccm-map-motion .vue-flow__node`).
+- [x] Đo (demo 8×4, Sơ đồ, cửa sổ luôn vẽ): GPU 51–61% → 13–21%, renderer ~110% → 70–96% (tắt hẳn animation 59% — phần còn lại do demo cập nhật 32 agent mỗi 1.2 s).
+- [x] `stores/ui.ts` `initialPanels`: panel Sessions luôn đóng khi mở app (không đọc `open` đã lưu; `pinned` vẫn nhớ).
+- [x] Test web 113/1209, typecheck OK. Dev đã tắt.
+- [x] 16:40 Handoff mới: `.planning/HANDOFF-2026-10-27-1640.md` (thay HANDOFF-2026-10-27-1525). Đã push `feat/office-3d` @ `e984fd2`, chưa merge master.
+
+## Phiên 2026-10-27 16:45 (sau HANDOFF-1640) — chủ nhân: "tiếp tục làm tối ưu"
+- [x] Spawn lần lượt khi restore nhiều project (câu (c)): `lib/spawnQueue.ts` (2 cùng lúc, giữ 1,5 s sau `ready`, pane hiện ưu tiên) + `TermPane.vue` `spawn()`; chip "Chờ lượt". Test `spawnQueue.test.ts` 3/3, `workspaceRestore` 6/6, vue-tsc OK. Chưa thử app thật. Chưa commit.
+- [x] Tắt badge "+N" token trên node Sơ đồ (`MainNode` `delta="none"`), SessionCard / MetricsStrip vẫn có. vue-tsc OK. Chưa commit.
+- [x] 17:xx Chủ nhân: "tự build test xong làm tiếp". Dev Electron 4417 + Vite + demo 8×4 (`D:/tmp/ccm-prof/restart.sh`):
+  - Restore 2 project × 3 shell (`D:/tmp/ccm-prof/q1.mjs`): chạy theo cặp, tab đang xem trước, 6 pane xong 4,4 s; chip "Chờ lượt" (ảnh `D:/tmp/ccm-prof/queue-mid.png`).
+  - Sơ đồ: 0 badge `.ccm-token-delta` trong node (8 ở SessionCard), `ccm-quota-fade` hết khỏi top animation; renderer 81%.
+  - Workspace nghỉ: CPU 4%, 0 animation (`w1.mjs`).
+  - Office Pixel 57 fps (đạt ≥ 30). 3D ~5 fps: tắt từng lớp (`lay2.mjs`, cờ tạm đã gỡ) → glow nặng nhất (5→13), tắt hết 60; GPU iGPU UHD 630 dùng chung với Orrery chủ nhân (PID 19852 ~30% GPU) nên số nhiễu.
+  - Sửa 3D: sprite glow/beam/vignette/shadow → ImageBitmap; màn hình live tối đa 3 lần vẽ lại mỗi frame, luân phiên. 3D 5 → 7,5–8,3 fps; snapshot 120/s → 22/s.
+  - Test web 114 file / 1213 pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [ ] 3D vẫn < 10 fps trên iGPU: không còn lớp nào trội (statics, chars, light, glow mỗi lớp vài fps). Hướng tiếp nếu cần: render 3D ở độ phân giải thấp hơn / giới hạn 30 fps / bớt overdraw — cần chủ nhân chốt vì đổi hình ảnh.
+- [x] Chủ nhân: "tiếp tục làm liên tục". Đếm lệnh canvas mỗi frame 3D (`D:/tmp/ccm-prof/cnt.mjs`, `who.mjs` + `who.page.js`): trang trí Halloween `drawGarland` + `drawCornerWebs` vẽ path mỗi frame (~1000 lineTo, 370 arc/fill, 290 quadratic). → `IsoRenderer.wallDecor` cache bitmap theo mảng tường; ảnh zoom `D:/tmp/ccm-prof/iso-decor-zoom.png` nét.
+  - fps 3D sau đó 6–7 (demo mới 70 agent), Pixel 58–60. 3D vẫn chờ GPU (`(program)` 94%), giảm lệnh vẽ không đổi fps rõ → dừng 3D, cần chủ nhân chốt hướng đổi hình (độ phân giải thấp hơn / khoá 30 fps / bớt hiệu ứng).
+  - Sơ đồ: 58% idle, JS < 2%, 55 fps. Không rò rỉ: heap 43–45 MB, node / listener ổn định 2 phút (`leak.mjs`). Khởi động dev: DCL 575 ms, FCP 592 ms, long task 133 ms (`boot.mjs`).
+  - Lưu ý đo: demo-fixture tích agent dần (103 → 391 sau ~30 phút) làm Pixel tụt 57 → 11–19; muốn so phải `restart.sh` lại.
+  - Test web 114 / 1213 pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [x] Chủ nhân chọn #3 (tắt bớt hiệu ứng khi 3D chậm): `office/iso/fxBudget.ts` + `IsoRenderer.frame` bỏ glow / sunbeam / bóng đèn mùa khi khung hình > 45 ms suốt 2 s; quay lại khi < 22 ms suốt 5 s (tối đa 2 lần rồi giữ tắt). Đo cùng lúc GPU bị chiếm (Orrery chủ nhân 32%, Chrome 23%, dwm 13%): 3D ~4,4 → ~8 fps (`D:/tmp/ccm-prof/fx.mjs`, ảnh `iso-lowfx.png`). Test web 115 file pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [x] 18:35 Handoff mới: `.planning/HANDOFF-2026-10-27-1835.md` (thay HANDOFF-2026-10-27-1640).

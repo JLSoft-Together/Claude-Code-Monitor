@@ -11,6 +11,7 @@ export const BULB_START = 14
 export const BULB_STEP = 24
 export const BULB_Y = 10
 export const CORNER_WEB = 15
+export const DECOR_H = 28
 
 const GARLAND = { christmas: '#347653', halloween: '#584068' } as const
 const ORNAMENT = { christmas: '#f5d491', halloween: '#eea24d' } as const

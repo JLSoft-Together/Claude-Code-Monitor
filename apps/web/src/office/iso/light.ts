@@ -4,6 +4,7 @@ import { buildAnim } from '@ccm/habblaud/client/src/world/render/anim'
 import { isNeutral, mixRgb, rgbCss, WHITE, type Ambient, type Rgb } from '@ccm/habblaud/client/src/world/render/daylight'
 import type { AreaVis } from '@ccm/habblaud/client/src/world/render/scene'
 import type { Sim } from '@ccm/habblaud/client/src/world/sim/sim'
+import { frozen } from './bitmap'
 import { softGlow } from './effects'
 import { WALL_H, type IsoView } from './projection'
 
@@ -81,9 +82,9 @@ export function floorRect(vis: Pick<AreaVis, 'layout'>): { x0: number; y0: numbe
   return { x0: r.x * TILE, y0: base, x1: (r.x + r.w) * TILE, y1: (r.y + r.h) * TILE }
 }
 
-const beams = new Map<string, HTMLCanvasElement | null>()
+const beams = new Map<string, CanvasImageSource | null>()
 
-export function beamSprite(c: Rgb): HTMLCanvasElement | null {
+export function beamSprite(c: Rgb): CanvasImageSource | null {
   const key = c.join(',')
   const hit = beams.get(key)
   if (hit !== undefined) return hit
@@ -112,8 +113,9 @@ export function beamSprite(c: Rgb): HTMLCanvasElement | null {
   } catch {
     s = null
   }
-  beams.set(key, s)
-  return s
+  const out = s && frozen(s)
+  beams.set(key, out)
+  return out
 }
 
 interface AreaLight {
@@ -132,7 +134,7 @@ export class IsoLight {
   private coreLevel = new Map<string, number>()
   private coreBusy = new Map<string, boolean>()
   private occAt = -Infinity
-  private vignette: HTMLCanvasElement | null = null
+  private vignette: CanvasImageSource | null = null
 
   constructor(
     private readonly view: IsoView,
@@ -232,7 +234,7 @@ export class IsoLight {
     return this.map
   }
 
-  private vignetteSprite(): HTMLCanvasElement | null {
+  private vignetteSprite(): CanvasImageSource | null {
     if (this.vignette) return this.vignette
     try {
       const c = document.createElement('canvas')
@@ -246,7 +248,7 @@ export class IsoLight {
       grad.addColorStop(1, 'rgb(222,208,192)')
       g.fillStyle = grad
       g.fillRect(0, 0, 64, 64)
-      this.vignette = c
+      this.vignette = frozen(c)
     } catch {
       this.vignette = null
     }

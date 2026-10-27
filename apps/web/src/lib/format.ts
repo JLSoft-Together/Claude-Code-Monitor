@@ -82,14 +82,19 @@ export function clockTime(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(t)
 }
 
+const compactFormat = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+const fullFormats = new Map<string, Intl.NumberFormat>()
+
 export function compactNumber(n: number | undefined, _locale?: string): string {
   if (n === undefined) return ''
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+  return compactFormat.format(n)
 }
 
 export function fullNumber(n: number | undefined, locale: string): string {
   if (n === undefined) return '0'
-  return new Intl.NumberFormat(locale).format(n)
+  let f = fullFormats.get(locale)
+  if (!f) fullFormats.set(locale, (f = new Intl.NumberFormat(locale)))
+  return f.format(n)
 }
 
 export function shortPath(path: string | undefined): string {

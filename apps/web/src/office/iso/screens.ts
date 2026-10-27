@@ -2,6 +2,7 @@ export const LIVE_RES = 2
 export const LIVE_MAX = 320
 export const SHEEN_ALPHA = 0.14
 export const LIVE_REFRESH_MS = 150
+export const LIVE_PER_FRAME = 3
 
 export interface LiveRect {
   x: number
@@ -31,6 +32,10 @@ export class LiveScreens {
   private g: CanvasRenderingContext2D | null = null
   private failed = false
   private slots = new WeakMap<object, LiveSlot>()
+  private frameAt = NaN
+  private spent = 0
+  private cut = Infinity
+  private nextCut = -Infinity
 
   private slot(owner: object, w: number, h: number): LiveSlot | null {
     let s = this.slots.get(owner)
@@ -93,7 +98,17 @@ export class LiveScreens {
     const grid = liveGrid(viewW, viewH)
     const s = this.slot(owner, grid.w, grid.h)
     if (!s) return this.paint(ctx, dst, viewW, viewH, draw, sheen)
-    if (now - s.at >= LIVE_REFRESH_MS || now < s.at) {
+    if (now !== this.frameAt) {
+      this.frameAt = now
+      this.spent = 0
+      this.cut = this.nextCut === -Infinity ? Infinity : this.nextCut
+      this.nextCut = -Infinity
+    }
+    const due = now - s.at >= LIVE_REFRESH_MS || now < s.at
+    const turn = s.at === -Infinity || (this.spent < LIVE_PER_FRAME && s.at <= this.cut)
+    if (due && !turn) this.nextCut = Math.max(this.nextCut, s.at)
+    if (due && turn) {
+      this.spent++
       this.render(s.g, grid.w, grid.h, draw)
       s.at = now
       if ('transferToImageBitmap' in s.canvas) {

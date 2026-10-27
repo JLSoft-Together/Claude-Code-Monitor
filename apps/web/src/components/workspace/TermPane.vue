@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Network, Paperclip, Play, RotateCw, TriangleAlert, X } from 'lucide-vue-next'
+import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, TriangleAlert, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -22,6 +22,7 @@ import { retireOverlay } from '../../lib/motion'
 import { registerSnapshot } from '../../lib/paneSnapshots'
 import { isMac } from '../../lib/platform'
 import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
+import { spawnQueue, type SpawnTicket } from '../../lib/spawnQueue'
 import { imagePasteKey, usePaneAttachments, type PaneScreen } from '../../composables/usePaneAttachments'
 import { SCAN_ROWS } from '../../lib/promptAttachments'
 import { desktop } from '../../lib/desktop'
@@ -71,6 +72,8 @@ let linkProvider: IDisposable | null = null
 let resizeObserver: ResizeObserver | null = null
 let refitTimer: ReturnType<typeof setTimeout> | null = null
 let restoredOnMount = false
+let ticket: SpawnTicket | null = null
+const queued = ref(false)
 const findOpen = ref(false)
 const find = ref<InstanceType<typeof TermFind> | null>(null)
 const searchAddon = ref<SearchAddon | null>(null)
@@ -178,6 +181,8 @@ function closeFind(): void {
 
 const procChip = computed(() => {
   const kind = processChip(props.pane.state)
+  if (kind === 'parked') return { kind, label: t('workspace.rail.state.parked'), title: t('workspace.parked.hint'), status: 'stale', cls: 'bg-fill text-ink-muted' }
+  if (kind === 'starting' && queued.value) return { kind, label: t('workspace.queued.label'), title: t('workspace.queued.hint'), status: null, cls: 'bg-fill text-ink-muted' }
   if (kind === 'starting') return { kind, label: t('workspace.rail.state.starting'), title: undefined, status: null, cls: 'bg-fill text-ink-muted' }
   if (kind === 'exited') {
     const meta = statusMeta('completed')
@@ -234,6 +239,7 @@ function dropMenus(): void {
 }
 
 const ended = computed(() => props.pane.state === 'exited' || props.pane.state === 'error' || props.pane.state === 'gone')
+const parked = computed(() => props.pane.state === 'parked')
 const info = usePaneInfo()
 const sessionChip = computed(() => {
   const s = session.value
@@ -596,6 +602,10 @@ async function paste(textOnly: boolean): Promise<void> {
 
 function onKey(e: KeyboardEvent): boolean {
   if (e.type !== 'keydown') return true
+  if (parked.value) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) wake()
+    return false
+  }
   const newline = newlineFor(e, preset.value)
   if (newline) {
     e.preventDefault()
@@ -637,6 +647,7 @@ function onMessage(msg: PtyServerMessage): void {
       // Only folders the user picked go to the recent list; the home default is always one click away.
       if (props.pane.cwd && !msg.replay) workspace.remember(msg.cwd)
       workspace.update(key, { sessionId: msg.id, pid: msg.pid || undefined, cwd: msg.cwd, state: 'running', error: undefined })
+      ticket?.release()
       if (term) conn?.resize(term.cols, term.rows)
       if (props.pane.pendingCommand && !msg.replay) pendingTimer = setTimeout(sendPending, PENDING_GRACE_MS)
       if (!msg.replay && props.pane.openTicket) workspace.update(key, { openTicket: undefined })
@@ -654,6 +665,7 @@ function onMessage(msg: PtyServerMessage): void {
       break
     case 'exit':
       resetDev()
+      ticket?.release(false)
       workspace.update(key, { state: 'exited', exitCode: msg.code })
       break
     case 'gone':
@@ -662,6 +674,7 @@ function onMessage(msg: PtyServerMessage): void {
       else workspace.update(key, { state: 'gone', error: t('workspace.state.gone') })
       break
     case 'error':
+      ticket?.release(false)
       if (msg.message === 'cwd' && props.pane.cwd) workspace.forget(props.pane.cwd)
       workspace.update(key, { state: 'error', error: t(`workspace.error.${msg.message}`) })
       break
@@ -669,6 +682,7 @@ function onMessage(msg: PtyServerMessage): void {
 }
 
 async function connect(start: PtyStart): Promise<void> {
+  const own = ticket
   conn?.close()
   conn = new PtyConnection({
     onOutput: (bytes) => {
@@ -678,6 +692,7 @@ async function connect(start: PtyStart): Promise<void> {
     },
     onMessage,
     onClose: () => {
+      own?.release(false)
       if (props.pane.state === 'running' || props.pane.state === 'starting')
         workspace.update(props.pane.key, { state: 'error', error: t('workspace.state.disconnected') })
     },
@@ -685,6 +700,7 @@ async function connect(start: PtyStart): Promise<void> {
   try {
     await conn.open(start, term?.cols ?? 80, term?.rows ?? 24)
   } catch {
+    own?.release(false)
     workspace.update(props.pane.key, { state: 'error', error: t('workspace.state.unavailable') })
   }
 }
@@ -703,7 +719,27 @@ function restart(): void {
   oscLinks.length = 0
   reportedCwd = null
   workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, agent: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
-  void connect({ spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
+  void spawn()
+}
+
+async function spawn(): Promise<void> {
+  ticket?.release(false)
+  const mine = spawnQueue.enter(props.visible)
+  ticket = mine
+  queued.value = true
+  const ok = await mine.started
+  if (ticket !== mine) return
+  queued.value = false
+  if (ok) void connect(spawnStart())
+}
+
+function spawnStart(): PtyStart {
+  return { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } }
+}
+
+function wake(): void {
+  workspace.wake([props.pane.key])
+  term?.focus()
 }
 
 function reconnect(): void {
@@ -797,13 +833,23 @@ onMounted(() => {
   window.addEventListener('resize', dropMenus)
 
   restoredOnMount = !!props.pane.sessionId
-  void connect(props.pane.sessionId ? { attach: props.pane.sessionId } : { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } })
+  if (props.pane.state === 'parked') return
+  if (props.pane.sessionId) void connect({ attach: props.pane.sessionId })
+  else void spawn()
 })
+
+watch(
+  () => props.pane.state,
+  (state, was) => {
+    if (was === 'parked' && state === 'starting' && !conn) void spawn()
+  },
+)
 
 watch(
   () => props.visible,
   async (visible) => {
     setRenderer(visible)
+    if (visible) ticket?.promote()
     if (!visible) return dropMenus()
     await nextTick()
     refit()
@@ -865,6 +911,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   if (refitTimer) clearTimeout(refitTimer)
   if (pendingTimer) clearTimeout(pendingTimer)
+  ticket?.release(false)
   stopPrefill()
   window.removeEventListener('resize', dropMenus)
   linkProvider?.dispose()
@@ -1178,6 +1225,18 @@ onBeforeUnmount(() => {
       <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
         <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
+      <Transition name="ccm-fade">
+        <div v-if="parked" class="absolute inset-0 z-11 flex items-center justify-center rounded-card bg-well p-4" data-pane-parked>
+          <div class="flex max-w-80 flex-col items-center gap-2 text-center">
+            <Moon :size="20" class="text-ink-faint" aria-hidden="true" />
+            <p class="text-sm font-semibold text-ink">{{ t('workspace.parked.title') }}</p>
+            <p class="text-xs text-ink-muted">{{ t('workspace.parked.hint') }}</p>
+            <button type="button" class="ccm-btn ccm-btn-primary mt-1" data-pane-wake @click="wake">
+              <Play :size="14" aria-hidden="true" />{{ pane.resume ? t('workspace.parked.resume') : t('workspace.parked.start') }}
+            </button>
+          </div>
+        </div>
+      </Transition>
       <div
         class="pointer-events-none absolute inset-0 z-12 rounded-card bg-well transition-opacity duration-(--ccm-dur-base) ease-out-quint"
         :class="dim ? 'opacity-45' : 'opacity-0'"

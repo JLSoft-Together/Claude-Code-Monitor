@@ -22,7 +22,7 @@ const meta = computed(() => statusMeta(props.status))
     stroke-linejoin="round"
     aria-hidden="true"
     class="shrink-0"
-    :class="[meta.text, meta.glyph === 'spinner' && animate ? 'ccm-spin' : '']"
+    :class="[meta.text, meta.glyph === 'spinner' && animate ? 'ccm-spin-once' : '']"
   >
     <g v-if="meta.glyph === 'spinner'">
       <path d="M8 2.2v11.6M2.2 8h11.6M3.9 3.9l8.2 8.2M12.1 3.9l-8.2 8.2" stroke-width="1.9" />

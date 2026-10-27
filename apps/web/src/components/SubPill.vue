@@ -92,9 +92,7 @@ const tip = computed(() => {
         <span :key="agent.status" class="ccm-glyph-pop inline-flex shrink-0"><StatusIcon :status="agent.status" :size="14" /></span>
         <span class="nodrag max-w-[60%] shrink-0 cursor-text truncate font-semibold select-text">{{ name }}</span>
         <ProviderBadge v-if="codex" :mode="agent.type" variant="icon" />
-        <Transition name="ccm-swap" mode="out-in">
-          <span :key="detail" class="nodrag min-w-0 flex-1 cursor-text truncate text-ink-muted select-text">{{ detail }}</span>
-        </Transition>
+        <span :key="detail" class="ccm-swap-in nodrag min-w-0 flex-1 cursor-text truncate text-ink-muted select-text">{{ detail }}</span>
         <span v-if="elapsed" class="shrink-0 tabular-nums text-ink-faint">{{ elapsed }}</span>
         <button
           v-if="mapCtx && (kids > 0 || folded)"

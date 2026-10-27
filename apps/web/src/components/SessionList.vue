@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineComponent, h, ref, watch } from 'vue'
 import { reducedMotion, pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { ArrowDownUp, Trash2 } from 'lucide-vue-next'
@@ -33,6 +33,19 @@ const sorted = computed(() => {
   if (!frozen.value) return liveSorted.value
   const pos = new Map(frozenOrder.value.map((id, i) => [id, i]))
   return [...terminals.list].sort((a, b) => (pos.get(a.id) ?? Infinity) - (pos.get(b.id) ?? Infinity))
+})
+const sortedIds = computed<string[]>((prev) => {
+  const next = sorted.value.map((x) => x.id)
+  return prev?.length === next.length && next.every((id, i) => id === prev[i]) ? prev : next
+})
+const CardById = defineComponent({
+  props: { id: { type: String, required: true } },
+  setup(p) {
+    return () => {
+      const terminal = terminals.byId[p.id]
+      return terminal ? h(SessionCard, { terminal }) : null
+    }
+  },
 })
 function freeze(on: boolean): void {
   if (on && !frozen.value) frozenOrder.value = liveSorted.value.map((x) => x.id)
@@ -134,8 +147,8 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       @focusin="freeze(true)"
       @focusout="onFocusOut"
     >
-      <li v-for="terminal in sorted" :key="terminal.id" :data-terminal-id="terminal.id">
-        <SessionCard :terminal="terminal" />
+      <li v-for="id in sortedIds" :key="id" :data-terminal-id="id">
+        <CardById :id="id" />
       </li>
     </TransitionGroup>
     </div>

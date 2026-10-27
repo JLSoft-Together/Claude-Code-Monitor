@@ -1,3 +1,5 @@
+import { frozen } from './bitmap'
+
 export const WEB_SIZE = 15
 export const WEB_INK = 'rgba(236,240,248,0.82)'
 export const BALL_R = 1.6
@@ -155,9 +157,9 @@ export function drawPopcornBucket(ctx: CanvasRenderingContext2D, x: number, y: n
   ctx.restore()
 }
 
-const glows = new Map<string, HTMLCanvasElement | null>()
+const glows = new Map<string, CanvasImageSource | null>()
 
-export function softGlow(rgb: readonly [number, number, number], size: number, alpha = 0.75): HTMLCanvasElement | null {
+export function softGlow(rgb: readonly [number, number, number], size: number, alpha = 0.75): CanvasImageSource | null {
   const key = `${rgb.join(',')}:${size}:${alpha}`
   const hit = glows.get(key)
   if (hit !== undefined) return hit
@@ -179,6 +181,7 @@ export function softGlow(rgb: readonly [number, number, number], size: number, a
   } catch {
     c = null
   }
-  glows.set(key, c)
-  return c
+  const out = c && frozen(c)
+  glows.set(key, out)
+  return out
 }
