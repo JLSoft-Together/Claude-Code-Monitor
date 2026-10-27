@@ -16,3 +16,8 @@ Code:
 - Rail / sidebar / Mission / paneHead: trạng thái `parked` (chữ "Đang ngủ", icon trăng, không spinner).
 - `WorkspaceView.vue`: banner checkbox; menu tab "Chạy cả tab" khi tab có pane ngủ.
 - i18n en/vi.
+
+Bổ sung (2026-10-27 16:50, câu (c) handoff): tích nhiều project thì pane không spawn cùng lúc nữa.
+- `lib/spawnQueue.ts`: tối đa 2 tiến trình đang khởi động; giữ chỗ thêm 1,5 s sau `ready` (claude còn đang load); pane đang hiện được ưu tiên.
+- Áp cho mọi spawn (restore, wake, restart, pane mới); attach (reload cửa sổ) không xếp hàng.
+- Pane đang chờ hiện chip "Chờ lượt".

@@ -7,6 +7,10 @@ const en = {
     key: 'Enter',
     wakeTab: 'Start tab ({n} asleep)',
   },
+  queued: {
+    label: 'Queued',
+    hint: 'Waiting for other sessions to finish starting so the app stays responsive.',
+  },
   restorePick: {
     hint: 'Ticked projects start now. The rest keep their layout and stay asleep until you open them.',
     sessions: '{n} session | {n} sessions',
@@ -26,6 +30,10 @@ const vi: typeof en = {
     start: 'Chạy',
     key: 'Enter',
     wakeTab: 'Chạy cả tab ({n} đang ngủ)',
+  },
+  queued: {
+    label: 'Chờ lượt',
+    hint: 'Đợi các session khác khởi động xong để app không bị đơ.',
   },
   restorePick: {
     hint: 'Project được tích sẽ chạy luôn. Project còn lại giữ bố cục và ngủ tới khi bạn mở.',
