@@ -41,3 +41,24 @@ contract art `.planning/CONTRACT-v63-office3d-assets.md`, tài liệu `docs/offi
   - Test: office 25/273, habblaud 55/538, typecheck web OK.
 - [ ] Monitor → Sơ đồ (Vue Flow) ăn ~185% CPU với demo 46 agent → ứng viên tối ưu tiếp.
 - [x] 16:00 Handoff mới: `.planning/HANDOFF-2026-10-27-1600.md`.
+- [x] 15:25 Đã push `feat/office-3d` (`418622f`) và merge vào `master` (`5c4c9ef`, đã push). Handoff mới: `.planning/HANDOFF-2026-10-27-1525.md` (thay HANDOFF-2026-10-27-1600, tên đó ghi giờ sai).
+
+## Phiên 2026-10-27 chiều (sau HANDOFF-2026-10-27-1525): tối ưu Monitor → Sơ đồ
+- [x] Đo dev Electron (4417, demo 8×4, cờ `--disable-features=CalculateNativeWinOcclusion` để cửa sổ bị che vẫn vẽ; script `D:/tmp/ccm-prof/restart.sh`, `t30.mjs` trước/sau, `t25.mjs` tắt từng lớp, `m.ps1` CPU).
+- [x] Sửa (chưa commit): `DoneTray.vue` `dots` ổn định (computed giữ mảng cũ) → TransitionGroup thôi đo lại; `SubPill`/`MainNode` bỏ `<Transition mode="out-in">` đổi chữ → key + `.ccm-swap-in` (CSS keyframe, `style.css`); `SessionList.vue` TransitionGroup theo `sortedIds` + `CardById`; `TreeEdge.vue` chấm chạy ghi `transform` thẳng DOM; `AgentMap.vue` `edges` giữ mảng cũ khi không đổi (`sameEdge`); `lib/format.ts` cache `Intl.NumberFormat`.
+- [x] Kết quả cùng điều kiện: forced reflow 37→4/s, getBoundingClientRect 331→16/s, style recalc 142→60/s. CPU tổng renderer không giảm (~110%) vì nặng nhất là vẽ khung: tắt mọi animation 117→47%, chỉ tắt spinner trạng thái 117→92%, ẩn danh sách session 117→66%. `will-change` cho spinner không giúp.
+- [ ] Ứng viên tiếp (cần chủ nhân chốt vì đụng rule animate): giới hạn spinner chạy liên tục (vd chỉ node đang chọn / hover, còn lại icon tĩnh + chấm breathe chậm), giảm frame của animation vô hạn.
+- [x] Test web 1202/1203 (1 test thời gian `usePaneAttachments` fail khi máy tải nặng, chạy riêng 8/8). Typecheck web OK. Dev đã tắt, cổng trống.
+
+## 2026-10-27 16:05 — v64 restore chọn project + pane ngủ (chủ nhân chọn "Chọn project khi restore", pane ngủ "chỉ khi bấm")
+- [x] Plan `.planning/PLAN-v64-restore-parked.md`. Code xong (chưa commit): store `parked` + `restoreLast(run)` + `wake`, `RestorePicker.vue`, thẻ ngủ trong `TermPane`, menu tab "Chạy cả tab", rail/sidebar/Mission hiện "Đang ngủ".
+- [x] Test web 113/1209 pass (thêm `workspaceRestore.test.ts` 6 test, `rail.test.ts` thêm case parked). Typecheck web OK.
+- [ ] Chủ nhân thử trên app thật: mở lại app → banner có checkbox project → pane không tích hiện thẻ "Đang ngủ".
+
+## 2026-10-27 16:30 — giảm animation (chủ nhân: "giảm animation cũng được, hoặc anim đơn giản") + Monitor ẩn panel Sessions khi mở app
+- [x] Không còn animation vô hạn lúc bình thường: `StatusIcon` spinner → `.ccm-spin-once` (xoay 1 vòng khi đổi trạng thái); `ccm-breathe` / `ccm-pulse` 3 nhịp, `ccm-caret` 4 nhịp (`style.css`). Giữ infinite: `.ccm-spin` của LoaderCircle đang tải, `ccm-shimmer` (skeleton / thanh Run).
+- [x] `TokenCount.vue`: bỏ đếm dần (`useCountUp`) + phát sáng; badge "+N" chỉ hiện 1 lần mỗi đợt (`burst`, gom trong 1.5 s), chỉ mờ dần (`ccm-quota-fade` 1.6 s).
+- [x] Node Sơ đồ di chuyển 300→220 ms (`.ccm-map-motion .vue-flow__node`).
+- [x] Đo (demo 8×4, Sơ đồ, cửa sổ luôn vẽ): GPU 51–61% → 13–21%, renderer ~110% → 70–96% (tắt hẳn animation 59% — phần còn lại do demo cập nhật 32 agent mỗi 1.2 s).
+- [x] `stores/ui.ts` `initialPanels`: panel Sessions luôn đóng khi mở app (không đọc `open` đã lưu; `pinned` vẫn nhớ).
+- [x] Test web 113/1209, typecheck OK. Dev đã tắt.
