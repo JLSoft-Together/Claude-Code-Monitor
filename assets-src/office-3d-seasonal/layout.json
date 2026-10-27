@@ -1,0 +1,14 @@
+{
+ "sheets": {
+  "s-floor.1.png": [
+   { "key": "tree", "fp": [1, 1], "fill": 0.98, "sy": 0.2 },
+   { "key": "gift", "fp": [1, 1], "fill": 0.58, "sy": 0.3 },
+   { "key": "pumpkin", "fp": [1, 1], "fill": 0.62, "sy": 0.3 },
+   { "key": "ghost", "fp": [1, 1], "fill": 0.86, "sy": 0.3 }
+  ],
+  "s-wall.1.png": [
+   { "key": "wreath", "wall": true, "fp": [1, 0], "box": [46, 52], "elev": 40 },
+   { "key": "bat", "wall": true, "fp": [1, 0], "box": [66, 34], "elev": 50 }
+  ]
+ }
+}

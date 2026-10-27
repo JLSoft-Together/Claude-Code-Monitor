@@ -1,0 +1,111 @@
+{
+  "id": "night-shift",
+  "version": 1,
+  "name": {
+    "en": "Night shift",
+    "vi": "Ca đêm"
+  },
+  "description": {
+    "en": "Late studio of navy, teal glow, rose neon and warm lamps.",
+    "vi": "Studio khuya: xanh navy, ánh teal, neon hồng và đèn bàn ấm."
+  },
+  "outline": "#1d2240",
+  "rooms": [
+    {
+      "carpet": "#6f7499",
+      "carpet2": "#666b91",
+      "wall": {
+        "base": "#eceef8",
+        "trim": "#3a3f7a",
+        "pattern": "plain"
+      },
+      "accent": "#13838a",
+      "deskVariant": "dark",
+      "chairVariant": "blue"
+    },
+    {
+      "carpet": "#b98fa6",
+      "carpet2": "#b08398",
+      "wall": {
+        "base": "#f8eef3",
+        "trim": "#a8547c",
+        "pattern": "stripes"
+      },
+      "accent": "#c23a78",
+      "deskVariant": "white",
+      "chairVariant": "black"
+    },
+    {
+      "carpet": "#6fa8a6",
+      "carpet2": "#649f9d",
+      "wall": {
+        "base": "#eaf6f5",
+        "trim": "#2f8784",
+        "pattern": "glass"
+      },
+      "accent": "#3a3f7a",
+      "deskVariant": "white",
+      "chairVariant": "gray"
+    },
+    {
+      "carpet": "#8b6f63",
+      "carpet2": "#80655a",
+      "wall": {
+        "base": "#f7f0e6",
+        "trim": "#462d2f",
+        "pattern": "wood_panel"
+      },
+      "accent": "#a8650a",
+      "deskVariant": "wood",
+      "chairVariant": "black"
+    },
+    {
+      "carpet": "#9389bd",
+      "carpet2": "#887db6",
+      "wall": {
+        "base": "#f1eefa",
+        "trim": "#6a52c4",
+        "pattern": "tiles"
+      },
+      "accent": "#6a52c4",
+      "deskVariant": "dark",
+      "chairVariant": "gray"
+    },
+    {
+      "carpet": "#4e5578",
+      "carpet2": "#464c6f",
+      "wall": {
+        "base": "#e9ebf3",
+        "trim": "#1d2240",
+        "pattern": "brick"
+      },
+      "accent": "#c23a78",
+      "deskVariant": "dark",
+      "chairVariant": "black"
+    },
+    {
+      "carpet": "#c7a46a",
+      "carpet2": "#bd9a60",
+      "wall": {
+        "base": "#fbf4e6",
+        "trim": "#b9852f",
+        "pattern": "marble"
+      },
+      "accent": "#9a5c08",
+      "deskVariant": "wood",
+      "chairVariant": "red"
+    },
+    {
+      "carpet": "#8ca0b6",
+      "carpet2": "#8196ad",
+      "wall": {
+        "base": "#eef3f8",
+        "trim": "#4a6b8e",
+        "pattern": "plain"
+      },
+      "accent": "#3a3f7a",
+      "deskVariant": "white",
+      "chairVariant": "green"
+    }
+  ]
+}

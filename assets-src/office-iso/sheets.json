@@ -1,0 +1,17 @@
+{
+  "takes": {
+    "ava-turn": "2",
+    "jin-walk8-se": "3",
+    "jin-walk8-ne": "2",
+    "jin-coffee": "2",
+    "theo-walk8-se": "2",
+    "mai-walk8-se": "2",
+    "rosa-actions2": "2",
+    "ava-actions2": "2"
+  },
+  "tune": {
+    "theo": {"off": ["walk8-ne"]},
+    "kofi": {"skip": {"actions2": ["raise_hand_seated_se"]}},
+    "mai": {"skip": {"actions2": ["raise_hand_seated_se"]}}
+  }
+}

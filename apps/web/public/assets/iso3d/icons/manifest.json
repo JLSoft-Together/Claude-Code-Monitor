@@ -1,0 +1,270 @@
+{
+ "version": 1,
+ "scale": 2,
+ "items": {
+  "alert": {
+   "file": "alert.webp",
+   "size": [
+    36,
+    34
+   ],
+   "anchor": [
+    18,
+    34
+   ]
+  },
+  "box": {
+   "file": "box.webp",
+   "size": [
+    38,
+    38
+   ],
+   "anchor": [
+    19,
+    38
+   ]
+  },
+  "chat": {
+   "file": "chat.webp",
+   "size": [
+    40,
+    34
+   ],
+   "anchor": [
+    20,
+    34
+   ]
+  },
+  "check": {
+   "file": "check.webp",
+   "size": [
+    35,
+    36
+   ],
+   "anchor": [
+    18,
+    36
+   ]
+  },
+  "cobweb": {
+   "file": "cobweb.webp",
+   "size": [
+    39,
+    40
+   ],
+   "anchor": [
+    20,
+    40
+   ]
+  },
+  "coffee": {
+   "file": "coffee.webp",
+   "size": [
+    31,
+    38
+   ],
+   "anchor": [
+    16,
+    38
+   ]
+  },
+  "coin": {
+   "file": "coin.webp",
+   "size": [
+    31,
+    32
+   ],
+   "anchor": [
+    16,
+    32
+   ]
+  },
+  "hand_paper": {
+   "file": "hand_paper.webp",
+   "size": [
+    27,
+    36
+   ],
+   "anchor": [
+    14,
+    36
+   ]
+  },
+  "hand_rock": {
+   "file": "hand_rock.webp",
+   "size": [
+    36,
+    34
+   ],
+   "anchor": [
+    18,
+    34
+   ]
+  },
+  "hand_scissors": {
+   "file": "hand_scissors.webp",
+   "size": [
+    26,
+    36
+   ],
+   "anchor": [
+    13,
+    36
+   ]
+  },
+  "heart": {
+   "file": "heart.webp",
+   "size": [
+    36,
+    32
+   ],
+   "anchor": [
+    18,
+    32
+   ]
+  },
+  "hourglass": {
+   "file": "hourglass.webp",
+   "size": [
+    23,
+    36
+   ],
+   "anchor": [
+    12,
+    36
+   ]
+  },
+  "hourglass_flip": {
+   "file": "hourglass_flip.webp",
+   "size": [
+    40,
+    23
+   ],
+   "anchor": [
+    20,
+    23
+   ]
+  },
+  "idea": {
+   "file": "idea.webp",
+   "size": [
+    26,
+    36
+   ],
+   "anchor": [
+    13,
+    36
+   ]
+  },
+  "lightning": {
+   "file": "lightning.webp",
+   "size": [
+    25,
+    36
+   ],
+   "anchor": [
+    12,
+    36
+   ]
+  },
+  "music": {
+   "file": "music.webp",
+   "size": [
+    34,
+    36
+   ],
+   "anchor": [
+    17,
+    36
+   ]
+  },
+  "question": {
+   "file": "question.webp",
+   "size": [
+    35,
+    36
+   ],
+   "anchor": [
+    18,
+    36
+   ]
+  },
+  "sparkle": {
+   "file": "sparkle.webp",
+   "size": [
+    31,
+    34
+   ],
+   "anchor": [
+    16,
+    34
+   ]
+  },
+  "star": {
+   "file": "star.webp",
+   "size": [
+    36,
+    34
+   ],
+   "anchor": [
+    18,
+    34
+   ]
+  },
+  "storm": {
+   "file": "storm.webp",
+   "size": [
+    37,
+    40
+   ],
+   "anchor": [
+    18,
+    40
+   ]
+  },
+  "sweat": {
+   "file": "sweat.webp",
+   "size": [
+    27,
+    36
+   ],
+   "anchor": [
+    14,
+    36
+   ]
+  },
+  "trophy": {
+   "file": "trophy.webp",
+   "size": [
+    36,
+    36
+   ],
+   "anchor": [
+    18,
+    36
+   ]
+  },
+  "wave": {
+   "file": "wave.webp",
+   "size": [
+    35,
+    36
+   ],
+   "anchor": [
+    18,
+    36
+   ]
+  },
+  "zzz": {
+   "file": "zzz.webp",
+   "size": [
+    38,
+    38
+   ],
+   "anchor": [
+    19,
+    38
+   ]
+  }
+ }
+}

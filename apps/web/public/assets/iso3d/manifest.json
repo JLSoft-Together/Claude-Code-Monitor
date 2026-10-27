@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "scale": 2,
+  "chars": "chars/manifest.json",
+  "furniture": "furniture/manifest.json",
+  "surfaces": "surfaces/manifest.json",
+  "wallArt": "wallart/manifest.json",
+  "seasonal": "seasonal/manifest.json",
+  "icons": "icons/manifest.json"
+}

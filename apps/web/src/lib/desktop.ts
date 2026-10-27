@@ -46,6 +46,7 @@ export interface DesktopLook {
   muted: string
   faint: string
   accent: string
+  bar?: string
   dark: boolean
 }
 
@@ -67,6 +68,7 @@ export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
 
 interface DesktopBridge {
   platform: string
+  titleBar?: string
   ptyEndpoint: () => Promise<PtyEndpoint | null>
   /** `near`: the last project; the dialog opens in its parent folder. */
   pickFolder: (near?: string) => Promise<string | null>
@@ -163,6 +165,8 @@ interface DesktopBridge {
 
 /** Set by the Electron preload; absent in a plain browser, where terminals stay unavailable. */
 export const desktop: DesktopBridge | undefined = (window as unknown as { ccmDesktop?: DesktopBridge }).ccmDesktop
+
+export const titleBar: 'mac' | 'overlay' | null = desktop?.titleBar === 'mac' || desktop?.titleBar === 'overlay' ? desktop.titleBar : null
 
 export const hasTerminals = typeof desktop?.ptyEndpoint === 'function'
 

@@ -1,0 +1,250 @@
+{
+  "blocks": {
+    "style3d": "STYLE: soft stylized 3D render of a cozy miniature office, like a polished diorama in a modern management game: smooth rounded forms, soft global illumination, gentle ambient occlusion and soft contact shadows, warm interior lamp light, subtle bevels and matte materials (light oak wood, cream plaster, sage green and dusty blue fabric, brushed metal, clear glass). Stylized friendly characters with slightly large heads, soft skin shading, simple faces. Clean, calm, high readability at small size. NOT pixel art, NOT photorealistic, NOT flat vector. Original design, no text, no letters, no numbers, no logos, no watermark, no signature.",
+    "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no floor plane, no ground shadow, no vignette, no frame. The subject is centered with generous empty margin on every side and is never cropped. Do not use magenta, pink or purple anywhere on the subject itself.",
+    "adult": "AGE: the character is clearly a grown-up ADULT office professional in their late twenties to thirties: adult face with a defined jaw and cheekbones, adult neck and shoulders, adult body proportions with longer legs. NOT a child, NOT a teenager, NOT a kid.",
+    "cam": "CAMERA: front three-quarter top-down view like the reference diorama: the camera is high above, looking down at about 45 degrees, straight on (NOT an isometric diagonal). DOWN = the character faces straight toward the camera (bottom of the image), the whole front visible, seen from above. UP = the character faces straight away from the camera (top of the image), back visible, face not visible. RIGHT = the character faces the right edge of the image, a side profile seen from above."
+  },
+  "archetypes": {
+    "jin": {
+      "look": "m",
+      "name": "Jin",
+      "who": "the young man from the reference: short thick textured dark-brown hair swept up at the front, light skin, plain white crew-neck t-shirt with no print, dark navy slim trousers with rolled cuffs, white sneakers, a dark watch with a green strap on his left wrist",
+      "adult": false
+    },
+    "theo": {
+      "look": "m",
+      "name": "Theo",
+      "who": "an adult man in his early thirties with warm medium-brown skin, short neat black hair with a side part, a short trimmed black beard, rectangular dark-framed glasses, a dusty-blue button-up shirt with the sleeves rolled to the elbows and tucked in, khaki-beige chino trousers, brown leather shoes",
+      "adult": true
+    },
+    "kofi": {
+      "look": "m",
+      "name": "Kofi",
+      "who": "an adult man in his late twenties with deep dark-brown skin, a short black beard, a charcoal-grey knit beanie covering his short black hair, a mustard-yellow hoodie (no print), mid-grey slim jeans, chunky white-and-grey sneakers, tall broad-shouldered build",
+      "adult": true
+    },
+    "mai": {
+      "look": "f",
+      "name": "Mai",
+      "who": "an adult woman in her late twenties with light-beige skin, long straight glossy black hair falling below her shoulder blades with a middle part, a soft sage-green long-sleeve blouse, cream-white wide-leg trousers, tan flat shoes, small gold stud earrings",
+      "adult": true
+    },
+    "rosa": {
+      "look": "f",
+      "name": "Rosa",
+      "who": "an adult woman in her early thirties with warm tan-brown skin, big voluminous shoulder-length curly dark-brown hair, a terracotta-orange knit cardigan over a cream top, a charcoal-grey knee-length A-line skirt, dark tights, black ankle boots",
+      "adult": true
+    },
+    "ava": {
+      "look": "f",
+      "name": "Ava",
+      "who": "an adult woman in her thirties with fair skin and light freckles, a short sleek copper-red chin-length bob haircut, a light-blue denim jacket over a white t-shirt, slim black trousers, white sneakers, tall slender build",
+      "adult": true
+    }
+  },
+  "templates": {
+    "turn": {
+      "aspect": "3:2",
+      "refs": [
+        "../office-iso-spike/.cache/raw/jin3d-turn.1.png",
+        "../office-iso-spike/.cache/raw/mock3d-c-front.1.png",
+        ".cache/raw/{id}-turn.final.png"
+      ],
+      "refNote": "The FIRST attached image is the target 3D LOOK and character scale (Jin, soft stylized 3D render). The SECOND image is the target CAMERA ANGLE (front three-quarter top-down diorama). The THIRD image is the character DESIGN to keep (face, hair, outfit, colours, accessories); re-render that person in the soft 3D look of the first image.",
+      "prompt": "Character turnaround sprite sheet for an office management game: ONE office worker, {who}. Exactly 3 full-body standing idle poses of the SAME person in ONE horizontal row, three equal columns, wide empty gaps, none touching, identical size, feet on the same baseline, arms relaxed at the sides:\nColumn 1: facing DOWN (toward the camera).\nColumn 2: facing RIGHT (side profile).\nColumn 3: facing UP (back view, face not visible).",
+      "blocks": [
+        "style3d",
+        "cam",
+        "adult",
+        "chroma"
+      ]
+    },
+    "walk-down": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking DOWN, straight toward the camera. All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk-up": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking UP, straight away from the camera (back view, face not visible). All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk-right": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking RIGHT, toward the right edge of the image (side profile seen from above). All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk8-right": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png",
+        ".cache/raw3d/{id}-walk-right.1.png"
+      ],
+      "refNote": "The first attached image is the character turnaround, the second is the character's EXISTING 4-frame walk cycle to the right. Same character, same 3D look, same size. Frames 1, 3, 5 and 7 of the new sheet are redrawn copies of frames 1, 2, 3 and 4 of the existing walk cycle; frames 2, 4, 6 and 8 are new in-between poses. PROPORTIONS ARE CRITICAL: the same head size and the same body proportions as the reference in every frame.",
+      "prompt": "Smooth animation sprite sheet for a game: 8 frames of ONE complete walk cycle of the reference character ({who}) walking RIGHT (side profile seen from above). All 8 in ONE horizontal row, 8 equal narrow columns, small empty gaps, none touching, same size, feet on the same baseline, head at the same height. The arms ALWAYS swing opposite to the legs; the legs and arms move smoothly, each frame one eighth of the cycle:\nFrame 1: contact A. Frame 2: left foot flat taking the weight, right foot lifting behind. Frame 3: passing A. Frame 4: right leg swinging forward, knee bent. Frame 5: contact B. Frame 6: right foot flat taking the weight, left foot lifting behind. Frame 7: passing B. Frame 8: left leg swinging forward, knee bent.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "poses": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every column.",
+      "prompt": "Sprite sheet for an office management game, 7 poses of the reference character ({who}) in ONE horizontal row, seven equal columns, wide empty gaps, none touching, all at exactly the same scale, NO chair, NO desk, NO furniture, NO props (seated poses sit on an invisible seat):\nColumn 1: standing idle facing DOWN, arms relaxed (scale reference).\nColumn 2: seated facing UP (back view, face not visible), both hands forward at keyboard height typing, thighs horizontal, feet on the floor.\nColumn 3: seated facing DOWN, relaxed, hands on the thighs, friendly smile.\nColumn 4: seated facing DOWN, asleep: torso slumped forward, head resting on forearms folded at desk height, eyes closed.\nColumn 5: seated facing DOWN, one hand raised high above the head, cheerful face.\nColumn 6: standing facing DOWN, one hand raised high above the head waving, cheerful face.\nColumn 7: standing facing DOWN, cheering with BOTH arms raised high in a V, big smile.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "actions": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png",
+        ".cache/raw3d/{id}-poses.1.png"
+      ],
+      "refNote": "The first attached image is the turnaround, the second shows existing poses of the SAME character; identical look, colours, proportions and EXACTLY the same size as in the second image.",
+      "prompt": "Sprite sheet: second animation frames of the reference character ({who}), 5 STANDING poses facing DOWN in ONE horizontal row, five equal columns, wide gaps, same scale, feet on the same baseline, no props:\nColumn 1: standing idle (scale reference).\nColumn 2: the same raised hand as the existing wave pose but the open hand tilted the other way (mid-wave).\nColumn 3: talking, mouth open, one hand gesturing forward at chest height palm up.\nColumn 4: talking, both hands gesturing outward at waist height.\nColumn 5: cheering, both arms raised high but wider apart and bent, eyes happily closed.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "coffee": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every column.",
+      "prompt": "Sprite sheet, 4 STANDING poses of the reference character ({who}) facing DOWN, ONE horizontal row, four equal columns, wide gaps, same scale, feet on the same baseline. The only prop is a plain white ceramic coffee mug (no text, no logo):\nColumn 1: idle, empty hands (scale reference, no mug).\nColumn 2: holding the mug in one hand at chest height.\nColumn 3: lifting the mug halfway to the mouth.\nColumn 4: sipping, mug at the lips, eyes closed happily.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk-coffee-down": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking DOWN, straight toward the camera. All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. He carries a plain white ceramic coffee mug (no text, no logo) in one hand held steady at chest height; only the other arm swings. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk-coffee-right": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger, NOT more chibi, NOT more realistic) and the same soft 3D render look. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking RIGHT (side profile seen from above). All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. He carries a plain white ceramic coffee mug (no text, no logo) in one hand held steady at chest height; only the other arm swings. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    },
+    "walk8-coffee-right": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw3d/{id}-turn.1.png",
+        ".cache/raw3d/{id}-walk-coffee-right.1.png"
+      ],
+      "refNote": "The first attached image is the character turnaround, the second is the character's EXISTING 4-frame walk cycle to the right carrying a coffee mug. Same character, same 3D look, same size. Frames 1, 3, 5 and 7 of the new sheet are redrawn copies of frames 1, 2, 3 and 4 of the existing walk cycle; frames 2, 4, 6 and 8 are new in-between poses. PROPORTIONS ARE CRITICAL: the same head size and the same body proportions as the reference in every frame.",
+      "prompt": "Smooth animation sprite sheet for a game: 8 frames of ONE complete walk cycle of the reference character ({who}) walking RIGHT (side profile seen from above), carrying a coffee mug. All 8 in ONE horizontal row, 8 equal narrow columns, small empty gaps, none touching, same size, feet on the same baseline, head at the same height. He carries a plain white ceramic coffee mug (no text, no logo) in his LEFT hand (the hand with the green watch, nearest to the camera), held steady at chest height in every frame; only the far right arm swings, ALWAYS opposite to the legs; the legs and arms move smoothly, each frame one eighth of the cycle:\nFrame 1: contact A. Frame 2: left foot flat taking the weight, right foot lifting behind. Frame 3: passing A. Frame 4: right leg swinging forward, knee bent. Frame 5: contact B. Frame 6: right foot flat taking the weight, left foot lifting behind. Frame 7: passing B. Frame 8: left leg swinging forward, knee bent.",
+      "blocks": [
+        "style3d",
+        "cam",
+        "chroma"
+      ]
+    }
+  },
+  "plan": {
+    "jin": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions",
+      "coffee",
+      "walk-coffee-down",
+      "walk-coffee-right"
+    ],
+    "theo": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions"
+    ],
+    "kofi": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions"
+    ],
+    "mai": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions"
+    ],
+    "rosa": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions"
+    ],
+    "ava": [
+      "turn",
+      "walk-down",
+      "walk-up",
+      "walk-right",
+      "poses",
+      "actions"
+    ]
+  }
+}

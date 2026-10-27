@@ -1,0 +1,383 @@
+{
+  "defaultModel": "codex image_generation",
+  "styles": {
+    "pixel": "Style: authentic pixel art made of crisp hard-edged square pixels on a perfectly regular grid, limited palette, flat color fills with 3-4 shades per material, no anti-aliasing, no gradients, no blur, no noise, no dithering. Calm late-night neon-lit studio pixel art with its own original look: deep navy (#1d2240) and indigo (#3a3f7a) shadows, glowing teal (#35d0c8) monitor screens and neon light strips, a few pink-rose (#e0559a) accents, warm amber desk lamps (#f2b552), pale lavender-grey walls (#e6e8f4), dark walnut wood, bluish glass, potted plants with lush green leaves. Original artwork: do not copy or imitate any existing game, tileset or artist. Outlines in dark blue-grey (#2b3245), never pure black. Light comes from the top-left. Absolutely no text, letters, numbers, logos or watermark.",
+    "chroma": "Background: one perfectly flat solid magenta color (#FF00FF) filling the entire background edge to edge, with no shadow, no floor, no gradient, no vignette and nothing else. The subject is isolated, centered, with a generous margin, and must not contain any magenta or pink.",
+    "wallart": "Style: a bold, simple illustration that will be displayed TINY as a framed picture on an office wall in a pixel art game (smaller than 64 pixels wide). Use large flat areas of strong saturated color, high contrast between neighbouring shapes, chunky iconic shapes and very few details; no thin lines, no small text. The artwork must fill the ENTIRE wide canvas edge to edge (full bleed), with no white or empty margins and no letterboxing: no frame, no border, no wall, no mat, no signature, no letters.",
+    "poster": "Style: a bold minimalist graphic poster that will be displayed TINY (about 12x16 pixels) on an office wall in a pixel art game. One single big iconic subject centered and filling most of the canvas, on a solid flat background color; strong saturated colors, high contrast, chunky simple shapes, no small details, no thin lines. Fill the whole canvas edge to edge: no frame, no border, no wall, no text, no letters, no numbers."
+  },
+  "assets": [
+    {
+      "id": "logo-mark",
+      "group": "brand",
+      "aspect": "1:1",
+      "styles": [
+        "pixel",
+        "chroma"
+      ],
+      "prompt": "A pixel art game icon of a charming little modern office building, designed to stay crisp as a tiny app icon. It is drawn on a coarse grid of big square pixels (the building is about 60 pixels wide and 70 pixels tall), every pixel exactly the same size and perfectly aligned to the grid, shown enlarged. Strictly front-facing elevation, as building sprites in classic top-down RPG and management games: perfectly straight vertical walls and horizontal edges, no perspective, no vanishing point, no slanted or diagonal lines, no side wall. A flat teal-blue roof seen from above as a simple rectangle with a light rim and straight vertical sides (not a trapezoid), directly on top of the facade, with one small potted plant on it. Light warm-grey facade with two honey-wood horizontal bands between the floors. Three floors with three big simple windows each: one solid flat color per window inside a dark frame, glowing warm yellow (two of them glowing bright blue like computer screens), with no mullions, no panes, no curtains and nothing drawn inside. A glass double door with a small teal awning in the middle of the ground floor. Only the building: nothing on the ground around it (no furniture, no sofas, no extra plants, no people). Simple, bold, symmetrical, cute; a compact rectangular silhouette, a bit taller than wide, that fills most of the square.",
+      "post": {
+        "kind": "native",
+        "colors": 28,
+        "balance": 0.5,
+        "merge": 12
+      },
+      "out": "brand/logo-detailed.png",
+      "model": "google/gemini-3-pro-image"
+    },
+    {
+      "id": "empty-office",
+      "group": "illustrations",
+      "aspect": "16:9",
+      "styles": [
+        "pixel"
+      ],
+      "prompt": "A pixel art scene of a calm, empty modern office interior late at night, in top-down 3/4 view like a cozy management game. Pale lavender-grey floor tiles with subtle grout lines; a lounge corner with a deep teal sofa, rose-pink cushions and a navy rug; two islands of white desks with glowing teal monitors, keyboards and mugs, grey office chairs pushed in, and warm amber desk lamps casting golden pools of light; potted plants in dark pots; tall walnut shelves with colorful binders; a water cooler with a blue jug; a small coffee counter. Big windows along the back wall show a deep navy night sky with a few stars and distant dark city silhouettes with small lit windows. A thin teal neon strip runs along the top of the back wall. Calm, quiet, inviting atmosphere, nobody there: no people, no characters, no animals.",
+      "post": {
+        "kind": "scene",
+        "w": 480,
+        "h": 270,
+        "colors": 32,
+        "scale": 2,
+        "despeckle": true,
+        "balance": 0.5
+      },
+      "out": "illustrations/empty-office.png"
+    },
+    {
+      "id": "painting-neon-city",
+      "group": "art",
+      "kind": "painting",
+      "title": "Neon city",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A city skyline at night: a flat deep navy sky with a big pale yellow crescent moon; five chunky wide plain rectangular dark indigo skyscrapers of different heights filling the lower two thirds, each with only two or three big solid glowing square windows in teal or rose pink, placed in a neat grid; a flat dark ground strip at the bottom, no reflections.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 14,
+        "frame": "black",
+        "darkBias": -0.4,
+        "saturation": 1.1
+      },
+      "out": "art/painting-neon-city.png"
+    },
+    {
+      "id": "painting-moon-lake",
+      "group": "art",
+      "kind": "painting",
+      "title": "Moon over the lake",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A night landscape painting: a big round pale yellow full moon low over dark indigo rounded hills, a calm deep navy lake in front with one wide bright moon reflection stripe, dark teal pine tree silhouettes on the shore.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-moon-lake.png"
+    },
+    {
+      "id": "painting-night-cat",
+      "group": "art",
+      "kind": "painting",
+      "title": "Cat at the window",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of a chubby black cat sitting on a windowsill seen from behind, looking out a big window at a huge pale yellow moon in a deep navy sky, a warm amber glow on the sill.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "gold",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-night-cat.png"
+    },
+    {
+      "id": "painting-desk-lamp",
+      "group": "art",
+      "kind": "painting",
+      "title": "Desk lamp",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A still-life painting: one simple amber table lamp with a wide cone shade, glowing, standing in the center on a dark walnut table, a bright teal mug beside it; the whole lamp is fully visible with empty space above it; a plain flat deep navy wall background; very few shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "wood"
+      },
+      "out": "art/painting-desk-lamp.png"
+    },
+    {
+      "id": "painting-neon-circles",
+      "group": "art",
+      "kind": "painting",
+      "title": "Neon circles",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A bold modern abstract painting: three large overlapping flat circles in teal, rose pink and amber yellow on a solid deep navy background, one thick horizontal lavender bar below them.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "black"
+      },
+      "out": "art/painting-neon-circles.png"
+    },
+    {
+      "id": "painting-night-sun",
+      "group": "art",
+      "kind": "painting",
+      "title": "Night sun",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A bold retro graphic painting: a huge half sun made of horizontal amber and rose-pink stripes sinking behind a flat dark teal horizon, deep navy sky above with a few big white stars, bold teal grid lines on the ground below.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 12,
+        "frame": "black"
+      },
+      "out": "art/painting-night-sun.png"
+    },
+    {
+      "id": "painting-jellyfish",
+      "group": "art",
+      "kind": "painting",
+      "title": "Glowing jellyfish",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of one big glowing teal jellyfish with a round dome and four thick wavy rose-pink tentacles, centered, floating in a plain flat deep navy sea, three small round pale bubbles; flat colors, very few shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "gold"
+      },
+      "out": "art/painting-jellyfish.png"
+    },
+    {
+      "id": "painting-night-owl",
+      "group": "art",
+      "kind": "painting",
+      "title": "Night owl",
+      "aspect": "16:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A painting of one big chubby round owl with huge round amber eyes and a dark indigo body, sitting on a thick dark branch, in front of a huge pale yellow full moon in a plain flat deep navy sky; flat colors, very few shapes.",
+      "post": {
+        "kind": "art",
+        "w": 26,
+        "h": 16,
+        "colors": 10,
+        "frame": "wood"
+      },
+      "out": "art/painting-night-owl.png"
+    },
+    {
+      "id": "painting-wide-harbor-lights",
+      "group": "art",
+      "kind": "painting",
+      "title": "Harbor lights",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic night painting: a flat deep navy sky with a big pale yellow moon, a flat dark navy sea, a long low dark pier along the bottom with four big round glowing amber lamps, two big simple sailboats with white sails and teal hulls in the middle; flat colors, no ripples and no texture.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 16,
+        "frame": "wood",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-wide-harbor-lights.png"
+    },
+    {
+      "id": "painting-wide-neon-waves",
+      "group": "art",
+      "kind": "painting",
+      "title": "Neon waves",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic abstract painting: big bold horizontal wavy bands in teal, rose pink, amber yellow and lavender flowing across a solid deep navy background, one big amber circle off-center. Calm, modern, gallery-like.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 14,
+        "frame": "black"
+      },
+      "out": "art/painting-wide-neon-waves.png"
+    },
+    {
+      "id": "painting-wide-rooftops",
+      "group": "art",
+      "kind": "painting",
+      "title": "Rooftops at night",
+      "aspect": "21:9",
+      "styles": [
+        "wallart"
+      ],
+      "prompt": "A wide panoramic painting of city rooftops at night: flat dark indigo rooftops of different heights with round water towers, chimneys and big glowing amber and teal windows, a deep navy starry sky with a big pale yellow full moon on the right.",
+      "post": {
+        "kind": "art",
+        "w": 58,
+        "h": 24,
+        "colors": 16,
+        "frame": "black",
+        "darkBias": -0.3
+      },
+      "out": "art/painting-wide-rooftops.png"
+    },
+    {
+      "id": "poster-code",
+      "group": "art",
+      "kind": "poster",
+      "variant": "code",
+      "title": "Code",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A dark code editor window icon: a dark charcoal rectangle with a light lavender title bar with three tiny colored dots, and inside it four or five thick horizontal bars of different lengths in bright teal, amber yellow and rose pink, indented like lines of source code, on a solid deep navy background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-code.png"
+    },
+    {
+      "id": "poster-coffee",
+      "group": "art",
+      "kind": "poster",
+      "variant": "coffee",
+      "title": "Coffee",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big white coffee mug full of dark brown coffee, seen from the side with a chunky handle on the right, with ONE single short and thick white wisp of steam above it, on a solid bright teal background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-coffee.png"
+    },
+    {
+      "id": "poster-rocket",
+      "group": "art",
+      "kind": "poster",
+      "variant": "rocket",
+      "title": "Rocket",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big white and rose-pink cartoon rocket with a round teal window flying straight up, a bright amber-yellow flame below it, on a solid deep navy background with two tiny white stars.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 8,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-rocket.png"
+    },
+    {
+      "id": "poster-cat",
+      "group": "art",
+      "kind": "poster",
+      "variant": "cat",
+      "title": "Cat",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cute black cat head with pointy ears, big round teal eyes and a small pink nose, front view, on a solid warm amber yellow background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-cat.png"
+    },
+    {
+      "id": "poster-bug",
+      "group": "art",
+      "kind": "poster",
+      "variant": "bug",
+      "title": "No bugs",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cartoon teal beetle bug seen from above with six black legs and two antennae, crossed out by a thick bright red prohibition circle with a diagonal bar, on a solid pale lavender background.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 7,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-bug.png"
+    },
+    {
+      "id": "poster-ship-it",
+      "group": "art",
+      "kind": "poster",
+      "variant": "ship_it",
+      "title": "Ship it",
+      "aspect": "3:4",
+      "styles": [
+        "poster"
+      ],
+      "prompt": "A big cheerful cargo ship seen from the side, filling the whole width: a bright rose-pink hull, a white bridge cabin at the back and three big containers in amber yellow, teal and white, sailing on two rows of bold teal waves, on a solid deep navy night sky background with a small pale yellow moon in a corner.",
+      "post": {
+        "kind": "poster",
+        "w": 12,
+        "h": 16,
+        "colors": 9,
+        "outline": "#1d2240"
+      },
+      "out": "art/poster-ship-it.png"
+    }
+  ]
+}

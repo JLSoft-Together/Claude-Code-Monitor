@@ -1,0 +1,582 @@
+{
+  "version": 1,
+  "scale": 2,
+  "frame": {
+    "w": 192,
+    "h": 352
+  },
+  "figure": {
+    "standH": 280
+  },
+  "cols": 8,
+  "anchors": {
+    "feet": [
+      96,
+      344
+    ],
+    "head": [
+      96,
+      95
+    ],
+    "chest": [
+      96,
+      165
+    ],
+    "hand": [
+      137,
+      215
+    ],
+    "seat": [
+      96,
+      272
+    ]
+  },
+  "archetypes": [
+    {
+      "id": "jin",
+      "look": "m",
+      "name": "Jin",
+      "sheet": "jin.webp",
+      "sheet1x": "jin@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        },
+        "stand_coffee_down": {
+          "row": 13,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "drink_down": {
+          "row": 14,
+          "frames": 2,
+          "ms": 700,
+          "anchor": "feet"
+        },
+        "walk_coffee_down": {
+          "row": 15,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_coffee_right": {
+          "row": 16,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        }
+      }
+    },
+    {
+      "id": "theo",
+      "look": "m",
+      "name": "Theo",
+      "sheet": "theo.webp",
+      "sheet1x": "theo@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        }
+      }
+    },
+    {
+      "id": "kofi",
+      "look": "m",
+      "name": "Kofi",
+      "sheet": "kofi.webp",
+      "sheet1x": "kofi@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        }
+      }
+    },
+    {
+      "id": "mai",
+      "look": "f",
+      "name": "Mai",
+      "sheet": "mai.webp",
+      "sheet1x": "mai@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        }
+      }
+    },
+    {
+      "id": "rosa",
+      "look": "f",
+      "name": "Rosa",
+      "sheet": "rosa.webp",
+      "sheet1x": "rosa@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        }
+      }
+    },
+    {
+      "id": "ava",
+      "look": "f",
+      "name": "Ava",
+      "sheet": "ava.webp",
+      "sheet1x": "ava@1x.webp",
+      "anims": {
+        "stand_down": {
+          "row": 0,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_up": {
+          "row": 1,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "stand_right": {
+          "row": 2,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "feet"
+        },
+        "walk_down": {
+          "row": 3,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_up": {
+          "row": 4,
+          "frames": 4,
+          "ms": 160,
+          "anchor": "feet"
+        },
+        "walk_right": {
+          "row": 5,
+          "frames": 8,
+          "ms": 80,
+          "anchor": "feet"
+        },
+        "sit_type_up": {
+          "row": 6,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sit_down": {
+          "row": 7,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "raise_hand_seated_down": {
+          "row": 8,
+          "frames": 1,
+          "ms": 0,
+          "anchor": "seat"
+        },
+        "sleep_down": {
+          "row": 9,
+          "frames": 2,
+          "ms": 1400,
+          "anchor": "seat"
+        },
+        "raise_hand_down": {
+          "row": 10,
+          "frames": 2,
+          "ms": 320,
+          "anchor": "feet"
+        },
+        "talk_down": {
+          "row": 11,
+          "frames": 2,
+          "ms": 380,
+          "anchor": "feet"
+        },
+        "cheer_down": {
+          "row": 12,
+          "frames": 2,
+          "ms": 340,
+          "anchor": "feet"
+        }
+      }
+    }
+  ]
+}

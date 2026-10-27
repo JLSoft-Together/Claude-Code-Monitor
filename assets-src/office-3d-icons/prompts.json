@@ -1,0 +1,44 @@
+{
+ "defaultBlocks": [
+  "iconrow",
+  "icon3d",
+  "chroma"
+ ],
+ "defaultRefs": [],
+ "defaultRefNote": "",
+ "blocks": {
+  "icon3d": "STYLE: a set of small soft glossy 3D game status icons for a cozy modern office management game (the game itself is a soft stylized 3D diorama with light oak, cream, sage green and dusty blue): chunky, simple, rounded, toy-like silhouettes that stay readable when shrunk to 16 pixels, smooth soft shading with a gentle specular highlight from the upper left, subtle bevels, slightly glossy plastic / enamel material. Consistent warm palette across the whole set: sunny yellow #FFCF3F, warm coral red #E85A5A, fresh green #45B866, sky blue #4F8FE6, cream white #F6F2EA, oak brown #C48A52, slate grey #8D97AB. Every icon has a thin dark navy outline (#2A3142) around its whole silhouette. Front view, facing the camera flat, no perspective tilt, no ground, no shadow. NOT pixel art, NOT flat vector, NOT photorealistic. Original design, no logos, no watermark, no signature, no extra text.",
+  "iconrow": "LAYOUT: exactly 6 icons in ONE horizontal row, each centred in its own equal-width column, all drawn at the SAME visual size (each icon about 170 px tall, fitting a square), separated by WIDE empty gaps of background (at least 90 px), none touching or overlapping, nothing else in the image. Each icon is ONE compact object (small parts like drops or letters stay very close to the main shape).",
+  "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no shadow, no vignette, no frame. Every icon is fully visible with generous empty margin and is never cropped. Do not use magenta, pink or purple anywhere on the icons (a music note is dusty blue-violet only if needed: prefer sky blue)."
+ },
+ "items": {
+  "i-1": {
+   "aspect": "16:9",
+   "prompt": "Exactly 6 isolated icons. Columns, left to right: (1) ALERT: a rounded yellow warning triangle with a thick dark navy exclamation mark '!' in it. (2) QUESTION: a round sky blue badge with a thick white question mark '?' in it. (3) SLEEP: two pale sky blue 3D letters 'Z', a small one at lower left overlapping a larger one at upper right, touching each other. (4) CHECK: a round fresh green badge with a thick white tick mark. (5) HEART: a plump glossy coral red heart. (6) COFFEE: a white ceramic coffee mug with a coral red band, brown coffee visible on top, and two short soft steam wisps right above it."
+  },
+  "i-2": {
+   "aspect": "16:9",
+   "prompt": "Exactly 6 isolated icons. Columns, left to right: (1) MUSIC: a glossy sky blue double eighth note (two notes joined by a beam). (2) IDEA: a glowing yellow light bulb with a grey metal screw base and a soft glow. (3) SWEAT: a single plump light blue water drop with a white shine. (4) STAR: a plump glossy yellow five-pointed star with rounded points. (5) LIGHTNING: a chunky yellow lightning bolt with orange-gold shading. (6) CHAT: a rounded white speech bubble, wider than tall, with a small tail at its bottom-left and three slate grey dots inside.",
+   "refs": [
+    ".cache/raw/i-1.1.png"
+   ],
+   "refNote": "It shows approved icons of THIS set: copy exactly their rendering, material, outline, size, palette and light direction. Draw ONLY the newly requested icons, not the ones in the image."
+  },
+  "i-3": {
+   "aspect": "16:9",
+   "prompt": "Exactly 6 isolated icons. Columns, left to right: (1) BOX: a small closed cardboard parcel box in oak brown with a cream tape strip across the top and a small label, seen slightly from above. (2) WAVE: a waving open hand, peach skin colour, palm toward the viewer, fingers spread. (3) HOURGLASS: an upright hourglass, oak wood top and bottom caps joined by two thin posts, clear pale blue glass, golden sand mostly in the bottom bulb with a thin stream falling. (4) HOURGLASS TURNING: the SAME hourglass rotated 90 degrees, lying on its side horizontally, the sand spread along the bottom of both bulbs. (5) COBWEB: a corner spider web, white strands forming a quarter fan in the top-left corner shape (radiating lines plus curved rings), with a tiny cute dark spider hanging from it; the web must be a single connected shape. (6) STORM: a small grey rain cloud with a yellow lightning bolt sticking out below it and three blue rain drops just under it, all touching or very close.",
+   "refs": [
+    ".cache/raw/i-1.1.png"
+   ],
+   "refNote": "It shows approved icons of THIS set: copy exactly their rendering, material, outline, size, palette and light direction. Draw ONLY the newly requested icons, not the ones in the image."
+  },
+  "i-4": {
+   "aspect": "16:9",
+   "prompt": "Exactly 6 isolated icons. Columns, left to right: (1) COIN: a thick glossy gold coin seen face-on with a raised rim and a white shine (no letters, a simple embossed star in the centre). (2) SPARKLE: a four-pointed yellow sparkle star with a bright white centre and a tiny second sparkle touching it. (3) TROPHY: a gold trophy cup with two handles on an oak wooden base. (4) ROCK: a closed fist (rock hand gesture), peach skin, knuckles toward the viewer. (5) PAPER: an open flat hand (paper gesture), peach skin, palm toward the viewer, fingers together and straight up. (6) SCISSORS: a hand making a V sign with index and middle fingers (scissors gesture), peach skin, palm toward the viewer.",
+   "refs": [
+    ".cache/raw/i-1.1.png"
+   ],
+   "refNote": "It shows approved icons of THIS set: copy exactly their rendering, material, outline, size, palette and light direction. Draw ONLY the newly requested icons, not the ones in the image."
+  }
+ }
+}

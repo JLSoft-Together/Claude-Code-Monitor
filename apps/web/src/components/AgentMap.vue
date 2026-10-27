@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Expand,
   EyeOff,
   History,
   LayoutGrid,
@@ -30,6 +31,7 @@ import {
   PanelLeft,
   Plus,
   Search,
+  Shrink,
   X,
 } from 'lucide-vue-next'
 import type { Agent, PeerLink } from '@ccm/shared'
@@ -62,6 +64,8 @@ import SegmentedControl from './ui/SegmentedControl.vue'
 import OfficeOptions from './office/OfficeOptions.vue'
 import OfficeView from './office/OfficeView.vue'
 import { useOfficeStore } from '../stores/office'
+import { useFullscreen } from '../composables/useFullscreen'
+import { modalOpen } from '@ccm/habblaud/client/src/world/input'
 
 const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
@@ -1427,6 +1431,30 @@ function onVolumeWheel(e: WheelEvent): void {
   if (!e.deltaY) return
   office.setVolume((volumePct.value + (e.deltaY < 0 ? 5 : -5)) / 100)
 }
+const officeFs = useFullscreen(canvas)
+const officeFullscreen = computed(() => officeFs.active.value && ui.mapView === 'office')
+watch(officeFs.active, (on) => (office.fullscreen = on), { immediate: true, flush: 'sync' })
+watch(
+  () => ui.mapView,
+  (v) => {
+    if (v !== 'office') void officeFs.exit()
+  },
+)
+function toggleOfficeFullscreen(): void {
+  if (ui.mapView !== 'office') return
+  void officeFs.toggle()
+}
+function onOfficeFullscreenKey(e: KeyboardEvent): void {
+  if (e.code !== 'KeyF' || !e.shiftKey || e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
+  if (ui.view !== 'monitor' || ui.mapView !== 'office' || isTyping(e.target)) return
+  if (modalOpen(e.target instanceof HTMLElement ? e.target : null)) return
+  if (ui.paletteOpen || ui.settingsOpen || ui.tourOpen || ui.recapOpen || ui.diagnosticsOpen || ui.shortcutsOpen) return
+  e.preventDefault()
+  toggleOfficeFullscreen()
+  ui.pressKey('⇧F')
+}
+onMounted(() => document.addEventListener('keydown', onOfficeFullscreenKey))
+onBeforeUnmount(() => document.removeEventListener('keydown', onOfficeFullscreenKey))
 const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
 </script>
 
@@ -1436,7 +1464,8 @@ const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' 
     <div
       ref="canvas"
       class="relative min-h-0 flex-1 overflow-hidden"
-      :class="[nodeMotion ? 'ccm-map-motion' : '', 'bg-canvas']"
+      :class="[nodeMotion ? 'ccm-map-motion' : '', 'bg-canvas', officeFullscreen ? 'ccm-office-fullscreen' : '']"
+      :data-office-fullscreen="officeFullscreen ? '' : undefined"
       role="region"
       :aria-label="regionLabel"
       @keydown="onCanvasKey"
@@ -1559,7 +1588,7 @@ const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' 
       <div class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
         <button
           type="button"
-          :class="[CHROME_BTN, ui.isCollapsed('sessions') ? '' : 'invisible']"
+          :class="[CHROME_BTN, ui.isCollapsed('sessions') && !officeFullscreen ? '' : 'invisible']"
           :aria-label="t('map.showSessions')"
           :title="t('map.showSessions')"
           aria-keyshortcuts="S"
@@ -1627,6 +1656,21 @@ const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' 
               <KeyHint keys="L" />
             </button>
             <OfficeOptions />
+            <button
+              type="button"
+              :class="TOOL"
+              :aria-pressed="officeFullscreen"
+              :aria-label="officeFullscreen ? t('officeV62.fullscreen.exit') : t('officeV62.fullscreen.enter')"
+              :title="officeFullscreen ? t('officeV62.fullscreen.exitHint') : t('officeV62.fullscreen.enterHint')"
+              aria-keyshortcuts="Shift+F"
+              data-office-fullscreen-toggle
+              @click="toggleOfficeFullscreen()"
+            >
+              <Transition name="ccm-swap" mode="out-in">
+                <component :is="officeFullscreen ? Shrink : Expand" :key="officeFullscreen ? 'exit' : 'enter'" :size="16" aria-hidden="true" />
+              </Transition>
+              <KeyHint keys="⇧F" />
+            </button>
           </template>
           <template v-else>
             <button

@@ -1,6 +1,6 @@
 // Temas de sala (puros): paletas claras e bem distintas. Sementes consecutivas (slots vizinhos)
 // recebem temas diferentes; a ordem da lista alterna famílias de cor de propósito.
-import type { RoomTheme } from './api';
+import type { RoomTheme, WallPattern } from './api';
 
 const THEMES: readonly RoomTheme[] = [
   { carpet: '#c9d1dc', carpet2: '#bdc6d3', wall: { base: '#eef1f4', trim: '#9fb0c4', pattern: 'plain' }, accent: '#3f7fd8', deskVariant: 'white', chairVariant: 'blue' },
@@ -17,8 +17,57 @@ const THEMES: readonly RoomTheme[] = [
 
 export const THEME_COUNT = THEMES.length;
 
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const PATTERNS: readonly WallPattern[] = ['plain', 'stripes', 'tiles', 'wood_panel', 'brick', 'glass', 'marble'];
+const DESKS = ['wood', 'white', 'dark'];
+const CHAIRS = ['black', 'blue', 'red', 'green', 'gray'];
+const MAX_PACK_ROOMS = 32;
+
+function parseRoom(raw: unknown): RoomTheme | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const wall = o.wall && typeof o.wall === 'object' ? (o.wall as Record<string, unknown>) : null;
+  if (!wall || typeof wall.base !== 'string' || !HEX.test(wall.base)) return null;
+  if (wall.trim !== undefined && (typeof wall.trim !== 'string' || !HEX.test(wall.trim))) return null;
+  if (wall.pattern !== undefined && !PATTERNS.includes(wall.pattern as WallPattern)) return null;
+  for (const k of ['carpet', 'carpet2', 'accent'] as const) if (typeof o[k] !== 'string' || !HEX.test(o[k] as string)) return null;
+  if (typeof o.deskVariant !== 'string' || !DESKS.includes(o.deskVariant)) return null;
+  if (typeof o.chairVariant !== 'string' || !CHAIRS.includes(o.chairVariant)) return null;
+  return {
+    carpet: o.carpet as string,
+    carpet2: o.carpet2 as string,
+    wall: {
+      base: wall.base,
+      ...(wall.trim !== undefined ? { trim: wall.trim as string } : {}),
+      ...(wall.pattern !== undefined ? { pattern: wall.pattern as WallPattern } : {}),
+    },
+    accent: o.accent as string,
+    deskVariant: o.deskVariant,
+    chairVariant: o.chairVariant,
+  };
+}
+
+export function parseRoomThemes(raw: unknown): RoomTheme[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_PACK_ROOMS) return null;
+  const out: RoomTheme[] = [];
+  for (const r of raw) {
+    const t = parseRoom(r);
+    if (!t) return null;
+    out.push(t);
+  }
+  return out;
+}
+
+let packThemes: readonly RoomTheme[] | null = null;
+
+export function setRoomThemes(raw: unknown): boolean {
+  packThemes = raw == null ? null : parseRoomThemes(raw);
+  return packThemes !== null;
+}
+
 export function roomTheme(seed: number): RoomTheme {
-  const n = THEMES.length;
-  const t = THEMES[((Math.floor(seed) % n) + n) % n];
+  const list = packThemes ?? THEMES;
+  const n = list.length;
+  const t = list[((Math.floor(seed) % n) + n) % n];
   return { ...t, wall: { ...t.wall } };
 }

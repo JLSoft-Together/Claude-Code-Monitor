@@ -1,7 +1,8 @@
 # Office theme packs — authoring guide for image generation (Codex)
 
-Status: authoring spec only (2026-10-21). No app code reads theme packs yet; §8 is the contract a later code
-task will implement. Written for an image-capable agent (Codex with image generation) that produces the packs.
+Status: §8 implemented in v62 (2026-10-22, `.planning/PLAN-v62-office-packs-fullscreen.md`): Office options pick a
+pack, the world rebuilds with its wall art and room palettes, classic stays the default. Packs `japandi`,
+`night-shift`, `forest-cabin`, `retro-80s` are listed in `assets/themes/index.json`; §3–§7 remain the authoring spec.
 
 ## 1. What this is
 
@@ -16,6 +17,10 @@ avoid confusion with Orrery's app colour themes (`apps/web/src/themes.css`), whi
 
 Seasonal decorations (Christmas / Halloween, `WorldOptions.theme`) are drawn procedurally on top of whatever pack
 is active; packs do not provide them.
+
+The 3D (beta) office style (`docs/office-iso.md`) keeps a pack's room palettes but draws its own 3D wall art first
+(`assets/iso3d/wallart/`); a pack's paintings and posters show there only where no 3D art fits, and seasonal decor is
+not drawn in 3D yet.
 
 ## 2. What a pack can and cannot change
 
@@ -238,3 +243,11 @@ So the packs above plug in without re-authoring:
 - Rooms: `art/theme.ts` `roomTheme(seed)` reads from the active pack's `rooms` when present (also a recorded local
   patch), otherwise the classic list.
 - Switching packs rebuilds the world like a locale switch does (OfficeView `build()`); brand assets never change.
+
+As built (v62): the loader takes the additive option (`createWorld(…, { assetPack: 'themes/<id>' })`, Habblaud local
+patch D); `roomTheme` reads `setRoomThemes(rooms)` (patch E, 1–32 rooms, the whole list is rejected if one entry is
+invalid). Fallbacks, all silent except the note in the options popover: an id missing from `index.json` or a malformed
+saved id → classic; a missing / invalid `theme.json` → classic rooms ("not installed" note); a missing or art-less pack
+`manifest.json` → classic wall art. Orrery side: `apps/web/src/office/packs.ts`, `stores/office.ts` (`pack`,
+`activePack`, `packMissing`), `OfficeView.vue` `build()`, `OfficeOptions.vue` (pack cards with `preview.png`, seasonal
+theme segmented control).

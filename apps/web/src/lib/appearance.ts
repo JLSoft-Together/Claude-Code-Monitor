@@ -33,6 +33,7 @@ export function readLook(root: HTMLElement = document.documentElement): DesktopL
       muted: hexOf(ctx, resolve('--ccm-ink-muted'), bg),
       faint: hexOf(ctx, resolve('--ccm-ink-faint'), bg),
       accent: hexOf(ctx, resolve('--ccm-accent'), bg),
+      bar: hexOf(ctx, resolve('--ccm-material'), bg),
       dark: root.classList.contains('dark'),
     }
     probe.remove()

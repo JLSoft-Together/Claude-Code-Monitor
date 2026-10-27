@@ -376,5 +376,5 @@ export interface ArtModule {
   avatarCanvas(seed: number, opts?: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts }): HTMLCanvasElement;
 }
 
-/** Orrery local patch D: opaque box of sprites built from a PixelBuf, so the world never reads pixels back from a canvas. */
+/** Orrery local patch J: opaque box of sprites built from a PixelBuf, so the world never reads pixels back from a canvas. */
 export const spriteBounds = new WeakMap<HTMLCanvasElement, Rect>();

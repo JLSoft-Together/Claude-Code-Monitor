@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "scale": 2,
+  "floors": {
+    "wood": {
+      "file": "floor-wood.webp",
+      "tile": [
+        256,
+        256
+      ],
+      "tint": false,
+      "tiles": 4
+    },
+    "carpet": {
+      "file": "floor-carpet.webp",
+      "tile": [
+        128,
+        128
+      ],
+      "tint": true,
+      "tiles": 2
+    },
+    "tile_check": {
+      "file": "floor-tile_check.webp",
+      "tile": [
+        128,
+        128
+      ],
+      "tint": false,
+      "tiles": 2
+    },
+    "tile_white": {
+      "file": "floor-tile_white.webp",
+      "tile": [
+        128,
+        128
+      ],
+      "tint": false,
+      "tiles": 2
+    },
+    "concrete": {
+      "file": "floor-concrete.webp",
+      "tile": [
+        256,
+        256
+      ],
+      "tint": false,
+      "tiles": 4
+    },
+    "marble": {
+      "file": "floor-marble.webp",
+      "tile": [
+        128,
+        128
+      ],
+      "tint": false,
+      "tiles": 2
+    }
+  },
+  "walls": {
+    "plain": {
+      "file": "wall-plain.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": true,
+      "cap": "#e9e4da",
+      "skirting": 11
+    },
+    "stripes": {
+      "file": "wall-stripes.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": true,
+      "cap": "#e9e4da",
+      "skirting": 9
+    },
+    "tiles": {
+      "file": "wall-tiles.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": true,
+      "cap": "#e9e4da",
+      "skirting": 10
+    },
+    "wood_panel": {
+      "file": "wall-wood_panel.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": false,
+      "cap": "#e6dccb",
+      "skirting": 9
+    },
+    "brick": {
+      "file": "wall-brick.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": true,
+      "cap": "#e9e4da",
+      "skirting": 9
+    },
+    "glass": {
+      "file": "wall-glass.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": false,
+      "cap": "#5d636b",
+      "skirting": 11
+    },
+    "marble": {
+      "file": "wall-marble.webp",
+      "tile": [
+        64,
+        96
+      ],
+      "tint": false,
+      "cap": "#ece6dc",
+      "skirting": 10
+    }
+  },
+  "rugs": {
+    "a": {
+      "file": "rug-a.webp",
+      "tint": true,
+      "size": [
+        384,
+        221
+      ]
+    },
+    "b": {
+      "file": "rug-b.webp",
+      "tint": true,
+      "size": [
+        384,
+        224
+      ]
+    }
+  }
+}

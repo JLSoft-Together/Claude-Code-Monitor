@@ -8,7 +8,7 @@ import { retireOverlay } from '../lib/motion'
 import { useExtrasStore } from '../stores/extras'
 import { useCountUp } from '../composables/useCountUp'
 
-const props = withDefaults(defineProps<{ provider?: Provider }>(), { provider: 'claude' })
+const props = withDefaults(defineProps<{ provider?: Provider; compact?: boolean }>(), { provider: 'claude', compact: false })
 const { t, locale } = useI18n()
 const extras = useExtrasStore()
 const codex = computed(() => props.provider === 'codex')
@@ -132,6 +132,34 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="windows.length" ref="root" class="relative flex">
     <button
+      v-if="compact"
+      ref="trigger"
+      type="button"
+      class="flex h-7 cursor-pointer items-center gap-2 rounded-control px-2 text-left transition-colors hover:bg-fill"
+      :class="open ? 'bg-fill' : ''"
+      :aria-label="heading"
+      :aria-expanded="open"
+      aria-haspopup="dialog"
+      @click="open = !open"
+    >
+      <component :is="codex ? Hexagon : Asterisk" :size="13" :stroke-width="2.25" :class="codex ? 'text-agent-codex' : 'text-agent-claude-ink'" aria-hidden="true" />
+      <span v-for="w in windows" :key="w.key" class="relative inline-flex items-baseline gap-1 whitespace-nowrap">
+        <span
+          v-if="changes[w.key].n"
+          :key="`flash-${changes[w.key].n}`"
+          class="ccm-quota-flash pointer-events-none absolute -inset-x-1 -inset-y-0.5 rounded-md"
+          :class="changes[w.key].delta > 0 ? 'text-success' : LEVEL[w.level].text"
+          aria-hidden="true"
+        />
+        <span class="text-2xs text-ink-faint">{{ t(`limits.${w.key}`) }}</span>
+        <span :key="changes[w.key].n" class="ccm-tick inline-flex items-center gap-0.5 text-xs font-semibold tabular" :class="tone(w.level).text">
+          <component :is="LEVEL[w.level].icon" v-if="w.level !== 'ok'" :size="11" :class="w.level === 'critical' ? 'ccm-pulse' : ''" aria-hidden="true" />
+          <TrendingUp v-else-if="w.risk" :size="11" class="text-warning" aria-hidden="true" />{{ Math.round(shown[w.key].value) }}%
+        </span>
+      </span>
+    </button>
+    <button
+      v-else
       ref="trigger"
       type="button"
       class="flex cursor-pointer items-stretch gap-1.5 rounded-control px-1.5 py-1 text-left transition-colors hover:bg-fill"

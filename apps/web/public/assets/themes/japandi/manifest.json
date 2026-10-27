@@ -1,0 +1,241 @@
+{
+  "version": 1,
+  "illustrations": {
+    "emptyOffice": {
+      "file": "illustrations/empty-office.png",
+      "w": 960,
+      "h": 540,
+      "scale": 2
+    }
+  },
+  "wallArt": [
+    {
+      "id": "painting-misty-hills",
+      "kind": "painting",
+      "file": "art/painting-misty-hills.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Misty hills",
+      "framed": {
+        "file": "art/framed/painting-misty-hills.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-tea-bowl",
+      "kind": "painting",
+      "file": "art/painting-tea-bowl.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Tea bowl",
+      "framed": {
+        "file": "art/framed/painting-tea-bowl.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-ink-circle",
+      "kind": "painting",
+      "file": "art/painting-ink-circle.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Ink circle",
+      "framed": {
+        "file": "art/framed/painting-ink-circle.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-heron",
+      "kind": "painting",
+      "file": "art/painting-heron.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "White heron",
+      "framed": {
+        "file": "art/framed/painting-heron.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-rooftops",
+      "kind": "painting",
+      "file": "art/painting-rooftops.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Village roofs",
+      "framed": {
+        "file": "art/framed/painting-rooftops.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-stones",
+      "kind": "painting",
+      "file": "art/painting-stones.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "River stones",
+      "framed": {
+        "file": "art/framed/painting-stones.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-bamboo",
+      "kind": "painting",
+      "file": "art/painting-bamboo.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Bamboo stems",
+      "framed": {
+        "file": "art/framed/painting-bamboo.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-persimmons",
+      "kind": "painting",
+      "file": "art/painting-persimmons.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Persimmons",
+      "framed": {
+        "file": "art/framed/painting-persimmons.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-sleeping-cat",
+      "kind": "painting",
+      "file": "art/painting-sleeping-cat.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Sleeping cat",
+      "framed": {
+        "file": "art/framed/painting-sleeping-cat.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wide-ridges",
+      "kind": "painting",
+      "file": "art/painting-wide-ridges.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Layered ridges",
+      "framed": {
+        "file": "art/framed/painting-wide-ridges.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-moon-reeds",
+      "kind": "painting",
+      "file": "art/painting-wide-moon-reeds.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Moon over reeds",
+      "framed": {
+        "file": "art/framed/painting-wide-moon-reeds.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-maple-branch",
+      "kind": "painting",
+      "file": "art/painting-wide-maple-branch.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Maple branch",
+      "framed": {
+        "file": "art/framed/painting-wide-maple-branch.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "art/poster-code.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Code",
+      "variant": "code"
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "art/poster-coffee.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Coffee",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "art/poster-rocket.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Rocket",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "art/poster-cat.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Cat",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "art/poster-bug.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "No bugs",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "art/poster-ship-it.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Ship it!",
+      "variant": "ship_it"
+    }
+  ]
+}

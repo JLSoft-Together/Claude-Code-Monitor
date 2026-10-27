@@ -343,6 +343,18 @@ body {
   backdrop-filter: saturate(180%) blur(20px);
 }
 
+.ccm-titlebar[data-title-bar] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.ccm-titlebar[data-title-bar] :is(button, a, input, select, textarea, [role='status'], [role='dialog'], [role='menu']),
+.fixed.inset-0,
+[aria-modal='true'] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .ccm-material-pop {
   background: var(--ccm-material-pop);
 }
@@ -685,6 +697,21 @@ body {
 }
 .ccm-swap-leave-to {
   opacity: 0;
+}
+
+.ccm-office-fullscreen {
+  animation: ccm-office-fullscreen-in var(--ccm-dur-slow) var(--ease-out-quint) both;
+}
+@keyframes ccm-office-fullscreen-in {
+  from {
+    opacity: 0.55;
+    scale: 0.985;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccm-office-fullscreen {
+    animation: none;
+  }
 }
 
 .ccm-dot-enter-active {

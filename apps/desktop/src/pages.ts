@@ -50,6 +50,7 @@ const STYLE = `
 * { box-sizing: border-box; }
 html, body { margin: 0; overflow-x: hidden; }
 html:not(.static) body { overflow: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: 40px; -webkit-app-region: drag; app-region: drag; }
 body { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--canvas); color: var(--ink);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased; }

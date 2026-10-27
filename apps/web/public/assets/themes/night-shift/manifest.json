@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "illustrations": {
+    "emptyOffice": {
+      "file": "illustrations/empty-office.png",
+      "w": 960,
+      "h": 540,
+      "scale": 2
+    }
+  },
+  "wallArt": [
+    {
+      "id": "painting-neon-city",
+      "kind": "painting",
+      "file": "art/painting-neon-city.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Neon city",
+      "framed": {
+        "file": "art/framed/painting-neon-city.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-moon-lake",
+      "kind": "painting",
+      "file": "art/painting-moon-lake.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Moon over the lake",
+      "framed": {
+        "file": "art/framed/painting-moon-lake.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-night-cat",
+      "kind": "painting",
+      "file": "art/painting-night-cat.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Cat at the window",
+      "framed": {
+        "file": "art/framed/painting-night-cat.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-desk-lamp",
+      "kind": "painting",
+      "file": "art/painting-desk-lamp.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Desk lamp",
+      "framed": {
+        "file": "art/framed/painting-desk-lamp.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-neon-circles",
+      "kind": "painting",
+      "file": "art/painting-neon-circles.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Neon circles",
+      "framed": {
+        "file": "art/framed/painting-neon-circles.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-night-sun",
+      "kind": "painting",
+      "file": "art/painting-night-sun.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Night sun",
+      "framed": {
+        "file": "art/framed/painting-night-sun.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-jellyfish",
+      "kind": "painting",
+      "file": "art/painting-jellyfish.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Glowing jellyfish",
+      "framed": {
+        "file": "art/framed/painting-jellyfish.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-night-owl",
+      "kind": "painting",
+      "file": "art/painting-night-owl.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Night owl",
+      "framed": {
+        "file": "art/framed/painting-night-owl.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wide-harbor-lights",
+      "kind": "painting",
+      "file": "art/painting-wide-harbor-lights.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Harbor lights",
+      "framed": {
+        "file": "art/framed/painting-wide-harbor-lights.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-neon-waves",
+      "kind": "painting",
+      "file": "art/painting-wide-neon-waves.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Neon waves",
+      "framed": {
+        "file": "art/framed/painting-wide-neon-waves.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-rooftops",
+      "kind": "painting",
+      "file": "art/painting-wide-rooftops.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Rooftops at night",
+      "framed": {
+        "file": "art/framed/painting-wide-rooftops.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "art/poster-code.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Code",
+      "variant": "code"
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "art/poster-coffee.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Coffee",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "art/poster-rocket.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Rocket",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "art/poster-cat.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Cat",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "art/poster-bug.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "No bugs",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "art/poster-ship-it.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Ship it",
+      "variant": "ship_it"
+    }
+  ]
+}

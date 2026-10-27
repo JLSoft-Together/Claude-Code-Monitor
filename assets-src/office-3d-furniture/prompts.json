@@ -1,0 +1,438 @@
+{
+ "defaultBlocks": [
+  "cam",
+  "style3d",
+  "chroma"
+ ],
+ "defaultRefs": [
+  ".cache/ref-room.png",
+  "../office-iso-spike/.cache/raw/mock3d-c-front.1.png"
+ ],
+ "defaultRefNote": "They show the target LOOK of this game (soft stylized 3D diorama render) and the target CAMERA (front three-quarter view, looking down about 45 degrees, horizontal edges horizontal). Match their rendering, materials, lighting and palette. Draw ONLY the requested isolated object(s), nothing from the room around them.",
+ "blocks": {
+  "cam": "CAMERA (critical): front three-quarter view, the camera is due SOUTH of the object looking north and down at about 45 degrees, orthographic (no perspective convergence, no vanishing points). The object's front face points straight at the camera. All horizontal edges of the object (front edge, back edge, top edges) are perfectly HORIZONTAL in the image; vertical edges perfectly vertical; NO isometric diagonal, NO rotation, no side face visible. We see the top surfaces foreshortened (about 0.7 of their real depth) above the front face.",
+  "style3d": "STYLE: soft stylized 3D render of cozy miniature office furniture, like a polished diorama in a modern management game: smooth rounded forms, soft global illumination, gentle ambient occlusion, subtle bevels and matte materials (light oak wood, cream, sage green and dusty blue fabric, brushed metal, clear glass). Soft key light from the upper left. Clean, calm, high readability at small size. NOT pixel art, NOT photorealistic, NOT flat vector. Original design, no text, no letters, no numbers, no logos, no watermark, no signature.",
+  "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no floor plane, no ground shadow, no cast shadow, no vignette, no frame. Every object is fully visible with generous empty margin on every side and is never cropped. Do not use magenta, pink or purple anywhere on the objects.",
+  "row": "LAYOUT: the objects stand side by side in ONE horizontal row, each centred in its own equal-width column, separated by WIDE empty gaps of background, none touching or overlapping, all bottoms on the same baseline, all at the same consistent real-world scale as the attached reference furniture.",
+  "wallcam": "CAMERA (critical): straight-on FRONT ELEVATION view of an object mounted flat on a wall, orthographic, the wall plane is parallel to the image, so the object is a clean upright rectangle with horizontal and vertical edges, only a thin hint of depth at its bottom edge. No floor, no wall drawn."
+ },
+ "items": {
+  "m-desk": {
+   "aspect": "3:2",
+   "prompt": "ONE isolated office desk for a game, 2 floor tiles wide and 1 tile deep (about 140 cm wide, 70 cm deep): a rectangular light oak desk top with soft rounded edges on slim white metal legs. A slim flat-screen monitor with a thin white frame stands on the back half of the desk, its screen faces the camera (toward the viewer) and is switched OFF: a plain matte dark navy screen with a faint diagonal reflection. In front of the monitor on the desk top: a white keyboard, a mouse and a small sage green coffee mug. Nobody sits at it, no chair."
+  },
+  "m-chair": {
+   "aspect": "1:1",
+   "prompt": "ONE isolated ergonomic swivel office chair for a game, seen from BEHIND: the chair's seat faces away from the camera (north), so we see the BACK of the dusty blue fabric backrest and, above the seat, nothing else. Dark grey five-star base with casters, short gas lift, dusty blue fabric seat and backrest, dark grey armrests. Empty chair, nobody sits on it."
+  },
+  "m-plant": {
+   "aspect": "1:1",
+   "prompt": "ONE isolated tall indoor potted plant for a game: a monstera with large glossy split leaves in a simple round white ceramic pot, about 1.5 m tall in total, pot about 40 cm wide."
+  },
+  "b-desks": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 3 isolated office desks in ONE row, 3 equal columns, same size as the reference desk (2 tiles wide, 1 tile deep), same design as the reference desk (rectangular top, slim legs, slim monitor, keyboard, mouse, mug), all monitors switched OFF with a plain matte dark navy screen. Column 1: WHITE desk top on white legs, monitor screen facing the camera. Column 2: DARK walnut brown desk top on black legs, monitor screen facing the camera. Column 3: light oak desk seen from the OTHER side: the monitor screen faces AWAY from the camera, so we see the plain BACK of the monitor (white rear casing with the stand) and the keyboard is hidden behind it; desk top and front edge facing us, white legs.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-deskback": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 3 isolated objects in ONE row, 3 equal columns. Column 1: WHITE office desk (2 tiles wide, same size and design as the reference desk) seen from the OTHER side: the monitor screen faces AWAY from the camera, we see the plain BACK of the monitor and its stand; white legs. Column 2: DARK walnut brown office desk (same size and design) also seen from the other side: back of the monitor toward the camera, black legs. Column 3: the reference office chair (dusty blue fabric, dark grey five-star base) but turned around so its seat FACES the camera: we see the front of the seat cushion and the front of the backrest behind it, armrests on both sides.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-chairs": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated seats in ONE row, 4 equal columns, at the same scale as the reference office chair. Column 1: the reference swivel office chair in WARM GREY fabric, seen from BEHIND (seat faces away from camera, we see the back of the backrest). Column 2: the same warm grey office chair turned around, seat FACING the camera (front of cushion and backrest visible). Column 3: a simple round wooden bar stool with a light oak seat and slim metal legs, seat height like the chair seat. Column 4: a cafe chair with light oak frame and a sage green cushion and a curved low backrest, FACING the camera (we see the front of the seat, the backrest behind it).",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-cafe": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated objects in ONE row, 4 equal columns, same scale as the reference office chair. Column 1: a cafe chair with light oak frame, sage green seat cushion and a curved low backrest, seen from BEHIND (seat faces away from the camera, the backrest is toward us). Column 2: the same cafe chair seen from its LEFT side in profile: the seat faces RIGHT (toward the right edge of the image), backrest on the left. Column 3: a small round cafe table, light oak round top on one central white pedestal leg, about 70 cm diameter, top slightly higher than the chair seats. Column 4: a cozy upholstered armchair in dusty blue fabric with light oak legs, FACING the camera.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-armchairs": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated objects in ONE row, 4 equal columns, same scale as the reference office chair. Column 1: a cozy upholstered armchair in dusty blue fabric with light oak legs, seen from BEHIND (seat faces away from the camera, we see the back of its backrest). Column 2: the same dusty blue armchair seen from its LEFT side in profile: the seat faces RIGHT (toward the right edge of the image), backrest on the left. Column 3: a low rectangular coffee table, light oak, 2 tiles wide and 1 tile deep (as wide as the reference desk but knee height), with a small book and a cup on it. Column 4: a small round office trash bin in brushed metal mesh, about 35 cm tall.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-beanbags": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated bean bag chairs in ONE row, 4 equal columns, same size (about 80 cm wide), soft rounded slouchy pear shape with a dent for sitting facing the camera, matte fabric. Column 1: muted brick RED. Column 2: dusty BLUE. Column 3: soft mustard YELLOW. Column 4: sage GREEN.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-plants-s": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated potted plants in ONE row, 4 equal columns, same scale as the reference tall plant. Column 1: a small leafy fern in a small white ceramic pot (about 45 cm tall in total). Column 2: a small cluster of succulents in a small terracotta pot (about 25 cm tall). Column 3: a small flowering plant with soft yellow and white flowers in a small sage green pot (about 35 cm tall). Column 4: a bonsai tree in a shallow dark grey rectangular pot on a small wooden stand (about 60 cm tall).",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-plants-t": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated objects in ONE row, 4 equal columns, same scale as the reference tall plant. Column 1: a tall indoor palm (areca palm) in a white ceramic pot, about 1.7 m tall. Column 2: a tall ficus tree (fiddle leaf fig) in a woven basket planter, about 1.7 m tall. Column 3: a modern floor lamp, slim brushed metal pole on a round base, cream fabric drum shade, the lamp is switched ON with a soft warm glow inside the shade, about 1.6 m tall. Column 4: an office water cooler: white base cabinet with a large clear light blue water bottle upside down on top, about 1.2 m tall.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-storage": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated objects in ONE row, 4 equal columns, same scale as the reference desk. Column 1: a low wide light oak bookshelf, 2 tiles wide (same width as the reference desk), about 1.1 m tall, open shelves with colourful books (dusty blue, sage, mustard, cream), a small plant and a box. Column 2: a tall narrow light oak shelf, 1 tile wide, about 1.6 m tall, full of colourful binders (blue, orange, green) and storage boxes. Column 3: a cream metal filing cabinet with 3 drawers and small metal handles, 1 tile wide, about 1 m tall. Column 4: an office laser printer, light grey, on a low light oak cabinet, 1 tile wide.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-kitchen1": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated kitchen counter segments in ONE row, 4 equal columns, each segment 1 tile wide (half the width of the reference desk), about 90 cm tall, sage green cabinet fronts, light oak worktop. Column 1: plain counter with one cabinet door. Column 2: counter with 3 stacked drawers. Column 3: counter with a brushed steel sink and faucet set into the worktop. Column 4: counter with a dark espresso coffee machine standing on the worktop, a white cup under its spout.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-kitchen2": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated objects in ONE row, 4 equal columns, each 1 tile wide (half the width of the reference desk). Column 1: a sage green kitchen counter segment with light oak worktop and a white microwave oven standing on the worktop. Column 2: a tall cream retro fridge with two doors and brushed metal handles, about 1.8 m tall. Column 3: a tall snack vending machine, dusty blue body, a large glass front showing rows of colourful snack packs, softly lit from inside, about 1.8 m tall. Column 4: a retro arcade cabinet, dusty blue body with light oak side trim, joystick and buttons on the control panel, its screen switched OFF (plain matte dark navy), about 1.7 m tall.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-sofas": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 2 isolated sofas in ONE row, 2 equal columns, each a 3-seat sofa about 3 tiles wide (one and a half times the width of the reference desk), sage green fabric, light oak legs, two cream cushions. Column 1: the sofa FACING the camera: we see the front of the seat cushions and the backrest behind them. Column 2: the same sofa seen from BEHIND: it faces away, we see the plain back of the backrest toward us.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-tables": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 2 isolated tables in ONE row, 2 equal columns, each 3 tiles wide and 2 tiles deep (one and a half times the width of the reference desk, twice its depth). Column 1: a rectangular meeting table with a light oak top with rounded corners on white legs, a laptop, papers and two cups on it. Column 2: a ping-pong table, dusty navy blue top with white border lines and a white centre line along its length, a low net across the MIDDLE running from the back edge to the front edge (the net is vertical in the image, splitting the table into a left half and a right half), dark grey metal legs.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-recep": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 2 isolated objects in ONE row, 2 equal columns. Column 1: a reception front desk 3 tiles wide and 1 tile deep (one and a half times the width of the reference desk), light oak front panel with soft rounded corners and a cream counter top, a monitor (back of the monitor toward the camera, the receptionist sits behind it), a small plant and a small desk lamp on top. Column 2: a waiting bench 2 tiles wide (same width as the reference desk), light oak slatted seat on brushed metal legs with a low backrest, facing the camera.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-restroom": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 3 isolated objects in ONE row, 3 equal columns. Column 1: a restroom toilet stall, 2 tiles wide and 2 tiles deep, cream partition walls about 1.8 m tall on the left, right and back, with a white toilet inside; the FRONT wall of the stall is a light oak door panel facing the camera, the door is standing slightly AJAR (open a hand's width, a dark gap) with a small green occupancy indicator. Column 2: the same toilet stall with its light oak door fully CLOSED and a small red occupancy indicator above the handle. Column 3: a bathroom washbasin: white ceramic basin on a light oak vanity cabinet, brushed steel faucet, 1 tile wide.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "b-partition": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 3 isolated glass office partition pieces in ONE row, 3 equal columns, about 1.6 m tall, each piece occupies one floor tile (half the width of the reference desk): a low white base and a clear glass panel above it in a slim dark grey metal frame. The glass is completely CLEAR and colourless: the magenta background must show straight through the glass. Column 1: a straight partition segment running left to right, its glass face toward the camera (1 tile wide). Column 2: a straight partition segment running away from the camera (north-south): we look along it from above, so it appears as a thin strip seen edge-on: the white base and frame top go straight UP the image from its front end to its back end, front end post nearest to us. Column 3: a single square end post / column, dark grey metal with a white base.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "w-1": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first two attached images are approved sprites of THIS furniture set (desk 2 tiles wide = 140 cm, plant): copy exactly their rendering, materials, light direction and real-world scale. The third image shows the room look (see the whiteboard on the back wall). Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated wall-mounted objects in ONE row, 4 equal columns, front elevation, same real-world scale. Column 1: a window 2 tiles wide (140 cm) and about 110 cm tall, white frame with a light oak sill, divided into 2 panes; the window panes are completely EMPTY: magenta background shows through them (no glass tint, no sky). Column 2: a whiteboard 3 tiles wide (210 cm) and about 100 cm tall, slim brushed aluminium frame, completely blank white surface, a small marker tray at the bottom. Column 3: a round wall clock about 35 cm diameter, light oak rim, plain cream face WITHOUT hands and without numbers (only small tick marks). Column 4: a flat wall TV 2 tiles wide, slim black frame, switched OFF plain matte dark navy screen.",
+   "blocks": [
+    "row",
+    "wallcam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "w-2": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first two attached images are approved sprites of THIS furniture set (desk 2 tiles wide = 140 cm, plant): copy exactly their rendering, materials, light direction and real-world scale. The third image shows the room look (see the whiteboard on the back wall). Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated wall-mounted objects in ONE row, 4 equal columns, front elevation, same real-world scale. Column 1: a small white light switch plate with one rocker, the rocker pressed UP (ON) with a tiny warm glowing dot; about 9 cm tall. Column 2: the same light switch plate with the rocker pressed DOWN (OFF), no glow. Column 3: a bathroom mirror 1 tile wide (70 cm) and about 90 cm tall with rounded corners and a slim light oak frame, the mirror surface a pale soft blue-grey with a faint diagonal reflection. Column 4: a floating wall shelf 2 tiles wide (140 cm), light oak plank on hidden brackets with a few books, a small potted plant and a small vase on it.",
+   "blocks": [
+    "row",
+    "wallcam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "w-3": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first two attached images are approved sprites of THIS furniture set (desk 2 tiles wide = 140 cm, plant): copy exactly their rendering, materials, light direction and real-world scale. The third image shows the room look (see the whiteboard on the back wall). Draw ONLY the requested objects.",
+   "prompt": "Exactly 4 isolated wall-mounted objects in ONE row, 4 equal columns, front elevation, same real-world scale. Column 1: an elevator 2 tiles wide (140 cm) with its doors CLOSED: brushed steel double sliding doors about 210 cm tall inside a cream stone frame, a small round call-light above the doors. Column 2: the SAME elevator with its doors fully OPEN: the frame and call light identical, inside we see the lit elevator cabin (warm light, brushed metal walls, light oak floor), no doors visible. Column 3: a door frame 2 tiles wide (140 cm) and about 220 cm tall: light oak casing around an EMPTY open doorway: the opening inside the frame is pure magenta background (nothing inside). Column 4: a blank room name sign 3 tiles wide (210 cm) and about 35 cm tall: a light oak board with a cream inset panel, completely BLANK, no text.",
+   "blocks": [
+    "row",
+    "wallcam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "r-deskback": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/b-desks.1.png",
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png"
+   ],
+   "refNote": "The FIRST attached image shows desks of this set; its column 3 shows the exact required view (back of the monitor toward the camera, empty near half of the desk). The other images are approved sprites of the same set: match rendering, camera and scale.",
+   "prompt": "Exactly 3 isolated office desks in ONE row, 3 equal columns, each the same size and design as the reference desk, all seen from the SAME side as column 3 of the first attached image: the worker would sit on the FAR side (north, behind the monitor), so the monitor stands near the FRONT edge with its plain BACK casing and stand toward the camera, and the keyboard, mouse and mug are on the far side, hidden or only barely visible behind the monitor. NOTHING on the near half of the desk top: it is empty. Column 1: WHITE desk top on white legs. Column 2: DARK walnut brown desk top on black legs. Column 3: light oak desk top on white legs.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "r-pingpong": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "Exactly 1 isolated ping-pong table, centred, 3 tiles wide and 2 tiles deep (one and a half times the width of the reference desk), dusty navy blue top with white border lines, dark grey metal legs. The table's LONG side runs left to right, parallel to the bottom of the image. The players stand at the LEFT and RIGHT ends. The low net crosses the table at its middle from the back edge to the front edge, so in the image the net is a short VERTICAL band in the centre of the table dividing it into a LEFT half and a RIGHT half. A thin white centre line runs left to right along the length of each half. Two red paddles and a white ball lie on the table.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "r-storage": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "IMPORTANT: the camera looks DOWN at about 45 degrees, so for every object we clearly see its TOP surface (foreshortened, like the top of the reference desk) above its front face, never a flat straight-on front elevation. Exactly 4 isolated objects in ONE row, 4 equal columns, same scale as the reference desk. Column 1: a low wide light oak bookshelf, 2 tiles wide (same width as the reference desk), about 1.1 m tall, 1 tile deep, open shelves with colourful books (dusty blue, sage, mustard, cream), a small plant and a box on the top surface. Column 2: a tall narrow light oak shelf, 1 tile wide, about 1.6 m tall, full of colourful binders (blue, orange, green) and storage boxes. Column 3: a cream metal filing cabinet with 3 drawers and small metal handles, 1 tile wide, about 1 m tall. Column 4: an office laser printer, light grey, on a low light oak cabinet, 1 tile wide.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "r-kitchen2": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "IMPORTANT: the camera looks DOWN at about 45 degrees, so for every object we clearly see its TOP surface (foreshortened, like the top of the reference desk) above its front face, never a flat straight-on front elevation. Exactly 4 isolated objects in ONE row, 4 equal columns, each 1 tile wide (half the width of the reference desk). Column 1: a sage green kitchen counter segment with light oak worktop and a white microwave oven standing on the worktop. Column 2: a tall cream retro fridge with two doors and brushed metal handles, about 1.8 m tall. Column 3: a tall snack vending machine, dusty blue body, a large glass front showing rows of colourful snack packs, softly lit from inside, about 1.8 m tall. Column 4: a retro arcade cabinet, dusty blue body with light oak side trim, joystick and buttons on the control panel, its screen switched OFF (plain matte dark navy), about 1.7 m tall.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  },
+  "r-stall": {
+   "aspect": "16:9",
+   "refs": [
+    ".cache/raw/m-desk.1.png",
+    ".cache/raw/m-chair.1.png",
+    ".cache/raw/m-plant.1.png",
+    ".cache/ref-room.png"
+   ],
+   "refNote": "The first three attached images are approved sprites of THIS furniture set (desk 2 tiles wide, office chair, tall plant): copy exactly their rendering, materials, light direction, camera angle (front view from the south, looking down about 45 degrees, horizontal edges horizontal) and real-world scale. The fourth image shows the room look. Draw ONLY the requested objects.",
+   "prompt": "IMPORTANT: the camera looks DOWN at about 45 degrees, so for every object we clearly see its TOP surface (foreshortened, like the top of the reference desk) above its front face, never a flat straight-on front elevation. Exactly 2 isolated restroom toilet stalls in ONE row, 2 equal columns, each 2 tiles wide and 2 tiles deep (as wide as the reference desk, twice as deep), seen from above at 45 degrees so we look DOWN INTO the open-topped cubicle: cream partition walls about 1.8 m tall on the left, right and back with visible top edges, a white toilet inside against the back wall seen from above, light oak FRONT wall with a door facing the camera. Column 1: the door standing half OPEN, swung inward, showing the toilet, small green occupancy indicator. Column 2: identical stall with the door fully CLOSED and a small red occupancy indicator.",
+   "blocks": [
+    "row",
+    "cam",
+    "style3d",
+    "chroma"
+   ]
+  }
+ }
+}

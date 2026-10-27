@@ -1,0 +1,57 @@
+import json
+
+blocks = {
+    "surface": "RENDER STYLE: a material swatch taken from a soft stylized 3D diorama render of a cozy miniature office in a modern management game: matte materials, subtle soft bevels, soft ambient occlusion only inside grooves and joints, gentle fine surface detail, clean and calm, readable at small size. Perfectly even flat lighting over the whole image: no shading gradient, no vignette, no darker corners, no hotspot, no cast shadows, no light falloff. NOT pixel art, NOT a photograph, NOT flat vector. No text, no letters, no numbers, no logos, no watermark, no signature.",
+    "topdown": "VIEW: seamless tileable texture seen straight from above (orthographic top-down, no perspective, no isometric angle, no horizon). The material fills the whole square edge to edge with no border and no objects, and repeats seamlessly on all four edges.",
+    "front": "VIEW: straight-on front elevation of an interior wall section (orthographic, camera perpendicular to the wall, no perspective, no floor, no ceiling, no corners, no furniture). The wall fills the entire image edge to edge. Along the bottom edge runs a simple flat baseboard (skirting board) about one tenth of the image height, with a soft small shadow line where it meets the wall. At the top the wall simply continues to the image edge: no cornice, no molding, no cap. The finish repeats seamlessly from left to right.",
+    "style3d": "STYLE: soft stylized 3D render like a polished diorama in a modern management game: smooth rounded forms, soft global illumination, gentle ambient occlusion, subtle bevels and matte materials, warm calm palette of light oak, cream, sage green, dusty blue, terracotta. Clean, calm, high readability at small size. NOT pixel art, NOT photorealistic, NOT flat vector. Original design, no text, no letters, no numbers, no logos, no watermark, no signature.",
+    "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no floor, no wall, no shadow on the background, no vignette. Every object is separated from the others by a wide magenta gap and is never cropped by the image edge. Do not use magenta, pink or purple anywhere on the objects themselves.",
+}
+
+neutral = "Colour: NEUTRAL light greyscale only (white to light grey, no hue at all) because the game tints it by multiplying with a room colour."
+
+floors = {
+    "floor-carpet": "Short-pile office carpet: very fine low-contrast woven loop pile with a soft tonal speckle, no figures, no stripes, no squares, no seams. " + neutral,
+    "floor-wood": "Light oak wooden floor planks running horizontally: exactly 8 rows of planks from top to bottom, every row the same height, staggered plank end joints, soft subtle wood grain, thin soft grooves between planks, warm light honey oak like a cozy diorama floor, low contrast.",
+    "floor-tile_check": "Checkerboard floor of square ceramic tiles for a cafe kitchen: exactly 8 by 8 squares, alternating soft cream white and muted dusty sage grey-green, thin light grout lines, a tiny soft bevel on each tile, the square grid perfectly aligned with the image edges, low contrast.",
+    "floor-tile_white": "White square ceramic bathroom floor tiles: exactly 6 by 6 tiles, thin light grey grout lines, tiny soft bevel on each tile, subtle tonal variation between tiles, the grid perfectly aligned with the image edges, low contrast.",
+    "floor-concrete": "Smooth polished concrete floor, warm light grey, soft mottled cloudy variation and a few very faint tiny pores, no cracks, no joints, no lines, low contrast.",
+    "floor-marble": "Polished white marble floor of large square slabs: exactly 4 by 4 slabs, very thin hairline joints, soft grey and faint warm beige veining, gentle satin sheen without reflections, the grid aligned with the image edges, low contrast.",
+}
+rug = "A single rectangular area rug seen straight from above (orthographic top-down, no perspective), long side horizontal, about 3:2, filling most of the image with an even magenta margin around it. Soft thick fabric with slightly rounded corners and a soft rolled edge, no fringe, no tassels, no shadow on the background. Even flat lighting, low contrast. " + neutral + " Pattern: "
+rugs = {
+    "rug-a": rug + "a wide plain border band inset from the edge, a thin inner line, and a plain calm centre field.",
+    "rug-b": rug + "a soft modern pattern of a few large overlapping rounded organic shapes in two or three light grey tones, no border.",
+}
+skirt_light = "Baseboard: light grey-white painted wood."
+walls = {
+    "wall-plain": "Wall finish: smooth matte painted plaster with only a very fine subtle plaster grain, perfectly uniform. " + neutral + " " + skirt_light,
+    "wall-stripes": "Wall finish: vertical wallpaper stripes, alternating equal-width stripes of white and light grey, exactly 6 white and 6 grey stripes across the image width, soft paper texture. " + neutral + " " + skirt_light,
+    "wall-tiles": "Wall finish: large square glossy-matte ceramic wall tiles like a kitchen backsplash, every tile the SAME uniform white colour (no two-tone, no random shades), thin light grey grout lines, exactly 5 rows of tiles from the baseboard to the top, grid aligned with the image edges, subtle soft bevel per tile. " + neutral + " " + skirt_light,
+    "wall-wood_panel": "Wall finish: vertical light oak tongue-and-groove wood panelling, exactly 10 boards of equal width across the image, soft groove shadows between boards, subtle wood grain, warm honey oak. Baseboard: slightly darker oak.",
+    "wall-brick": "Wall finish: painted brick wall in running bond, exactly 9 courses of bricks from the baseboard to the top, bricks with softly rounded edges, slightly recessed mortar joints a bit darker than the bricks. " + neutral + " " + skirt_light,
+    "wall-glass": "Wall finish: a modern glass office partition. Large glass panes with slim dark charcoal aluminium vertical mullions: exactly 2 mullions, placed at one quarter and three quarters of the image width. The glass shows a flat even pale blue-grey tint with two soft faint diagonal reflection streaks per pane and a thin frosted horizontal band at middle height. Baseboard: charcoal aluminium bottom rail.",
+    "wall-marble": "Wall finish: polished warm white marble cladding, large rectangular slabs with hairline joints, exactly 3 slabs across the image width, soft grey veining, gentle satin sheen without reflections. Baseboard: slightly darker warm grey marble.",
+}
+
+ref = ["../office-iso-spike/.cache/raw/mock3d-c-front.1.png"]
+refNote = "Match only its rendering style, materials and palette (soft 3D diorama). Do NOT draw an office, a room or people."
+art_common = "Each artwork is seen straight-on (front view, no perspective, no tilt), with a simple thin frame of soft rounded 3D moulding. The painted image inside uses large simple shapes, soft gentle brush texture and calm harmonious colours so it stays readable when shown tiny (about 50 pixels wide). Original artwork, no text, no letters, no numbers, no signature."
+items = {}
+for k, v in floors.items():
+    items[k] = {"aspect": "1:1", "prompt": v, "blocks": ["topdown", "surface"]}
+for k, v in rugs.items():
+    items[k] = {"aspect": "3:2", "prompt": v, "blocks": ["surface", "chroma"]}
+for k, v in walls.items():
+    items[k] = {"aspect": "3:2", "prompt": v, "blocks": ["front", "surface"]}
+items["art-paint-a"] = {"aspect": "3:2", "refs": ref, "refNote": refNote, "blocks": ["style3d", "chroma"],
+    "prompt": "Four separate framed landscape-format paintings arranged in a 2 by 2 grid with wide magenta gaps between them, every painting the same size with an aspect ratio of 1.6 to 1 (wider than tall), light oak frames. Subjects: top-left misty blue mountains above a calm lake at dawn; top-right an abstract mid-century composition of sage green, terracotta and cream arcs and circles; bottom-left a small white sailboat on a calm turquoise sea under a soft sky; bottom-right a still life of a lemon tree in a terracotta pot against a cream wall. " + art_common}
+items["art-paint-b"] = {"aspect": "3:2", "refs": ref, "refNote": refNote, "blocks": ["style3d", "chroma"],
+    "prompt": "Four separate framed landscape-format paintings arranged in a 2 by 2 grid with wide magenta gaps between them, every painting the same size with an aspect ratio of 1.6 to 1 (wider than tall), soft white frames. Subjects: top-left a sunlit pine forest with a warm path; top-right abstract overlapping dusty blue and mustard yellow circles on cream; bottom-left golden desert dunes under a pale sunset sky; bottom-right a field of tulips in soft red and orange rows under a wide pale sky with one round tree on the horizon. " + art_common}
+items["art-wide"] = {"aspect": "2:3", "refs": ref, "refNote": refNote, "blocks": ["style3d", "chroma"],
+    "prompt": "Three separate framed panoramic paintings stacked vertically with wide magenta gaps between them, every painting the same size with an aspect ratio of 2.6 to 1 (much wider than tall), slim light oak frames. Subjects: top rolling green hills with a winding river and soft clouds; middle a calm coastline with cliffs, a small white lighthouse and gentle waves at golden hour; bottom an abstract horizon of layered soft bands in sage, sand, terracotta and dusty blue. " + art_common}
+items["art-posters"] = {"aspect": "3:2", "refs": ref, "refNote": refNote, "blocks": ["style3d", "chroma"],
+    "prompt": "Six separate framed posters arranged in a grid of 3 columns and 2 rows with wide magenta gaps between them, every poster the same size in portrait format with an aspect ratio of 3 to 4 (taller than wide), slim matte charcoal frames, each poster with a single bold simple illustration on a calm solid coloured background. Subjects in order, top row left to right: 1) CODE: a stylised code editor window with coloured horizontal code bars and a pair of chunky angle bracket shapes, on dusty blue; 2) COFFEE: a big steaming coffee cup on a saucer, on warm cream; 3) ROCKET: a rounded white and red rocket launching upward with a puff of smoke, on deep navy with tiny stars. Bottom row left to right: 4) CAT: a cute sitting ginger cat seen from the front, on sage green; 5) BUG: a friendly round ladybug beetle seen from above, on soft mint; 6) SHIP IT: a small cargo ship with colourful stacked containers sailing forward on waves under a big green check mark, on light sky blue. " + art_common}
+
+json.dump({"blocks": blocks, "items": items}, open("prompts.json", "w", encoding="utf8"), indent=1, ensure_ascii=False)
+print(len(items))

@@ -1,0 +1,10 @@
+{
+ "defaultBox": 36,
+ "box": { "chat": 40, "hourglass_flip": 40, "cobweb": 40, "storm": 40, "coffee": 38, "box": 38, "coin": 32, "sparkle": 34, "zzz": 38 },
+ "sheets": {
+  "i-1.1.png": ["alert", "question", "zzz", "check", "heart", "coffee"],
+  "i-2.1.png": ["music", "idea", "sweat", "star", "lightning", "chat"],
+  "i-3.1.png": ["box", "wave", "hourglass", "hourglass_flip", "cobweb", "storm"],
+  "i-4.1.png": ["coin", "sparkle", "trophy", "hand_rock", "hand_paper", "hand_scissors"]
+ }
+}

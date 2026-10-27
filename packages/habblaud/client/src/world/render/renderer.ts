@@ -116,6 +116,8 @@ export class Renderer {
   private clearColor = '#7fae62';
   private grass: CanvasPattern | null = null;
   private theme: SeasonalTheme = 'none';
+  private warmBudget = 0;
+  private deferred = false;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -136,11 +138,27 @@ export class Renderer {
   // =================================================================== sincronização com a simulação
 
   /** Mantém caches e visuais coerentes com o prédio atual. */
+  warmUp(budgetMs: number): void {
+    this.warmBudget = Number.isFinite(budgetMs) && budgetMs > 0 ? budgetMs : 0;
+  }
+
+  settled(): boolean {
+    return !this.deferred;
+  }
+
   sync(theme: SeasonalTheme = 'none'): void {
     const sim = this.sim;
     const themeChanged = theme !== this.theme;
     this.theme = theme;
     const assetsChanged = this.builtAssetsVersion !== this.assetsVersion || themeChanged;
+    const until = this.warmBudget > 0 ? performance.now() + this.warmBudget : 0;
+    let built = 0;
+    this.deferred = false;
+    const later = (): boolean => {
+      if (!until || built === 0 || performance.now() < until) return false;
+      this.deferred = true;
+      return true;
+    };
     if (this.baseCols !== sim.building.cols || assetsChanged) this.buildBase();
     if (this.layoutVersion !== sim.layoutVersion || assetsChanged) {
       this.layoutVersion = sim.layoutVersion;
@@ -148,8 +166,13 @@ export class Renderer {
       for (const a of [...sim.building.core, sim.building.corridor]) {
         want.add(a.id);
         const cur = this.areas.get(a.id);
-        if (!cur || cur.layout !== a || assetsChanged) this.areas.set(a.id, buildAreaVis(this.art, a, undefined, this.assets, theme));
+        if (!cur && later()) continue;
+        if (!cur || cur.layout !== a || assetsChanged) {
+          this.areas.set(a.id, buildAreaVis(this.art, a, undefined, this.assets, theme));
+          built++;
+        }
       }
+      if (this.deferred) this.layoutVersion = -1;
       for (const room of sim.rooms.values()) {
         if (!room.present) continue;
         want.add(room.id);
@@ -163,12 +186,15 @@ export class Renderer {
       if (!room.present) continue;
       this.occupiedSlots.add(room.slot);
       const cur = this.areas.get(room.id);
+      if (!cur && later()) continue;
       if (!cur || cur.layout !== room.layout || cur.version !== room.version || assetsChanged) {
         this.areas.set(room.id, buildAreaVis(this.art, room.layout, room, this.assets, theme));
+        built++;
       } else cur.room = room;
     }
     for (const [id, vis] of this.areas) if (vis.room && !vis.room.present) this.areas.delete(id);
     this.builtAssetsVersion = this.assetsVersion;
+    if (!this.deferred) this.warmBudget = 0;
   }
 
   /** Camada base: área externa, pátios dos slots e fechamentos do corredor. */

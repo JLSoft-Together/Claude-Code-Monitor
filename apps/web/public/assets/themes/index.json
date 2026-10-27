@@ -1,0 +1,6 @@
+[
+  { "id": "japandi", "name": { "en": "Japandi", "vi": "Japandi" }, "preview": "themes/japandi/preview.png" },
+  { "id": "night-shift", "name": { "en": "Night shift", "vi": "Ca đêm" }, "preview": "themes/night-shift/preview.png" },
+  { "id": "forest-cabin", "name": { "en": "Forest cabin", "vi": "Nhà gỗ trong rừng" }, "preview": "themes/forest-cabin/preview.png" },
+  { "id": "retro-80s", "name": { "en": "Retro 80s", "vi": "Retro thập niên 80" }, "preview": "themes/retro-80s/preview.png" }
+]

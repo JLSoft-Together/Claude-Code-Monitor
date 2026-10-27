@@ -1,0 +1,778 @@
+{
+ "notes": "Front 3/4 camera (yaw 0, k 0.7), @2x: 1 tile = 64 px wide, 44.8 px deep. Floor anchor = front-left floor corner of the footprint; wall anchor = bottom-centre on the wall base line. Facing follows api.ts: desk = screen toward the camera, worker sits SOUTH of it with his back to the camera (pair: office_chair, backrest south, front = backrest); desk_back = back of the monitor toward the camera, worker sits NORTH facing down (pair: office_chair_front). office_chair / office_chair_front variants: blue = base, red / green / black / gray recoloured from blue (the generated warm grey read beige / brown). cafe_chair / armchair: base = down, :left = mirror of :right. toilet_stall = state 0 (door ajar), :1 = closed; wall:elevator:0..4 = state 0 closed .. 4 open (rects.door = door opening); wall:light_switch = on, :off. Not shipped (renderer fallback): coffee_machine state 1 (same sprite + steam), poster / painting (wall art set).",
+ "aliases": {},
+ "sheets": {
+  "m-desk.1.png": [
+   {
+    "key": "desk",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "rects": {
+     "screen": "screen"
+    }
+   }
+  ],
+  "b-desks.1.png": [
+   {
+    "key": "desk:white",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "rects": {
+     "screen": "screen"
+    }
+   },
+   {
+    "key": "desk:dark",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "rects": {
+     "screen": "screen"
+    }
+   },
+   null
+  ],
+  "r-deskback.1.png": [
+   {
+    "key": "desk_back:white",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "front": "all"
+   },
+   {
+    "key": "desk_back:dark",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "front": "all"
+   },
+   {
+    "key": "desk_back",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.96,
+    "sy": 0.05,
+    "h": 1.2,
+    "front": "all"
+   }
+  ],
+  "m-chair.1.png": [
+   {
+    "key": "office_chair",
+    "base": "office_chair",
+    "recolor": [
+     "red",
+     "green",
+     "black",
+     "gray"
+    ],
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.8,
+    "sy": 0.3,
+    "h": 1.0,
+    "front": "rows:0,0.6"
+   }
+  ],
+  "b-deskback.1.png": [
+   null,
+   null,
+   {
+    "key": "office_chair_front",
+    "base": "office_chair_front",
+    "recolor": [
+     "red",
+     "green",
+     "black",
+     "gray"
+    ],
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.8,
+    "sy": 0.3,
+    "h": 1.0
+   }
+  ],
+  "b-chairs.1.png": [
+   null,
+   null,
+   {
+    "key": "stool",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.5,
+    "sy": 0.3,
+    "h": 0.7
+   },
+   {
+    "key": "cafe_chair",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.62,
+    "sy": 0.3,
+    "h": 0.9
+   }
+  ],
+  "b-cafe.1.png": [
+   {
+    "key": "cafe_chair:up",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.62,
+    "sy": 0.3,
+    "h": 0.9,
+    "front": "rows:0,0.36"
+   },
+   {
+    "key": "cafe_chair:right",
+    "mirror": "cafe_chair:left",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.62,
+    "sy": 0.3,
+    "h": 0.9
+   },
+   {
+    "key": "cafe_table",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.8,
+    "sy": 0.15,
+    "h": 0.8
+   },
+   {
+    "key": "armchair",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.1,
+    "h": 0.9
+   }
+  ],
+  "b-armchairs.1.png": [
+   {
+    "key": "armchair:up",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.1,
+    "h": 0.9,
+    "front": "rows:0,0.78"
+   },
+   {
+    "key": "armchair:right",
+    "mirror": "armchair:left",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.1,
+    "h": 0.9
+   },
+   {
+    "key": "coffee_table",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.88,
+    "sy": 0.2,
+    "h": 0.5
+   },
+   {
+    "key": "trash_bin",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.4,
+    "sy": 0.35,
+    "h": 0.4,
+    "despill": true
+   }
+  ],
+  "b-beanbags.1.png": [
+   {
+    "key": "beanbag:red",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.12,
+    "h": 0.8
+   },
+   {
+    "key": "beanbag",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.12,
+    "h": 0.8
+   },
+   {
+    "key": "beanbag:yellow",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.12,
+    "h": 0.8
+   },
+   {
+    "key": "beanbag:green",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.12,
+    "h": 0.8
+   }
+  ],
+  "b-plants-s.1.png": [
+   {
+    "key": "plant_small",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.6,
+    "sy": 0.3,
+    "h": 0.6
+   },
+   {
+    "key": "plant_small:succulent",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.42,
+    "sy": 0.32,
+    "h": 0.4
+   },
+   {
+    "key": "plant_small:flower",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.48,
+    "sy": 0.32,
+    "h": 0.5
+   },
+   {
+    "key": "plant_tall:bonsai",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.72,
+    "sy": 0.25,
+    "h": 0.9
+   }
+  ],
+  "m-plant.1.png": [
+   {
+    "key": "plant_tall:monstera",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.88,
+    "sy": 0.22,
+    "h": 2.0
+   }
+  ],
+  "b-plants-t.1.png": [
+   {
+    "key": "plant_tall",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.92,
+    "sy": 0.22,
+    "h": 2.2
+   },
+   {
+    "key": "plant_tall:ficus",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.88,
+    "sy": 0.22,
+    "h": 2.2
+   },
+   {
+    "key": "floor_lamp",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.5,
+    "sy": 0.3,
+    "h": 2.2,
+    "rects": {
+     "glow": "white"
+    }
+   },
+   {
+    "key": "water_cooler",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.55,
+    "sy": 0.25,
+    "h": 1.6
+   }
+  ],
+  "r-storage.1.png": [
+   {
+    "key": "bookshelf",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.95,
+    "sy": 0.1,
+    "h": 1.6
+   },
+   {
+    "key": "binder_shelf",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.1,
+    "h": 2.2
+   },
+   {
+    "key": "filing_cabinet",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.75,
+    "sy": 0.15,
+    "h": 1.4
+   },
+   {
+    "key": "printer",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.15,
+    "h": 1.2
+   }
+  ],
+  "b-kitchen1.1.png": [
+   {
+    "key": "counter",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 1.3
+   },
+   {
+    "key": "counter:drawers",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 1.3
+   },
+   {
+    "key": "counter_sink",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 1.3
+   },
+   {
+    "key": "coffee_machine",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 1.3
+   }
+  ],
+  "r-kitchen2.1.png": [
+   {
+    "key": "microwave",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 1.3
+   },
+   {
+    "key": "fridge",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.1,
+    "h": 2.5
+   },
+   {
+    "key": "vending_machine",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.95,
+    "sy": 0.05,
+    "h": 2.5
+   },
+   {
+    "key": "arcade",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.88,
+    "sy": 0.1,
+    "h": 2.4,
+    "rects": {
+     "screen": "screen"
+    }
+   }
+  ],
+  "b-sofas.1.png": [
+   {
+    "key": "sofa",
+    "fp": [
+     3,
+     1
+    ],
+    "fill": 0.95,
+    "sy": 0.1,
+    "h": 1.0
+   },
+   {
+    "key": "sofa:up",
+    "fp": [
+     3,
+     1
+    ],
+    "fill": 0.95,
+    "sy": 0.1,
+    "h": 1.0,
+    "front": "rows:0,0.85"
+   }
+  ],
+  "b-tables.1.png": [
+   {
+    "key": "meeting_table",
+    "fp": [
+     3,
+     2
+    ],
+    "fill": 0.95,
+    "sy": 0.08,
+    "h": 1.0
+   },
+   null
+  ],
+  "r-pingpong.1.png": [
+   {
+    "key": "pingpong_table",
+    "fp": [
+     3,
+     2
+    ],
+    "fill": 0.95,
+    "sy": 0.06,
+    "h": 1.0
+   }
+  ],
+  "b-recep.1.png": [
+   {
+    "key": "reception_desk",
+    "fp": [
+     3,
+     1
+    ],
+    "fill": 0.97,
+    "sy": 0.05,
+    "h": 1.4
+   },
+   {
+    "key": "bench",
+    "fp": [
+     2,
+     1
+    ],
+    "fill": 0.9,
+    "sy": 0.2,
+    "h": 0.8
+   }
+  ],
+  "r-stall.1.png": [
+   {
+    "key": "toilet_stall",
+    "fp": [
+     2,
+     2
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 2.4,
+    "front": "stall"
+   },
+   {
+    "key": "toilet_stall:1",
+    "fp": [
+     2,
+     2
+    ],
+    "fill": 1.0,
+    "sy": 0.0,
+    "h": 2.4,
+    "front": "stall"
+   }
+  ],
+  "b-restroom.1.png": [
+   null,
+   null,
+   {
+    "key": "sink",
+    "fp": [
+     1,
+     1
+    ],
+    "fill": 0.85,
+    "sy": 0.1,
+    "h": 1.3
+   }
+  ],
+  "b-partition.1.png": [
+   {
+    "key": "glass_partition",
+    "fp": [
+     1,
+     1
+    ],
+    "size": [
+     64,
+     96
+    ],
+    "sy": 0.5,
+    "h": 1.5,
+    "glass": true
+   },
+   {
+    "key": "glass_partition:v",
+    "fp": [
+     1,
+     1
+    ],
+    "px": 140,
+    "sy": 0.0,
+    "h": 1.5,
+    "glass": true
+   },
+   {
+    "key": "glass_partition:end",
+    "fp": [
+     1,
+     1
+    ],
+    "px": 96,
+    "sy": 0.5,
+    "h": 1.5
+   }
+  ],
+  "w-1.1.png": [
+   {
+    "key": "wall:window",
+    "box": [
+     120,
+     76
+    ],
+    "elev": 12,
+    "rects": {
+     "glass": "hole"
+    }
+   },
+   {
+    "key": "wall:whiteboard",
+    "box": [
+     176,
+     66
+    ],
+    "elev": 14,
+    "rects": {
+     "board": "white"
+    }
+   },
+   {
+    "key": "wall:clock",
+    "box": [
+     40,
+     40
+    ],
+    "elev": 50,
+    "rects": {
+     "face": "cream"
+    }
+   },
+   {
+    "key": "wall:tv",
+    "box": [
+     112,
+     64
+    ],
+    "elev": 18,
+    "rects": {
+     "screen": "screen",
+     "tv": "screen"
+    }
+   }
+  ],
+  "w-2.1.png": [
+   {
+    "key": "wall:light_switch",
+    "box": [
+     12,
+     18
+    ],
+    "elev": 36
+   },
+   {
+    "key": "wall:light_switch:off",
+    "box": [
+     12,
+     18
+    ],
+    "elev": 36
+   },
+   {
+    "key": "wall:mirror",
+    "box": [
+     54,
+     72
+    ],
+    "elev": 14,
+    "rects": {
+     "glass": "mirror"
+    }
+   },
+   {
+    "key": "wall:shelf_wall",
+    "box": [
+     120,
+     56
+    ],
+    "elev": 28
+   }
+  ],
+  "w-3.1.png": [
+   {
+    "key": "wall:elevator:closed",
+    "box": [
+     124,
+     92
+    ],
+    "elev": 0
+   },
+   {
+    "key": "wall:elevator:open",
+    "box": [
+     124,
+     92
+    ],
+    "elev": 0
+   },
+   {
+    "key": "wall:door_frame",
+    "box": [
+     124,
+     94
+    ],
+    "elev": 0,
+    "rects": {
+     "opening": "hole"
+    }
+   },
+   {
+    "key": "wall:sign",
+    "box": [
+     180,
+     30
+    ],
+    "elev": 58,
+    "rects": {
+     "sign": "inset"
+    }
+   }
+  ]
+ }
+}

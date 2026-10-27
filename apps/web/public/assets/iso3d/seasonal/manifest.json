@@ -1,0 +1,78 @@
+{
+ "version": 1,
+ "scale": 2,
+ "items": {
+  "bat": {
+   "file": "bat.webp",
+   "anchor": [
+    35,
+    81
+   ],
+   "footprint": [
+    1,
+    0
+   ],
+   "wall": true
+  },
+  "ghost": {
+   "file": "ghost.webp",
+   "anchor": [
+    2,
+    78
+   ],
+   "footprint": [
+    1,
+    1
+   ],
+   "wall": false
+  },
+  "gift": {
+   "file": "gift.webp",
+   "anchor": [
+    2,
+    50
+   ],
+   "footprint": [
+    1,
+    1
+   ],
+   "wall": false
+  },
+  "pumpkin": {
+   "file": "pumpkin.webp",
+   "anchor": [
+    2,
+    56
+   ],
+   "footprint": [
+    1,
+    1
+   ],
+   "wall": false
+  },
+  "tree": {
+   "file": "tree.webp",
+   "anchor": [
+    2,
+    109
+   ],
+   "footprint": [
+    1,
+    1
+   ],
+   "wall": false
+  },
+  "wreath": {
+   "file": "wreath.webp",
+   "anchor": [
+    25,
+    90
+   ],
+   "footprint": [
+    1,
+    0
+   ],
+   "wall": true
+  }
+ }
+}

@@ -1,0 +1,111 @@
+{
+  "id": "retro-80s",
+  "version": 1,
+  "name": {
+    "en": "Retro 80s",
+    "vi": "Retro thập niên 80"
+  },
+  "description": {
+    "en": "Cream walls, teal desks, pink and yellow shapes, black squiggles.",
+    "vi": "Tường kem, bàn xanh ngọc, hình hồng vàng, nét nguệch ngoạc đen."
+  },
+  "outline": "#262626",
+  "rooms": [
+    {
+      "carpet": "#a9ddd5",
+      "carpet2": "#98d3ca",
+      "wall": {
+        "base": "#eef8f6",
+        "trim": "#5fbfb2",
+        "pattern": "plain"
+      },
+      "accent": "#0b8378",
+      "deskVariant": "white",
+      "chairVariant": "red"
+    },
+    {
+      "carpet": "#f3c4d6",
+      "carpet2": "#edb2c8",
+      "wall": {
+        "base": "#fdf1f5",
+        "trim": "#e48aae",
+        "pattern": "stripes"
+      },
+      "accent": "#c81d63",
+      "deskVariant": "white",
+      "chairVariant": "black"
+    },
+    {
+      "carpet": "#f2dd96",
+      "carpet2": "#ebd17f",
+      "wall": {
+        "base": "#fdf8e6",
+        "trim": "#d8b443",
+        "pattern": "tiles"
+      },
+      "accent": "#262626",
+      "deskVariant": "dark",
+      "chairVariant": "green"
+    },
+    {
+      "carpet": "#d4c6f0",
+      "carpet2": "#c6b5eb",
+      "wall": {
+        "base": "#f5f1fd",
+        "trim": "#a593e0",
+        "pattern": "plain"
+      },
+      "accent": "#6a3fd0",
+      "deskVariant": "white",
+      "chairVariant": "gray"
+    },
+    {
+      "carpet": "#f6c6b5",
+      "carpet2": "#f1b49f",
+      "wall": {
+        "base": "#fdf3ee",
+        "trim": "#ef8354",
+        "pattern": "brick"
+      },
+      "accent": "#b8401f",
+      "deskVariant": "wood",
+      "chairVariant": "red"
+    },
+    {
+      "carpet": "#e6dcc4",
+      "carpet2": "#dbcfb3",
+      "wall": {
+        "base": "#f8f3e6",
+        "trim": "#8a8070",
+        "pattern": "stripes"
+      },
+      "accent": "#127a70",
+      "deskVariant": "dark",
+      "chairVariant": "black"
+    },
+    {
+      "carpet": "#b9dcef",
+      "carpet2": "#a7d1ea",
+      "wall": {
+        "base": "#f0f7fc",
+        "trim": "#6fb3d8",
+        "pattern": "glass"
+      },
+      "accent": "#1f6fa6",
+      "deskVariant": "white",
+      "chairVariant": "blue"
+    },
+    {
+      "carpet": "#9fcfc9",
+      "carpet2": "#8fc5be",
+      "wall": {
+        "base": "#f2faf8",
+        "trim": "#2fb5a6",
+        "pattern": "marble"
+      },
+      "accent": "#b8327a",
+      "deskVariant": "wood",
+      "chairVariant": "green"
+    }
+  ]
+}

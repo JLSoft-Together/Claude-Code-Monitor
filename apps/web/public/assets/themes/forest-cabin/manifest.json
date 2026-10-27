@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "illustrations": {
+    "emptyOffice": {
+      "file": "illustrations/empty-office.png",
+      "w": 960,
+      "h": 540,
+      "scale": 2
+    }
+  },
+  "wallArt": [
+    {
+      "id": "painting-pine-ridge",
+      "kind": "painting",
+      "file": "art/painting-pine-ridge.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Pine ridge",
+      "framed": {
+        "file": "art/framed/painting-pine-ridge.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-teapot",
+      "kind": "painting",
+      "file": "art/painting-teapot.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Teapot",
+      "framed": {
+        "file": "art/framed/painting-teapot.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-fox",
+      "kind": "painting",
+      "file": "art/painting-fox.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Red fox",
+      "framed": {
+        "file": "art/framed/painting-fox.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-mushrooms",
+      "kind": "painting",
+      "file": "art/painting-mushrooms.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Mushrooms",
+      "framed": {
+        "file": "art/framed/painting-mushrooms.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-plaid",
+      "kind": "painting",
+      "file": "art/painting-plaid.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Wool plaid",
+      "framed": {
+        "file": "art/framed/painting-plaid.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-snow-cabin",
+      "kind": "painting",
+      "file": "art/painting-snow-cabin.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Snowy cabin",
+      "framed": {
+        "file": "art/framed/painting-snow-cabin.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-owl",
+      "kind": "painting",
+      "file": "art/painting-owl.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Night owl",
+      "framed": {
+        "file": "art/framed/painting-owl.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-village",
+      "kind": "painting",
+      "file": "art/painting-village.png",
+      "w": 26,
+      "h": 16,
+      "tiles": 2,
+      "title": "Hill village",
+      "framed": {
+        "file": "art/framed/painting-village.png",
+        "w": 32,
+        "h": 22
+      }
+    },
+    {
+      "id": "painting-wide-canoe-lake",
+      "kind": "painting",
+      "file": "art/painting-wide-canoe-lake.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Canoe lake",
+      "framed": {
+        "file": "art/framed/painting-wide-canoe-lake.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-starry-peaks",
+      "kind": "painting",
+      "file": "art/painting-wide-starry-peaks.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Starry peaks",
+      "framed": {
+        "file": "art/framed/painting-wide-starry-peaks.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "painting-wide-patchwork",
+      "kind": "painting",
+      "file": "art/painting-wide-patchwork.png",
+      "w": 58,
+      "h": 24,
+      "tiles": 4,
+      "title": "Patchwork quilt",
+      "framed": {
+        "file": "art/framed/painting-wide-patchwork.png",
+        "w": 64,
+        "h": 30
+      }
+    },
+    {
+      "id": "poster-code",
+      "kind": "poster",
+      "file": "art/poster-code.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Code",
+      "variant": "code"
+    },
+    {
+      "id": "poster-coffee",
+      "kind": "poster",
+      "file": "art/poster-coffee.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Coffee",
+      "variant": "coffee"
+    },
+    {
+      "id": "poster-rocket",
+      "kind": "poster",
+      "file": "art/poster-rocket.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Rocket",
+      "variant": "rocket"
+    },
+    {
+      "id": "poster-cat",
+      "kind": "poster",
+      "file": "art/poster-cat.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Cat",
+      "variant": "cat"
+    },
+    {
+      "id": "poster-bug",
+      "kind": "poster",
+      "file": "art/poster-bug.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "No bugs",
+      "variant": "bug"
+    },
+    {
+      "id": "poster-ship-it",
+      "kind": "poster",
+      "file": "art/poster-ship-it.png",
+      "w": 12,
+      "h": 16,
+      "tiles": 1,
+      "title": "Ship it!",
+      "variant": "ship_it"
+    }
+  ]
+}

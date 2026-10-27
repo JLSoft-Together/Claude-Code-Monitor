@@ -9,6 +9,7 @@ function subscribe(channel: string, handler: (payload: unknown) => void): () => 
 // Sandboxed preload: only this narrow surface reaches the page. The main process re-checks the caller's origin.
 contextBridge.exposeInMainWorld('ccmDesktop', {
   platform: process.platform,
+  titleBar: process.platform === 'darwin' ? 'mac' : 'overlay',
   ptyEndpoint: (): Promise<unknown> => ipcRenderer.invoke('ccm:pty-endpoint'),
   pickFolder: (near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder', near),
   setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),

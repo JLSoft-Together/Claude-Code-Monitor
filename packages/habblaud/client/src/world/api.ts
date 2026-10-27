@@ -64,7 +64,7 @@ export interface WorldApi {
   focusAgent(id: string, opts?: { follow?: boolean }): void;
   focusRoom(id: string): void;
   /** Enquadra o prédio inteiro. */
-  overview(): void;
+  overview(opts?: { fill?: boolean }): void;
   zoomBy(factor: number): void;
   getOptions(): WorldOptions;
   setOptions(o: Partial<WorldOptions>): void;
@@ -98,6 +98,7 @@ export interface WorldApi {
    * câmera; ao voltar, a simulação avança o tempo que passou (como com a aba em segundo plano).
    */
   setSuspended?(suspended: boolean): void;
+  onReady?(cb: () => void): () => void;
   destroy(): void;
 }
 

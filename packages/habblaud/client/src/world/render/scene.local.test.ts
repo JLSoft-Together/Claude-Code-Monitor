@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { appearanceFromSeed, characterSprite, spriteBounds } from '../../art';
 import { opaqueBounds } from './scene';
 
-describe('local patch D: sprite bounds without pixel read-back', () => {
+describe('local patch J: sprite bounds without pixel read-back', () => {
   it('registers the opaque box of a character sprite from its pixel buffer', () => {
     const s = characterSprite({ appearance: appearanceFromSeed(7), dir: 'down', pose: 'stand', frame: 0 });
     const box = spriteBounds.get(s.canvas as HTMLCanvasElement);

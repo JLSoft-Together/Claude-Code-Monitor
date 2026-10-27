@@ -6,7 +6,7 @@ import { SPECIAL, type ShellOutcome } from '../../../shared/activity';
 import { hash32 } from '../../../shared/hash';
 import { TILE } from '../art/api';
 import type { Camera } from './camera';
-import type { Renderer } from './render/renderer';
+import type { WorldRenderer } from './projection';
 import { oldestShell } from './sim/shell';
 import type { Sim } from './sim/sim';
 import type { GatherKind } from './social/gathering';
@@ -93,7 +93,7 @@ export interface WorldDebug {
 
 const NAMES = ['Lia', 'Otávio', 'Bruna', 'Caio', 'Iara', 'Rui', 'Nina', 'Davi', 'Tais', 'Ivo'];
 
-export function createDebug(sim: Sim, renderer: Renderer, camera: Camera, onCameraMoved: () => void): WorldDebug {
+export function createDebug(sim: Sim, renderer: WorldRenderer, camera: Camera, onCameraMoved: () => void): WorldDebug {
   let seq = 0;
   const now = () => Date.now();
   const reapply = () => sim.reapply(now());

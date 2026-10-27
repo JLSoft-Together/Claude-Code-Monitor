@@ -1,0 +1,226 @@
+{
+  "blocks": {
+    "style": "STYLE: clean modern illustrated isometric game art for a cozy office simulation game. Soft cel shading with gentle gradients, smooth crisp vector-like edges, slightly chunky rounded friendly proportions, muted warm pastel palette with soft whites, light oak wood, sage green and dusty blue accents. Soft key light from the upper left, subtle ambient occlusion in creases. NOT pixel art, NOT photorealistic, NOT 3D-render plastic look, no heavy black outlines. Original design, no text, no letters, no numbers, no logos, no watermark, no signature.",
+    "chroma": "BACKGROUND: the entire background is one perfectly flat solid pure magenta color #FF00FF, edge to edge, no gradient, no texture, no floor plane, no ground shadow, no vignette, no frame. The subject is centered with generous empty margin on every side and is never cropped. Do not use magenta, pink or purple anywhere on the subject itself.",
+    "char": "CHARACTER STYLE: stylized cute-but-not-chibi proportions (head about 1/4.5 of body height), simple friendly face with dot eyes, clean readable silhouette, soft cel shading matching the furniture style.",
+    "adult": "AGE: the character is clearly a grown-up ADULT office professional in their late twenties to thirties: adult face with a defined jaw and cheekbones, adult neck and shoulders, adult body proportions with longer legs. NOT a child, NOT a teenager, NOT a kid."
+  },
+  "archetypes": {
+    "jin": {
+      "look": "m",
+      "name": "Jin",
+      "who": "the young man from the reference: short thick textured dark-brown hair swept up at the front, light skin, plain white crew-neck t-shirt with no print, dark navy slim trousers with rolled cuffs, white sneakers, a dark watch with a green strap on his left wrist",
+      "adult": false
+    },
+    "theo": {
+      "look": "m",
+      "name": "Theo",
+      "who": "an adult man in his early thirties with warm medium-brown skin, short neat black hair with a side part, a short trimmed black beard, rectangular dark-framed glasses, a dusty-blue button-up shirt with the sleeves rolled to the elbows and tucked in, khaki-beige chino trousers, brown leather shoes",
+      "adult": true
+    },
+    "kofi": {
+      "look": "m",
+      "name": "Kofi",
+      "who": "an adult man in his late twenties with deep dark-brown skin, a short black beard, a charcoal-grey knit beanie covering his short black hair, a mustard-yellow hoodie (no print), mid-grey slim jeans, chunky white-and-grey sneakers, tall broad-shouldered build",
+      "adult": true
+    },
+    "mai": {
+      "look": "f",
+      "name": "Mai",
+      "who": "an adult woman in her late twenties with light-beige skin, long straight glossy black hair falling below her shoulder blades with a middle part, a soft sage-green long-sleeve blouse, cream-white wide-leg trousers, tan flat shoes, small gold stud earrings",
+      "adult": true
+    },
+    "rosa": {
+      "look": "f",
+      "name": "Rosa",
+      "who": "an adult woman in her early thirties with warm tan-brown skin, big voluminous shoulder-length curly dark-brown hair, a terracotta-orange knit cardigan over a cream top, a charcoal-grey knee-length A-line skirt, dark tights, black ankle boots",
+      "adult": true
+    },
+    "ava": {
+      "look": "f",
+      "name": "Ava",
+      "who": "an adult woman in her thirties with fair skin and light freckles, a short sleek copper-red chin-length bob haircut, a light-blue denim jacket over a white t-shirt, slim black trousers, white sneakers, tall slender build",
+      "adult": true
+    }
+  },
+  "templates": {
+    "turn": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/jin-turn.1.png"
+      ],
+      "refNote": "The attached character is ONLY the art-style reference: match its rendering style, line weight, shading, palette softness and figure size exactly, but draw a DIFFERENT person who is clearly older (an adult professional, not a teen) with slightly longer adult legs and neck.",
+      "prompt": "Character turnaround sprite sheet for an isometric office game: ONE office worker, {who}. Exactly 4 full-body standing idle poses of the SAME person in ONE horizontal row, four equal columns, wide empty gaps, none touching, identical size, feet on the same baseline, arms relaxed at the sides, each seen from the isometric camera above:\nColumn 1: facing the lower-right (south-east, three-quarter front view), relaxed friendly smile.\nColumn 2: facing the lower-left (south-west, three-quarter front view).\nColumn 3: facing the upper-right (north-east, three-quarter BACK view, face not visible).\nColumn 4: facing the upper-left (north-west, three-quarter BACK view, face not visible).",
+      "blocks": [
+        "style",
+        "char",
+        "adult",
+        "chroma"
+      ]
+    },
+    "walk-se": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical size in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking toward the lower-right of the image (south-east, three-quarter front view from the isometric camera), all 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, RIGHT arm swings forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight carrying the weight, RIGHT knee bent with the right foot lifted off the ground passing the left ankle, arms nearly hanging at the sides.\nFrame 3 (contact B): mirror of frame 1: long stride, RIGHT leg forward with heel down, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: legs together, RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "walk-ne": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround (see its third column for the back view): identical hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical size in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) seen from BEHIND, walking away toward the upper-right of the image (north-east, three-quarter BACK view from the isometric camera: we see the back of the head and the back of the clothes, the face is not visible). All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG AND ARM POSE:\nFrame 1 (contact A): long stride, LEFT leg forward, RIGHT leg back on its toes with the sole showing, RIGHT arm forward, LEFT arm back.\nFrame 2 (passing A): legs close together under the body, LEFT leg straight, RIGHT knee bent with the right foot lifted, arms nearly at the sides.\nFrame 3 (contact B): mirror of frame 1: RIGHT leg forward, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 4 (passing B): mirror of frame 2: legs together, RIGHT leg straight, LEFT knee bent with the left foot lifted, arms nearly at the sides.\nThe body and head stay at the same height, only legs and arms change.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "seated": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical scale in every column.",
+      "prompt": "Sprite sheet for an isometric office game, 5 poses of the reference character ({who}) in ONE horizontal row, five equal columns, wide empty gaps, none touching, all at exactly the same scale, and NO chair, NO stool, NO desk, NO furniture, NO props drawn (the seated poses sit on an invisible seat so they can be placed on any chair):\nColumn 1: standing idle facing the lower-right (south-east, three-quarter front view), arms relaxed at the sides (scale reference).\nColumn 2: seated, body facing the upper-right (north-east, three-quarter BACK view, face not visible), both hands forward at keyboard height as if typing, thighs horizontal, knees bent 90 degrees, feet on the floor.\nColumn 3: seated facing the lower-right (south-east, three-quarter front view), relaxed, hands resting on the thighs, friendly smile, thighs horizontal, feet on the floor.\nColumn 4: seated facing the lower-right (south-east), asleep: torso slumped forward, head drooping down onto the forearms folded in front of the chest at desk height, eyes closed, thighs horizontal, feet on the floor.\nColumn 5: seated facing the lower-right (south-east), one hand raised high above the head to ask for attention, the other hand on the thigh, cheerful open-mouth face, thighs horizontal, feet on the floor.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "actions": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical scale in every column.",
+      "prompt": "Sprite sheet for an isometric office game, 5 full-body STANDING poses of the reference character ({who}) in ONE horizontal row, five equal columns, wide empty gaps, none touching, all at exactly the same scale, feet on the same baseline, every pose facing the lower-right (south-east, three-quarter front view from the isometric camera), no props:\nColumn 1: standing idle, arms relaxed at the sides (scale reference).\nColumn 2: one hand raised high straight above the head waving to ask for attention, the other arm relaxed, cheerful face.\nColumn 3: talking: mouth open mid-sentence, one hand gesturing forward at chest height with the palm up, the other arm relaxed.\nColumn 4: talking: mouth open, both hands gesturing outward at waist height, palms open, explaining something.\nColumn 5: cheering: BOTH arms raised high above the head in a V, fists or open hands, big happy open-mouth smile, feet together.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "coffee": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical scale in every column.",
+      "prompt": "Sprite sheet for an isometric office game, 4 full-body STANDING poses of the reference character ({who}) in ONE horizontal row, four equal columns, wide empty gaps, none touching, all at exactly the same scale, feet on the same baseline, every pose facing the lower-right (south-east, three-quarter front view from the isometric camera). The only prop is a plain white ceramic coffee mug (no text, no logo, no pattern) with a little dark coffee inside:\nColumn 1: standing idle, empty hands, arms relaxed at the sides (scale reference, no mug).\nColumn 2: standing relaxed, holding the coffee mug in one hand at chest height in front of the body, the other arm relaxed, content smile.\nColumn 3: drinking: the hand lifts the mug halfway up toward the mouth, the other arm relaxed.\nColumn 4: drinking: the mug touches the lips, sipping, eyes closed happily, the other arm relaxed.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "walk-coffee": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png"
+      ],
+      "refNote": "This is the exact SAME character as in the attached turnaround: identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi) and rendering style. Keep the identical scale in every frame.",
+      "prompt": "Animation sprite sheet for a game: 4 frames of ONE walk cycle of the reference character ({who}) walking toward the lower-right of the image (south-east, three-quarter front view from the isometric camera) while carrying a plain white ceramic coffee mug (no text, no logo) in the RIGHT hand held steady at chest height; the LEFT arm swings. All 4 in ONE horizontal row, evenly spaced on an invisible grid of 4 equal columns, wide empty gaps, none touching, same height, feet on the same baseline. EVERY FRAME MUST HAVE A CLEARLY DIFFERENT LEG POSE:\nFrame 1 (contact A): long stride, LEFT leg forward with heel down, RIGHT leg back on its toes, LEFT arm back.\nFrame 2 (passing A): legs close together, LEFT leg straight, RIGHT knee bent with the right foot lifted, left arm at the side.\nFrame 3 (contact B): long stride, RIGHT leg forward with heel down, LEFT leg back on its toes, LEFT arm forward.\nFrame 4 (passing B): legs together, RIGHT leg straight, LEFT knee bent with the left foot lifted, left arm at the side.\nThe mug stays at the same height in the same hand in every frame; the body and head stay at the same height.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "actions2": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png",
+        ".cache/raw/{id}-actions.1.png"
+      ],
+      "refNote": "The first attached image is the character turnaround, the second shows existing action poses of the SAME character (stand, raise hand, talk, talk, cheer). Identical face, hair, clothing, colours, body proportions (same head-to-body ratio, NOT younger or more chibi), rendering style, and EXACTLY the same size as in the second image.",
+      "prompt": "Sprite sheet for an isometric office game: second animation frames for the reference character ({who}). 6 poses in ONE horizontal row, six equal columns, wide empty gaps, none touching, all at exactly the same scale as the existing poses, every pose facing the lower-right (south-east, three-quarter front view), NO chair, NO desk, NO furniture, NO props:\nColumn 1: standing idle, arms relaxed at the sides (scale reference, same as the existing stand pose).\nColumn 2: standing, waving: the same hand raised high above the head as in the existing raise-hand pose, but the open hand tilted the other way (mid-wave), cheerful open-mouth face.\nColumn 3: standing, talking: mouth half open, one hand raised at shoulder height with the index finger up making a point, the other arm relaxed.\nColumn 4: standing, cheering: both arms raised high above the head but wider apart and bent at the elbows, hands open, eyes happily closed, big smile, feet together on the ground.\nColumn 5: seated on an invisible seat, asleep: torso slumped forward, head resting on the forearms folded at desk height, eyes closed, shoulders slightly raised as if breathing in, thighs horizontal, feet on the floor.\nColumn 6: seated on an invisible seat, one hand raised high above the head waving (hand tilted mid-wave), the other hand on the thigh, cheerful face, thighs horizontal, feet on the floor.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "walk8-se": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png",
+        ".cache/raw/{id}-walk-se.1.png"
+      ],
+      "refNote": "The first attached image is the character turnaround, the second is the character's EXISTING 4-frame walk cycle in this direction. Same character: identical face, hair, clothing, exact clothing colours, accessories on the same side, body proportions (same head-to-body ratio, NOT younger or more chibi) and the same simple rendering style as the existing walk cycle. Frames 1, 3, 5 and 7 of the new sheet must be redrawn copies of frames 1, 2, 3 and 4 of the existing walk cycle (same poses, same size); frames 2, 4, 6 and 8 are new in-between poses.",
+      "prompt": "Smooth animation sprite sheet for a game: 8 frames of ONE complete walk cycle of the reference character ({who}) walking toward the lower-right of the image (south-east, three-quarter front view from the isometric camera). All 8 in ONE horizontal row, evenly spaced on an invisible grid of 8 equal narrow columns, small empty gaps, none touching or overlapping, all the same size, feet on the same baseline, the head at the same height in every frame. The arms ALWAYS swing opposite to the legs and clearly visible at the sides of the body (never crossing in front of the torso); the legs and arms move smoothly and progressively from frame to frame, each frame one eighth of the cycle:\nFrame 1: contact A: long stride, LEFT leg forward heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2: LEFT foot flat taking the weight, RIGHT foot lifting off behind, shorter stride, arms halfway back toward the sides.\nFrame 3: passing A: LEFT leg straight under the body, RIGHT knee bent and the right foot lifted beside the left ankle, arms at the sides.\nFrame 4: RIGHT leg swinging forward knee bent, right foot off the ground in front, LEFT leg slightly behind, LEFT arm starting forward.\nFrame 5: contact B: long stride, RIGHT leg forward heel down, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 6: RIGHT foot flat taking the weight, LEFT foot lifting off behind, shorter stride, arms halfway back toward the sides.\nFrame 7: passing B: RIGHT leg straight under the body, LEFT knee bent and the left foot lifted beside the right ankle, arms at the sides.\nFrame 8: LEFT leg swinging forward knee bent, left foot off the ground in front, RIGHT leg slightly behind, RIGHT arm starting forward.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    },
+    "walk8-ne": {
+      "aspect": "3:2",
+      "refs": [
+        ".cache/raw/{id}-turn.1.png",
+        ".cache/raw/{id}-walk-ne.1.png"
+      ],
+      "refNote": "The first attached image is the character turnaround, the second is the character's EXISTING 4-frame walk cycle in this direction. Same character: identical face, hair, clothing, exact clothing colours, accessories on the same side, body proportions (same head-to-body ratio, NOT younger or more chibi) and the same simple rendering style as the existing walk cycle. Frames 1, 3, 5 and 7 of the new sheet must be redrawn copies of frames 1, 2, 3 and 4 of the existing walk cycle (same poses, same size); frames 2, 4, 6 and 8 are new in-between poses.",
+      "prompt": "Smooth animation sprite sheet for a game: 8 frames of ONE complete walk cycle of the reference character ({who}) walking away toward the upper-right of the image (north-east, three-quarter BACK view from the isometric camera: we see the back of the head and the back of the clothes, the face is not visible). All 8 in ONE horizontal row, evenly spaced on an invisible grid of 8 equal narrow columns, small empty gaps, none touching or overlapping, all the same size, feet on the same baseline, the head at the same height in every frame. The arms ALWAYS swing opposite to the legs and clearly visible at the sides of the body (never crossing in front of the torso); the legs and arms move smoothly and progressively from frame to frame, each frame one eighth of the cycle:\nFrame 1: contact A: long stride, LEFT leg forward heel down, RIGHT leg back on its toes, RIGHT arm forward, LEFT arm back.\nFrame 2: LEFT foot flat taking the weight, RIGHT foot lifting off behind, shorter stride, arms halfway back toward the sides.\nFrame 3: passing A: LEFT leg straight under the body, RIGHT knee bent and the right foot lifted beside the left ankle, arms at the sides.\nFrame 4: RIGHT leg swinging forward knee bent, right foot off the ground in front, LEFT leg slightly behind, LEFT arm starting forward.\nFrame 5: contact B: long stride, RIGHT leg forward heel down, LEFT leg back on its toes, LEFT arm forward, RIGHT arm back.\nFrame 6: RIGHT foot flat taking the weight, LEFT foot lifting off behind, shorter stride, arms halfway back toward the sides.\nFrame 7: passing B: RIGHT leg straight under the body, LEFT knee bent and the left foot lifted beside the right ankle, arms at the sides.\nFrame 8: LEFT leg swinging forward knee bent, left foot off the ground in front, RIGHT leg slightly behind, RIGHT arm starting forward.",
+      "blocks": [
+        "style",
+        "char",
+        "chroma"
+      ]
+    }
+  },
+  "plan": {
+    "jin": [
+      "walk-ne",
+      "seated",
+      "actions",
+      "coffee",
+      "walk-coffee"
+    ],
+    "theo": [
+      "turn",
+      "walk-se",
+      "walk-ne",
+      "seated",
+      "actions"
+    ],
+    "kofi": [
+      "turn",
+      "walk-se",
+      "walk-ne",
+      "seated",
+      "actions"
+    ],
+    "mai": [
+      "turn",
+      "walk-se",
+      "walk-ne",
+      "seated",
+      "actions"
+    ],
+    "rosa": [
+      "turn",
+      "walk-se",
+      "walk-ne",
+      "seated",
+      "actions"
+    ],
+    "ava": [
+      "turn",
+      "walk-se",
+      "walk-ne",
+      "seated",
+      "actions"
+    ]
+  }
+}

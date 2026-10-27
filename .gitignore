@@ -59,3 +59,7 @@ temp/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Vitest JSON reporter output
+apps/web/.vitest/
+__pycache__/

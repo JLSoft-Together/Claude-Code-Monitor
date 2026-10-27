@@ -1,0 +1,17 @@
+{
+  "id": "forest-cabin",
+  "version": 1,
+  "name": { "en": "Forest cabin", "vi": "Nhà gỗ trong rừng" },
+  "description": { "en": "Cosy timber lodge: pine, wool plaid, ferns and candlelight.", "vi": "Nhà gỗ ấm cúng: gỗ thông, len kẻ ô, dương xỉ và ánh nến." },
+  "outline": "#2b3245",
+  "rooms": [
+    { "carpet": "#d3c2aa", "carpet2": "#c7b59b", "wall": { "base": "#f5ede0", "trim": "#8a6448", "pattern": "wood_panel" }, "accent": "#b4473a", "deskVariant": "wood", "chairVariant": "red" },
+    { "carpet": "#c3d0b8", "carpet2": "#b6c5aa", "wall": { "base": "#eef3e8", "trim": "#6f8f66", "pattern": "plain" }, "accent": "#4f7d4a", "deskVariant": "wood", "chairVariant": "green" },
+    { "carpet": "#c6c2b9", "carpet2": "#b9b4aa", "wall": { "base": "#efede9", "trim": "#8f897d", "pattern": "brick" }, "accent": "#7a4e2d", "deskVariant": "dark", "chairVariant": "gray" },
+    { "carpet": "#e0c6bd", "carpet2": "#d5b7ad", "wall": { "base": "#f8efea", "trim": "#b07a6c", "pattern": "stripes" }, "accent": "#a63d32", "deskVariant": "wood", "chairVariant": "red" },
+    { "carpet": "#bfcddb", "carpet2": "#b1c1d2", "wall": { "base": "#eef3f7", "trim": "#6f8aa8", "pattern": "wood_panel" }, "accent": "#2f6f9f", "deskVariant": "wood", "chairVariant": "blue" },
+    { "carpet": "#e3d3a8", "carpet2": "#d8c698", "wall": { "base": "#fbf4e2", "trim": "#b8955a", "pattern": "plain" }, "accent": "#8f6210", "deskVariant": "wood", "chairVariant": "black" },
+    { "carpet": "#b9c4b4", "carpet2": "#acb8a6", "wall": { "base": "#edf1ec", "trim": "#4f6a55", "pattern": "wood_panel" }, "accent": "#2f4a3a", "deskVariant": "dark", "chairVariant": "green" },
+    { "carpet": "#dcd2c2", "carpet2": "#d0c4b2", "wall": { "base": "#f7f2e9", "trim": "#9a7a5a", "pattern": "stripes" }, "accent": "#5b3d2a", "deskVariant": "dark", "chairVariant": "black" }
+  ]
+}
