@@ -129,6 +129,14 @@ persona hook (patch H) gives Jin seeds solo-outing weights of **coffee × 2.5 an
 - **I**: warm-up + ready (`createWorld({ warmUpMs, assets })`, `WorldApi.onReady`, `WorldRenderer.warmUp?` /
   `settled?`, pixel `Renderer.warmUp` budget). Without the options every path is upstream's (golden unchanged).
 
+## Performance
+
+- Characters are never drawn straight from their sheet (1536×4576 @2x): `charFrames.ts` builds each frame at its on-screen device height with `createImageBitmap` (crop + resize, off the main thread) and the renderer draws that bitmap about 1:1. Until a size is ready it uses another size of the same frame, then the sheet.
+- Pad, area floors and rugs are painted once into a screen-size layer and blitted while the camera, the rooms, the art and the seasonal theme stay the same (`IsoRenderer.cachedFloor`); during a pan, zoom, room build or reveal they are drawn directly.
+- An idle office draws at ~30 fps (Habblaud patch L).
+- Live screens (desks, arcade, TV, whiteboard, windows) repaint every 150 ms into their own bitmap; tinted patterns, rugs and the floor layer are ImageBitmaps (a canvas drawn every frame cost main-thread time on an Intel UHD 630).
+- Characters load from the @1x sheets (44 MB decoded instead of 177 MB); an archetype's @2x sheet loads only when it is shown larger than its @1x frame.
+
 ## Known gaps
 
 - Camera rotation (on hold).

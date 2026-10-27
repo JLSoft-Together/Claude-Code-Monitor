@@ -3,6 +3,7 @@ import {
   furnitureArt,
   iconArt,
   isoArt,
+  isoArtImages,
   loadIsoArt,
   parseCharManifest,
   parseFurnitureManifest,
@@ -172,6 +173,24 @@ describe('loadIsoArt', () => {
     expect(art.wallArt.map((a) => a.id)).toEqual(['p1', 'w1', 'c1', 'c2'])
     expect(l.image).toHaveBeenCalledWith('/assets/iso3d/chars/jin.webp')
     expect(l.image).toHaveBeenCalledWith('/assets/iso3d/furniture/desk.front.webp')
+  })
+
+  it('loads the @1x sheet first and the @2x one only when asked', async () => {
+    const chars = { ...CHARS, archetypes: CHARS.archetypes.map((a) => ({ ...a, sheet1x: a.sheet.replace('.webp', '@1x.webp') })) }
+    const json = vi.fn(async (url: string) => (url === '/assets/iso3d/chars/manifest.json' ? chars : null))
+    const image = vi.fn(async (url: string): Promise<IsoImage | null> => {
+      const lo = url.includes('@1x')
+      return { src: { url } as unknown as CanvasImageSource, w: lo ? 64 : 128, h: lo ? 64 : 128 }
+    })
+    const art = await loadIsoArt({ json, image })
+    const jin = art.chars!.sheets.get('jin')!
+    expect(jin).toMatchObject({ w: 128, h: 128, k: 0.5 })
+    expect(image).not.toHaveBeenCalledWith('/assets/iso3d/chars/jin.webp')
+    expect(art.chars!.hi!('jin')).toBeNull()
+    expect(art.chars!.hi!('jin')).toBeNull()
+    await vi.waitFor(() => expect(art.chars!.hi!('jin')).toMatchObject({ w: 128, h: 128 }))
+    expect(image.mock.calls.filter(([u]) => u === '/assets/iso3d/chars/jin.webp')).toHaveLength(1)
+    expect(isoArtImages(art)).toContain(art.chars!.hiLoaded!.get('jin'))
   })
 
   it('drops only the items whose image fails, keeping the rest', async () => {

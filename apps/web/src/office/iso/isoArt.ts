@@ -7,6 +7,7 @@ export interface IsoImage {
   src: CanvasImageSource
   w: number
   h: number
+  k?: number
 }
 
 export type Pt = readonly [number, number]
@@ -26,6 +27,7 @@ export interface CharArchetypeDef {
   look: 'f' | 'm'
   name: string
   sheet: string
+  sheet1x?: string
   anims: Record<string, CharAnim>
 }
 
@@ -40,6 +42,8 @@ export interface CharManifest {
 
 export interface CharArt extends CharManifest {
   sheets: Map<string, IsoImage>
+  hi?: (id: string) => IsoImage | null
+  hiLoaded?: Map<string, IsoImage>
 }
 
 export type FurnRectName = 'screen' | 'board' | 'tv' | 'glass' | 'face' | 'art' | 'sign' | 'door' | 'opening' | 'glow'
@@ -284,7 +288,7 @@ export function parseCharManifest(raw: unknown): CharManifest | null {
     }
     if (!Object.keys(anims).length) continue
     seen.add(id)
-    archetypes.push({ id, look, name: typeof r.name === 'string' ? r.name.slice(0, 40) : id, sheet, anims })
+    archetypes.push({ id, look, name: typeof r.name === 'string' ? r.name.slice(0, 40) : id, sheet, ...(validFile(r.sheet1x) ? { sheet1x: r.sheet1x as string } : {}), anims })
   }
   if (!archetypes.length) return null
   const fig = obj(o.figure)
@@ -463,13 +467,34 @@ export async function loadIsoArt(loaders: IsoArtLoaders = {}): Promise<IsoArt> {
   if (cm && root.chars) {
     const base = dirOf(root.chars)
     const sheets = new Map<string, IsoImage>()
+    const hiFiles = new Map<string, string>()
     await Promise.all(
       cm.archetypes.map(async (a) => {
+        const lo = a.sheet1x ? await img(base, a.sheet1x) : null
+        if (lo) {
+          sheets.set(a.id, { src: lo.src, w: lo.w * 2, h: lo.h * 2, k: 0.5 })
+          hiFiles.set(a.id, a.sheet)
+          return
+        }
         const s = await img(base, a.sheet)
         if (s) sheets.set(a.id, s)
       }),
     )
-    chars = { ...cm, sheets }
+    const hiLoaded = new Map<string, IsoImage>()
+    const asked = new Set<string>()
+    const hi = (id: string): IsoImage | null => {
+      const got = hiLoaded.get(id)
+      if (got) return got
+      const file = hiFiles.get(id)
+      const lo = sheets.get(id)
+      if (!file || !lo || asked.has(id)) return null
+      asked.add(id)
+      void img(base, file).then((s) => {
+        if (s && s.w === lo.w && s.h === lo.h) hiLoaded.set(id, s)
+      })
+      return null
+    }
+    chars = { ...cm, sheets, hi, hiLoaded }
   }
 
   const furniture = new Map<string, FurnArt>()
@@ -626,6 +651,7 @@ export function isoArtImages(art: IsoArt): IsoImage[] {
     if (i) out.push(i)
   }
   for (const s of art.chars?.sheets.values() ?? []) add(s)
+  for (const s of art.chars?.hiLoaded?.values() ?? []) add(s)
   for (const f of art.furniture.values()) {
     add(f.img)
     add(f.front)

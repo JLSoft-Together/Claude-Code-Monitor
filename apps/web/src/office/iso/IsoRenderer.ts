@@ -23,6 +23,8 @@ import { cobwebScale, HOURGLASS_FLIP_MS, hourglassIcon, STORM_LIFT } from '@ccm/
 import type { Sim } from '@ccm/habblaud/client/src/world/sim/sim'
 import { tr } from '@ccm/habblaud/shared/i18n'
 import { archetypeFor, archetypesOf, type Archetype } from './archetypes'
+import { frozen, snapshot } from './bitmap'
+import { CharFrames } from './charFrames'
 import { insertRank, topoSort, type DepthBox, type ScreenBox } from './depth'
 import { BEACON_INSET, BEACON_SPIN_MS, BALL_R, cobwebSide, drawBang, drawBeacon, drawCobweb, drawPopcornBucket, pingPongBall, PING_TABLE_H, softGlow, WEB_SIZE } from './effects'
 import { furnitureArt, iconArt, isoArt, loadedIsoArt, pickIsoWallArt, seasonalArt, wallItemArt, type Box4, type CharArchetypeDef, type CharArt, type FurnArt, type IsoArt, type IsoImage, type Pt, type SeasonalArt, type SurfaceArt } from './isoArt'
@@ -38,6 +40,8 @@ import { AlphaContext, BuildBudget, CHAR_SHOWN, IsoReveal, revealOrder, type Rev
 import { LiveScreens, type LivePaint } from './screens'
 import { fitSign, nineSlice, SIGN_PAD_X, SIGN_STRETCH_MAX, signLineYs, signSpare, type SignFit, type Span } from './sign'
 import { coversPoint, wallPieces, XRAY_ALPHA, type FacePiece, type WallPiece } from './walls'
+
+const HI_SHEET_AT = 1.15
 
 type Sel = { agent: string | null; room: string | null; hover: string | null }
 
@@ -355,6 +359,12 @@ export class IsoRenderer implements WorldRenderer {
   private readonly realCtx: CanvasRenderingContext2D
   private alphaCtx: AlphaContext | null = null
   private scoped = false
+  private layerCtx: CanvasRenderingContext2D | null = null
+  private floorLayer: HTMLCanvasElement | null = null
+  private floorBitmap: ImageBitmap | null = null
+  private floorLayerKey = ''
+  private floorCandidate = ''
+  private floorVersion = 0
   private iconK = 1
   private reveal: IsoReveal | null = null
   private budget: BuildBudget | null = null
@@ -397,6 +407,8 @@ export class IsoRenderer implements WorldRenderer {
   private elevatorVis: WallVis[] = []
   private date = new Date()
   private dt = 0
+  private devScale = 1
+  private readonly frames = new CharFrames()
   private icons: { x: number; y: number; name: IconName; alpha: number; bounce: number; badge: number }[] = []
   private iconCount = 0
   private art3d: IsoArt | null = null
@@ -438,7 +450,7 @@ export class IsoRenderer implements WorldRenderer {
   }
 
   get ctx(): CanvasRenderingContext2D {
-    return this.scoped && this.alphaCtx ? this.alphaCtx.proxy : this.realCtx
+    return this.layerCtx ?? (this.scoped && this.alphaCtx ? this.alphaCtx.proxy : this.realCtx)
   }
 
   warmUp(budgetMs: number, reduced: boolean = reducedMotion()): void {
@@ -477,6 +489,7 @@ export class IsoRenderer implements WorldRenderer {
     this.archOf.clear()
     this.patterns.clear()
     this.tintCache.clear()
+    this.frames.clear()
     this.artVersion++
   }
 
@@ -646,7 +659,7 @@ export class IsoRenderer implements WorldRenderer {
     const key = `${s.key}|${color}`
     let c = this.tintCache.get(key)
     if (!c) {
-      c = this.tinted(s.img, color)
+      c = frozen(this.tinted(s.img, color))
       this.tintCache.set(key, c)
     }
     return c
@@ -732,6 +745,7 @@ export class IsoRenderer implements WorldRenderer {
 
   private buildStatics(): void {
     this.staticsDirty = false
+    this.floorVersion++
     const list: StaticEnt[] = []
     this.furnByArea.clear()
     this.furnEnt.clear()
@@ -899,6 +913,7 @@ export class IsoRenderer implements WorldRenderer {
     ctx.fillStyle = this.bg
     ctx.fillRect(0, 0, W, H)
     const { scale, ox, oy } = camera.transform()
+    this.devScale = scale
     ctx.setTransform(scale, 0, 0, scale, ox, oy)
     const view: ScreenBox = { x0: -ox / scale, y0: -oy / scale, x1: (W - ox) / scale, y1: (H - oy) / scale }
     const inView = (s: ScreenBox) => s.x0 < view.x1 && s.x1 > view.x0 && s.y0 < view.y1 && s.y1 > view.y0
@@ -911,23 +926,15 @@ export class IsoRenderer implements WorldRenderer {
 
     const rv = this.reveal
     const rt = rv ? rv.now() : 0
+    const layer = rv ? null : this.cachedFloor(W, H, scale, ox, oy, now)
+    if (layer) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.drawImage(layer, 0, 0)
+      ctx.setTransform(scale, 0, 0, scale, ox, oy)
+    }
     ctx.save()
     ctx.transform(...this.view.ground)
-    this.drawPad()
-    for (const vis of this.areas.values()) {
-      const anim = vis.room ? buildAnim(vis.room.phase, vis.room.progress(now)) : NO_ANIM
-      if (anim.floor <= 0) continue
-      const ra = rv ? rv.alpha(vis.id, rt) : 1
-      if (ra <= 0) continue
-      if (ra < 1) this.enterScope(ra, 0)
-      if (anim.floor < 1) {
-        ctx.save()
-        this.sweepClip(vis, anim.floor)
-        this.drawAreaFloor(vis)
-        ctx.restore()
-      } else this.drawAreaFloor(vis)
-      if (ra < 1) this.exitScope()
-    }
+    if (!layer) this.drawFloors(now, rv, rt)
     this.safe(() => this.roomFx.drawFloor(ctx, this.sim, now, HUGE_VIEW))
     ctx.globalAlpha = 1
     ctx.restore()
@@ -991,6 +998,66 @@ export class IsoRenderer implements WorldRenderer {
     if (rv && !this.budget && rv.done(rt)) this.reveal = null
   }
 
+  private drawFloors(now: number, rv: IsoReveal | null, rt: number): void {
+    const { ctx } = this
+    this.drawPad()
+    for (const vis of this.areas.values()) {
+      const anim = vis.room ? buildAnim(vis.room.phase, vis.room.progress(now)) : NO_ANIM
+      if (anim.floor <= 0) continue
+      const ra = rv ? rv.alpha(vis.id, rt) : 1
+      if (ra <= 0) continue
+      if (ra < 1) this.enterScope(ra, 0)
+      if (anim.floor < 1) {
+        ctx.save()
+        this.sweepClip(vis, anim.floor)
+        this.drawAreaFloor(vis)
+        ctx.restore()
+      } else this.drawAreaFloor(vis)
+      if (ra < 1) this.exitScope()
+    }
+  }
+
+  private floorKey(W: number, H: number, scale: number, ox: number, oy: number, now: number): string | null {
+    for (const vis of this.areas.values()) if (vis.room && buildAnim(vis.room.phase, vis.room.progress(now)).floor < 1) return null
+    if (this.staged.size) return null
+    return `${W}x${H}|${scale}|${ox}|${oy}|${this.floorVersion}|${this.artVersion}|${this.theme}|${this.halo}|${this.pad}`
+  }
+
+  private cachedFloor(W: number, H: number, scale: number, ox: number, oy: number, now: number): CanvasImageSource | null {
+    const key = this.floorKey(W, H, scale, ox, oy, now)
+    if (!key) {
+      this.floorCandidate = ''
+      return null
+    }
+    if (key === this.floorLayerKey && this.floorLayer) return this.floorBitmap ?? this.floorLayer
+    if (key !== this.floorCandidate) {
+      this.floorCandidate = key
+      return null
+    }
+    const c = this.floorLayer ?? document.createElement('canvas')
+    if (c.width !== W) c.width = W
+    if (c.height !== H) c.height = H
+    const g = c.getContext('2d')
+    if (!g) return null
+    g.setTransform(1, 0, 0, 1, 0, 0)
+    g.clearRect(0, 0, W, H)
+    g.setTransform(scale, 0, 0, scale, ox, oy)
+    g.imageSmoothingEnabled = false
+    g.transform(...this.view.ground)
+    this.layerCtx = g
+    try {
+      this.drawFloors(now, null, 0)
+    } finally {
+      this.layerCtx = null
+    }
+    g.globalAlpha = 1
+    this.floorLayer = c
+    this.floorLayerKey = key
+    this.floorBitmap?.close()
+    this.floorBitmap = snapshot(c)
+    return this.floorBitmap ?? c
+  }
+
   private drawHeadIcon(ic: { x: number; y: number; name: IconName; alpha: number; bounce: number; badge: number }): void {
     const { ctx } = this
     ctx.globalAlpha = ic.alpha
@@ -1045,7 +1112,7 @@ export class IsoRenderer implements WorldRenderer {
     let p: CanvasPattern | null = null
     try {
       const src = tint ? this.tinted(s.img, tint) : s.img.src
-      p = this.ctx.createPattern(src, 'repeat')
+      p = this.ctx.createPattern(frozen(src), 'repeat')
     } catch {
       p = null
     }
@@ -1333,8 +1400,8 @@ export class IsoRenderer implements WorldRenderer {
     ctx.globalAlpha = 1
   }
 
-  private paintLive(r: ImgRect, viewW: number, viewH: number, draw: LivePaint, sheen = true): void {
-    this.safe(() => this.live.paint(this.ctx, r, viewW, viewH, draw, sheen))
+  private paintLive(owner: object, now: number, r: ImgRect, viewW: number, viewH: number, draw: LivePaint, sheen = true): void {
+    this.safe(() => this.live.paintCached(this.ctx, owner, now, r, viewW, viewH, draw, sheen))
   }
 
   private lookOf(e: FurnEnt, now: number): FurnLook {
@@ -1374,11 +1441,11 @@ export class IsoRenderer implements WorldRenderer {
     if ((f.kind === 'desk' || f.kind === 'desk_back') && sp.rects.screen && e.area) {
       const r = this.spriteRect(e, sp.rects.screen)
       const mode = this.deskScreen(f, e.area)
-      if (r) this.paintLive(r, r.w, r.h, (g, rr) => this.art.drawScreen(g, rr, mode, now, f.seed))
+      if (r) this.paintLive(e, now, r, r.w, r.h, (g, rr) => this.art.drawScreen(g, rr, mode, now, f.seed))
     } else if (f.kind === 'arcade' && sp.rects.screen) {
       const seed = this.sim.social.arcadeSeed()
       const r = this.spriteRect(e, sp.rects.screen)
-      if (r && seed !== null) this.paintLive(r, r.w, r.h, (g, rr) => this.art.drawScreen(g, rr, 'game', now, seed))
+      if (r && seed !== null) this.paintLive(e, now, r, r.w, r.h, (g, rr) => this.art.drawScreen(g, rr, 'game', now, seed))
     } else if (f.kind === 'coffee_machine' && e.draw && (this.sim.machineUntil.get(f.id) ?? 0) > now) {
       this.drawSteam(e.draw.x + e.draw.w * 0.55, e.draw.y + e.draw.h * 0.18, now, f.seed)
     }
@@ -1561,12 +1628,12 @@ export class IsoRenderer implements WorldRenderer {
       if (w.kind === 'clock' && face) drawClockHands(ctx, face, this.date, u)
       else if (w.kind === 'whiteboard' && board) {
         const items = vis.room?.board ?? []
-        this.paintLive(board, board.w * u.x, board.h * u.y, (g, rr) => this.art.drawBoard(g, rr, items, now), false)
+        this.paintLive(w, now, board, board.w * u.x, board.h * u.y, (g, rr) => this.art.drawBoard(g, rr, items, now), false)
       } else if (w.kind === 'tv' && tv) {
         const live = this.sim.social.tvScreen()
         const mode = live ? live.mode : TV_MODES[Math.floor(now / 9000) % TV_MODES.length]!
         const seed = live ? live.seed : w.seed
-        this.paintLive(tv, tv.w * u.x, tv.h * u.y, (g, rr) => this.art.drawScreen(g, rr, mode, now, seed))
+        this.paintLive(w, now, tv, tv.w * u.x, tv.h * u.y, (g, rr) => this.art.drawScreen(g, rr, mode, now, seed))
       } else if (w.kind === 'mirror' && glass) this.drawReflection(w, glass)
     })
   }
@@ -1779,6 +1846,8 @@ export class IsoRenderer implements WorldRenderer {
     const theme = this.theme
     if (glass)
       this.paintLive(
+        w,
+        now,
         glass,
         glass.w * u.x,
         glass.h * u.y,
@@ -1938,13 +2007,23 @@ export class IsoRenderer implements WorldRenderer {
     const dy = ay - anchor[1] * k
     const was = ctx.imageSmoothingEnabled
     ctx.imageSmoothingEnabled = true
+    const devH = fh * k * this.devScale
+    const lk = sheet.k ?? 1
+    const pick2 = lk < 1 && devH > fh * lk * HI_SHEET_AT ? (chars.hi?.(s.def.id) ?? sheet) : sheet
+    const sk = pick2.k ?? 1
+    const bmp = this.frames.get(pick2, sx, sy, fw, fh, devH, sheet)
+    const src = bmp ?? pick2.src
+    const bx = bmp ? 0 : sx * sk
+    const by = bmp ? 0 : sy * sk
+    const bw = bmp ? bmp.width : fw * sk
+    const bh = bmp ? bmp.height : fh * sk
     if (pick.flip) {
       ctx.save()
       ctx.translate(ax, 0)
       ctx.scale(-1, 1)
-      ctx.drawImage(sheet.src, sx, sy, fw, fh, -anchor[0] * k, dy, fw * k, fh * k)
+      ctx.drawImage(src, bx, by, bw, bh, -anchor[0] * k, dy, fw * k, fh * k)
       ctx.restore()
-    } else ctx.drawImage(sheet.src, sx, sy, fw, fh, dx, dy, fw * k, fh * k)
+    } else ctx.drawImage(src, bx, by, bw, bh, dx, dy, fw * k, fh * k)
     const hand = chars.anchors.hand
     const hx = pick.flip ? ax - (hand[0] - anchor[0]) * k : ax + (hand[0] - anchor[0]) * k
     const hy = ay + (hand[1] - anchor[1]) * k
