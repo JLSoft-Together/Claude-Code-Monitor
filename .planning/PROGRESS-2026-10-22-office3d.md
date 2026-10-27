@@ -62,3 +62,23 @@ contract art `.planning/CONTRACT-v63-office3d-assets.md`, tài liệu `docs/offi
 - [x] Đo (demo 8×4, Sơ đồ, cửa sổ luôn vẽ): GPU 51–61% → 13–21%, renderer ~110% → 70–96% (tắt hẳn animation 59% — phần còn lại do demo cập nhật 32 agent mỗi 1.2 s).
 - [x] `stores/ui.ts` `initialPanels`: panel Sessions luôn đóng khi mở app (không đọc `open` đã lưu; `pinned` vẫn nhớ).
 - [x] Test web 113/1209, typecheck OK. Dev đã tắt.
+- [x] 16:40 Handoff mới: `.planning/HANDOFF-2026-10-27-1640.md` (thay HANDOFF-2026-10-27-1525). Đã push `feat/office-3d` @ `e984fd2`, chưa merge master.
+
+## Phiên 2026-10-27 16:45 (sau HANDOFF-1640) — chủ nhân: "tiếp tục làm tối ưu"
+- [x] Spawn lần lượt khi restore nhiều project (câu (c)): `lib/spawnQueue.ts` (2 cùng lúc, giữ 1,5 s sau `ready`, pane hiện ưu tiên) + `TermPane.vue` `spawn()`; chip "Chờ lượt". Test `spawnQueue.test.ts` 3/3, `workspaceRestore` 6/6, vue-tsc OK. Chưa thử app thật. Chưa commit.
+- [x] Tắt badge "+N" token trên node Sơ đồ (`MainNode` `delta="none"`), SessionCard / MetricsStrip vẫn có. vue-tsc OK. Chưa commit.
+- [x] 17:xx Chủ nhân: "tự build test xong làm tiếp". Dev Electron 4417 + Vite + demo 8×4 (`D:/tmp/ccm-prof/restart.sh`):
+  - Restore 2 project × 3 shell (`D:/tmp/ccm-prof/q1.mjs`): chạy theo cặp, tab đang xem trước, 6 pane xong 4,4 s; chip "Chờ lượt" (ảnh `D:/tmp/ccm-prof/queue-mid.png`).
+  - Sơ đồ: 0 badge `.ccm-token-delta` trong node (8 ở SessionCard), `ccm-quota-fade` hết khỏi top animation; renderer 81%.
+  - Workspace nghỉ: CPU 4%, 0 animation (`w1.mjs`).
+  - Office Pixel 57 fps (đạt ≥ 30). 3D ~5 fps: tắt từng lớp (`lay2.mjs`, cờ tạm đã gỡ) → glow nặng nhất (5→13), tắt hết 60; GPU iGPU UHD 630 dùng chung với Orrery chủ nhân (PID 19852 ~30% GPU) nên số nhiễu.
+  - Sửa 3D: sprite glow/beam/vignette/shadow → ImageBitmap; màn hình live tối đa 3 lần vẽ lại mỗi frame, luân phiên. 3D 5 → 7,5–8,3 fps; snapshot 120/s → 22/s.
+  - Test web 114 file / 1213 pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [ ] 3D vẫn < 10 fps trên iGPU: không còn lớp nào trội (statics, chars, light, glow mỗi lớp vài fps). Hướng tiếp nếu cần: render 3D ở độ phân giải thấp hơn / giới hạn 30 fps / bớt overdraw — cần chủ nhân chốt vì đổi hình ảnh.
+- [x] Chủ nhân: "tiếp tục làm liên tục". Đếm lệnh canvas mỗi frame 3D (`D:/tmp/ccm-prof/cnt.mjs`, `who.mjs` + `who.page.js`): trang trí Halloween `drawGarland` + `drawCornerWebs` vẽ path mỗi frame (~1000 lineTo, 370 arc/fill, 290 quadratic). → `IsoRenderer.wallDecor` cache bitmap theo mảng tường; ảnh zoom `D:/tmp/ccm-prof/iso-decor-zoom.png` nét.
+  - fps 3D sau đó 6–7 (demo mới 70 agent), Pixel 58–60. 3D vẫn chờ GPU (`(program)` 94%), giảm lệnh vẽ không đổi fps rõ → dừng 3D, cần chủ nhân chốt hướng đổi hình (độ phân giải thấp hơn / khoá 30 fps / bớt hiệu ứng).
+  - Sơ đồ: 58% idle, JS < 2%, 55 fps. Không rò rỉ: heap 43–45 MB, node / listener ổn định 2 phút (`leak.mjs`). Khởi động dev: DCL 575 ms, FCP 592 ms, long task 133 ms (`boot.mjs`).
+  - Lưu ý đo: demo-fixture tích agent dần (103 → 391 sau ~30 phút) làm Pixel tụt 57 → 11–19; muốn so phải `restart.sh` lại.
+  - Test web 114 / 1213 pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [x] Chủ nhân chọn #3 (tắt bớt hiệu ứng khi 3D chậm): `office/iso/fxBudget.ts` + `IsoRenderer.frame` bỏ glow / sunbeam / bóng đèn mùa khi khung hình > 45 ms suốt 2 s; quay lại khi < 22 ms suốt 5 s (tối đa 2 lần rồi giữ tắt). Đo cùng lúc GPU bị chiếm (Orrery chủ nhân 32%, Chrome 23%, dwm 13%): 3D ~4,4 → ~8 fps (`D:/tmp/ccm-prof/fx.mjs`, ảnh `iso-lowfx.png`). Test web 115 file pass, vue-tsc OK. Dev đã tắt. Chưa commit.
+- [x] 18:35 Handoff mới: `.planning/HANDOFF-2026-10-27-1835.md` (thay HANDOFF-2026-10-27-1640).
