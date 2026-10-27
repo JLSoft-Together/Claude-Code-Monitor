@@ -143,3 +143,12 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 
 - Office lag audit: Habblaud local patches J / K / L (`art/api.ts` `spriteBounds`, `world/index.ts` `sizeDirty` + `IDLE_FRAME_MS`), `StatusIcon.vue` spinner on the root `<svg>`; details `web.md` "Office perf", `packages/habblaud/UPSTREAM.md`.
 - Map runners sample their path once (`lib/pathSamples.ts`, `TreeEdge.vue`, `PeerEdge.vue`); Monitor drops `SessionBar`, the Activity aside and the Timeline view (`MonitorView.vue`, `AgentMap.vue`, `ui.ts` `MapView`, `useShortcuts.ts`, `lib/shortcuts.ts`, `lib/tour.ts`).
+
+## 2026-10-27 — merge master, title bar header, Office 3D perf
+
+- Merge `origin/master` into `feat/office-3d` (no commit): master's Habblaud patches renamed J / K / L, golden re-recorded (`UPSTREAM.md` J).
+- Header in the title bar: desktop `main.ts` `baseWindow` / `titleBarOverlay` / `TITLE_BAR_H`, `appearance.ts` `Look.bar`, preload `titleBar`, `pages.ts` drag strip; web `AppHeader.vue`, `PlanLimits.vue` `compact`, `lib/desktop.ts` `titleBar`, `lib/appearance.ts` `bar`, `style.css` `.ccm-titlebar`; details `web.md` AppHeader.
+- Attachments: `stores/attachments.ts` `add` no longer opens the tray (owner: dropping a file must not pop the panel).
+- Office 3D perf: `office/iso/charFrames.ts`, `IsoRenderer.ts` `cachedFloor` / `drawFloors`; details `web.md` "Office 3D perf".
+- Office full screen fills the screen (pixel + 3D): `OfficeView.vue` `FULLSCREEN_FIT_MS` watch → `world.overview({ fill })`, Habblaud patch M (`overviewFill`).
+- Office 3D perf (desktop pass): `office/iso/bitmap.ts`, `screens.ts` `paintCached`, `isoArt.ts` `sheet1x` / `CharArt.hi`, `charFrames.ts` `family`; header ping 3× (`AppHeader.vue`), modal backdrops `no-drag` (`style.css`); details `web.md`.

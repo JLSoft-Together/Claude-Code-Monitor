@@ -139,3 +139,4 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 | `ccm:dev-event` (main → page) | `DevEvent` `devices` / `qr` |
 
 - Preload `devSnapshot` … `onDevEvent`. Tests `test/devices-*.test.ts`; E2E `e2e/devices.cjs` (ANDROID_HOME → fake adb, screenshots `devices-01..04` in the e2e output dir; Forget not driven, no native-confirm auto-answer).
+- Frameless windows (2026-10-27): `main.ts` `baseWindow` — Windows `titleBarStyle: 'hidden'` + `titleBarOverlay()` (height `TITLE_BAR_H` 40, colour `look.bar` ?? canvas, symbols `look.ink`; `ccm:appearance` re-applies it to every window), macOS `hiddenInset` with traffic lights at {14, 14}. The page draws the bar (`AppHeader.vue`, preload `titleBar` = `overlay` | `mac`); startup / error pages get a 40 px drag strip (`pages.ts` `body::before`).
