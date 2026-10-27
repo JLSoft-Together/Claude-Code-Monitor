@@ -23,12 +23,13 @@ import { cobwebScale, HOURGLASS_FLIP_MS, hourglassIcon, STORM_LIFT } from '@ccm/
 import type { Sim } from '@ccm/habblaud/client/src/world/sim/sim'
 import { tr } from '@ccm/habblaud/shared/i18n'
 import { archetypeFor, archetypesOf, type Archetype } from './archetypes'
-import { frozen, snapshot } from './bitmap'
+import { frozen, frozenOnce, snapshot } from './bitmap'
 import { CharFrames } from './charFrames'
+import { FxBudget } from './fxBudget'
 import { insertRank, topoSort, type DepthBox, type ScreenBox } from './depth'
 import { BEACON_INSET, BEACON_SPIN_MS, BALL_R, cobwebSide, drawBang, drawBeacon, drawCobweb, drawPopcornBucket, pingPongBall, PING_TABLE_H, softGlow, WEB_SIZE } from './effects'
 import { furnitureArt, iconArt, isoArt, loadedIsoArt, pickIsoWallArt, seasonalArt, wallItemArt, type Box4, type CharArchetypeDef, type CharArt, type FurnArt, type IsoArt, type IsoImage, type Pt, type SeasonalArt, type SurfaceArt } from './isoArt'
-import { BULB, BULB_GLOW_RGB, bulbSpots, drawCornerWebs, drawGarland, garlandSpan } from './seasonal'
+import { BULB, BULB_GLOW_RGB, bulbSpots, DECOR_H, drawCornerWebs, drawGarland, garlandSpan } from './seasonal'
 import { drawVectorIcon, HELD_ICON_VIEW, HEAD_ICON_VIEW, iconViewRect, VECTOR_ICONS } from './icons'
 import { loadIsoFonts } from './fonts'
 import { beamSprite, floorRect, IsoLight } from './light'
@@ -373,6 +374,7 @@ export class IsoRenderer implements WorldRenderer {
   private warmPending = false
   lastWarmBuilt = 0
   private tintCache = new Map<string, CanvasImageSource>()
+  private decorCache = new Map<string, CanvasImageSource | null>()
   readonly areas = new Map<string, AreaVis>()
   readonly heads = new Map<string, HeadInfo>()
   hourOverride: number | null = parseHourParam(typeof location === 'undefined' ? '' : location.search)
@@ -409,6 +411,7 @@ export class IsoRenderer implements WorldRenderer {
   private dt = 0
   private devScale = 1
   private readonly frames = new CharFrames()
+  private readonly fxBudget = new FxBudget()
   private icons: { x: number; y: number; name: IconName; alpha: number; bounce: number; badge: number }[] = []
   private iconCount = 0
   private art3d: IsoArt | null = null
@@ -489,6 +492,7 @@ export class IsoRenderer implements WorldRenderer {
     this.archOf.clear()
     this.patterns.clear()
     this.tintCache.clear()
+    this.decorCache.clear()
     this.frames.clear()
     this.artVersion++
   }
@@ -854,14 +858,61 @@ export class IsoRenderer implements WorldRenderer {
   private drawSeasonalWallDecor(vis: AreaVis, p: FacePiece): void {
     const theme = this.theme
     if (theme === 'none') return
+    const decor = this.wallDecor(vis, p, theme)
+    if (decor) {
+      const { ctx } = this
+      const was = ctx.imageSmoothingEnabled
+      ctx.imageSmoothingEnabled = true
+      ctx.drawImage(decor.img, decor.x, decor.y, decor.w, decor.h)
+      ctx.imageSmoothingEnabled = was
+    }
     for (const seg of vis.layout.walls) {
       if (seg.kind !== 'face' || seg.y !== p.top || seg.x > p.x1 || seg.x + seg.w < p.x0) continue
-      const span = garlandSpan(seg, p)
-      if (span) drawGarland(this.ctx, theme, seg, span)
-      if (theme === 'halloween') drawCornerWebs(this.ctx, seg, p)
+      if (!decor) {
+        const span = garlandSpan(seg, p)
+        if (span) drawGarland(this.ctx, theme, seg, span)
+        if (theme === 'halloween') drawCornerWebs(this.ctx, seg, p)
+      }
       const bat = seasonalWallBat(theme, seg)
       if (bat && bat.cx >= p.x0 && bat.cx <= p.x1) this.drawSeasonalOnWall('bat', bat.cx, p.baseY)
     }
+  }
+
+  private wallDecor(vis: AreaVis, p: FacePiece, theme: Exclude<SeasonalTheme, 'none'>): { img: CanvasImageSource; x: number; y: number; w: number; h: number } | null {
+    if (typeof document === 'undefined') return null
+    const m = this.view.wallMatrix(p.baseY)
+    const k = this.devScale * Math.max(Math.hypot(m[0], m[1]), Math.hypot(m[2], m[3]))
+    const res = Math.min(8, 2 ** Math.ceil(Math.log2(Math.max(1, k))))
+    const x = Math.floor(p.x0) - 1
+    const y = p.top
+    const w = Math.ceil(p.x1) + 1 - x
+    const h = DECOR_H
+    const key = `${vis.id}|${theme}|${x}|${y}|${w}|${res}`
+    let img = this.decorCache.get(key)
+    if (img === undefined) {
+      img = null
+      try {
+        const c = document.createElement('canvas')
+        c.width = w * res
+        c.height = h * res
+        const g = c.getContext('2d')
+        if (g) {
+          g.setTransform(res, 0, 0, res, -x * res, -y * res)
+          for (const seg of vis.layout.walls) {
+            if (seg.kind !== 'face' || seg.y !== p.top || seg.x > p.x1 || seg.x + seg.w < p.x0) continue
+            const span = garlandSpan(seg, p)
+            if (span) drawGarland(g, theme, seg, span)
+            if (theme === 'halloween') drawCornerWebs(g, seg, p)
+          }
+          img = frozen(c)
+        }
+      } catch {
+        img = null
+      }
+      if (this.decorCache.size > 400) this.decorCache.clear()
+      this.decorCache.set(key, img)
+    }
+    return img ? { img, x, y, w, h } : null
   }
 
   private drawElevatorDecor(w: WallVis): void {
@@ -989,8 +1040,9 @@ export class IsoRenderer implements WorldRenderer {
     const reduced = reducedMotion()
     this.light.updateOccupancy(this.areas.values(), now, dt, reduced)
     this.safe(() => this.light.draw(ctx, this.lighting.ambient, this.areaList, now))
-    this.safe(() => this.drawGlows(now, view))
-    this.safe(() => this.drawSeasonalLights(now, view))
+    const lowFx = this.fxBudget.tick(performance.now())
+    if (!lowFx) this.safe(() => this.drawGlows(now, view))
+    if (!lowFx) this.safe(() => this.drawSeasonalLights(now, view))
     this.safe(() => this.drawAlarmLights(now, view))
 
     for (let i = 0; i < this.iconCount; i++) this.safe(() => this.drawHeadIcon(this.icons[i]!))
@@ -1924,7 +1976,7 @@ export class IsoRenderer implements WorldRenderer {
     }
     if (!ch.seated) {
       const sh = shadowSprite()
-      ctx.drawImage(sh.canvas, x - sh.ax, y - sh.ay)
+      ctx.drawImage(frozenOnce(sh.canvas), x - sh.ax, y - sh.ay)
     }
     const req = this.req
     req.appearance = ch.appearance
@@ -2275,7 +2327,7 @@ export class IsoRenderer implements WorldRenderer {
     const amb = this.lighting.ambient
     const n = amb.night
     const cool = softGlow(COOL, 64, 0.9)
-    const warm = glowSprite('#ffcf7a', 64)
+    const warm = frozenOnce(glowSprite('#ffcf7a', 64))
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
     ctx.imageSmoothingEnabled = true
