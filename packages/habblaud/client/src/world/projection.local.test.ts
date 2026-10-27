@@ -503,3 +503,43 @@ describe('local patch G: overlay declutter', () => {
     expect(others).toBeLessThan(12);
   });
 });
+
+describe('local patch M: overview fill', () => {
+  it('overview caps at 4x, the fill overview goes up to camera.maxZoom and stays on until turned off', () => {
+    stubEnv();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const frames: ((ts: number) => void)[] = [];
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((cb: (ts: number) => void) => frames.push(cb)),
+    );
+    const canvas = Object.assign(fakeCanvas(), { clientWidth: 12000, clientHeight: 9000 });
+    const w = createWorld(canvas, emptyStore(), {});
+    let t = 0;
+    const run = () => {
+      for (let i = 0; i < 30; i++) {
+        t += 50;
+        vi.advanceTimersByTime(50);
+        frames.shift()?.(t);
+      }
+    };
+    const zoom = () => (w.debug.state() as { camera: { zoom: number } }).camera.zoom;
+    run();
+    w.overview();
+    run();
+    expect(zoom()).toBeLessThanOrEqual(4);
+    w.overview({ fill: true });
+    run();
+    expect(zoom()).toBeGreaterThan(4);
+    expect(zoom()).toBeLessThanOrEqual(ZOOM_MAX);
+    w.overview();
+    run();
+    expect(zoom()).toBeGreaterThan(4);
+    w.overview({ fill: false });
+    run();
+    expect(zoom()).toBeLessThanOrEqual(4);
+    w.destroy();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+});

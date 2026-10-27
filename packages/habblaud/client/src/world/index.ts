@@ -98,6 +98,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   let suspendedAt = 0;
   let userMoved = false;
   let framed = false;
+  let overviewFill = false;
   let lastCols = -1;
   const abort = new AbortController();
   // Orrery local patch K: reading clientWidth every frame forced a layout of the whole app per frame.
@@ -145,7 +146,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     const fit = Math.max(camera.minZoom, f.zoom);
     const snapped = camera.snapZoom(fit, 'down');
     const zoom = snapped >= fit * 0.82 ? snapped : fit;
-    const z = Math.min(zoom, 4);
+    const z = Math.min(zoom, overviewFill ? camera.maxZoom : 4);
     const c = camera.centerFor(f.cx, f.cy, z);
     // as margens de tela (pílulas acima, meio-fio abaixo) não são simétricas
     return { x: c.x, y: c.y - f.dy / z, zoom: z };
@@ -458,8 +459,13 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     },
     focusAgent,
     focusRoom,
-    overview: () => {
+    overview: (opts) => {
       userMoved = false;
+      if (opts?.fill !== undefined) overviewFill = opts.fill;
+      if (opts) {
+        sizeDirty = false;
+        resize();
+      }
       overview(true);
     },
     zoomBy: (factor) => {

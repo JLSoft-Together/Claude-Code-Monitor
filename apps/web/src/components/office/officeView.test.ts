@@ -510,6 +510,24 @@ describe('Office options', () => {
     expect(world().overview).toHaveBeenCalled()
   })
 
+  it('reframes to fill the screen on full screen and back on exit', async () => {
+    await mountView()
+    const office = useOfficeStore()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      office.fullscreen = true
+      await nextTick()
+      vi.advanceTimersByTime(200)
+      expect(world().overview).toHaveBeenLastCalledWith({ fill: true })
+      office.fullscreen = false
+      await nextTick()
+      vi.advanceTimersByTime(200)
+      expect(world().overview).toHaveBeenLastCalledWith({ fill: false })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('opens a dialog popover that keeps the camera keys away', async () => {
     w = mount(OfficeOptions, { global: { plugins: [i18n, pinia] }, attachTo: document.body })
     await w.find('button[aria-haspopup="dialog"]').trigger('click')

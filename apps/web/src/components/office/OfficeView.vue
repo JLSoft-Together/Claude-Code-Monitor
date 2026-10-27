@@ -31,6 +31,7 @@ const settings = useSettingsStore()
 const office = useOfficeStore()
 const reveal = useRevealInWorkspace()
 
+const FULLSCREEN_FIT_MS = 120
 /** Room for the Agent Map toolbar above the canvas (px): overview and focus frame below it. */
 const TOOLBAR_INSET = 48
 /** Canvas tint while a recorded moment is on screen (upstream `.is-replay`). */
@@ -277,6 +278,7 @@ async function build(): Promise<void> {
     p.world = w
     w.setOptions({ ...office.options })
     w.setViewInsets?.({ top: TOOLBAR_INSET })
+    if (office.fullscreen) w.overview({ fill: true })
     await whenReady(p, w)
     if (my !== gen || pending !== p) return
     promote(p, w, iso, my, sig)
@@ -432,6 +434,15 @@ watch(
   () => ui.fitRequest,
   () => world?.overview(),
 )
+let fullscreenFit: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => office.fullscreen,
+  (fill) => {
+    clearTimeout(fullscreenFit)
+    fullscreenFit = setTimeout(() => world?.overview({ fill }), FULLSCREEN_FIT_MS)
+  },
+)
+onBeforeUnmount(() => clearTimeout(fullscreenFit))
 
 const ariaLabel = computed(() => {
   const c = counts.value ?? { agents: 0, rooms: 0 }

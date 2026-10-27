@@ -64,7 +64,7 @@ export interface WorldApi {
   focusAgent(id: string, opts?: { follow?: boolean }): void;
   focusRoom(id: string): void;
   /** Enquadra o prédio inteiro. */
-  overview(): void;
+  overview(opts?: { fill?: boolean }): void;
   zoomBy(factor: number): void;
   getOptions(): WorldOptions;
   setOptions(o: Partial<WorldOptions>): void;
