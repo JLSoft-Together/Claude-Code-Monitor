@@ -253,7 +253,7 @@ onBeforeUnmount(() => stop?.())
             </button>
           </Transition>
           <ContextRing v-if="showContext" :tokens="agent.contextTokens ?? 0" :window="agent.contextWindow ?? 0" :pct="contextPctOf(agent)" />
-          <TokenCount v-if="agent.totalTokens !== undefined" delta="side" class="font-semibold text-ink" :value="agent.totalTokens" />
+          <TokenCount v-if="agent.totalTokens !== undefined" delta="none" class="font-semibold text-ink" :value="agent.totalTokens" />
         </div>
         <div class="flex min-w-0 items-center gap-1.5 text-xs" :class="working || attention ? 'text-ink' : 'text-ink-muted'">
           <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0 text-st-waiting" aria-hidden="true" />
