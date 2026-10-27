@@ -22,6 +22,11 @@ describe('appearance', () => {
     expect(parseLook(null)).toBeNull()
   })
 
+  it('keeps an optional title bar colour, rejects a bad one', () => {
+    expect(parseLook({ ...LOOK, bar: '#F0F0F2' })).toEqual({ ...LOOK, bar: '#f0f0f2' })
+    expect(parseLook({ ...LOOK, bar: 'rgb(0 0 0)' })).toBeNull()
+  })
+
   it('zoom moves in half levels within -3…3 and reads as percent', () => {
     expect(nextZoom(0, 'in')).toBe(0.5)
     expect(nextZoom(3, 'in')).toBe(3)

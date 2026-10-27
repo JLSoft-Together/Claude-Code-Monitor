@@ -64,6 +64,7 @@ const vi: typeof en = {
     extensions: 'Mở rộng',
     history: 'Lịch sử',
     label: 'Màn hình',
+    more: 'Màn hình khác',
     monitor: 'Giám sát',
     usage: 'Thống kê',
     workspace: 'Workspace',

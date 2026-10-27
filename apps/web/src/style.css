@@ -343,6 +343,18 @@ body {
   backdrop-filter: saturate(180%) blur(20px);
 }
 
+.ccm-titlebar[data-title-bar] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.ccm-titlebar[data-title-bar] :is(button, a, input, select, textarea, [role='status'], [role='dialog'], [role='menu']),
+.fixed.inset-0,
+[aria-modal='true'] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 .ccm-material-pop {
   background: var(--ccm-material-pop);
 }

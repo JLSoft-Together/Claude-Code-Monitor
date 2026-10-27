@@ -288,9 +288,18 @@ function zoom(contents: WebContents, action: 'in' | 'out' | 'reset'): number {
   return zoomPercent(level)
 }
 
+const TITLE_BAR_H = 40
+
+function titleBarOverlay(): Electron.TitleBarOverlay {
+  const look = saved().look
+  const dark = look?.dark ?? nativeTheme.shouldUseDarkColors
+  return { color: look?.bar ?? look?.canvas ?? (dark ? '#1e1e1e' : '#ececee'), symbolColor: look?.ink ?? (dark ? '#f5f5f7' : '#1d1d1f'), height: TITLE_BAR_H }
+}
+
 function baseWindow(options: Electron.BrowserWindowConstructorOptions, prefs: Electron.WebPreferences = {}): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
+    ...(IS_MAC ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 14 } } : { titleBarStyle: 'hidden' as const, titleBarOverlay: titleBarOverlay() }),
     // macOS takes the window icon from the app bundle.
     icon: IS_MAC ? undefined : resource('ccm.ico', 'scripts/assets/ccm.ico'),
     backgroundColor: savedBackground() ?? (nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ececee'),
@@ -728,8 +737,11 @@ async function ready(): Promise<void> {
     const look = isAppFrame(event) ? parseLook(raw) : null
     if (!look) return false
     if (JSON.stringify(look) !== JSON.stringify(saved().look)) {
-      for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(look.canvas)
       saveAppearance({ look, background: look.canvas })
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.setBackgroundColor(look.canvas)
+        if (!IS_MAC) win.setTitleBarOverlay(titleBarOverlay())
+      }
     }
     return true
   })

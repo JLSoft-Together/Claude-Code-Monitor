@@ -8,6 +8,7 @@ export interface Look {
   muted: string
   faint: string
   accent: string
+  bar?: string
   dark: boolean
 }
 
@@ -26,8 +27,9 @@ export function parseLook(raw: unknown): Look | null {
   const r = raw as Record<string, unknown>
   for (const key of LOOK_KEYS) if (typeof r[key] !== 'string' || !HEX_COLOR.test(r[key] as string)) return null
   if (typeof r.dark !== 'boolean') return null
+  if (r.bar !== undefined && (typeof r.bar !== 'string' || !HEX_COLOR.test(r.bar))) return null
   const look = Object.fromEntries(LOOK_KEYS.map((k) => [k, (r[k] as string).toLowerCase()])) as Omit<Look, 'dark'>
-  return { ...look, dark: r.dark }
+  return { ...look, ...(typeof r.bar === 'string' ? { bar: r.bar.toLowerCase() } : {}), dark: r.dark }
 }
 
 export const ZOOM_MIN = -3

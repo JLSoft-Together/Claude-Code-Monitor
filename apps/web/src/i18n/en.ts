@@ -63,6 +63,7 @@ export default {
     extensions: 'Extensions',
     history: 'History',
     label: 'Views',
+    more: 'More views',
     monitor: 'Monitor',
     usage: 'Usage',
     workspace: 'Workspace',
