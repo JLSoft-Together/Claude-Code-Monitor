@@ -24,7 +24,8 @@ const DOWN_DELAY_MS = 200
 const runners = useRunnerBudget()
 const d = computed(() => treePath(props.sourceX, props.sourceY, props.targetX, props.targetY))
 const pathEl = ref<SVGPathElement | null>(null)
-const dot = ref<{ x: number; y: number; dir: PulseDir } | null>(null)
+const dotEl = ref<SVGGElement | null>(null)
+const dot = ref<PulseDir | null>(null)
 let frame = 0
 let timer = 0
 let holding = false
@@ -57,6 +58,7 @@ function run(dir: PulseDir): void {
     if (!first) return release()
     let samples: PathSamples = first
     let rev = pathRev
+    dot.value = dir
     const t0 = performance.now()
     const step = (at: number) => {
       const k = Math.min(1, (at - t0) / PULSE_MS)
@@ -65,7 +67,7 @@ function run(dir: PulseDir): void {
         samples = samplePath(el) ?? samples
       }
       const p = pointAt(samples, dir === 'down' ? ease(k) : 1 - ease(k))
-      dot.value = { x: p.x, y: p.y, dir }
+      dotEl.value?.setAttribute('transform', `translate(${p.x} ${p.y})`)
       if (k < 1) frame = requestAnimationFrame(step)
       else {
         dot.value = null
@@ -94,8 +96,8 @@ onBeforeUnmount(stop)
 
 <template>
   <path :id="id" ref="pathEl" class="vue-flow__edge-path" :d="d" fill="none" />
-  <g v-if="dot" class="pointer-events-none" aria-hidden="true">
-    <circle :cx="dot.x" :cy="dot.y" r="7" :class="dot.dir === 'down' ? 'fill-st-working' : 'fill-st-done'" opacity="0.2" />
-    <circle :cx="dot.x" :cy="dot.y" r="3.5" :class="dot.dir === 'down' ? 'fill-st-working' : 'fill-st-done'" />
+  <g v-if="dot" ref="dotEl" class="pointer-events-none" aria-hidden="true">
+    <circle r="7" :class="dot === 'down' ? 'fill-st-working' : 'fill-st-done'" opacity="0.2" />
+    <circle r="3.5" :class="dot === 'down' ? 'fill-st-working' : 'fill-st-done'" />
   </g>
 </template>

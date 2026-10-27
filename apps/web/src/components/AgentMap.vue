@@ -885,7 +885,22 @@ onBeforeUnmount(() => {
   window.clearTimeout(liveTimer)
 })
 
-const edges = computed<Edge[]>(() => {
+function sameEdge(a: Edge, b: Edge): boolean {
+  return a.id === b.id && a.source === b.source && a.target === b.target && a.type === b.type && a.class === b.class && a.ariaLabel === b.ariaLabel && sameEdgeData(a.data, b.data)
+}
+function sameEdgeData(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const ka = Object.keys(a)
+  return ka.length === Object.keys(b).length && ka.every((k) => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k])
+}
+
+const edges = computed<Edge[]>((prev) => {
+  const next = buildEdges()
+  return prev?.length === next.length && next.every((e, i) => sameEdge(e, prev[i]!)) ? prev : next
+})
+
+function buildEdges(): Edge[] {
   const out: Edge[] = [...peerEdges.value]
   for (const [id, parent] of edgeParent.value) {
     const a = agents.byId[id]
@@ -911,7 +926,7 @@ const edges = computed<Edge[]>(() => {
     out.push({ id: `${main.id}->${tray}`, source: main.id, target: tray, type: 'tree', class: 'ccm-edge-tray', selectable: false })
   }
   return out
-})
+}
 
 watch(
   () => edges.value.filter((e) => e.type !== 'peer').map((e) => e.id),

@@ -589,6 +589,11 @@ body {
   transform-origin: center;
 }
 
+.ccm-spin-once {
+  animation: ccm-spin 0.9s var(--ease-out-quint);
+  transform-origin: center;
+}
+
 @keyframes ccm-enter {
   from {
     opacity: 0;
@@ -647,7 +652,7 @@ body {
   border-radius: 14px;
   box-shadow: 0 0 0 3px var(--ccm-waiting-soft);
   pointer-events: none;
-  animation: ccm-breathe 2.2s ease-in-out infinite;
+  animation: ccm-breathe 2.2s ease-in-out 3;
 }
 
 @keyframes ccm-node-in {
@@ -697,6 +702,26 @@ body {
 }
 .ccm-swap-leave-to {
   opacity: 0;
+}
+
+@keyframes ccm-swap-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+}
+.ccm-swap-in {
+  animation: ccm-swap-in var(--ccm-dur-fast) var(--ease-out-quint) both;
+}
+@keyframes ccm-swap-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccm-swap-in {
+    animation-name: ccm-swap-fade;
+  }
 }
 
 .ccm-office-fullscreen {
@@ -908,7 +933,7 @@ body {
 }
 
 .ccm-pulse {
-  animation: ccm-pulse 1.6s ease-in-out infinite;
+  animation: ccm-pulse 1.6s ease-in-out 3;
   transform-origin: center;
 }
 
@@ -1000,9 +1025,8 @@ body {
   animation: ccm-token-glow var(--ccm-dur-signal) var(--ease-out-quint);
 }
 
-/* Each combo update re-keys the badge, so the pop replays while the total grows. */
 .ccm-token-delta {
-  animation: ccm-quota-delta 1.8s var(--ease-out-quint) forwards;
+  animation: ccm-quota-fade 1.6s var(--ease-exit) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1146,7 +1170,7 @@ body {
   pointer-events: none;
   background: var(--ccm-waiting-soft);
   box-shadow: inset 0 0 0 1px var(--ccm-waiting);
-  animation: ccm-breathe 2.6s ease-in-out infinite;
+  animation: ccm-breathe 2.6s ease-in-out 3;
 }
 .ccm-bar-alert > * {
   position: relative;
@@ -1177,6 +1201,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ccm-spin,
+  .ccm-spin-once,
   .ccm-enter,
   .ccm-pop,
   .ccm-grow,
@@ -1355,7 +1380,7 @@ body {
 
 /* AgentMap adds .ccm-map-motion after the first placement; a dragged node follows the pointer untouched. */
 .ccm-map-motion .vue-flow__node:not(.dragging) {
-  transition: transform var(--ccm-dur-slow) var(--ease-out-quint);
+  transition: transform var(--ccm-dur-base) var(--ease-out-quint);
 }
 .vue-flow__node.ccm-node-leaving,
 .ccm-map-motion .vue-flow__node.ccm-node-leaving {
@@ -1529,7 +1554,7 @@ body {
   animation-delay: calc(var(--i) * var(--ccm-stagger));
 }
 .ccm-caret {
-  animation: ccm-caret 1.1s step-end infinite;
+  animation: ccm-caret 1.1s step-end 4;
   animation-delay: 700ms;
 }
 @keyframes ccm-title-in {
@@ -1633,7 +1658,7 @@ body {
   border-radius: 1px;
   background: var(--ccm-working);
   pointer-events: none;
-  animation: ccm-breathe 2.2s ease-in-out infinite;
+  animation: ccm-breathe 2.2s ease-in-out 3;
 }
 
 .ccm-rail-word-enter-active {

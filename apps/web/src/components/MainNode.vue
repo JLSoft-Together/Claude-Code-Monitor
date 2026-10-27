@@ -228,9 +228,7 @@ onBeforeUnmount(() => stop?.())
             {{ title }}
           </span>
           <ProviderBadge v-if="codex" :mode="terminal?.entrypoint ?? agent.type" variant="short" />
-          <Transition name="ccm-swap" mode="out-in">
-            <span :key="agent.status" class="shrink-0 rounded-full px-2 py-px text-2xs font-semibold" :class="[meta.soft, meta.text]">{{ t(meta.labelKey) }}</span>
-          </Transition>
+          <span :key="agent.status" class="ccm-swap-in shrink-0 rounded-full px-2 py-px text-2xs font-semibold" :class="[meta.soft, meta.text]">{{ t(meta.labelKey) }}</span>
         </div>
         <div class="flex min-w-0 items-center gap-2 text-xs">
           <span v-if="model" class="nodrag min-w-0 flex-1 cursor-text truncate text-ink-muted select-text" :title="modelTitle">
@@ -259,19 +257,17 @@ onBeforeUnmount(() => stop?.())
         </div>
         <div class="flex min-w-0 items-center gap-1.5 text-xs" :class="working || attention ? 'text-ink' : 'text-ink-muted'">
           <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0 text-st-waiting" aria-hidden="true" />
-          <Transition name="ccm-swap" mode="out-in">
-            <span
-              v-if="peerLine"
-              :key="`peer:${peerLine.text}`"
-              class="nodrag flex min-w-0 flex-1 cursor-text items-center gap-1.5 text-ink select-text"
-              :title="peerLine.text"
-              data-peer-line
-            >
-              <component :is="peerLine.icon" :size="13" class="shrink-0" :class="peerLine.tone" aria-hidden="true" />
-              <span class="truncate">{{ peerLine.text }}</span>
-            </span>
-            <span v-else :key="activity" class="nodrag min-w-0 flex-1 cursor-text truncate select-text" :title="activity">{{ activity }}</span>
-          </Transition>
+          <span
+            v-if="peerLine"
+            :key="`peer:${peerLine.text}`"
+            class="ccm-swap-in nodrag flex min-w-0 flex-1 cursor-text items-center gap-1.5 text-ink select-text"
+            :title="peerLine.text"
+            data-peer-line
+          >
+            <component :is="peerLine.icon" :size="13" class="shrink-0" :class="peerLine.tone" aria-hidden="true" />
+            <span class="truncate">{{ peerLine.text }}</span>
+          </span>
+          <span v-else :key="activity" class="ccm-swap-in nodrag min-w-0 flex-1 cursor-text truncate select-text" :title="activity">{{ activity }}</span>
           <span v-if="elapsed" class="shrink-0 tabular-nums text-ink-faint">{{ elapsed }}</span>
         </div>
         <button
