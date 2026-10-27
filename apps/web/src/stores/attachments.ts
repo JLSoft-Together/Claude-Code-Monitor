@@ -81,7 +81,6 @@ export const useAttachmentsStore = defineStore('attachments', () => {
   function add(pane: string, items: NewAttachment[], insert = autoInsert.value): Attachment[] {
     const made = items.map((it): Attachment => ({ ...it, id: `att-${++seq}`, state: insert ? 'inserting' : 'staged', at: Date.now() }))
     set(pane, [...list(pane), ...made])
-    open.value = { ...open.value, [pane]: true }
     if (insert) insertSeq.value++
     return made
   }

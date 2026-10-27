@@ -12,6 +12,14 @@ describe('attachments store', () => {
     setActivePinia(createPinia())
   })
 
+  it('adding a drop does not open the tray; only the owner opens it', () => {
+    const s = useAttachmentsStore()
+    s.add(P, [fromPath('C:/x/a.ts', 'drop')!])
+    expect(s.open[P]).toBeFalsy()
+    s.toggle(P)
+    expect(s.open[P]).toBe(true)
+  })
+
   it('binds a new [Image #N] to the image whose paste key went out', () => {
     const s = useAttachmentsStore()
     const [a] = s.add(P, [{ kind: 'image', name: 'shot.png', source: 'drop', path: 'C:/x/shot.png' }])
