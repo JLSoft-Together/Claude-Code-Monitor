@@ -72,18 +72,13 @@ export interface PanelState {
 export type BarDock = 'top' | 'bottom'
 
 function initialPanels(): Record<Panel, PanelState> {
-  const out: Record<Panel, PanelState> = { sessions: { open: true, pinned: true }, activity: { open: false, pinned: false } }
+  const out: Record<Panel, PanelState> = { sessions: { open: false, pinned: true }, activity: { open: false, pinned: false } }
   try {
     const raw = JSON.parse(localStorage.getItem('ccm.panels') ?? 'null') as Record<string, Partial<PanelState>> | null
-    if (!raw) {
-      // Users of the old grid keep the Sessions column collapsed if they had collapsed it.
-      const old: unknown = JSON.parse(localStorage.getItem('ccm.collapsed') ?? '[]')
-      if (Array.isArray(old) && old.includes('sessions')) out.sessions.open = false
-      return out
-    }
+    if (!raw) return out
     for (const key of ['sessions', 'activity'] as Panel[]) {
       const v = raw[key]
-      if (typeof v?.open === 'boolean') out[key].open = v.open
+      if (key !== 'sessions' && typeof v?.open === 'boolean') out[key].open = v.open
       if (typeof v?.pinned === 'boolean') out[key].pinned = v.pinned
     }
   } catch {
