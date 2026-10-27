@@ -35,6 +35,7 @@ export function grammarFor(lang: string | undefined, path = ''): string | null {
 }
 
 export const isMarkdown = (path: string): boolean => /\.(md|mdx|markdown)$/i.test(path)
+export const isHtml = (path: string): boolean => /\.html?$/i.test(path)
 
 export const splitLines = (text: string): string[] => text.split(/\r\n|\r|\n/)
 

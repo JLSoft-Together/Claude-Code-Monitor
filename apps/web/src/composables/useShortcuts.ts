@@ -1,5 +1,4 @@
 import { onBeforeUnmount, onMounted } from 'vue'
-import { withViewTransition } from '../lib/motion'
 import { isTyping } from '../lib/shortcuts'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
@@ -37,16 +36,6 @@ export function useShortcuts(): void {
         if (e.shiftKey) ui.togglePanelPin('sessions')
         else ui.togglePanel('sessions')
         ui.pressKey(`${shift}S`)
-        break
-      case 'KeyA':
-        if (e.shiftKey) ui.togglePanelPin('activity')
-        else ui.togglePanel('activity')
-        ui.pressKey(`${shift}A`)
-        break
-      case 'KeyB':
-        if (e.shiftKey) withViewTransition(() => ui.toggleBarDock())
-        else ui.toggleBar()
-        ui.pressKey(`${shift}B`)
         break
       case 'KeyF':
         if (e.shiftKey) return

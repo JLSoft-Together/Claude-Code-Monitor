@@ -430,7 +430,7 @@ fillRect(725,19,3,3)
 fillStyle="#adc1d8"
 fillRect(726,20,1,1)
 drawImage(canvas(32x24#54043398),700,4)
-drawImage(canvas(7x9#51a0d52f),613,181)
+drawImage(canvas(7x9#3507251b),613,181)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(45x14#58ddb802),618,3)
@@ -459,7 +459,7 @@ fillStyle="#dec46e"
 fillRect(533,283,4,1)
 fillStyle="#b5a364"
 fillRect(534,282,2,1)
-drawImage(canvas(7x9#51a0d52f),613,284)
+drawImage(canvas(7x9#3507251b),613,284)
 drawImage(canvas(16x15#47720f09),701,275)
 fillStyle="#2b2f3b"
 fillRect(709,282,1,1)
@@ -566,7 +566,7 @@ drawImage(canvas(12x15#160e7c52),706,66)
 drawImage(canvas(14x41#616ab43),737,39)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,78)
-drawImage(canvas(24x34#1e4508d9),107,50)
+drawImage(canvas(24x34#2d43f246),107,50)
 globalAlpha=1
 drawImage(canvas(52x33#eea39ece),142,64)
 drawImage(canvas(40x64#c24f386a),180,36)
@@ -581,11 +581,11 @@ drawImage(canvas(34x25#6103a829),607,72)
 drawImage(canvas(40x64#c24f386a),692,36)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,95)
-drawImage(canvas(24x34#13e6cae3),107,67)
+drawImage(canvas(24x34#2dd7310c),107,67)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),115,105)
-drawImage(canvas(24x34#698ddc3c),110,77)
+drawImage(canvas(24x34#928b45d5),110,77)
 globalAlpha=1
 drawImage(canvas(50x38#c3571484),319,75)
 drawImage(canvas(50x38#ed8d0414),367,75)
@@ -781,7 +781,7 @@ drawImage(canvas(22x16#3a234583),773,98)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),116,109)
-drawImage(canvas(24x34#bd6bc4f9),111,81)
+drawImage(canvas(24x34#d1732766),111,81)
 globalAlpha=1
 drawImage(canvas(34x24#945e54a2),31,105)
 drawImage(canvas(40x64#c24f386a),52,68)
@@ -832,7 +832,7 @@ globalAlpha=1
 drawImage(canvas(18x17#3765b149),703,160)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),99,175)
-drawImage(canvas(24x34#f629c030),94,147)
+drawImage(canvas(24x34#27e883f9),94,147)
 globalAlpha=1
 drawImage(canvas(16x35#fd77ba6b),16,158)
 drawImage(canvas(16x35#fd77ba6b),32,158)
@@ -1543,11 +1543,11 @@ arc(149,163,2.500,0,6.283)
 fill()
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
-roundRect(125,139,28,15,7.500)
+roundRect(125,141,28,15,7.500)
 fill()
 font="600 10.5px ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif"
 fillStyle="#f5f7fb"
-fillText("Rui",130,147)
+fillText("Rui",130,149)
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
 roundRect(115,187,46,15,7.500)
@@ -1988,7 +1988,7 @@ fillRect(725,19,3,3)
 fillStyle="#adc1d8"
 fillRect(726,20,1,1)
 drawImage(canvas(32x24#54043398),700,4)
-drawImage(canvas(7x9#51a0d52f),613,181)
+drawImage(canvas(7x9#3507251b),613,181)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(45x14#58ddb802),618,3)
@@ -2017,7 +2017,7 @@ fillStyle="#dec46e"
 fillRect(533,283,4,1)
 fillStyle="#b5a364"
 fillRect(534,282,2,1)
-drawImage(canvas(7x9#51a0d52f),613,284)
+drawImage(canvas(7x9#3507251b),613,284)
 drawImage(canvas(16x15#47720f09),701,275)
 fillStyle="#2b2f3b"
 fillRect(709,282,1,1)
@@ -2124,7 +2124,7 @@ drawImage(canvas(12x15#160e7c52),706,66)
 drawImage(canvas(14x41#616ab43),737,39)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,80)
-drawImage(canvas(24x34#1e4508d9),107,52)
+drawImage(canvas(24x34#2d43f246),107,52)
 globalAlpha=1
 drawImage(canvas(52x33#eea39ece),142,64)
 drawImage(canvas(40x64#c24f386a),180,36)
@@ -2139,11 +2139,11 @@ drawImage(canvas(34x25#6103a829),607,72)
 drawImage(canvas(40x64#c24f386a),692,36)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,97)
-drawImage(canvas(24x34#75a2a8e7),107,69)
+drawImage(canvas(24x34#511cbde0),107,69)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),115,106)
-drawImage(canvas(24x34#4c9a5d30),110,78)
+drawImage(canvas(24x34#153e0af9),110,78)
 globalAlpha=1
 drawImage(canvas(50x38#c3571484),319,75)
 drawImage(canvas(50x38#ed8d0414),367,75)
@@ -2339,7 +2339,7 @@ drawImage(canvas(22x16#3a234583),773,98)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),116,111)
-drawImage(canvas(24x34#bb01c6a8),111,83)
+drawImage(canvas(24x34#b8096fb1),111,83)
 globalAlpha=1
 drawImage(canvas(34x24#945e54a2),31,105)
 drawImage(canvas(40x64#c24f386a),52,68)
@@ -2390,7 +2390,7 @@ globalAlpha=1
 drawImage(canvas(18x17#3765b149),703,160)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),99,176)
-drawImage(canvas(24x34#f629c030),94,148)
+drawImage(canvas(24x34#27e883f9),94,148)
 globalAlpha=1
 drawImage(canvas(16x35#fd77ba6b),16,158)
 drawImage(canvas(16x35#fd77ba6b),32,158)
@@ -3101,11 +3101,11 @@ arc(149,165,2.500,0,6.283)
 fill()
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
-roundRect(125,141,28,15,7.500)
+roundRect(125,144,28,15,7.500)
 fill()
 font="600 10.5px ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif"
 fillStyle="#f5f7fb"
-fillText("Rui",130,149)
+fillText("Rui",130,152)
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
 roundRect(115,188,46,15,7.500)
@@ -3546,7 +3546,7 @@ fillRect(725,19,3,3)
 fillStyle="#adc1d8"
 fillRect(726,20,1,1)
 drawImage(canvas(32x24#54043398),700,4)
-drawImage(canvas(7x9#51a0d52f),613,181)
+drawImage(canvas(7x9#3507251b),613,181)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(45x14#58ddb802),618,3)
@@ -3575,7 +3575,7 @@ fillStyle="#dec46e"
 fillRect(533,283,4,1)
 fillStyle="#b5a364"
 fillRect(534,282,2,1)
-drawImage(canvas(7x9#51a0d52f),613,284)
+drawImage(canvas(7x9#3507251b),613,284)
 drawImage(canvas(16x15#47720f09),701,275)
 fillStyle="#2b2f3b"
 fillRect(709,282,1,1)
@@ -3682,7 +3682,7 @@ drawImage(canvas(12x15#160e7c52),706,66)
 drawImage(canvas(14x41#616ab43),737,39)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,81)
-drawImage(canvas(24x34#1e4508d9),107,53)
+drawImage(canvas(24x34#2d43f246),107,53)
 globalAlpha=1
 drawImage(canvas(52x33#eea39ece),142,64)
 drawImage(canvas(40x64#c24f386a),180,36)
@@ -3697,11 +3697,11 @@ drawImage(canvas(34x25#6103a829),607,72)
 drawImage(canvas(40x64#c24f386a),692,36)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),112,98)
-drawImage(canvas(24x34#75a2a8e7),107,70)
+drawImage(canvas(24x34#511cbde0),107,70)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),115,108)
-drawImage(canvas(24x34#4c9a5d30),110,80)
+drawImage(canvas(24x34#153e0af9),110,80)
 globalAlpha=1
 drawImage(canvas(50x38#c3571484),319,75)
 drawImage(canvas(50x38#ed8d0414),367,75)
@@ -3897,7 +3897,7 @@ drawImage(canvas(22x16#3a234583),773,98)
 globalAlpha=1
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),116,113)
-drawImage(canvas(24x34#bb01c6a8),111,85)
+drawImage(canvas(24x34#b8096fb1),111,85)
 globalAlpha=1
 drawImage(canvas(34x24#945e54a2),31,105)
 drawImage(canvas(40x64#c24f386a),52,68)
@@ -3948,7 +3948,7 @@ globalAlpha=1
 drawImage(canvas(18x17#3765b149),703,160)
 globalAlpha=1
 drawImage(canvas(14x6#8697982a),99,178)
-drawImage(canvas(24x34#f629c030),94,150)
+drawImage(canvas(24x34#27e883f9),94,150)
 globalAlpha=1
 drawImage(canvas(16x35#fd77ba6b),16,158)
 drawImage(canvas(16x35#fd77ba6b),32,158)
@@ -4648,14 +4648,14 @@ arc(133,263,2.500,0,6.283)
 fill()
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
-roundRect(118,128,34,15,7.500)
+roundRect(118,131,34,15,7.500)
 fill()
 font="600 10.5px ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif"
 fillStyle="#f5f7fb"
-fillText("Caio",123,136)
+fillText("Caio",123,139)
 fillStyle="#8d66cf"
 beginPath()
-arc(149,131,2.500,0,6.283)
+arc(149,134,2.500,0,6.283)
 fill()
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
@@ -4670,11 +4670,11 @@ arc(149,166,2.500,0,6.283)
 fill()
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
-roundRect(125,143,28,15,7.500)
+roundRect(125,146,28,15,7.500)
 fill()
 font="600 10.5px ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif"
 fillStyle="#f5f7fb"
-fillText("Rui",130,151)
+fillText("Rui",130,154)
 fillStyle="rgba(22,26,38,0.82)"
 beginPath()
 roundRect(115,190,46,15,7.500)

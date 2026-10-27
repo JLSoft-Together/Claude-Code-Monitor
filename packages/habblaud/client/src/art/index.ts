@@ -19,6 +19,7 @@ import {
   type RoomTheme,
   type Sprite,
   type WallStyle,
+  spriteBounds,
 } from './api';
 import { appearanceFromSeed as appearanceFromSeedPure, appearanceKey } from './character/appearance';
 import { CHAR_H, CHAR_W, POSE_DURATION, POSE_FRAMES, isSeated, renderCharacter } from './character/render';
@@ -49,8 +50,29 @@ function toCanvas(buf: PixelBuf): HTMLCanvasElement {
   return c;
 }
 
+function opaqueBox(buf: PixelBuf): { x: number; y: number; w: number; h: number } {
+  const { w, h, data } = buf;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 >= 0 ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : { x: 0, y: 0, w: Math.max(1, w), h: Math.max(1, h) };
+}
+
 function toSprite(s: BufSprite): Sprite {
-  return { canvas: toCanvas(s.buf), ax: s.ax, ay: s.ay, rects: s.rects };
+  const canvas = toCanvas(s.buf);
+  spriteBounds.set(canvas, opaqueBox(s.buf));
+  return { canvas, ax: s.ax, ay: s.ay, rects: s.rects };
 }
 
 /** Cache com limite simples (descarta tudo ao estourar — evita crescer sem fim em sessões longas). */

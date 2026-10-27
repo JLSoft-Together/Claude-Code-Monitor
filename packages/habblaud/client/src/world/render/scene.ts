@@ -1,6 +1,6 @@
 // Representação visual das áreas: caches estáticos (piso, paredes, itens de parede fixos) e
 // listas de móveis/itens dinâmicos prontos para o desenho por frame.
-import { FURNITURE, TILE, type ArtModule, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
+import { FURNITURE, TILE, spriteBounds, type ArtModule, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
 import { hash32 } from '../../../../shared/hash';
 import type { AreaLayout, WallItemPlacement, WallSegment } from '../layout/types';
 import type { RoomState } from '../sim/room-state';
@@ -83,7 +83,7 @@ const opaqueCache = new WeakMap<HTMLCanvasElement, { x: number; y: number; w: nu
 
 /** Caixa dos pixels opacos de um canvas (cache por canvas). */
 export function opaqueBounds(c: HTMLCanvasElement): { x: number; y: number; w: number; h: number } {
-  const hit = opaqueCache.get(c);
+  const hit = opaqueCache.get(c) ?? spriteBounds.get(c);
   if (hit) return hit;
   let box = { x: 0, y: 0, w: c.width, h: c.height };
   try {

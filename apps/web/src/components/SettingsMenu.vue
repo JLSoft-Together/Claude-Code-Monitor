@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 
 import { useI18n } from 'vue-i18n'
 import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
 import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Stethoscope, X } from 'lucide-vue-next'
+import { AUTO_SAVE_DELAYS, AUTO_SAVE_MODES } from '../lib/autoSave'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { retireOverlay } from '../lib/motion'
@@ -104,6 +105,8 @@ const fileIconStyles = computed(() => [
   { value: 'atom' as const, label: t('settings.fileIconsAtom') },
   { value: 'simple' as const, label: t('settings.fileIconsSimple') },
 ])
+const autoSaveModes = computed(() => AUTO_SAVE_MODES.map((mode) => ({ value: mode, label: t(`settings.autoSaveMode.${mode}`) })))
+const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms, label: t('settings.seconds', { n: ms / 1000 }) })))
 const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
 const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
 
@@ -330,6 +333,20 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
               </div>
               <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
               <ToggleSwitch v-if="hasTerminals" v-model="settings.minimap" :label="t('settings.minimap')" :hint="t('settings.minimapHint')" class="px-3" />
+              <div v-if="hasTerminals" class="px-3 py-2">
+                <p class="text-sm">{{ t('settings.autoSave') }}</p>
+                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.autoSaveHint') }}</p>
+                <SegmentedControl v-model="settings.autoSave" :options="autoSaveModes" :label="t('settings.autoSave')" fill class="mt-2 w-full" data-setting="auto-save" />
+                <SegmentedControl
+                  v-if="settings.autoSave === 'afterDelay'"
+                  v-model="settings.autoSaveDelay"
+                  :options="autoSaveDelays"
+                  :label="t('settings.autoSaveDelay')"
+                  fill
+                  class="mt-2 w-full"
+                  data-setting="auto-save-delay"
+                />
+              </div>
               <ToggleSwitch v-if="hasTerminals" v-model="settings.dimInactive" :label="t('workspace.dim.setting')" :hint="t('workspace.dim.settingHint')" class="px-3" />
               <div v-if="hasTerminals" class="flex items-center justify-between gap-3 px-3 py-2">
                 <div class="min-w-0 flex-1">

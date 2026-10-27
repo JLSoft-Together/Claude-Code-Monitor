@@ -30,6 +30,7 @@ import { isMenuKey } from '../../lib/rail/railMenu'
 import { runState, type RailState } from '../../lib/rail/railModel'
 import { leaves } from '../../lib/splitLayout'
 import { useRunStore } from '../../stores/run'
+import { useSettingsStore } from '../../stores/settings'
 import { isTerm, useWorkspaceStore, type Pane, type Tab } from '../../stores/workspace'
 import ArtImage from '../ArtImage.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
@@ -44,6 +45,7 @@ const emit = defineEmits<{ close: [focusOpener: boolean] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
+const settings = useSettingsStore()
 const run = useRunStore()
 const rail = useRail()
 const info = usePaneInfo()
@@ -481,7 +483,9 @@ function apply(drop: MissionDrop): void {
 }
 
 let closeFocus: string | null = null
-function closePanes(keys: string[], tabKey: string): void {
+async function closePanes(keys: string[], tabKey: string): Promise<void> {
+  // v62: with auto save on, dirty file panes save first; only the ones that fail still ask.
+  if (settings.autoSave !== 'off') await workspace.saveFiles(keys)
   const tab = tabOf(tabKey)
   const whole = !!tab && leaves(tab.root).every((k) => keys.includes(k))
   const list = cardEls()
@@ -593,7 +597,7 @@ function pickCard(id: string, tabKey: string): void {
       if (target) apply({ kind: 'merge', tabKey, into: target })
       break
     case 'close':
-      closePanes(leaves(tab.root), tabKey)
+      void closePanes(leaves(tab.root), tabKey)
       break
   }
 }
@@ -619,7 +623,7 @@ function pickTile(id: string, tabKey: string, paneKey: string): void {
       compactFlow.cancel(paneKey)
       break
     case 'close-pane':
-      closePanes([paneKey], tabKey)
+      void closePanes([paneKey], tabKey)
       break
   }
 }

@@ -10,6 +10,7 @@ const en = {
     saveHint: 'Save ({key})',
     saving: 'Saving…',
     saved: 'Saved',
+    autoSave: { afterDelay: 'Auto save after {s} s', onFocusChange: 'Auto save on focus change', onWindowChange: 'Auto save on window change' },
     unsaved: 'Unsaved changes',
     live: 'Preview shows your unsaved edits',
     readOnly: {
@@ -85,6 +86,7 @@ const vi: typeof en = {
     saveHint: 'Lưu ({key})',
     saving: 'Đang lưu…',
     saved: 'Đã lưu',
+    autoSave: { afterDelay: 'Tự lưu sau {s} giây', onFocusChange: 'Tự lưu khi rời pane', onWindowChange: 'Tự lưu khi rời cửa sổ' },
     unsaved: 'Có thay đổi chưa lưu',
     live: 'Bản xem trước theo nội dung đang sửa (chưa lưu)',
     readOnly: {

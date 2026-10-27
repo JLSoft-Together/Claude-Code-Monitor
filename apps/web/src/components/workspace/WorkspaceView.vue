@@ -312,8 +312,11 @@ async function saveAndClose(): Promise<void> {
 }
 // Quit (main process): it lists unsaved editors and may ask the page to save them all first.
 watch(
-  () => workspace.dirtyPanes.map((p) => `${p.key}\n${p.path}`).join('\n'),
-  () => reportDirty(workspace.dirtyPanes.map((p) => ({ name: baseName(p.path ?? ''), path: p.path ?? '' }))),
+  () => [workspace.dirtyPanes.map((p) => `${p.key}\n${p.path}`).join('\n'), settings.autoSave],
+  () => reportDirty(
+    workspace.dirtyPanes.map((p) => ({ name: baseName(p.path ?? ''), path: p.path ?? '' })),
+    settings.autoSave !== 'off',
+  ),
   { immediate: true },
 )
 onSaveAllRequest(async () => (await workspace.saveFiles(workspace.dirtyPanes.map((p) => p.key))).length === 0)
@@ -622,6 +625,15 @@ function onChoiceKey(e: KeyboardEvent): void {
 
 /** Panes that close without asking morph away; a confirmation sheet opens without one. */
 function closePanes(keys: string[], opts: { record?: boolean } = {}): void {
+  // v62: with auto save on, dirty file panes save first; only the ones that fail still ask.
+  if (settings.autoSave !== 'off' && keys.some((k) => paneOf(k)?.dirty)) {
+    void workspace.saveFiles(keys).then(() => closeNow(keys, opts))
+    return
+  }
+  closeNow(keys, opts)
+}
+
+function closeNow(keys: string[], opts: { record?: boolean }): void {
   // v42: a file pane with unsaved edits asks too (Save / Don't save / Cancel in the same sheet).
   const asksFor = (pane: Pane): boolean => isBusy(pane) || !!pane.dirty
   const open = keys.filter((k) => !dusting.has(k))

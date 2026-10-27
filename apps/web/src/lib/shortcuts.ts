@@ -11,10 +11,6 @@ export interface Shortcut {
 export const SHORTCUTS: Shortcut[] = [
   { id: 'sessions', keys: ['S'], group: 'panels' },
   { id: 'sessionsPin', keys: ['Shift', 'S'], group: 'panels' },
-  { id: 'activity', keys: ['A'], group: 'panels' },
-  { id: 'activityPin', keys: ['Shift', 'A'], group: 'panels' },
-  { id: 'bar', keys: ['B'], group: 'panels' },
-  { id: 'barDock', keys: ['Shift', 'B'], group: 'panels' },
   { id: 'tabs', keys: ['0', '…', '9'], group: 'map' },
   { id: 'fit', keys: ['F'], group: 'map' },
   { id: 'esc', keys: ['Esc'], group: 'map' },

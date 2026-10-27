@@ -58,11 +58,11 @@ export interface DirtyFile {
 }
 
 interface EditorBridge {
-  editorDirty?: (files: DirtyFile[]) => void
+  editorDirty?: (files: DirtyFile[], autoSave: boolean) => void
   onEditorSaveAll?: (handler: () => Promise<boolean>) => void
 }
 
 const bridge = desktop as unknown as EditorBridge | undefined
 
-export const reportDirty = (files: DirtyFile[]): void => bridge?.editorDirty?.(files)
+export const reportDirty = (files: DirtyFile[], autoSave = false): void => bridge?.editorDirty?.(files, autoSave)
 export const onSaveAllRequest = (handler: () => Promise<boolean>): void => bridge?.onEditorSaveAll?.(handler)

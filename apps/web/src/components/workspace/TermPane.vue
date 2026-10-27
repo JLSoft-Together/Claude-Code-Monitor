@@ -69,6 +69,7 @@ let conn: PtyConnection | null = null
 let search: SearchAddon | null = null
 let linkProvider: IDisposable | null = null
 let resizeObserver: ResizeObserver | null = null
+let refitTimer: ReturnType<typeof setTimeout> | null = null
 let restoredOnMount = false
 const findOpen = ref(false)
 const find = ref<InstanceType<typeof TermFind> | null>(null)
@@ -446,6 +447,20 @@ async function applyCodeFont(): Promise<void> {
 function refit(): void {
   if (!props.visible || !fit || !host.value?.offsetWidth) return
   try {
+    const dims = fit.proposeDimensions()
+    if (term && conn && dims && dims.cols < term.cols && term.buffer.active.type === 'normal') {
+      conn.resize(dims.cols, dims.rows)
+      if (refitTimer) clearTimeout(refitTimer)
+      refitTimer = setTimeout(() => {
+        refitTimer = null
+        try {
+          fit?.fit()
+        } catch {
+          // pane closed meanwhile
+        }
+      }, 100)
+      return
+    }
     fit.fit()
   } catch {
     // container not laid out yet
@@ -771,7 +786,13 @@ onMounted(() => {
   search = new SearchAddon({ highlightLimit: 1000 })
   term.loadAddon(search)
   searchAddon.value = search
-  resizeObserver = new ResizeObserver(() => refit())
+  resizeObserver = new ResizeObserver(() => {
+    if (refitTimer) clearTimeout(refitTimer)
+    refitTimer = setTimeout(() => {
+      refitTimer = null
+      refit()
+    }, 150)
+  })
   resizeObserver.observe(host.value!)
   window.addEventListener('resize', dropMenus)
 
@@ -842,6 +863,7 @@ watch(() => [settings.codeFont, settings.codeFontSize] as const, () => void appl
 // Leaving the view only detaches; a pane gone from the store was closed, so its process goes too.
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  if (refitTimer) clearTimeout(refitTimer)
   if (pendingTimer) clearTimeout(pendingTimer)
   stopPrefill()
   window.removeEventListener('resize', dropMenus)
@@ -1153,7 +1175,7 @@ onBeforeUnmount(() => {
       :class="multi && focused ? 'outline-focus' : 'outline-transparent'"
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
-      <div class="size-full overflow-hidden rounded-card p-2 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
+      <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
         <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
       <div

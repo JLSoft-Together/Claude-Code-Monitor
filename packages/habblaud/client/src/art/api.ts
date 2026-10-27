@@ -375,3 +375,6 @@ export interface ArtModule {
   /** Avatar (cabeça + ombros) ampliado para a UI. `parts`: peças do personagem editado (ver AgentInfo.parts). */
   avatarCanvas(seed: number, opts?: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts }): HTMLCanvasElement;
 }
+
+/** Orrery local patch J: opaque box of sprites built from a PixelBuf, so the world never reads pixels back from a canvas. */
+export const spriteBounds = new WeakMap<HTMLCanvasElement, Rect>();
