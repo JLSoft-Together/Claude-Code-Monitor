@@ -195,8 +195,16 @@ function setText(text: string): void {
   requestAnimationFrame(() => view && (view.scrollDOM.scrollTop = top))
 }
 
+/** Whole-buffer edit (Local History restore, Format): undoable, the saved baseline stays, so the buffer turns dirty. */
+function replace(text: string): void {
+  if (!view || text === view.state.doc.toString()) return
+  const head = view.state.selection.main.head
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: EditorSelection.cursor(Math.min(head, text.length)), scrollIntoView: true })
+}
+
 defineExpose({
   text: (): string => view?.state.doc.toString() ?? props.doc,
+  replace,
   /** Text just written to disk: the buffer is clean until edited again. */
   markSaved: (saved?: string): void => {
     if (!view) return

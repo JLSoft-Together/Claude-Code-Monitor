@@ -174,3 +174,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 JSON / YAML tree: `lib/jsonTree.ts`, `components/workspace/JsonTree.vue`, `FilePane.vue` `treeOn`; dep `yaml` 2.8.1 (web).
 - 2026-10-29 v70 TODO / FIXME: Explorer view `todo` `ExplorerTodo.vue`, `lib/todoView.ts` (via `ccm:search`).
 - 2026-10-29 v70 project notes: desktop `preview/notes.ts` + IPC `ccm:notes-read|write`; web `NotesPanel.vue`, `lib/noteLinks.ts`, key `notes` (Ctrl+Alt+N / ⌃⌥N).
+- 2026-10-29 v70 Local History: desktop `preview/localHistory.ts` + `writeTextFile` `onSaved` + IPC `ccm:lh-list|lh-read`; web `LocalHistoryDialog.vue`, `TextCompareDialog.vue`, `TextCompare.vue` (MergeView), `CodeEditor` `replace`.

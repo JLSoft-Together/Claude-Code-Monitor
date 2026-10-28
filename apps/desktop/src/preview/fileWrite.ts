@@ -15,6 +15,8 @@ export type FileWriteResult = { ok: true; path: string; mtimeMs: number; size: n
 export interface FileWriteDeps {
   rename?: (from: string, to: string) => Promise<void>
   sleep?: (ms: number) => Promise<void>
+  /** After a save that changed the bytes: the text the file held before (Local History). */
+  onSaved?: (real: string, previous: string) => void
 }
 
 const EOL: Record<Eol, string> = { lf: '\n', crlf: '\r\n', cr: '\r' }
@@ -79,6 +81,7 @@ export async function writeTextFile(req: unknown, roots: readonly string[], deps
       return { ok: false, error: isBusy(err) ? 'busy' : 'failed' }
     }
   }
+  if (deps.onSaved && !bytes.equals(current)) deps.onSaved(real, decoded)
   const after = await fs.stat(real).catch(() => null)
   return { ok: true, path: real, mtimeMs: after?.mtimeMs ?? Date.now(), size: after?.size ?? bytes.length }
 }

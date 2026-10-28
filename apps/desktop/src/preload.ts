@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   commandsList: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:commands-list', dir),
   notesRead: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:notes-read', root),
   notesWrite: (root: string, text: string): Promise<unknown> => ipcRenderer.invoke('ccm:notes-write', { root, text }),
+  lhList: (file: string): Promise<unknown> => ipcRenderer.invoke('ccm:lh-list', file),
+  lhRead: (file: string, id: string): Promise<unknown> => ipcRenderer.invoke('ccm:lh-read', { path: file, id }),
   cpState: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:cp-state', root),
   cpSet: (root: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:cp-set', { root, on }),
   cpTake: (root: string, label: string): Promise<unknown> => ipcRenderer.invoke('ccm:cp-take', { root, label }),

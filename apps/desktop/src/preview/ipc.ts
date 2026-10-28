@@ -22,6 +22,7 @@ import { CheckRunner, cleanCheck, resolveCheck } from './checks'
 import { compareBranch, diffBetween, fileBetween, mergeBranch, takeFile } from './worktrees'
 import { CheckpointStore } from './checkpoints'
 import { NotesStore } from './notes'
+import { LocalHistory } from './localHistory'
 import { changedVsBase, dryMerge } from './overlap'
 import type { RunKind } from '../strings'
 import { existingDir } from '../pick-start'
@@ -77,7 +78,7 @@ export interface PreviewIpcDeps {
   confirmGit?: (req: { title: string; commands: string[]; force?: boolean }) => Promise<boolean>
   /** Native yes/no for amend / merge / checkpoint restore, worded per kind; `a` / `b` = branch / base or file count. */
   confirmRun?: (req: { kind: RunKind; a: string; b: string; lines: string[] }) => Promise<boolean>
-  /** App data folder: checkpoint stores (`checkpoints/`) and project notes (`notes/`). Both are off without it. */
+  /** App data folder: checkpoint stores (`checkpoints/`), project notes (`notes/`) and Local History (`history/`). All off without it. */
   dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
   trash?: (path: string) => Promise<void>
@@ -106,7 +107,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -244,9 +245,29 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return roots
   }
 
+  const history = deps.dataDir ? new LocalHistory(deps.dataDir) : null
+  const onSaved = history ? (real: string, previous: string) => void history.record(real, previous) : undefined
+
   ipcMain.handle('ccm:file-write', async (event, req: unknown) => {
     if (!isAppFrame(event)) return { ok: false, error: 'denied' }
-    return writeTextFile(req, await writeRoots())
+    return writeTextFile(req, await writeRoots(), { onSaved })
+  })
+
+  /** A file the editor may save (same roots as ccm:file-write), as its real path. */
+  async function historyFile(file: unknown): Promise<string | null> {
+    if (typeof file !== 'string' || file.length > 4096 || !path.isAbsolute(file)) return null
+    const real = await realOrNull(file)
+    return real && rootOf(real, await writeRoots()) && (await fs.stat(real).catch(() => null))?.isFile() ? real : null
+  }
+
+  ipcMain.handle('ccm:lh-list', async (event, file: unknown) => {
+    const real = history && isAppFrame(event) ? await historyFile(file) : null
+    return real && history ? history.list(real) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:lh-read', async (event, req: unknown) => {
+    const { path: file, id } = (req ?? {}) as { path?: unknown; id?: unknown }
+    const real = history && isAppFrame(event) ? await historyFile(file) : null
+    return real && history ? history.read(real, id) : { ok: false, error: 'denied' }
   })
 
   ipcMain.handle('ccm:watch', async (event, root: unknown) => {

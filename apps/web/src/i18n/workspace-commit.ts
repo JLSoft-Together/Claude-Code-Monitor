@@ -266,6 +266,26 @@ const en = {
       unavailable: 'Notes need the desktop app.',
     },
   },
+  compare: {
+    close: 'Close',
+    cancel: 'Cancel',
+    same: 'No differences.',
+  },
+  localHistory: {
+    open: 'Local History',
+    title: 'Local History · {name}',
+    list: 'Saved versions',
+    version: 'Before save · {time}',
+    currentText: 'Current text',
+    restore: 'Restore',
+    empty: 'No versions yet. Orrery keeps the text before each save made in the app (50 per file, 7 days).',
+    error: {
+      denied: 'This file is not in an open project.',
+      missing: 'That version is gone.',
+      failed: 'Could not read the Local History.',
+      unavailable: 'Local History needs the desktop app.',
+    },
+  },
 }
 
 const vi: typeof en = {
@@ -533,6 +553,26 @@ const vi: typeof en = {
       'too-large': 'Ghi chú quá 1 MB nên chưa lưu.',
       failed: 'Không đọc hoặc lưu được ghi chú.',
       unavailable: 'Ghi chú cần ứng dụng desktop.',
+    },
+  },
+  compare: {
+    close: 'Đóng',
+    cancel: 'Huỷ',
+    same: 'Không có khác biệt.',
+  },
+  localHistory: {
+    open: 'Lịch sử cục bộ',
+    title: 'Lịch sử cục bộ · {name}',
+    list: 'Các bản đã lưu',
+    version: 'Trước khi lưu · {time}',
+    currentText: 'Nội dung hiện tại',
+    restore: 'Khôi phục',
+    empty: 'Chưa có bản nào. Orrery giữ nội dung trước mỗi lần lưu trong app (50 bản mỗi file, 7 ngày).',
+    error: {
+      denied: 'File này không thuộc project đang mở.',
+      missing: 'Bản này không còn nữa.',
+      failed: 'Không đọc được lịch sử cục bộ.',
+      unavailable: 'Lịch sử cục bộ cần ứng dụng desktop.',
     },
   },
 }

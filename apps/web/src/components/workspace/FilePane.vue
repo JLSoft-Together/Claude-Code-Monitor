@@ -5,7 +5,7 @@ let filePanes = 0
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network, History } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
@@ -44,16 +44,18 @@ import { treeFormat } from '../../lib/jsonTree'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
 import { blameRows, type BlameRow } from '../../lib/blame'
-import { baseName, changesDiscard, gitBlame, hasBlame, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import { baseName, changesDiscard, gitBlame, hasBlame, hasLocalHistory, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 // CodeMirror stays out of the main chunk until a file is edited.
 const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
 const JsonTree = defineAsyncComponent(() => import('./JsonTree.vue'))
+const LocalHistoryDialog = defineAsyncComponent(() => import('./LocalHistoryDialog.vue'))
 interface EditorApi {
   text: () => string
   markSaved: (saved?: string) => void
   setText: (text: string) => void
+  replace: (text: string) => void
   revealLine: (line: number, select?: boolean) => void
   focus: () => void
   openFind: () => void
@@ -1144,6 +1146,31 @@ onBeforeUnmount(() => {
 
 const lineCount = computed(() => lines.value.length)
 
+/** Text the user sees now: editor buffer, unsaved text kept after Done, else the disk text. */
+const bufferText = (): string => (editing.value && editor.value ? editor.value.text() : (pending.value ?? baseText.value))
+const historyText = shallowRef<string | null>(null)
+
+/** Restore / Format: the text becomes the unsaved buffer (edit mode, ● on); the disk is only written by Save. */
+async function applyBuffer(text: string): Promise<void> {
+  if (editing.value && editor.value) {
+    editor.value.replace(text)
+    editor.value.focus()
+    return
+  }
+  pending.value = text
+  await startEdit()
+}
+
+function openHistory(): void {
+  if (!hasLocalHistory || view.value?.kind !== 'text') return
+  historyText.value = bufferText()
+}
+
+function restoreHistory(text: string): void {
+  historyText.value = null
+  void applyBuffer(text)
+}
+
 const headMore = computed<MenuEntry[]>(() => {
   const out: MenuEntry[] = []
   const text = view.value?.kind === 'text'
@@ -1159,6 +1186,7 @@ const headMore = computed<MenuEntry[]>(() => {
     out.push({ id: 'usages', label: t('workspace.outline.usages'), icon: Search, shortcut: '⇧F12' })
     out.push({ id: 'declaration', label: t('workspace.outline.declaration'), icon: Search, shortcut: 'F12' })
     if (hasBlame) out.push({ id: 'blame', label: t('workspace.blame.toggle'), icon: blameOn.value ? Check : GitCommitHorizontal, disabled: editing.value || !showSource.value })
+    if (hasLocalHistory && canEdit.value) out.push({ id: 'history', label: t('workspace.localHistory.open'), icon: History, disabled: !!block.value })
   }
   if (canEdit.value) {
     out.push({ separator: true })
@@ -1181,6 +1209,7 @@ function pickHead(id: string): void {
   else if (id === 'tree') treeOn.value = !treeOn.value
   else if (id === 'wrap') wrap.value = !wrap.value
   else if (id === 'blame') toggleBlame()
+  else if (id === 'history') openHistory()
   else if (id === 'outline') openOutline()
   else if (id === 'usages') findUsages()
   else if (id === 'declaration') findDeclaration()
@@ -1379,7 +1408,7 @@ function pickHead(id: string): void {
       >
         <SquarePen :size="14" aria-hidden="true" />
       </button>
-      <PaneMore class="hidden @max-[600px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
+      <PaneMore class="@max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
       <slot name="end" />
     </div>
 
@@ -1546,6 +1575,7 @@ function pickHead(id: string): void {
       @rollback="pendingRollback = popupIndex"
       @show-diff="showDiff"
     />
+    <LocalHistoryDialog v-if="historyText !== null" :path="view?.path ?? path" :name="name" :current="historyText" :grammar="grammar" @restore="restoreHistory" @close="historyText = null" />
     <DiscardConfirm v-if="rollbackText" :title="rollbackText.title" :lines="rollbackText.lines" :preview="rollbackText.preview" @confirm="confirmRollback" @cancel="pendingRollback = null" />
 
   </section>

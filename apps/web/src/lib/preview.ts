@@ -172,6 +172,13 @@ export type CpResult = { ok: true; id?: string | null } | { ok: false; error: Cp
 export type NoteError = 'denied' | 'too-large' | 'failed' | 'unavailable'
 export type NoteRead = { ok: true; text: string; mtimeMs: number | null } | { ok: false; error: NoteError }
 export type NoteWrite = { ok: true; mtimeMs: number | null } | { ok: false; error: NoteError }
+export interface LhVersion {
+  id: string
+  time: number
+  size: number
+}
+export type LhList = { ok: true; versions: LhVersion[] } | { ok: false; error: 'denied' | 'failed' | 'unavailable' }
+export type LhRead = { ok: true; text: string; time: number } | { ok: false; error: 'denied' | 'missing' | 'failed' | 'unavailable' }
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
   | { ok: false; error: 'denied' | 'not-repo' | 'no-git' | 'bad-query' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
@@ -210,6 +217,8 @@ interface PreviewBridge {
   commandsList?: (dir: string) => Promise<CommandsListResult>
   notesRead?: (root: string) => Promise<NoteRead>
   notesWrite?: (root: string, text: string) => Promise<NoteWrite>
+  lhList?: (file: string) => Promise<LhList>
+  lhRead?: (file: string, id: string) => Promise<LhRead>
   wtDiff?: (dir: string, a: string, b: string) => Promise<WtBetween>
   wtFileDiff?: (dir: string, a: string, b: string, path: string) => Promise<WtBetweenDiff>
   wtTake?: (dir: string, from: string, path: string) => Promise<WtTake>
@@ -316,6 +325,10 @@ export const hasNotes = typeof bridge?.notesRead === 'function'
 /** Project notes kept by the app in its data folder (`notes/<sha1 of root>.md`), never in the repo. */
 export const notesRead = (root: string): Promise<NoteRead> => bridge?.notesRead?.(root) ?? Promise.resolve(unavailable)
 export const notesWrite = (root: string, text: string): Promise<NoteWrite> => bridge?.notesWrite?.(root, text) ?? Promise.resolve(unavailable)
+export const hasLocalHistory = typeof bridge?.lhList === 'function'
+/** Local History: disk text before each save the app made (data folder, 50 per file, 7 days). */
+export const lhList = (file: string): Promise<LhList> => bridge?.lhList?.(file) ?? Promise.resolve(unavailable)
+export const lhRead = (file: string, id: string): Promise<LhRead> => bridge?.lhRead?.(file, id) ?? Promise.resolve(unavailable)
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
 export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
 export const cpTake = (root: string, label: string): Promise<CpResult> => bridge?.cpTake?.(root, label) ?? Promise.resolve(unavailable)
