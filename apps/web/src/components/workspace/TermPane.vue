@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, ScanSearch, TriangleAlert, X } from 'lucide-vue-next'
+import { Columns2, FileText, GitBranch, Globe, ListOrdered, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, ScanSearch, TriangleAlert, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -54,6 +54,9 @@ import PresetIcon from './PresetIcon.vue'
 import SplitMenu from './SplitMenu.vue'
 import WorktreeMenu from './WorktreeMenu.vue'
 import OverlapChip from './OverlapChip.vue'
+import PromptQueueButton from './PromptQueueButton.vue'
+import { shouldAutoFill } from '../../lib/promptQueue'
+import { usePromptQueueStore } from '../../stores/promptQueue'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean; zoomed: boolean; hiddenCount: number; dim: boolean }>()
 const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>]; scripts: []; zoom: [] }>()
@@ -304,6 +307,10 @@ const moreEntries = computed<MenuEntry[]>(() => {
     out.push({ id: 'attach', label: attachCount.value ? t('workspace.paneHead.attachCount', { label: t('attach.button'), n: attachCount.value }) : t('attach.button'), icon: Paperclip })
   if (hasScripts && cwd.value) out.push({ id: 'scripts', label: t('workspace.scripts.open'), icon: Play })
   if (isShell.value) out.push({ id: 'scan', label: t('workspace.termScan.button'), icon: ScanSearch, hint: t('workspace.termScan.hint') })
+  else {
+    const n = queueCount.value
+    out.push({ id: 'queue', label: n ? t('workspace.promptQueue.count', { n }, n) : t('workspace.promptQueue.title'), icon: ListOrdered })
+  }
   out.push({ id: 'restart', label: t(reconnectable.value ? 'workspace.reconnect' : 'workspace.restart'), icon: RotateCw })
   return out
 })
@@ -316,6 +323,7 @@ function pickMore(id: string): void {
   else if (id === 'attach') attachments.toggle(props.pane.key)
   else if (id === 'scripts') emit('scripts')
   else if (id === 'scan') scanErrors()
+  else if (id === 'queue') queueButton.value?.open((more.value?.$el as HTMLElement | undefined)?.getBoundingClientRect())
   else if (id === 'restart') {
     if (reconnectable.value) reconnect()
     else restart()
@@ -337,11 +345,39 @@ function scanErrors(): void {
   const scan = parseTerminalProblems(bufferLines(term.buffer.active), cwd.value ?? null)
   checks.setTerminal(props.pane.key, t('workspace.termScan.source', { name: props.pane.title || shortPath(cwd.value ?? '') || t('workspace.preset.shell') }), scan.errors)
   const n = scan.errors.length
-  scanNotice.value = n ? t('workspace.termScan.found', { n, files: t('workspace.termScan.files', { n: scan.files }, scan.files) }, n) : t('workspace.termScan.none')
+  showNotice(n ? t('workspace.termScan.found', { n, files: t('workspace.termScan.files', { n: scan.files }, scan.files) }, n) : t('workspace.termScan.none'))
+}
+function showNotice(text: string): void {
+  scanNotice.value = text
   if (scanTimer) clearTimeout(scanTimer)
   scanTimer = setTimeout(() => (scanNotice.value = null), 4000)
 }
 onBeforeUnmount(() => scanTimer && clearTimeout(scanTimer))
+
+const queues = usePromptQueueStore()
+const queueButton = ref<InstanceType<typeof PromptQueueButton> | null>(null)
+const queueCount = computed(() => queues.queues[props.pane.key]?.items.length ?? 0)
+const canFillQueue = computed(() => props.pane.state === 'running')
+
+/** Prefills the next queued prompt (never Enter); pasted here so a background pane does not take focus. */
+async function fillQueued(): Promise<void> {
+  if (props.pane.state !== 'running' || !term) return
+  await att.idle()
+  if (props.pane.state !== 'running' || !term || !conn?.isOpen) return
+  const item = queues.take(props.pane.key)
+  if (!item) return
+  term.paste(item.text)
+  const left = queues.get(props.pane.key).items.length
+  showNotice(left ? t('workspace.promptQueue.filledLeft', { n: left }, left) : t('workspace.promptQueue.filled'))
+}
+
+watch(
+  () => session.value?.status,
+  (now, prev) => {
+    if (isShell.value || props.pane.state !== 'running') return
+    if (shouldAutoFill(queues.get(props.pane.key), prev, now)) void fillQueued()
+  },
+)
 
 /** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
 function onShellCwd(dir: string | null): void {
@@ -1117,6 +1153,7 @@ onBeforeUnmount(() => {
             </span>
           </Transition>
         </span>
+        <PromptQueueButton v-if="!isShell" ref="queueButton" :pane-key="pane.key" :can-fill="canFillQueue" @fill="fillQueued" />
         <button
           v-if="canAttach"
           type="button"
