@@ -15,6 +15,16 @@ const key = (code: string, mods: Partial<KeyboardEvent> = {}, altGraph = false):
   }) as unknown as KeyboardEvent
 
 describe('workspaceAction', () => {
+  it('Ctrl+` (⌃` on macOS) toggles the drop-down terminal, other modifiers do not', () => {
+    expect(workspaceAction(key('Backquote', { ctrlKey: true }), false, false)).toEqual({ t: 'dropTerm' })
+    expect(workspaceAction(key('Backquote', { ctrlKey: true }), true, false)).toEqual({ t: 'dropTerm' })
+    expect(workspaceAction(key('Backquote', { metaKey: true }), true, false)).toBeNull()
+    expect(workspaceAction(key('Backquote', { ctrlKey: true, shiftKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('Backquote', { ctrlKey: true, altKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('Backquote'), false, false)).toBeNull()
+    expect(workspaceAction({ ...key('Backquote', { ctrlKey: true }), isComposing: true } as KeyboardEvent, false, false)).toBeNull()
+  })
+
   it('Ctrl+Alt+digit jumps to a tab on Windows', () => {
     expect(workspaceAction(key('Digit2', { ctrlKey: true, altKey: true }), false, false)).toEqual({ t: 'tab', index: 1 })
   })

@@ -107,6 +107,7 @@ describe('workspaceChord', () => {
       key('Digit3', { control: true, alt: true }, '3'),
       key('KeyK', { control: true }),
       key('KeyN', { control: true, alt: true }),
+      key('Backquote', { control: true }, '`'),
     ])
       expect(workspaceChord(k, false), k.code).not.toBeNull()
   })
@@ -136,6 +137,9 @@ describe('workspaceChord', () => {
     expect(workspaceChord(key('KeyO', { meta: true, shift: true }), true)).not.toBeNull()
     expect(workspaceChord(key('KeyO', { control: true, shift: true }), false)).not.toBeNull()
     expect(workspaceChord(key('KeyC', { meta: true }), true)).toBeNull()
+    expect(workspaceChord(key('Backquote', { control: true }, '`'), true)).toMatchObject({ code: 'Backquote', ctrlKey: true })
+    expect(workspaceChord(key('Backquote', { meta: true }, '`'), true)).toBeNull()
+    expect(workspaceChord(key('Backquote', {}, '`'), false)).toBeNull()
     expect(workspaceChord(key('Tab', { control: true }), true)).toBeNull()
   })
 })

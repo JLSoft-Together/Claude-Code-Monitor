@@ -622,6 +622,7 @@ const vi: typeof en = {
       wsNavBack: 'Quay lại vị trí trước',
       wsNavForward: 'Tới vị trí sau',
       wsNotes: 'Ghi chú dự án',
+      wsDropTerm: 'Terminal thả xuống',
       wsExplorer: 'Hiện cây thư mục (Explorer)',
     wsSearch: 'Tìm trong file của project',
       wsNextChange: 'Thay đổi kế / trước (xem tệp, Thay đổi)',

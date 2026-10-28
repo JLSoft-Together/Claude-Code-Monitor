@@ -52,6 +52,7 @@ import QuickOpen from './QuickOpen.vue'
 const PromptPicker = defineAsyncComponent(() => import('./PromptPicker.vue'))
 const NavPicker = defineAsyncComponent(() => import('./NavPicker.vue'))
 const NotesPanel = defineAsyncComponent(() => import('./NotesPanel.vue'))
+const DropTerminal = defineAsyncComponent(() => import('./DropTerminal.vue'))
 const PlanBoard = defineAsyncComponent(() => import('./PlanBoard.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
@@ -841,6 +842,17 @@ const nav = useNavigationStore()
 const ui = useUiStore()
 /** Project whose notes are open (undefined = closed); taken when opened so a focus change does not swap notes. */
 const notesRoot = ref<string | null | undefined>(undefined)
+// Ctrl+` terminal: mounted on first use, then only shown / hidden so its shell keeps running.
+const dropMounted = ref(false)
+const dropOpen = ref(false)
+const dropCwd = ref<string | null>(null)
+function toggleDropTerm(): void {
+  if (!dropOpen.value) {
+    dropCwd.value = activeProject.value ?? null
+    dropMounted.value = true
+  }
+  dropOpen.value = !dropOpen.value
+}
 const planRoot = ref<string | null>(null)
 watch(
   () => ui.planBoard,
@@ -1277,6 +1289,9 @@ function onGlobalKey(e: KeyboardEvent): void {
       break
     case 'notes':
       notesRoot.value = notesRoot.value === undefined ? activeProject.value : undefined
+      break
+    case 'dropTerm':
+      toggleDropTerm()
       break
   }
 }
@@ -2255,6 +2270,7 @@ onBeforeUnmount(() => {
       />
       <MissionControl :open="missionOpen && visible" :pane-rect="paneRect" @close="closeMission" />
     </div>
+    <DropTerminal v-if="dropMounted" :open="dropOpen && visible" :cwd="dropCwd" @hide="dropOpen = false" />
     <div class="pointer-events-none absolute inset-x-3 bottom-3 z-40 flex justify-center">
       <UndoToast :info="visible ? undoInfo : null" :keys="undoKeys" @undo="reopenLast" @dismiss="dismissUndo" />
     </div>

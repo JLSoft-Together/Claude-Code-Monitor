@@ -462,6 +462,14 @@ const en = {
       unavailable: 'Sending requests needs the desktop app.',
     },
   },
+  dropTerm: {
+    title: 'Terminal',
+    ended: 'Ended (code {code}). Enter starts it again.',
+    failed: 'The shell could not start.',
+    here: 'Open here',
+    hereHint: 'Start a new shell in {path} (the current one ends)',
+    hide: 'Hide ({key})',
+  },
 }
 
 const vi: typeof en = {
@@ -926,6 +934,14 @@ const vi: typeof en = {
       network: 'Không kết nối được tới server.',
       unavailable: 'Gửi request cần ứng dụng desktop.',
     },
+  },
+  dropTerm: {
+    title: 'Terminal',
+    ended: 'Đã kết thúc (mã {code}). Enter để chạy lại.',
+    failed: 'Không khởi động được shell.',
+    here: 'Mở ở đây',
+    hereHint: 'Chạy shell mới trong {path} (shell hiện tại sẽ dừng)',
+    hide: 'Ẩn ({key})',
   },
 }
 

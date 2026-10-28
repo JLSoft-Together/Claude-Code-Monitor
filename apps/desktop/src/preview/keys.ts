@@ -20,6 +20,7 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
   if (input.type !== 'keyDown' || input.isComposing) return null
   const { control: ctrl, shift, alt, meta, code } = input
   const hit = (): ForwardedKey => ({ key: input.key, code, ctrlKey: ctrl, shiftKey: shift, altKey: alt, metaKey: meta })
+  if (code === 'Backquote' && ctrl && !shift && !alt && !meta) return hit()
   if (mac) {
     if (ctrl && alt && !meta && !shift && code === 'KeyN') return hit()
     if (!meta || ctrl) return null

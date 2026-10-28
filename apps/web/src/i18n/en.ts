@@ -621,6 +621,7 @@ export default {
       wsNavBack: 'Back to the previous location',
       wsNavForward: 'Forward to the next location',
       wsNotes: 'Project notes',
+      wsDropTerm: 'Drop-down terminal',
       wsExplorer: 'Show the file explorer',
     wsSearch: 'Search in project files',
       wsNextChange: 'Next / previous change (file viewer, Changes)',
