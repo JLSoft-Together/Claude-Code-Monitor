@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   changesFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:changes-file', path),
   gitShowImage: (root: string, path: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-show-image', { root, path }),
   search: (dir: string, query: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:search', { dir, query }),
+  replaceFiles: (dir: string, req: { query: unknown; replacement: string; files: unknown }): Promise<unknown> => ipcRenderer.invoke('ccm:replace-files', { ...req, dir }),
   gitStage: (root: string, paths: string[], hunk?: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-stage', { root, paths, hunk }),
   gitUnstage: (root: string, paths: string[]): Promise<unknown> => ipcRenderer.invoke('ccm:git-unstage', { root, paths }),
   gitCanAmend: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-can-amend', root),

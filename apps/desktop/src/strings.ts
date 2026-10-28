@@ -124,6 +124,11 @@ New Claude sessions pick up the change.`,
   httpHostDetail: (method: string) =>
     `This ${method} request from a .http file goes out to the internet, with the headers and body it shows (variable values included). Orrery asks once per host until the app restarts.`,
   httpHostSend: 'Send',
+  replaceTitle: (lines: number, files: number) =>
+    `Replace in ${lines === 1 ? '1 line' : `${lines} lines`} across ${files === 1 ? '1 file' : `${files} files`}?`,
+  replaceDetail: (find: string, replacement: string, paths: string[]) =>
+    `"${find}" → "${replacement}"\n\n${paths.join('\n')}\n\nFiles changed since the search are skipped. The text before is kept in Local History.`,
+  replaceConfirm: 'Replace',
 }
 
 const vi: typeof en = {
@@ -249,6 +254,10 @@ Các phiên Claude mới sẽ nhận thay đổi.`,
   httpHostDetail: (method) =>
     `Request ${method} này từ file .http sẽ đi ra internet, kèm header và body như đang hiện (gồm cả giá trị biến). Orrery hỏi một lần cho mỗi host tới khi khởi động lại ứng dụng.`,
   httpHostSend: 'Gửi',
+  replaceTitle: (lines, files) => `Thay thế trong ${lines} dòng ở ${files} file?`,
+  replaceDetail: (find, replacement, paths) =>
+    `"${find}" → "${replacement}"\n\n${paths.join('\n')}\n\nFile đã đổi kể từ lúc tìm sẽ được bỏ qua. Nội dung cũ được giữ trong Local History.`,
+  replaceConfirm: 'Thay thế',
 }
 
 export type Strings = typeof en

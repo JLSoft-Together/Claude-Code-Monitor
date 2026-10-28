@@ -15,6 +15,7 @@ import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, remoteUrl,
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { cleanQuery, search } from './search'
+import { applyReplace, cleanReplace, matcher } from './replaceFiles'
 import { blame } from './blame'
 import { listCommands, userCommandsDir, type CommandScope } from './commands'
 import { abortMerge, mergeState } from './mergeState'
@@ -82,6 +83,8 @@ export interface PreviewIpcDeps {
   confirmGit?: (req: { title: string; commands: string[]; force?: boolean }) => Promise<boolean>
   /** Native yes/no for amend / merge / checkpoint restore, worded per kind; `a` / `b` = branch / base or file count. */
   confirmRun?: (req: { kind: RunKind; a: string; b: string; lines: string[] }) => Promise<boolean>
+  /** Native yes/no before Replace in files writes anything: counts, find / replace text and the first file paths. */
+  confirmReplace?: (req: { find: string; replacement: string; lines: number; files: number; paths: string[] }) => Promise<boolean>
   /** App data folder: checkpoint stores (`checkpoints/`), project notes (`notes/`) and Local History (`history/`). All off without it. */
   dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
@@ -111,7 +114,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -439,6 +442,32 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
       return await search(ok.real, q, ctl.signal)
     } finally {
       if (searches.get(id) === ctl) searches.delete(id)
+    }
+  })
+
+  // Replace in files: same folder gate as ccm:search, a native confirm with the counts, then file by file (docs §11 v70).
+  let replacing = false
+  ipcMain.handle('ccm:replace-files', async (event, req: unknown) => {
+    const { dir } = (req ?? {}) as { dir?: unknown }
+    if (!isAppFrame(event) || !deps.confirmReplace) return { ok: false, error: 'denied' }
+    const clean = cleanReplace(req)
+    if (clean === null) return { ok: false, error: 'denied' }
+    if (typeof clean === 'string') return { ok: false, error: clean }
+    const ok = await allowedPath(dir)
+    if (!ok || !(await fs.stat(ok.real).catch(() => null))?.isDirectory()) return { ok: false, error: 'denied' }
+    if (!matcher(clean.query)) return { ok: false, error: 'unsupported' }
+    if (replacing) return { ok: false, error: 'cancelled' }
+    replacing = true
+    try {
+      const lines = clean.files.reduce((n, f) => n + f.lines.length, 0)
+      const shown = clean.files.slice(0, 12).map((f) => f.path)
+      const yes = await deps.confirmReplace({ find: clean.query.q, replacement: clean.replacement, lines, files: clean.files.length, paths: clean.files.length > 12 ? [...shown, '…'] : shown })
+      if (!yes) return { ok: false, error: 'cancelled' }
+      const res = await applyReplace(ok.real, clean, await writeRoots(), { snapshot: history ? (real, previous) => history.record(real, previous) : undefined })
+      fileLists.invalidate(ok.real)
+      return res
+    } finally {
+      replacing = false
     }
   })
 

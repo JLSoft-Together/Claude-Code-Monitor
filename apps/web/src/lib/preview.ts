@@ -222,6 +222,15 @@ export type LhRead = { ok: true; text: string; time: number } | { ok: false; err
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
   | { ok: false; error: 'denied' | 'not-repo' | 'no-git' | 'bad-query' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
+export interface ReplaceTarget {
+  path: string
+  lines: { line: number; text: string }[]
+}
+export type ReplaceSkip = 'changed' | 'no-match' | 'missing' | 'denied' | 'too-large' | 'encoding' | 'conflict' | 'busy' | 'failed'
+export type ReplaceFileResult = { path: string; ok: true; count: number } | { path: string; ok: false; error: ReplaceSkip }
+export type ReplaceResult =
+  | { ok: true; results: ReplaceFileResult[]; files: number; count: number }
+  | { ok: false; error: 'denied' | 'bad-query' | 'unsupported' | 'too-many' | 'cancelled' | 'unavailable' }
 
 /** Preview methods added to `window.ccmDesktop` by the v21 preload (see .planning/PLAN-v21-integration.md). */
 interface PreviewBridge {
@@ -246,6 +255,7 @@ interface PreviewBridge {
   changesFile?: (path: string) => Promise<ChangesFile>
   gitShowImage?: (root: string, path: string) => Promise<HeadImage>
   search?: (dir: string, query: SearchQuery) => Promise<SearchResult>
+  replaceFiles?: (dir: string, req: { query: SearchQuery; replacement: string; files: ReplaceTarget[] }) => Promise<ReplaceResult>
   gitStage?: (root: string, paths: string[], hunk?: string) => Promise<StageResult>
   gitUnstage?: (root: string, paths: string[]) => Promise<StageResult>
   gitCanAmend?: (root: string) => Promise<boolean>
@@ -407,6 +417,10 @@ export const cpRevertHunk = (root: string, path: string, patch: string): Promise
 export const cpRestore = (root: string, id: string, paths: string[]): Promise<CpResult> => bridge?.cpRestore?.(root, id, paths) ?? Promise.resolve(unavailable)
 export const hasSearch = typeof bridge?.search === 'function'
 export const searchFiles = (dir: string, query: SearchQuery): Promise<SearchResult> => bridge?.search?.(dir, query) ?? Promise.resolve(unavailable)
+export const hasReplaceFiles = typeof bridge?.replaceFiles === 'function'
+/** After a native confirm: each listed line still showing what the search saw is replaced, Local History first. */
+export const replaceFiles = (dir: string, query: SearchQuery, replacement: string, files: ReplaceTarget[]): Promise<ReplaceResult> =>
+  bridge?.replaceFiles?.(dir, { query, replacement, files }) ?? Promise.resolve(unavailable)
 
 type Unavailable = { ok: false; error: 'unavailable' }
 export type WebRefs = RefsResult | Unavailable
