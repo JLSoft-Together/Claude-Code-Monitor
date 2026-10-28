@@ -71,3 +71,8 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 ## Tests
 
 `units`, `tracker` (+ snapshot), `monitor`, `tailer`, `usage`, `extras`, `context`, `codex`, `peers`, `tool-spans`, `job-actions`, `favorites`, `daystart`, `datadir`, `toast`, `toast-electron`, `focus-mac`, `win-procs`, `hardening` (origin, bad URI, port clash), `csp` — all `*.test.ts` in `test/`.
+
+## Hook bridge + heatmap (2026-10-29)
+
+- `hooks.ts` `HookReader` reads `<dataDir>/hooks/<uuid>.json` (written by `scripts/hook-bridge.mjs`) on the existing extras poll (`monitor.pollHooks` in `pollExtras`, no watcher); `parseHookRecord` keeps only known keys, `COMPACT_STALE_MS` 15 min drops a lost PostCompact; `monitor.hookFields(sessionId)` spreads `compactingSince` / `compactTrigger` / `deniedCount` / `deniedTools` into `publish` (docs §11y). Test `hooks.test.ts` runs the real script.
+- `usage.ts`: per-file `hours` (`day|hour` counts), `hourTotals`, `heatmap(days, today)`; `CACHE_VERSION` 3 (one full rescan after update). `index.ts` `heatmap.get` → `heatmap.data` (28 days).

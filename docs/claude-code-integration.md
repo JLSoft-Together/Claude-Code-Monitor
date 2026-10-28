@@ -642,6 +642,26 @@ Commands (always an args array through `Spawner`, never a shell; page-supplied v
 
 Deviation: escrcpy drives adb through adbkit inside its preload; Orrery runs the adb CLI from the main process instead (no new desktop dependency, one trust boundary, the page gets ids and results only). The web side adds only `qrcode` (QR tile rendering).
 
+## 11y. Hook bridge — compaction and auto-mode denials (v66, desktop only, verified 2026-10-28, Claude Code 2.1.294 binary, keys only)
+
+Opt-in: Quick setup → Hook bridge (off by default). After a native confirm that shows the exact `hooks` block, the app adds one entry per event to `~/.claude/settings.json` (backup first, other hooks kept; Turn off removes only entries whose command contains `hook-bridge`):
+
+```json
+{ "hooks": { "PreCompact": [{ "hooks": [{ "type": "command", "command": "<node> \"<app>/bridge/hook-bridge.mjs\"", "async": true }] }] } }
+```
+
+Same for `PostCompact` and `PermissionDenied`. `async: true` (present in 2.1.294: "runs in background without blocking") keeps Claude Code from waiting on the script.
+
+Payload keys read (stdin JSON; anything else is dropped unread):
+
+| Event | Keys used | Keys ignored |
+|---|---|---|
+| `PreCompact` | `session_id`, `hook_event_name`, `trigger` (`manual`/`auto`) | `custom_instructions`, `transcript_path`, `cwd` |
+| `PostCompact` | `session_id`, `hook_event_name` | `compact_summary`, `trigger` |
+| `PermissionDenied` | `session_id`, `hook_event_name`, `tool_name` | `tool_input`, `tool_use_id`, `reason`, `mcp_server` |
+
+`scripts/hook-bridge.mjs` writes `<CCM_DATA_DIR>/hooks/<session uuid>.json` = `{v, sessionId, at, compactingSince?, compactTrigger?, deniedCount, deniedTools (≤ 5 names matching `^[\w.:-]{1,80}$`)}`; it never prints, always exits 0, and ignores a `session_id` that is not a UUID. The collector (`hooks.ts` `HookReader`) reads that folder on the existing extras poll (no new watcher) and copies the fields onto `TerminalSession`; a `compactingSince` older than 15 min (`COMPACT_STALE_MS`) is dropped as a lost `PostCompact`. The UI shows "Compacting · 1m" on the session card / map node and "Auto mode denied N×" with the tool names in the tooltip.
+
 ## 12. Open items
 
 | Item | State |

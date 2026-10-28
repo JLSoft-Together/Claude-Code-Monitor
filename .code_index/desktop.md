@@ -140,3 +140,19 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 - Preload `devSnapshot` … `onDevEvent`. Tests `test/devices-*.test.ts`; E2E `e2e/devices.cjs` (ANDROID_HOME → fake adb, screenshots `devices-01..04` in the e2e output dir; Forget not driven, no native-confirm auto-answer).
 - Frameless windows (2026-10-27): `main.ts` `baseWindow` — Windows `titleBarStyle: 'hidden'` + `titleBarOverlay()` (height `TITLE_BAR_H` 40, colour `look.bar` ?? canvas, symbols `look.ink`; `ccm:appearance` re-applies it to every window), macOS `hiddenInset` with traffic lights at {14, 14}. The page draws the bar (`AppHeader.vue`, preload `titleBar` = `overlay` | `mac`); startup / error pages get a 40 px drag strip (`pages.ts` `body::before`).
+
+## v67 IDE + hook bridge (2026-10-29)
+
+| IPC | Module | Notes |
+|---|---|---|
+| `ccm:search` | `preview/search.ts` | `git grep -z --untracked`, 2000 matches, one per webContents (old aborted via `execGit` `signal`) |
+| `ccm:git-stage` / `-unstage` / `-can-amend` / `-commit` / `-commit-cancel` | `preview/commit.ts` | `apply --cached --check` first for hunks; message on stdin (`-F -`); amend only when `headUnpushed` + `confirmRun({kind:'amend'})` |
+| `ccm:check-run` / `-cancel` | `preview/checks.ts` `CheckRunner` | only `detectScripts` scripts or `flutter analyze --no-pub`; 1 per dir, 2 per app, 15 min, output tail; `parseCheckOutput` |
+| `ccm:wt-compare` / `-merge` | `preview/worktrees.ts` | ff-only / squash into `mainCheckout`, `confirmRun` lists the commands |
+| `ccm:cp-state` / `-set` / `-take` / `-diff` / `-restore` | `preview/checkpoints.ts` `CheckpointStore` | own `GIT_DIR` `<dataDir>/checkpoints/<hash>.git`, `GIT_INDEX_FILE` separate, refs `refs/cp/*`, keep 30, restore → confirm, new files to trash |
+| `ccm:hooks-state` / `-set` (main.ts) | `hooks.ts` | `readHooks` / `plannedHooks` / `writeHooks`, entries marked `hook-bridge`, `async: true`; native confirm shows the JSON |
+
+- `pty/wtCopy.ts` `copySetupFiles` runs inside `wt.add` (never overwrites, 1 MB / file, 5 MB total, skips `node_modules` etc.), reply `wt.added.copied`.
+- `strings.ts` `RunKind` (`amend` / `ff` / `squash` / `restore`) → `runTitle` / `runDetail` / `runConfirm`; `hooksOnTitle` / `hooksOffTitle` / `hooksDetail`. `main.ts` passes `confirmRun` + `dataDir` into `registerPreviewIpc`.
+- `bridge.ts` `installBridge(..., name)` also installs `bridge/hook-bridge.mjs` (`electron-builder.yml` resource).
+- Tests `search`, `commit`, `checks`, `worktrees`, `checkpoints`, `hooks`.

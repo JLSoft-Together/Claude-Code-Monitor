@@ -83,3 +83,9 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 ## Devices (v61, desktop IPC, not the WS protocol)
 
 - `devices.ts` — `AdbDevice`, `AdbState`, `AdbTransport`, `AdbMdnsService`, `DevErrorCode`, `DevResult` / `DevBatchResult`, `DevSnapshot`, `QrStatus`, `DevEvent` (`devices` / `qr`). Desktop `src/devices/*` emits, web `stores/devices.ts` consumes over `ccm:dev-*`; the collector and the WebSocket protocol are untouched.
+
+## v66 / v67 (2026-10-29)
+
+- `heatmap.get` (client → server) → `heatmap.data {payload: UsageHeatmap}` (direct reply, not batched).
+- `TerminalSession` optional `compactingSince`, `compactTrigger` (`manual` | `auto`), `deniedCount`, `deniedTools` (≤ 5 tool names) — from the hook bridge, absent when it is off.
+- `pty.ts`: `wt.add.copy?: string[]` (glob list), `wt.added.copied?: string[]` (paths copied).
