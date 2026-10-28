@@ -20,7 +20,7 @@ import { dropKept, dustIn, dustOn, dustOutAll, hasKept, onDustLeave } from '../.
 import type { MenuEntry } from '../../lib/menu'
 import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, MIN_PANE, type Box, type Divider, type Edge, type SplitDir } from '../../lib/splitLayout'
-import { workspaceAction } from '../../lib/workspaceKeys'
+import { DROP_TERM_KEYS, workspaceAction } from '../../lib/workspaceKeys'
 import { editorKeepsKey, inEditor, onSaveAllRequest, reportDirty } from '../../lib/fileEditor'
 import { isTyping, keyCombo, shortcutText } from '../../lib/shortcuts'
 import { moveTargetOf, tabMenu } from '../../lib/tabMenu'
@@ -1220,6 +1220,8 @@ function onGlobalKey(e: KeyboardEvent): void {
   if (inEditor(e.target) && editorKeepsKey(e, isMac)) return
   const action = workspaceAction(e, isMac, multiPane.value)
   if (!action) return
+  // The drop-down terminal floats over the active pane: chords aimed at that pane stay with the shell.
+  if (!DROP_TERM_KEYS.has(action.t) && (e.target as Element | null)?.closest?.('[data-drop-term]')) return
   // ⌃- is readline undo in a macOS terminal.
   if ((action.t === 'navBack' || action.t === 'navForward') && isMac && (e.target as Element | null)?.closest?.('.xterm')) return
   if (action.t === 'reopen' && !isMac && (inEditor(e.target) || (isTyping(e.target) && !(e.target as Element).closest?.('.xterm')))) return

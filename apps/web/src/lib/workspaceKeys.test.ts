@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { workspaceAction } from './workspaceKeys'
+import { DROP_TERM_KEYS, workspaceAction } from './workspaceKeys'
 
 const key = (code: string, mods: Partial<KeyboardEvent> = {}, altGraph = false): KeyboardEvent =>
   ({
@@ -23,6 +23,12 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('Backquote', { ctrlKey: true, altKey: true }), false, false)).toBeNull()
     expect(workspaceAction(key('Backquote'), false, false)).toBeNull()
     expect(workspaceAction({ ...key('Backquote', { ctrlKey: true }), isComposing: true } as KeyboardEvent, false, false)).toBeNull()
+  })
+
+  it('only global chords pass through the drop-down terminal', () => {
+    expect(DROP_TERM_KEYS.has('dropTerm')).toBe(true)
+    expect(DROP_TERM_KEYS.has('quickOpen')).toBe(true)
+    for (const t of ['closePane', 'split', 'zoom', 'swap', 'focus', 'moveTab', 'cycleTab', 'tab', 'reopen', 'navBack'] as const) expect(DROP_TERM_KEYS.has(t)).toBe(false)
   })
 
   it('Ctrl+Alt+digit jumps to a tab on Windows', () => {

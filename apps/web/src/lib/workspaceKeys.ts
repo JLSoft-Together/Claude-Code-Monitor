@@ -36,6 +36,9 @@ export type WorkspaceAction =
   /** Drop-down shell terminal (Ctrl+` / ⌃`, as in VS Code). */
   | { t: 'dropTerm' }
 
+/** Chords that still work while focus is in the drop-down terminal: they open global UI, never touch the pane behind it. */
+export const DROP_TERM_KEYS: ReadonlySet<WorkspaceAction['t']> = new Set(['dropTerm', 'quickOpen', 'explorer', 'search', 'mission', 'prompts', 'recent', 'bookmarks', 'notes'])
+
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
 
