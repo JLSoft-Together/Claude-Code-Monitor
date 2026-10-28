@@ -220,6 +220,8 @@ export const useUiStore = defineStore('ui', () => {
   const paletteOpen = ref(false)
   const recapOpen = ref(false)
   const diagnosticsOpen = ref(false)
+  /** Workspace `.planning` board (PlanBoard.vue): open with a folder, or null = the focused pane's project. */
+  const planBoard = ref<{ dir: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
@@ -488,6 +490,7 @@ export const useUiStore = defineStore('ui', () => {
     reportOpenResult,
     recapOpen,
     diagnosticsOpen,
+    planBoard,
     tourOpen,
     setupOpen,
     settingsOpen,

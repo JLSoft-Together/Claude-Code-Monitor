@@ -6,6 +6,7 @@ import {
   AArrowDown,
   AArrowUp,
   ListChecks,
+  ListTodo,
   Type,
   Activity,
   AppWindow,
@@ -38,7 +39,7 @@ import {
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
-import { hasLog } from '../lib/preview'
+import { hasExplorer, hasLog } from '../lib/preview'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -171,6 +172,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               prompts.open = true
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasExplorer
+      ? [
+          {
+            id: 'c:plan',
+            group: 'actions' as const,
+            label: t('workspace.plan.palette'),
+            sub: t('workspace.plan.paletteSub'),
+            icon: ListTodo,
+            run: () => {
+              ui.setView('workspace')
+              ui.planBoard = { dir: null }
             },
           },
         ]

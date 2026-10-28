@@ -309,6 +309,9 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
     case 'scripts':
       if (dir) emit('scripts', dir)
       break
+    case 'plan':
+      if (dir) ui.planBoard = { dir }
+      break
     case 'layout-save':
       if (dir) emit('saveLayout', dir, nameOf(c))
       break

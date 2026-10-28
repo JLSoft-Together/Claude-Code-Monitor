@@ -18,7 +18,7 @@ const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({
 describe('projectMenu', () => {
   it('lists the project actions in order', () => {
     expect(ids(projectMenu(project(), t))).toEqual([
-      'new', 'run', 'scripts', 'layouts', '-', 'explorer', 'mission', 'copy-path', 'reveal', '-', 'move-up', 'move-down', 'toggle', '-', 'close-project',
+      'new', 'run', 'scripts', 'plan', 'layouts', '-', 'explorer', 'mission', 'copy-path', 'reveal', '-', 'move-up', 'move-down', 'toggle', '-', 'close-project',
     ])
   })
   it('new tab offers agents, browser and the viewers that exist', () => {
@@ -39,6 +39,7 @@ describe('projectMenu', () => {
     expect(m).not.toContain('scripts')
     expect(m).not.toContain('reveal')
     expect(m).not.toContain('explorer')
+    expect(m).not.toContain('plan')
   })
   it('disables what cannot apply, with a reason', () => {
     const m = projectMenu(project({ anchored: false, canUp: false, canDown: false }), t)

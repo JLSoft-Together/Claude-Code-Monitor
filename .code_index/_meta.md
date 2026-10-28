@@ -178,3 +178,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 Format: desktop `preview/format.ts` + IPC `ccm:format`; web FilePane `runFormat` / `applyFormat` with `TextCompareDialog`, `lib/preview.ts` `canFormat` / `formatText`.
 - 2026-10-29 v70 terminal errors → Problems: `lib/terminalProblems.ts`, `stores/checks.ts` `setTerminal`, `TermPane.vue` `scanErrors` (shell panes).
 - 2026-10-29 v70 prompt queue: `lib/promptQueue.ts`, `stores/promptQueue.ts`, `PromptQueueButton.vue`, `TermPane.vue` `fillQueued` (working → idle, prefill only).
+- 2026-10-29 v70 plan board: `lib/planBoard.ts`, `PlanBoard.vue` (dialog, not a pane kind), `ui.planBoard`, palette `c:plan`, rail menu `plan`.
