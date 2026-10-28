@@ -25,6 +25,7 @@ import {
 import type { BuildError } from '@ccm/shared'
 import { editorHighlight, editorTheme } from '../../lib/editor/cmTheme'
 import { languageFor } from '../../lib/editor/cmLanguage'
+import { colorSwatches } from '../../lib/editor/colorSwatches'
 import { isMac } from '../../lib/platform'
 import { useSettingsStore } from '../../stores/settings'
 
@@ -60,6 +61,8 @@ const language = new Compartment()
 const wrapping = new Compartment()
 const merge = new Compartment()
 const phrases = new Compartment()
+const swatches = new Compartment()
+const swatchExt = (): Extension => colorSwatches(props.grammar, t('workspace.colorSwatch.pick'))
 
 const PHRASES = [
   'Find', 'Replace', 'next', 'previous', 'all', 'match case', 'by word', 'regexp', 'replace', 'replace all', 'close',
@@ -153,6 +156,7 @@ function extensions(): Extension[] {
     wrapping.of(props.wrap ? EditorView.lineWrapping : []),
     merge.of(mergeExt(props.compare)),
     phrases.of(EditorState.phrases.of(phraseMap())),
+    swatches.of(swatchExt()),
     EditorView.contentAttributes.of({ 'aria-label': t('editor.label'), spellcheck: 'false', autocorrect: 'off', autocapitalize: 'off' }),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) {
@@ -269,7 +273,10 @@ onBeforeUnmount(() => {
 
 watch(
   () => props.grammar,
-  (g) => void applyLanguage(g),
+  (g) => {
+    void applyLanguage(g)
+    view?.dispatch({ effects: swatches.reconfigure(swatchExt()) })
+  },
 )
 watch(() => props.problems, applyProblems)
 watch(() => props.bookmarks, applyBookmarks)
@@ -283,7 +290,7 @@ watch(
 )
 watch(
   () => settings.locale,
-  () => view?.dispatch({ effects: phrases.reconfigure(EditorState.phrases.of(phraseMap())) }),
+  () => view?.dispatch({ effects: [phrases.reconfigure(EditorState.phrases.of(phraseMap())), swatches.reconfigure(swatchExt())] }),
 )
 // Font family / size come from CSS variables; CodeMirror caches glyph metrics, so re-measure after a change.
 watch(
@@ -346,6 +353,27 @@ watch(
   translate: 0 -50%;
   background: var(--ccm-favorite);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
+}
+/* Swatch fill is the literal's own colour (data); the checkerboard behind shows its alpha. */
+.ccm-editor .cm-color-swatch {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.8em;
+  height: 0.8em;
+  margin: 0 0.25em 0 0.05em;
+  overflow: hidden;
+  vertical-align: -0.05em;
+  border: 1px solid var(--ccm-line-strong);
+  border-radius: 2px;
+  background-color: var(--ccm-surface);
+  background-image: conic-gradient(var(--ccm-fill-strong) 25%, transparent 0 50%, var(--ccm-fill-strong) 0 75%, transparent 0);
+  background-size: 6px 6px;
+  cursor: pointer;
+}
+.ccm-editor .cm-color-swatch > span {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 /* Search / replace panel = chrome (material), outside the scoped block because CodeMirror builds it. */
 .ccm-editor .cm-panels {

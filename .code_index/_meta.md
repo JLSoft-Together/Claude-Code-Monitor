@@ -185,3 +185,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 drop-down terminal: web `DropTerminal.vue`, `workspaceKeys.ts` `dropTerm`, `WorkspaceView.vue` `toggleDropTerm`, `shortcuts.ts` `wsDropTerm`; desktop `preview/keys.ts` Ctrl+`.
 - 2026-10-29 v70 drop-down terminal fix: `workspaceKeys.ts` `DROP_TERM_KEYS`, `WorkspaceView.vue` `onGlobalKey` skips pane chords inside `[data-drop-term]`.
 - 2026-10-29 v70 markdown split preview: `FilePane.vue` `mdSplit` / `showMdSplit` / `syncMdSplit`, `lib/markdown.ts` `renderMarkdown(text, { sourceLines })`, `lib/markdownSync.ts` `previewScrollFor`, `CodeEditor.vue` `topLine` emit.
+- 2026-10-29 v70 colour swatches: `lib/editor/colors.ts` (`findColors`, `replaceRgb`, `alphaFirst`), `lib/editor/colorSwatches.ts` `colorSwatches`, `CodeEditor.vue` compartment `swatches`.

@@ -474,6 +474,9 @@ const en = {
     toggle: 'Split preview',
     title: 'Markdown preview',
   },
+  colorSwatch: {
+    pick: 'Pick a colour (alpha stays)',
+  },
 }
 
 const vi: typeof en = {
@@ -950,6 +953,9 @@ const vi: typeof en = {
   mdSplit: {
     toggle: 'Xem trước song song',
     title: 'Xem trước Markdown',
+  },
+  colorSwatch: {
+    pick: 'Chọn màu (giữ nguyên alpha)',
   },
 }
 

@@ -35,6 +35,20 @@ describe('CodeEditor', () => {
     w.unmount()
   })
 
+  it('shows a swatch before a colour literal and rewrites it from the picker', async () => {
+    const w = mount(CodeEditor, { props: { grammar: 'css', doc: 'a { color: #f008 }' }, global: { plugins: [i18n, createPinia()] }, attachTo: document.body })
+    const swatch = w.element.querySelector<HTMLElement>('.cm-color-swatch')
+    expect(swatch).not.toBeNull()
+    swatch!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    const input = document.body.querySelector<HTMLInputElement>('input[type=color]')!
+    expect(input.value).toBe('#ff0000')
+    input.value = '#00ff00'
+    input.dispatchEvent(new Event('input'))
+    expect((w.vm as unknown as Api).text()).toBe('a { color: #0f08 }')
+    w.unmount()
+    expect(document.body.querySelector('input[type=color]')).toBeNull()
+  })
+
   it('starts dirty when re-entered with unsaved text (base = disk text)', () => {
     const w = editorOf({ doc: 'mine', base: 'disk' })
     expect(w.emitted('dirty')?.at(-1)).toEqual([true])
