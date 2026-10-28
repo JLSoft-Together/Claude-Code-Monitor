@@ -59,10 +59,20 @@ function list(lines: string[], start: number): { html: string; next: number } {
   return { html: `<${tag}>${items.join('')}</${tag}>`, next: i }
 }
 
-function blocks(lines: string[]): string {
+function blocks(lines: string[], sourceLines = false): string {
   let html = ''
   let i = 0
+  let mark = 0
+  let start = 0
+  // Top-level blocks carry their 1-based source line so the split preview can follow the editor.
+  const tag = (): void => {
+    if (!sourceLines || mark >= html.length) return
+    html = html.slice(0, mark) + html.slice(mark).replace(/^<(\w+)/, `<$1 data-src-line="${start + 1}"`)
+  }
   while (i < lines.length) {
+    tag()
+    mark = html.length
+    start = i
     const line = lines[i]!
     if (!line.trim()) {
       i++
@@ -120,9 +130,10 @@ function blocks(lines: string[]): string {
     }
     html += `<p>${inline(para.join(' '))}</p>`
   }
+  tag()
   return html
 }
 
-export function renderMarkdown(text: string): string {
-  return blocks(text.replace(/\r\n?/g, '\n').split('\n'))
+export function renderMarkdown(text: string, opts: { sourceLines?: boolean } = {}): string {
+  return blocks(text.replace(/\r\n?/g, '\n').split('\n'), opts.sourceLines)
 }

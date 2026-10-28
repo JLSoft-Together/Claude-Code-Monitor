@@ -184,3 +184,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 HTTP client: desktop `preview/httpSend.ts` (`ccm:http-send` / `ccm:http-cancel`, `classifyHost`, confirm in `main.ts`); web `HttpPanel.vue`, `lib/httpFile.ts`, `FilePane.vue` `isHttp` / `showHttp`.
 - 2026-10-29 v70 drop-down terminal: web `DropTerminal.vue`, `workspaceKeys.ts` `dropTerm`, `WorkspaceView.vue` `toggleDropTerm`, `shortcuts.ts` `wsDropTerm`; desktop `preview/keys.ts` Ctrl+`.
 - 2026-10-29 v70 drop-down terminal fix: `workspaceKeys.ts` `DROP_TERM_KEYS`, `WorkspaceView.vue` `onGlobalKey` skips pane chords inside `[data-drop-term]`.
+- 2026-10-29 v70 markdown split preview: `FilePane.vue` `mdSplit` / `showMdSplit` / `syncMdSplit`, `lib/markdown.ts` `renderMarkdown(text, { sourceLines })`, `lib/markdownSync.ts` `previewScrollFor`, `CodeEditor.vue` `topLine` emit.

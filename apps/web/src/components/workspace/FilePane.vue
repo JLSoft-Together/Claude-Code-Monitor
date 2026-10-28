@@ -16,6 +16,7 @@ import { joinPath } from '../../lib/fileLinks'
 import { tokenize } from '../../lib/highlight'
 import { maxColumns, sameRange, spacer, uniformRange, WINDOW_MIN_ROWS, type RowRange } from '../../lib/rowWindow'
 import { renderMarkdown } from '../../lib/markdown'
+import { previewScrollFor } from '../../lib/markdownSync'
 import { isMac } from '../../lib/platform'
 import { useFileChanges } from '../../composables/useFileChanges'
 import { useWindowCopy } from '../../composables/useWindowCopy'
@@ -66,6 +67,8 @@ interface EditorApi {
   openFind: () => void
   word: () => string
   lineText: (line: number) => string
+  topLine: () => number
+  lineCount: () => number
 }
 
 const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean; paneKey?: string }>(), { active: true, paneKey: undefined })
@@ -293,7 +296,47 @@ const httpText = computed(() => {
   void httpRev.value
   return editing.value && editor.value ? editor.value.text() : treeText.value
 })
-const sidePanel = computed(() => showDesign.value || showFwp.value || showHttp.value)
+// Markdown split preview (v70): rendered page beside the editor while editing, per-user toggle.
+const MD_SPLIT_KEY = 'ccm.md.split'
+const MD_SPLIT_MS = 150
+function readMdSplit(): boolean {
+  try {
+    return localStorage.getItem(MD_SPLIT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const mdSplit = ref(readMdSplit())
+watch(mdSplit, (on) => {
+  try {
+    localStorage.setItem(MD_SPLIT_KEY, on ? '1' : '0')
+  } catch {
+    // storage off
+  }
+})
+const showMdSplit = computed(() => markdown.value && editing.value && mdSplit.value)
+const mdSplitEl = ref<HTMLElement | null>(null)
+const mdRev = ref(0)
+let mdTimer: ReturnType<typeof setTimeout> | null = null
+let mdTopLine = 1
+const mdSplitHtml = computed(() => {
+  void mdRev.value
+  return showMdSplit.value && editor.value ? renderMarkdown(editor.value.text(), { sourceLines: true }) : ''
+})
+function syncMdSplit(): void {
+  const el = mdSplitEl.value
+  if (!el || !editor.value) return
+  const base = el.getBoundingClientRect().top - el.scrollTop
+  const anchors = [...el.querySelectorAll<HTMLElement>('[data-src-line]')].map((b) => ({ line: Number(b.dataset.srcLine), top: b.getBoundingClientRect().top - base }))
+  el.scrollTop = previewScrollFor(anchors, mdTopLine, editor.value.lineCount(), el.scrollHeight, el.clientHeight)
+}
+function onEditorTopLine(line: number): void {
+  mdTopLine = line
+  if (showMdSplit.value) syncMdSplit()
+}
+watch(mdSplitHtml, () => void nextTick(syncMdSplit), { flush: 'post' })
+
+const sidePanel = computed(() => showDesign.value || showFwp.value || showHttp.value || showMdSplit.value)
 
 const codeWidth = computed(() => (sidePanel.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
 const minimap = computed(() => settings.minimap && !editing.value && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
@@ -636,6 +679,13 @@ watch(editor, (api) => {
 
 function onEditorChange(): void {
   noteEdit()
+  if (showMdSplit.value) {
+    if (mdTimer) clearTimeout(mdTimer)
+    mdTimer = setTimeout(() => {
+      mdTimer = null
+      mdRev.value++
+    }, MD_SPLIT_MS)
+  }
   if (isHttp.value) {
     if (httpTimer) clearTimeout(httpTimer)
     httpTimer = setTimeout(() => {
@@ -1181,6 +1231,7 @@ onBeforeUnmount(() => {
   if (liveTimer) clearTimeout(liveTimer)
   if (savedTimer) clearTimeout(savedTimer)
   if (httpTimer) clearTimeout(httpTimer)
+  if (mdTimer) clearTimeout(mdTimer)
   cancelAutoSave()
   window.removeEventListener('keydown', onWindowKey, true)
   window.removeEventListener('blur', onWindowBlur)
@@ -1252,6 +1303,7 @@ const headMore = computed<MenuEntry[]>(() => {
   if (isXmlPreview.value) for (const m of layoutModes.value) out.push({ id: `layout:${m.value}`, label: m.label, icon: layoutMode.value === m.value ? Check : m.icon })
   if (isDart.value && fwpProject.value) out.push({ id: 'fwp', label: t('fwp.toggle'), icon: fwpOpen.value ? Check : Smartphone })
   if (isHttp.value) out.push({ id: 'http', label: t('workspace.http.toggle'), icon: httpOpen.value ? Check : Send })
+  if (markdown.value && editing.value) out.push({ id: 'mdSplit', label: t('workspace.mdSplit.toggle'), icon: mdSplit.value ? Check : Columns2 })
   if (rendered.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
   if (treeFmt.value) out.push({ id: 'tree', label: treeOn.value ? t('workspace.tree.code') : t('workspace.tree.toggle'), icon: treeOn.value ? Code : Network, disabled: editing.value })
   if (text) {
@@ -1283,6 +1335,7 @@ function pickHead(id: string): void {
   else if (id === 'fwp') fwpOpen.value = !fwpOpen.value
   else if (id === 'http') httpOpen.value = !httpOpen.value
   else if (id === 'md') mdPreview.value = !mdPreview.value
+  else if (id === 'mdSplit') mdSplit.value = !mdSplit.value
   else if (id === 'tree') treeOn.value = !treeOn.value
   else if (id === 'wrap') wrap.value = !wrap.value
   else if (id === 'blame') toggleBlame()
@@ -1367,6 +1420,19 @@ function pickHead(id: string): void {
         @click="httpOpen = !httpOpen"
       >
         <Send :size="14" aria-hidden="true" />
+      </button>
+      <button
+        v-if="markdown && editing"
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
+        :aria-pressed="mdSplit"
+        :title="t('workspace.mdSplit.toggle')"
+        :aria-label="t('workspace.mdSplit.toggle')"
+        data-md-split-toggle
+        data-more="mdSplit"
+        @click="mdSplit = !mdSplit"
+      >
+        <Columns2 :size="14" aria-hidden="true" />
       </button>
       <template v-if="rendered">
         <button
@@ -1581,6 +1647,7 @@ function pickHead(id: string): void {
         @change="onEditorChange"
         @save="save()"
         @cursor-line="onCursorLine"
+        @top-line="onEditorTopLine"
       />
       <div v-else ref="scroller" class="ccm-scroll relative min-h-0 min-w-0 flex-1 overflow-auto" @scroll.passive="onCodeScroll">
         <div v-if="loading" class="grid size-full place-items-center text-xs text-well-ink">{{ t('workspace.viewer.loading') }}</div>
@@ -1645,6 +1712,17 @@ function pickHead(id: string): void {
         :active="active"
         @reveal="revealLayoutLine"
       />
+      <div
+        v-if="showMdSplit"
+        ref="mdSplitEl"
+        class="ccm-scroll min-h-0 min-w-0 flex-1 overflow-auto"
+        :class="layoutStacked ? 'border-t border-line' : 'border-l border-line'"
+        role="region"
+        :aria-label="t('workspace.mdSplit.title')"
+        data-md-split
+      >
+        <article class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom @click="onMarkdownClick" v-html="mdSplitHtml" />
+      </div>
       <HttpPanel
         v-if="showHttp"
         :class="layoutStacked ? 'border-t border-line' : 'border-l border-line'"

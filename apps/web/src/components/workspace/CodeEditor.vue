@@ -44,6 +44,8 @@ const emit = defineEmits<{
   change: []
   save: []
   cursorLine: [line: number]
+  /** Fractional 1-based line at the top of the viewport, on scroll. */
+  topLine: [line: number]
 }>()
 
 const { t } = useI18n()
@@ -52,6 +54,7 @@ const host = ref<HTMLElement | null>(null)
 let view: EditorView | null = null
 let baseline: Text | null = null
 let dirty = false
+let scrollFrame = 0
 
 const language = new Compartment()
 const wrapping = new Compartment()
@@ -72,6 +75,19 @@ function openReplace(target: EditorView): boolean {
   openSearchPanel(target)
   requestAnimationFrame(() => target.dom.querySelector<HTMLInputElement>('.cm-search input[name=replace]')?.select())
   return true
+}
+
+function emitTopLine(): void {
+  scrollFrame = 0
+  if (!view) return
+  const top = view.scrollDOM.scrollTop
+  const block = view.lineBlockAtHeight(top)
+  const line = view.state.doc.lineAt(block.from).number
+  emit('topLine', line + (block.height > 0 ? Math.min(1, Math.max(0, (top - block.top) / block.height)) : 0))
+}
+
+function onScroll(): void {
+  if (!scrollFrame) scrollFrame = requestAnimationFrame(emitTopLine)
 }
 
 function setDirty(next: boolean): void {
@@ -214,6 +230,12 @@ defineExpose({
   setText,
   revealLine,
   focus: (): void => view?.focus(),
+  topLine: (): number => {
+    if (!view) return 1
+    const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop)
+    return view.state.doc.lineAt(block.from).number
+  },
+  lineCount: (): number => view?.state.doc.lines ?? 1,
   openFind: (): void => void (view && openSearchPanel(view)),
   /** Selected text, else the word at the cursor. */
   lineText: (line: number): string => (view && line >= 1 && line <= view.state.doc.lines ? view.state.doc.line(line).text : ''),
@@ -235,9 +257,12 @@ onMounted(() => {
   applyProblems()
   applyBookmarks()
   if (props.line) revealLine(props.line)
+  view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
+  if (scrollFrame) cancelAnimationFrame(scrollFrame)
+  view?.scrollDOM.removeEventListener('scroll', onScroll)
   view?.destroy()
   view = null
 })

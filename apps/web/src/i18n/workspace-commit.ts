@@ -470,6 +470,10 @@ const en = {
     hereHint: 'Start a new shell in {path} (the current one ends)',
     hide: 'Hide ({key})',
   },
+  mdSplit: {
+    toggle: 'Split preview',
+    title: 'Markdown preview',
+  },
 }
 
 const vi: typeof en = {
@@ -942,6 +946,10 @@ const vi: typeof en = {
     here: 'Mở ở đây',
     hereHint: 'Chạy shell mới trong {path} (shell hiện tại sẽ dừng)',
     hide: 'Ẩn ({key})',
+  },
+  mdSplit: {
+    toggle: 'Xem trước song song',
+    title: 'Xem trước Markdown',
   },
 }
 
