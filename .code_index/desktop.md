@@ -156,3 +156,15 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 - `strings.ts` `RunKind` (`amend` / `ff` / `squash` / `restore`) → `runTitle` / `runDetail` / `runConfirm`; `hooksOnTitle` / `hooksOffTitle` / `hooksDetail`. `main.ts` passes `confirmRun` + `dataDir` into `registerPreviewIpc`.
 - `bridge.ts` `installBridge(..., name)` also installs `bridge/hook-bridge.mjs` (`electron-builder.yml` resource).
 - Tests `search`, `commit`, `checks`, `worktrees`, `checkpoints`, `hooks`.
+
+## v68 / v69 IDE (2026-10-29)
+
+| IPC | Module | Notes |
+|---|---|---|
+| `ccm:git-blame` | `preview/blame.ts` | `git blame --porcelain`, parsed per line |
+| `ccm:git-merge-state` / `-abort` | `preview/mergeState.ts` | MERGE_HEAD / conflicted paths |
+| `ccm:commands-list` | `preview/commands.ts` | user `commands/*.md` level 1 (no symlink, first 4 KB, front matter `description:`) |
+| `ccm:wt-diff` / `-file-diff` / `-take` | `preview/worktrees.ts` `diffBetween` / `fileBetween` / `takeFile` | take refuses dirty file, `RunKind 'take'` confirm |
+| `ccm:overlap-files` / `-dryrun` | `preview/overlap.ts` | `changedVsBase` (merge-base → working tree), `dryMerge` `merge-tree --write-tree` (old git → `unsupported`) |
+
+- `checkpoints.ts` turn diff for TurnReview. Tests `blame`, `commands`, `overlap`, `worktrees`, `checkpoints`; E2E `e2e/v69-ide.cjs`.

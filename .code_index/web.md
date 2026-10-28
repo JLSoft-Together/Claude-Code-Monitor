@@ -164,3 +164,14 @@ Invariants:
   - Changes: stage toggle per row / group (`lib/changesView.ts` `stageState` / `stagedCount`), `CommitBox.vue` (draft per root, Ctrl/⌘+Enter, amend only if `canAmend`), `ChangesPane.vue` Stage file / Unstage / Stage this block (`stageHunk`), `CheckpointsPanel.vue` (`stores/checkpoints.ts`, `composables/useTurnCheckpoints.ts` mounted in `App.vue`: `before:` / `after:` snapshots on working ↔ idle/waiting edges, 4 s gap). Strings `i18n/workspace-commit.ts`.
   - Checks: `ExplorerChecks.vue`, `stores/checks.ts`, `lib/checks.ts` (`checkOptions`, `groupErrors`); "Send to agent" = `runStore.sendErrorToAgent` (prefill only).
 - `WorktreeMenu.vue`: compare (`ccm:wt-compare`), merge ff / squash (`ccm:wt-merge`), editable copy list `settings.worktreeCopy` (`DEFAULT_WORKTREE_COPY`).
+
+## v68 / v69 (2026-10-29)
+
+- Editor problems: `lib/problems.ts` (Checks errors → per-file diagnostics), `CodeEditor` prop `problems` (`@codemirror/lint`), `ProblemBar.vue`, F8 / Shift+F8 next / prev.
+- Turn review: `lib/turnReview.ts` + `TurnReview.vue` (checkpoint before/after diff per agent turn). Blame: `lib/blame.ts` (gutter / hover in FilePane).
+- Conflicts: `lib/mergeConflicts.ts` (marker parse) + `ConflictView.vue` (ours / theirs / both / edit, `fileWrite` with mtime, mark resolved = `gitStage`); `ChangesPane.vue` merge banner `data-merge-banner` + abort; `WorktreeMenu.vue` "keep to resolve".
+- Prompt library: `lib/promptLibrary.ts` (`expand`, `missingVars`), `stores/prompts.ts` (`ccm.prompts`), `PromptPicker.vue` (Alt+Shift+P / ⇧⌘P, `insertInto` prefill only).
+- `WorktreeCompare.vue` (two worktrees diff, take file, same prompt to both agents). Overlap: `lib/overlap.ts` `overlapHits`, `stores/overlap.ts` (scan on working → idle edge, 5 s gap), `OverlapChip.vue` on TermPane, `data-mission-overlap` on MissionCard.
+- Outline: `lib/editor/outline.ts` (regex per language, not Lezer), `OutlinePicker.vue` (Ctrl/⌘+F12); F12 declaration / Shift+F12 usages → `ExplorerSearch.seed`.
+- Inbox: `lib/inbox.ts` `inboxItems` / `SEVERITY`, `stores/inbox.ts` (`ccm.inbox`), `components/inbox/InboxPanel.vue` (J/K, Enter, E), badge `data-inbox-badge` in `AppHeader.vue`.
+- Contract: Vue mustache must not contain `}}` (only vite build fails); `insertRequest` holds one request → `await nextTick()` between two prefills.
