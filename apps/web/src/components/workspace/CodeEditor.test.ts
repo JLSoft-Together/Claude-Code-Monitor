@@ -37,7 +37,7 @@ describe('CodeEditor', () => {
 
   it('shows a swatch before a colour literal and rewrites it from the picker', async () => {
     const w = mount(CodeEditor, { props: { grammar: 'css', doc: 'a { color: #f008 }' }, global: { plugins: [i18n, createPinia()] }, attachTo: document.body })
-    const swatch = w.element.querySelector<HTMLElement>('.cm-color-swatch')
+    const swatch = (w.element as HTMLElement).querySelector<HTMLElement>('.cm-color-swatch')
     expect(swatch).not.toBeNull()
     swatch!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
     const input = document.body.querySelector<HTMLInputElement>('input[type=color]')!
