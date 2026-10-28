@@ -14,6 +14,7 @@ import DiscardConfirm from './DiscardConfirm.vue'
 import ExplorerChanges from './ExplorerChanges.vue'
 import ExplorerSearch from './ExplorerSearch.vue'
 import ExplorerChecks from './ExplorerChecks.vue'
+import ExplorerTodo from './ExplorerTodo.vue'
 import ExplorerTree from './ExplorerTree.vue'
 import PushDialog from './log/PushDialog.vue'
 
@@ -61,12 +62,12 @@ watch(
 )
 
 // A plain folder has no Changes view.
-const needsRepo = (v: ExplorerView): boolean => v === 'changes' || v === 'search'
+const needsRepo = (v: ExplorerView): boolean => v === 'changes' || v === 'search' || v === 'todo'
 watch(changes.isRepo, (repo) => {
   if (!repo && needsRepo(explorer.view)) explorer.setView('files')
 })
 
-const VIEWS: ExplorerView[] = ['files', 'changes', ...(hasSearch ? (['search'] as const) : []), ...(hasChecks ? (['checks'] as const) : [])]
+const VIEWS: ExplorerView[] = ['files', 'changes', ...(hasSearch ? (['search', 'todo'] as const) : []), ...(hasChecks ? (['checks'] as const) : [])]
 const tabs = ref<HTMLElement | null>(null)
 const searchView = ref<{ focus: () => void; seed: (q: SearchQuery) => void } | null>(null)
 const flutterRoot = computed(() => !!explorer.root && !!explorer.state.listings.get(explorer.root)?.some((e) => e.name === 'pubspec.yaml'))
@@ -265,6 +266,11 @@ const statusText = computed(() => {
         v-else-if="explorer.view === 'checks'"
         :root="explorer.root"
         :flutter="flutterRoot"
+        @open="(p, keep, line) => emit('open', p, keep, line)"
+      />
+      <ExplorerTodo
+        v-else-if="explorer.view === 'todo'"
+        :root="explorer.root"
         @open="(p, keep, line) => emit('open', p, keep, line)"
       />
       <ExplorerSearch

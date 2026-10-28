@@ -236,6 +236,14 @@ const en = {
     truncated: 'Only the first {n} rows are shown; collapse or filter to see the rest.',
     failed: 'Cannot show as a tree, showing the code: {detail}',
   },
+  todo: {
+    filter: 'Filter by tag',
+    all: 'All',
+    refresh: 'Scan again',
+    scanning: 'Looking for TODO, FIXME, HACK and XXX…',
+    none: 'No TODO, FIXME, HACK or XXX in this repository.',
+    summary: '{n} note in {files} file | {n} notes in {files} files',
+  },
 }
 
 const vi: typeof en = {
@@ -474,6 +482,14 @@ const vi: typeof en = {
     noMatch: 'Không có khoá nào khớp.',
     truncated: 'Chỉ hiện {n} dòng đầu; thu gọn hoặc lọc để xem phần còn lại.',
     failed: 'Không hiện được dạng cây, đang hiện code: {detail}',
+  },
+  todo: {
+    filter: 'Lọc theo nhãn',
+    all: 'Tất cả',
+    refresh: 'Quét lại',
+    scanning: 'Đang tìm TODO, FIXME, HACK và XXX…',
+    none: 'Repo này không có TODO, FIXME, HACK hay XXX nào.',
+    summary: '{n} ghi chú trong {files} file',
   },
 }
 
