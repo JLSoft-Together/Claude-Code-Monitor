@@ -36,12 +36,13 @@ import {
   BookText,
   Inbox,
   Wrench,
+  KeyRound,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
-import { hasExplorer, hasLog } from '../lib/preview'
+import { hasEnvCheck, hasExplorer, hasLog } from '../lib/preview'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -189,6 +190,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.planBoard = { dir: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasEnvCheck
+      ? [
+          {
+            id: 'c:env',
+            group: 'actions' as const,
+            label: t('workspace.envCheck.palette'),
+            sub: t('workspace.envCheck.paletteSub'),
+            icon: KeyRound,
+            run: () => {
+              ui.setView('workspace')
+              ui.envCheck = { dir: null }
             },
           },
         ]

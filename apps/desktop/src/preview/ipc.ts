@@ -23,6 +23,7 @@ import { CheckRunner, cleanCheck, resolveCheck } from './checks'
 import { compareBranch, diffBetween, fileBetween, mergeBranch, takeFile } from './worktrees'
 import { CheckpointStore } from './checkpoints'
 import { NotesStore } from './notes'
+import { checkEnv, revealEnv } from './envCheck'
 import { LocalHistory } from './localHistory'
 import { Formatter } from './format'
 import { MAX_WRITE_BYTES, writeTextFile } from './fileWrite'
@@ -110,7 +111,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -714,6 +715,17 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const { root, text } = (req ?? {}) as { root?: unknown; text?: unknown }
     const real = notes && isAppFrame(event) ? await checkDir(root) : null
     return real && notes ? notes.write(real, text) : { ok: false, error: 'denied' }
+  })
+
+  // Keys and empty / non-empty flags only; a value crosses to the page solely through ccm:env-reveal, one per click.
+  ipcMain.handle('ccm:env-check', async (event, root: unknown) => {
+    const real = isAppFrame(event) ? await checkDir(root) : null
+    return real ? checkEnv(real) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:env-reveal', async (event, req: unknown) => {
+    const { root, file, key } = (req ?? {}) as { root?: unknown; file?: unknown; key?: unknown }
+    const real = isAppFrame(event) ? await checkDir(root) : null
+    return real ? revealEnv(real, file, key) : { ok: false, error: 'denied' }
   })
 
   ipcMain.handle('ccm:git-stage', async (event, req: unknown) => {

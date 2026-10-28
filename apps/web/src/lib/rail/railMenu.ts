@@ -21,6 +21,8 @@ export interface ProjectMenuCtx {
   /** null: no layouts bridge. */
   layouts: Array<{ id: string; name: string; openOnStart?: boolean }> | null
   explorer: boolean
+  /** Desktop `ccm:env-check` exists. */
+  env?: boolean
   /** Desktop `ccm:reveal` exists (OS file manager). */
   reveal: boolean
   canUp: boolean
@@ -42,6 +44,7 @@ export function projectMenu(ctx: ProjectMenuCtx, t: T): MenuEntry[] {
   if (ctx.run && ctx.dir) entries.push({ id: 'run', label: t('run.open') })
   if (ctx.scripts && ctx.dir) entries.push({ id: 'scripts', label: t('workspace.scripts.open') })
   if (ctx.explorer && ctx.dir) entries.push({ id: 'plan', label: t('workspace.plan.open') })
+  if (ctx.env && ctx.dir) entries.push({ id: 'env', label: t('workspace.envCheck.open') })
   if (ctx.layouts && ctx.dir) {
     const kids: MenuEntry[] = [{ id: 'layout-save', label: t('workspace.layouts.save') }]
     if (ctx.layouts.length) kids.push({ id: 'layout-manage', label: t('workspace.layouts.manage') }, { separator: true })

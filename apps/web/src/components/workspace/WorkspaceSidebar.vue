@@ -13,7 +13,7 @@ import { onDustLeave } from '../../lib/dust'
 import type { MenuEntry } from '../../lib/menu'
 import { motionMs, pinLeaving, retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
-import { hasChanges, hasExplorer, hasLog, hasPreview, hasReveal, pickFile, revealPath } from '../../lib/preview'
+import { hasChanges, hasEnvCheck, hasExplorer, hasLog, hasPreview, hasReveal, pickFile, revealPath } from '../../lib/preview'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import type { RailDragSource } from '../../lib/rail/railDrag'
 import { rowLines, tabStopOf, type RailCheckout, type RailCluster, type RailGroup, type RailRow } from '../../lib/rail/railModel'
@@ -272,6 +272,7 @@ async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: 
       run: hasRun && !!dir && run.runnable(dir),
       layouts,
       explorer: hasExplorer,
+      env: hasEnvCheck,
       reveal: hasReveal,
       canUp: at_ > 0,
       canDown: at_ >= 0 && at_ < all.length - 1,
@@ -311,6 +312,9 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
       break
     case 'plan':
       if (dir) ui.planBoard = { dir }
+      break
+    case 'env':
+      if (dir) ui.envCheck = { dir }
       break
     case 'layout-save':
       if (dir) emit('saveLayout', dir, nameOf(c))

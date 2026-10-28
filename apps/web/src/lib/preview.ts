@@ -201,6 +201,23 @@ export type FormatTool = 'prettier' | 'dart' | 'ktlint'
 export type FormatResult =
   | { ok: true; text: string; tool: FormatTool; local: boolean }
   | { ok: false; error: 'denied' | 'unsupported' | 'not-found' | 'failed' | 'timeout' | 'too-large' | 'busy' | 'unavailable'; tool?: FormatTool; detail?: string }
+export type EnvStatus = 'ok' | 'empty' | 'missing' | 'extra'
+export interface EnvRow {
+  key: string
+  status: EnvStatus
+  empty: boolean
+  line: number | null
+}
+export interface EnvFileReport {
+  name: string
+  rows: EnvRow[]
+  counts: Record<EnvStatus, number>
+  error?: 'too-large' | 'unreadable'
+}
+export type EnvCheck =
+  | { ok: true; root: string; template: { name: string; keys: { key: string; empty: boolean; line: number }[] } | null; files: EnvFileReport[]; truncated: boolean }
+  | { ok: false; error: 'denied' | 'failed' | 'unavailable' }
+export type EnvReveal = { ok: true; value: string } | { ok: false; error: 'denied' | 'missing' | 'too-large' | 'failed' | 'unavailable' }
 export type LhRead = { ok: true; text: string; time: number } | { ok: false; error: 'denied' | 'missing' | 'failed' | 'unavailable' }
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
@@ -245,6 +262,8 @@ interface PreviewBridge {
   notesRead?: (root: string) => Promise<NoteRead>
   notesWrite?: (root: string, text: string) => Promise<NoteWrite>
   lhList?: (file: string) => Promise<LhList>
+  envCheck?: (root: string) => Promise<EnvCheck>
+  envReveal?: (root: string, file: string, key: string) => Promise<EnvReveal>
   lhRead?: (file: string, id: string) => Promise<LhRead>
   formatText?: (file: string, text: string) => Promise<FormatResult>
   wtDiff?: (dir: string, a: string, b: string) => Promise<WtBetween>
@@ -374,6 +393,11 @@ export const canFormat = (file: string): boolean => hasFormat && FORMAT_EXT.test
 /** Formats `text` (the buffer, not the disk file) with the project's formatter, else the one on PATH. */
 export const formatText = (file: string, text: string): Promise<FormatResult> => bridge?.formatText?.(file, text) ?? Promise.resolve(unavailable)
 export const lhRead = (file: string, id: string): Promise<LhRead> => bridge?.lhRead?.(file, id) ?? Promise.resolve(unavailable)
+export const hasEnvCheck = typeof bridge?.envCheck === 'function'
+/** `.env*` in the project root against `.env.example` / `.sample` / `.template`: keys and empty flags, never values. */
+export const envCheck = (root: string): Promise<EnvCheck> => bridge?.envCheck?.(root) ?? Promise.resolve(unavailable)
+/** One value of `key` in the root's `.env*` file `file`, read on click. */
+export const envReveal = (root: string, file: string, key: string): Promise<EnvReveal> => bridge?.envReveal?.(root, file, key) ?? Promise.resolve(unavailable)
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
 export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
 export const cpTake = (root: string, label: string): Promise<CpResult> => bridge?.cpTake?.(root, label) ?? Promise.resolve(unavailable)

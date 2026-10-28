@@ -188,3 +188,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 colour swatches: `lib/editor/colors.ts` (`findColors`, `replaceRgb`, `alphaFirst`), `lib/editor/colorSwatches.ts` `colorSwatches`, `CodeEditor.vue` compartment `swatches`.
 - 2026-10-29 v70 compare two files: `lib/explorer/contextMenu.ts` ctx `compare` + actions `compare-*`, `ExplorerTree.vue` prop `compareSel`, `ExplorerPanel.vue` `openCompare` / `compareClipboard` → `TextCompareDialog`.
 - 2026-10-29 v70 dev tools: `lib/devTools.ts`, `DevToolsDialog.vue`, `ui.devTools`, palette `c:tool:<id>`.
+- 2026-10-29 v70 .env check: `preview/envCheck.ts` (`parseEnv`, `checkEnv`, `revealEnv`), IPC `ccm:env-check` / `ccm:env-reveal`, `EnvCheckDialog.vue`, `ui.envCheck`, palette `c:env`, rail menu `env`.

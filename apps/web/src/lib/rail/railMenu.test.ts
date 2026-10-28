@@ -9,7 +9,7 @@ const kids = (e: MenuEntry[], id: string) => ids(findAction(e, id)?.children ?? 
 const project = (p: Partial<ProjectMenuCtx> = {}): ProjectMenuCtx => ({
   mac: false, dir: 'C:\\r\\alpha', home: false, live: true, anchored: true,
   viewers: { file: true, changes: true, log: true }, scripts: true, run: true,
-  layouts: [], explorer: true, reveal: true, canUp: true, canDown: true, collapsed: false, ...p,
+  layouts: [], explorer: true, env: true, reveal: true, canUp: true, canDown: true, collapsed: false, ...p,
 })
 const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({
   tabRow: false, cwd: 'C:\\r\\alpha', explorer: true, agent: true, linked: true, others: 1, targets: [{ key: 't2', title: 'Review' }], ...p,
@@ -18,7 +18,7 @@ const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({
 describe('projectMenu', () => {
   it('lists the project actions in order', () => {
     expect(ids(projectMenu(project(), t))).toEqual([
-      'new', 'run', 'scripts', 'plan', 'layouts', '-', 'explorer', 'mission', 'copy-path', 'reveal', '-', 'move-up', 'move-down', 'toggle', '-', 'close-project',
+      'new', 'run', 'scripts', 'plan', 'env', 'layouts', '-', 'explorer', 'mission', 'copy-path', 'reveal', '-', 'move-up', 'move-down', 'toggle', '-', 'close-project',
     ])
   })
   it('new tab offers agents, browser and the viewers that exist', () => {
@@ -34,12 +34,13 @@ describe('projectMenu', () => {
     expect(ids(projectMenu(project({ layouts: null }), t))).not.toContain('layouts')
   })
   it('hides missing bridges and gates Run on detection', () => {
-    const m = ids(projectMenu(project({ run: false, scripts: false, reveal: false, explorer: false }), t))
+    const m = ids(projectMenu(project({ run: false, scripts: false, reveal: false, explorer: false, env: false }), t))
     expect(m).not.toContain('run')
     expect(m).not.toContain('scripts')
     expect(m).not.toContain('reveal')
     expect(m).not.toContain('explorer')
     expect(m).not.toContain('plan')
+    expect(m).not.toContain('env')
   })
   it('disables what cannot apply, with a reason', () => {
     const m = projectMenu(project({ anchored: false, canUp: false, canDown: false }), t)

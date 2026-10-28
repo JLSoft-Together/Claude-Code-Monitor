@@ -44,8 +44,8 @@ const jwt = computed(() => (jwtIn.value.trim() ? decodeJwt(jwtIn.value, now.valu
 const jwtStatus = computed(() => {
   const j = jwt.value
   if (!j?.ok) return null
-  if (j.expired) return { key: 'expired', icon: CircleAlert, cls: 'text-st-error' }
-  if (j.notYetValid) return { key: 'notYet', icon: Clock, cls: 'text-warning' }
+  if (j.expired) return { key: 'expired', icon: CircleAlert, cls: 'text-warning' }
+  if (j.notYetValid) return { key: 'notYet', icon: Clock, cls: 'text-ink-muted' }
   if (j.expired === false) return { key: 'valid', icon: CircleCheck, cls: 'text-success' }
   return { key: 'noExp', icon: CircleDashed, cls: 'text-ink-muted' }
 })
@@ -147,7 +147,7 @@ const area = 'ccm-field ccm-scroll h-auto w-full resize-none py-1.5 font-mono le
             <p class="mt-1.5 flex items-center gap-1.5 text-2xs text-warning">
               <ShieldOff :size="12" class="shrink-0" aria-hidden="true" />{{ t('workspace.devTools.jwt.noVerify') }}
             </p>
-            <p v-if="jwt && !jwt.ok" class="mt-2 flex items-center gap-1.5 text-st-error" role="status" data-devtools-error>
+            <p v-if="jwt && !jwt.ok" class="mt-2 flex items-center gap-1.5 text-warning" role="status" data-devtools-error>
               <CircleAlert :size="13" aria-hidden="true" />{{ t(`workspace.devTools.jwt.error.${jwt.error}`) }}
             </p>
             <template v-else-if="jwt && jwt.ok">
@@ -222,7 +222,7 @@ const area = 'ccm-field ccm-scroll h-auto w-full resize-none py-1.5 font-mono le
                 <component :is="copied === 'out' ? Check : Copy" :size="13" aria-hidden="true" />
               </button>
             </div>
-            <p v-if="(tool === 'base64' ? b64Out : urlOut) === null" class="flex items-center gap-1.5 text-st-error" role="status" data-devtools-error>
+            <p v-if="(tool === 'base64' ? b64Out : urlOut) === null" class="flex items-center gap-1.5 text-warning" role="status" data-devtools-error>
               <CircleAlert :size="13" aria-hidden="true" />{{ t(tool === 'base64' ? 'workspace.devTools.base64.invalid' : 'workspace.devTools.url.invalid') }}
             </p>
             <pre
@@ -239,7 +239,7 @@ const area = 'ccm-field ccm-scroll h-auto w-full resize-none py-1.5 font-mono le
               <button type="button" class="ccm-btn shrink-0" @click="timeIn = String(Math.floor(Date.now() / 1000))">{{ t('workspace.devTools.time.now') }}</button>
             </div>
             <p class="mt-1.5 text-2xs text-ink-faint">{{ t('workspace.devTools.time.hint') }}</p>
-            <p v-if="!stamp" class="mt-2 flex items-center gap-1.5 text-st-error" role="status" data-devtools-error>
+            <p v-if="!stamp" class="mt-2 flex items-center gap-1.5 text-warning" role="status" data-devtools-error>
               <CircleAlert :size="13" aria-hidden="true" />{{ t('workspace.devTools.time.invalid') }}
             </p>
             <template v-else>

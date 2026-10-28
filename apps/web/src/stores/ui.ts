@@ -225,6 +225,8 @@ export const useUiStore = defineStore('ui', () => {
   const planBoard = ref<{ dir: string | null } | null>(null)
   /** Local developer tools dialog (DevToolsDialog.vue), opened on a tool from the palette. */
   const devTools = ref<DevTool | null>(null)
+  /** `.env*` check (EnvCheckDialog.vue): open with a folder, or null = the focused pane's project. */
+  const envCheck = ref<{ dir: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
@@ -495,6 +497,7 @@ export const useUiStore = defineStore('ui', () => {
     diagnosticsOpen,
     planBoard,
     devTools,
+    envCheck,
     tourOpen,
     setupOpen,
     settingsOpen,
