@@ -75,6 +75,11 @@ export type ChangesFile =
   | { ok: false; error: ChangesError }
 
 export type ChangesResult = { ok: true } | { ok: false; error: ChangesError; detail?: string }
+/** Mirrors `apps/desktop/src/preview/logRead.ts`. */
+export type LogChunk =
+  | { ok: true; path: string; text: string; start: number; end: number; size: number; mtimeMs: number; reset?: true }
+  | { ok: false; error: 'denied' | 'missing' | 'too-large' | 'failed' | 'unavailable' }
+
 /** Mirrors `apps/desktop/src/preview/gitImage.ts`. */
 export type HeadImage = { ok: true; dataUrl: string; size: number } | { ok: false; error: 'denied' | 'unsupported' | 'missing' | 'too-large' | 'failed' | 'unavailable' }
 
@@ -193,6 +198,7 @@ export type SearchResult =
 interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>
+  logRead?: (req: { path: string; from?: number; end?: number; bytes?: number }) => Promise<LogChunk>
   fileWrite?: (req: { path: string; text: string; expectedMtime?: number }) => Promise<FileWriteResult>
   watch?: (root: string) => Promise<boolean>
   unwatch?: (root: string) => Promise<boolean>
@@ -272,6 +278,10 @@ export const hasPreview = typeof bridge?.previewUrl === 'function'
 
 export const previewUrl = (path: string): Promise<PreviewTarget | null> => bridge?.previewUrl?.(path) ?? Promise.resolve(null)
 export const readFile = (path: string): Promise<FileView | null> => bridge?.readFile?.(path) ?? Promise.resolve(null)
+export const hasLogRead = typeof bridge?.logRead === 'function'
+/** Log chunk ≤ 2 MB cut on line breaks: backwards ending at `end` (default EOF), or forward from `from` (follow). */
+export const logRead = (path: string, opts: { from?: number; end?: number; bytes?: number } = {}): Promise<LogChunk> =>
+  bridge?.logRead?.({ path, ...opts }) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const hasFileWrite = typeof bridge?.fileWrite === 'function'
 /** Saves an edited text file; expectedMtime = mtime when it was read (else conflict). */
 export const fileWrite = (path: string, text: string, expectedMtime?: number): Promise<FileWriteResult> =>

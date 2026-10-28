@@ -41,15 +41,17 @@ import { declarationQuery, outline, type OutlineItem } from '../../lib/editor/ou
 import type { SearchQuery } from '../../lib/preview'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import { treeFormat } from '../../lib/jsonTree'
+import { isLogFile } from '../../lib/logView'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
 import { blameRows, type BlameRow } from '../../lib/blame'
-import { baseName, canFormat, changesDiscard, formatText, gitBlame, hasBlame, hasLocalHistory, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import { baseName, canFormat, changesDiscard, formatText, gitBlame, hasBlame, hasLocalHistory, type BlameResult, dirOf, fileWrite, hasFileWrite, hasLogRead, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 // CodeMirror stays out of the main chunk until a file is edited.
 const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
 const JsonTree = defineAsyncComponent(() => import('./JsonTree.vue'))
+const LogFileView = defineAsyncComponent(() => import('./LogFileView.vue'))
 const LocalHistoryDialog = defineAsyncComponent(() => import('./LocalHistoryDialog.vue'))
 const TextCompareDialog = defineAsyncComponent(() => import('./TextCompareDialog.vue'))
 interface EditorApi {
@@ -171,6 +173,8 @@ const gutter = computed(() => {
 })
 
 const name = computed(() => baseName(props.path))
+// Logs skip readFile (2 MB view cap): LogFileView reads chunks from the end itself.
+const logMode = computed(() => hasLogRead && isLogFile(props.path))
 const markdown = computed(() => view.value?.kind === 'text' && isMarkdown(props.path))
 const htmlPage = computed(() => view.value?.kind === 'text' && isHtml(props.path))
 const rendered = computed(() => markdown.value || htmlPage.value)
@@ -368,6 +372,13 @@ let loadSeq = 0
 async function load(opts: { keepScroll?: boolean } = {}): Promise<void> {
   const seq = ++loadSeq
   const prevView = view.value
+  if (logMode.value) {
+    loading.value = false
+    view.value = null
+    lines.value = []
+    tokens.value = null
+    return
+  }
   if (!opts.keepScroll) loading.value = true
   const next = hasPreview ? await readFile(props.path) : null
   if (seq !== loadSeq) return
@@ -805,6 +816,7 @@ const samePath = (a: string, b: string): boolean => {
 }
 
 const offChange = onPreviewChanged((change) => {
+  if (logMode.value) return
   const file = view.value?.path ?? props.path
   if (change.paths.some((p) => samePath(p, file) || samePath(p, props.path))) void checkDisk()
 })
@@ -1501,8 +1513,9 @@ function pickHead(id: string): void {
 
     <div class="flex min-h-0 flex-1" :class="sidePanel && layoutStacked ? 'flex-col' : ''">
       <div v-show="showCode" class="flex min-h-0 min-w-0 flex-1">
+      <LogFileView v-if="logMode" :path="path" :active="active" />
       <CodeEditor
-        v-if="editing"
+        v-else-if="editing"
         ref="editor"
         :doc="editorDoc"
         :base="baseText"

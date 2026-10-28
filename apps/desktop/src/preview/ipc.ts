@@ -5,6 +5,7 @@ import { commonDir, discardFile, discardHunk, diff as changesDiff, fileDiff, Git
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir, renameEntry, trashEntry } from './explorer'
 import { readFileForView } from './files'
+import { readLogChunk } from './logRead'
 import { headImage } from './gitImage'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
@@ -105,7 +106,7 @@ export interface PreviewIpc {
 }
 
 const CHANNELS = [
-  'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
+  'ccm:preview-url', 'ccm:read-file', 'ccm:log-read', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
@@ -238,6 +239,11 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   ipcMain.handle('ccm:read-file', async (event, target: unknown) => {
     if (!isAppFrame(event) || typeof target !== 'string') return null
     return readFileForView(target, await allowedRoots())
+  })
+
+  ipcMain.handle('ccm:log-read', async (event, req: unknown) => {
+    if (!isAppFrame(event) || !req || typeof req !== 'object') return { ok: false, error: 'denied' }
+    return readLogChunk(req, await allowedRoots())
   })
 
   // Same folders the viewer and the Explorer reach: allowed roots plus repo toplevels found from an allowed folder.

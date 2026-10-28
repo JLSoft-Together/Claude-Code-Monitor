@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   },
   previewUrl: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:preview-url', path),
   readFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:read-file', path),
+  logRead: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:log-read', req),
   fileWrite: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:file-write', req),
   editorDirty: (files: unknown, autoSave?: boolean): void => ipcRenderer.send('ccm:editor-dirty', files, autoSave === true),
   /** Quit → "Save": the page saves every unsaved editor and answers whether all of them made it. */
