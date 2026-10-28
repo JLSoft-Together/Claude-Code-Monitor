@@ -163,6 +163,9 @@ async function main(): Promise<void> {
         case 'timeline.get':
           monitor.sendTimeline(ctx.reply)
           break
+        case 'heatmap.get':
+          ctx.reply({ type: 'heatmap.data', payload: usage.heatmap(28) })
+          break
         case 'terminal.focusWindow':
           void monitor.focusWindow(message.terminalId, ctx.reply)
           break

@@ -327,7 +327,7 @@ export function startServer(options: {
           options.onClientMessage?.({ type: 'folder.pick', requestId: m.requestId }, ctx())
         } else if (m.type === 'terminal.open' && typeof m.terminalId === 'string' && (m.app === 'explorer' || m.app === 'vscode')) {
           options.onClientMessage?.({ type: 'terminal.open', terminalId: m.terminalId, app: m.app }, ctx())
-        } else if (m.type === 'history.get' || m.type === 'timeline.get' || m.type === 'diagnostics.get') {
+        } else if (m.type === 'history.get' || m.type === 'timeline.get' || m.type === 'heatmap.get' || m.type === 'diagnostics.get') {
           options.onClientMessage?.({ type: m.type }, ctx())
         } else if (
           m.type === 'toolSpans.get' &&

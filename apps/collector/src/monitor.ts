@@ -4,7 +4,7 @@ import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
 import { autocompactBufferPct } from '@ccm/shared'
-import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchErrorCode, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord, TerminalApp } from '@ccm/shared'
+import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchErrorCode, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord, TerminalApp, TerminalSession } from '@ccm/shared'
 import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
@@ -24,6 +24,7 @@ import { PEER_TTL_MS, PeerLinkStore, type PeerMessage } from './peers'
 import { readRegistry } from './registry'
 import { ResponseTracker } from './response'
 import { latestLimits, StatusLineReader } from './statusline'
+import { COMPACT_STALE_MS, HookReader, type HookRecord } from './hooks'
 import type { MonitorStore } from './store'
 import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints, type SyncScope } from './tracker'
 import { CodexMonitor } from './codex/monitor'
@@ -98,6 +99,8 @@ export class Monitor {
   private readonly jobReader: JobReader
   private readonly statusLine: StatusLineReader
   private readonly costs = new Map<string, number>()
+  private readonly hooks = new Map<string, HookRecord>()
+  private readonly hookReader: HookReader
   private jobs = new Map<string, BackgroundJob>()
   private jobsLoaded = false
   private readonly dismissedJobs = new Map<string, string>()
@@ -135,6 +138,7 @@ export class Monitor {
     this.projectsDir = path.join(config.claudeRoot, 'projects')
     this.jobReader = new JobReader(path.join(config.claudeRoot, 'jobs'))
     this.statusLine = new StatusLineReader(path.join(config.dataDir, 'statusline'))
+    this.hookReader = new HookReader(path.join(config.dataDir, 'hooks'))
     this.peers = new PeerLinkStore(store, {
       ttlMs: config.peerTtlMs ?? PEER_TTL_MS,
       holdMs: deps.peerHoldMs,
@@ -171,10 +175,11 @@ export class Monitor {
     try {
       const now = this.deps.now()
       await this.pollJobs(now)
+      const hookChanged = await this.pollHooks(now)
       const records = await this.statusLine.read(now)
       this.statusReports = { count: records.length, lastAt: newest(records.map((r) => r.at)) ?? this.statusReports.lastAt }
       this.store.setLimits(this.limitHistory.apply(latestLimits(records)))
-      const changed = new Set<string>()
+      const changed = new Set<string>(hookChanged)
       const live = new Set<string>()
       const windows = this.contextHints.sessionWindows!
       const contexts = this.contextHints.sessionContext!
@@ -205,6 +210,26 @@ export class Monitor {
     } catch (err) {
       console.error('[collector] extras poll failed:', (err as Error).message)
     }
+  }
+
+  /** Session ids whose hook state changed (or whose "compacting" just went stale). */
+  private async pollHooks(now: number): Promise<Set<string>> {
+    const changed = new Set<string>()
+    const seen = new Set<string>()
+    for (const r of await this.hookReader.read(now)) {
+      seen.add(r.sessionId)
+      const prev = this.hooks.get(r.sessionId)
+      const stale = (x?: HookRecord) => !!x?.compactingSince && now - Date.parse(x.compactingSince) >= COMPACT_STALE_MS
+      if (prev?.at === r.at && stale(prev) === stale(r)) continue
+      this.hooks.set(r.sessionId, r)
+      changed.add(r.sessionId)
+    }
+    for (const id of this.hooks.keys()) {
+      if (seen.has(id)) continue
+      this.hooks.delete(id)
+      changed.add(id)
+    }
+    return changed
   }
 
   private async pollJobs(now: number): Promise<void> {
@@ -756,6 +781,16 @@ export class Monitor {
     ])
   }
 
+  private hookFields(sessionId: string | undefined): Partial<TerminalSession> {
+    const h = sessionId ? this.hooks.get(sessionId) : undefined
+    if (!h) return {}
+    const compacting = h.compactingSince && this.deps.now() - Date.parse(h.compactingSince) < COMPACT_STALE_MS
+    return {
+      ...(compacting ? { compactingSince: h.compactingSince, compactTrigger: h.compactTrigger } : {}),
+      ...(h.deniedCount ? { deniedCount: h.deniedCount, deniedTools: h.deniedTools } : {}),
+    }
+  }
+
   private publish(tracker: SessionTracker): void {
     const sessionId = tracker.sessionId
     const terminal = {
@@ -764,6 +799,7 @@ export class Monitor {
       note: this.notes.get(tracker.terminalId),
       costUsd: sessionId ? this.costs.get(sessionId) : undefined,
       diff: this.diffs.get(tracker.terminalId),
+      ...this.hookFields(sessionId),
     }
     this.store.upsertTerminal(terminal)
     this.timeline.observe(terminal.id, terminal.alias ?? terminal.title, terminal.status, terminal.statusSince)

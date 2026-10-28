@@ -1,7 +1,7 @@
 import { createReadStream, type Stats } from 'node:fs'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { UsageBucket, UsageScan, UsageSnapshot, UsageTotals } from '@ccm/shared'
+import type { UsageBucket, UsageHeatmap, UsageScan, UsageSnapshot, UsageTotals } from '@ccm/shared'
 
 export interface UsageSink {
   resetUsage(snapshot: UsageSnapshot): void
@@ -15,6 +15,8 @@ interface FileEntry {
   mtimeMs?: number
   ids: string[]
   buckets: Record<string, UsageTotals>
+  /** Assistant messages per `day|hour` (local), for the History heatmap. */
+  hours?: Record<string, number>
   gone?: boolean
 }
 
@@ -30,10 +32,12 @@ export interface UsageRecord {
   project: string
   fast: boolean
   messageId: string
+  /** Local hour 0–23 of the message. */
+  hour: number
   totals: UsageTotals
 }
 
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 const NEWLINE = 0x0a
 const STAT_BATCH = 32
 const DAY_MS = 86_400_000
@@ -110,6 +114,7 @@ export function usageRecordOf(rec: unknown, fallbackProject: string): UsageRecor
   if (!model || model === '<synthetic>' || !id || !isObj(msg.usage)) return null
   const day = typeof rec.timestamp === 'string' ? localDay(rec.timestamp) : null
   if (!day) return null
+  const hour = new Date(Date.parse(rec.timestamp as string)).getHours()
   const u = msg.usage
   const creation = int(u.cache_creation_input_tokens)
   const split = isObj(u.cache_creation) ? u.cache_creation : null
@@ -124,6 +129,7 @@ export function usageRecordOf(rec: unknown, fallbackProject: string): UsageRecor
     project,
     fast,
     messageId: id,
+    hour,
     totals: {
       messages: 1,
       input: int(u.input_tokens),
@@ -155,6 +161,7 @@ export class UsageIndex {
   /** message.id → owning file. `--resume` / fork copies old messages into a new transcript, so dedupe must be global. */
   private readonly owners = new Map<string, string>()
   private readonly totals = new Map<string, UsageBucket>()
+  private readonly hourTotals = new Map<string, number>()
   private readonly dirty = new Set<string>()
   private readonly pendingFiles = new Set<string>()
   private readonly fileTimers = new Map<string, NodeJS.Timeout>()
@@ -370,12 +377,17 @@ export class UsageIndex {
     entry.ids.push(r.messageId)
     addInto((entry.buckets[r.key] ??= emptyTotals()), r.totals)
     this.addTotal(r.key, r.totals, 1)
+    const hk = `${r.day}|${r.hour}`
+    ;(entry.hours ??= {})[hk] = (entry.hours[hk] ?? 0) + 1
+    this.addHour(hk, 1)
   }
 
   private resetFile(rel: string, entry: FileEntry): void {
     for (const [key, totals] of Object.entries(entry.buckets)) this.addTotal(key, totals, -1)
+    for (const [key, n] of Object.entries(entry.hours ?? {})) this.addHour(key, -n)
     this.releaseIds(rel, entry)
     entry.buckets = {}
+    delete entry.hours
     entry.offset = 0
   }
 
@@ -388,6 +400,23 @@ export class UsageIndex {
     }
     addInto(bucket, totals, sign)
     this.dirty.add(key)
+  }
+
+  private addHour(key: string, n: number): void {
+    const v = (this.hourTotals.get(key) ?? 0) + n
+    if (v > 0) this.hourTotals.set(key, v)
+    else this.hourTotals.delete(key)
+  }
+
+  /** Messages per local hour for the last `days` days (oldest first), computed on request only. */
+  heatmap(days: number, today = localDay(new Date(this.options.now?.() ?? Date.now()).toISOString())!): UsageHeatmap {
+    const [y, m, d] = today.split('-').map(Number) as [number, number, number]
+    const out: UsageHeatmap = { days: [] }
+    for (let i = days - 1; i >= 0; i--) {
+      const day = localDay(new Date(y, m - 1, d - i, 12).toISOString())!
+      out.days.push({ day, hours: Array.from({ length: 24 }, (_, h) => this.hourTotals.get(`${day}|${h}`) ?? 0) })
+    }
+    return out
   }
 
   private async loadCache(): Promise<void> {
@@ -424,6 +453,15 @@ export class UsageIndex {
         }
         entry.buckets[key] = totals
         this.addTotal(key, totals, 1)
+      }
+      if (isObj(raw.hours)) {
+        entry.hours = {}
+        for (const [key, n] of Object.entries(raw.hours)) {
+          const v = int(n)
+          if (!v || !/^\d{4}-\d{2}-\d{2}\|\d{1,2}$/.test(key)) continue
+          entry.hours[key] = v
+          this.addHour(key, v)
+        }
       }
       this.files.set(rel, entry)
     }

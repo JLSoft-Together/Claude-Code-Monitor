@@ -118,6 +118,18 @@ describe('UsageIndex', () => {
     expect(JSON.stringify(sink.snapshot)).not.toContain('secret')
   })
 
+  it('counts messages per local hour and keeps them through the cache', async () => {
+    const index = await start(new Sink())
+    const hour = new Date(TS).getHours()
+    const row = index.heatmap(3, DAY).days
+    expect(row.map((d) => d.day).at(-1)).toBe(DAY)
+    expect(row.at(-1)!.hours[hour]).toBe(3)
+    expect(row.at(-1)!.hours.reduce((a, b) => a + b, 0)).toBe(3)
+    await index.stop()
+    const again = await start(new Sink())
+    expect(again.heatmap(1, DAY).days[0]!.hours[hour]).toBe(3)
+  })
+
   it('tails appended lines and waits for a partial line to complete', async () => {
     const sink = new Sink()
     const index = await start(sink)

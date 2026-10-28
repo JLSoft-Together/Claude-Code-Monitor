@@ -48,6 +48,12 @@ export interface TerminalSession {
   compactions?: number
   /** Session cost as reported by Claude Code's status line (opt-in bridge). */
   costUsd?: number
+  /** Opt-in hook bridge: a compaction is running since then (PreCompact without its PostCompact yet). */
+  compactingSince?: string
+  compactTrigger?: 'manual' | 'auto'
+  /** Opt-in hook bridge: tool calls the auto-mode classifier denied in this session, and the last tool names. */
+  deniedCount?: number
+  deniedTools?: string[]
   /** Uncommitted changes in the session's git checkout (read-only `git diff --shortstat`, refreshed when a turn ends). */
   diff?: GitDiffStat
 
@@ -296,6 +302,11 @@ export interface UsageBucket extends UsageTotals {
   fast?: boolean
 }
 
+/** Assistant messages per local hour for recent days (History heatmap); from the usage scan, no content. */
+export interface UsageHeatmap {
+  days: { day: string; hours: number[] }[]
+}
+
 export type UsageScanState = 'idle' | 'scanning' | 'ready'
 
 export interface UsageScan {
@@ -443,6 +454,7 @@ export type MonitorEvent =
   | { type: 'history.data'; payload: { sessions: SessionRecord[] } }
   | { type: 'history.added'; payload: SessionRecord }
   | { type: 'timeline.data'; payload: DayTimeline }
+  | { type: 'heatmap.data'; payload: UsageHeatmap }
   | { type: 'terminal.openResult'; payload: { terminalId: string; app: OpenApp; result: OpenResult } }
   | { type: 'diagnostics.data'; payload: Diagnostics }
   | { type: 'notify.settings'; payload: NotifySettings }
@@ -478,6 +490,7 @@ export type ClientMessage =
   /** Ask for the ended-session history / today's status timeline (answered with `history.data` / `timeline.data`). */
   | { type: 'history.get' }
   | { type: 'timeline.get' }
+  | { type: 'heatmap.get' }
   /** Open the session's working folder in Explorer or VS Code (path comes from the collector, never the client). */
   | { type: 'terminal.open'; terminalId: string; app: OpenApp }
   | { type: 'diagnostics.get' }
