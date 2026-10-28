@@ -219,6 +219,23 @@ const en = {
     next: 'Next problem',
     has: { error: 'has errors', warning: 'has warnings' },
   },
+  tree: {
+    toggle: 'Tree view',
+    code: 'Code view',
+    label: 'Tree of {name}',
+    filter: 'Filter by key',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
+    copyPath: 'Copy path',
+    copied: 'Path copied',
+    parsing: 'Reading…',
+    more: 'Show {n} more',
+    items: '{n} item | {n} items',
+    keys: '{n} key | {n} keys',
+    noMatch: 'No key matches.',
+    truncated: 'Only the first {n} rows are shown; collapse or filter to see the rest.',
+    failed: 'Cannot show as a tree, showing the code: {detail}',
+  },
 }
 
 const vi: typeof en = {
@@ -440,6 +457,23 @@ const vi: typeof en = {
     prev: 'Lỗi trước',
     next: 'Lỗi sau',
     has: { error: 'có lỗi', warning: 'có cảnh báo' },
+  },
+  tree: {
+    toggle: 'Xem dạng cây',
+    code: 'Xem dạng code',
+    label: 'Cây của {name}',
+    filter: 'Lọc theo khoá',
+    expandAll: 'Mở hết',
+    collapseAll: 'Thu gọn hết',
+    copyPath: 'Sao chép đường dẫn',
+    copied: 'Đã sao chép đường dẫn',
+    parsing: 'Đang đọc…',
+    more: 'Hiện thêm {n}',
+    items: '{n} phần tử',
+    keys: '{n} khoá',
+    noMatch: 'Không có khoá nào khớp.',
+    truncated: 'Chỉ hiện {n} dòng đầu; thu gọn hoặc lọc để xem phần còn lại.',
+    failed: 'Không hiện được dạng cây, đang hiện code: {detail}',
   },
 }
 

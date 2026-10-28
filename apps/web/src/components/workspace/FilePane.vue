@@ -5,7 +5,7 @@ let filePanes = 0
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
@@ -40,6 +40,7 @@ import ProblemBar from './ProblemBar.vue'
 import { declarationQuery, outline, type OutlineItem } from '../../lib/editor/outline'
 import type { SearchQuery } from '../../lib/preview'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
+import { treeFormat } from '../../lib/jsonTree'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
 import { blameRows, type BlameRow } from '../../lib/blame'
@@ -48,6 +49,7 @@ import { baseName, changesDiscard, gitBlame, hasBlame, type BlameResult, dirOf, 
 // CodeMirror stays out of the main chunk until a file is edited.
 const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
+const JsonTree = defineAsyncComponent(() => import('./JsonTree.vue'))
 interface EditorApi {
   text: () => string
   markSaved: (saved?: string) => void
@@ -169,7 +171,15 @@ const name = computed(() => baseName(props.path))
 const markdown = computed(() => view.value?.kind === 'text' && isMarkdown(props.path))
 const htmlPage = computed(() => view.value?.kind === 'text' && isHtml(props.path))
 const rendered = computed(() => markdown.value || htmlPage.value)
-const showSource = computed(() => view.value?.kind === 'text' && !(mdPreview.value && (markdown.value || (htmlPage.value && htmlUrl.value !== null))))
+const treeFmt = computed(() => (view.value?.kind === 'text' ? treeFormat(props.path) : null))
+const treeOn = ref(false)
+const treeShown = computed(() => treeOn.value && !!treeFmt.value && !editing.value)
+const treeText = computed(() => pending.value ?? (view.value?.kind === 'text' ? (view.value.text ?? '') : ''))
+function onTreeFailed(message: string): void {
+  treeOn.value = false
+  editNotice.value = { kind: 'error', text: t('workspace.tree.failed', { detail: message }) }
+}
+const showSource = computed(() => view.value?.kind === 'text' && !treeShown.value && !(mdPreview.value && (markdown.value || (htmlPage.value && htmlUrl.value !== null))))
 const matches = computed<Match[]>(() => (findOpen.value && showSource.value ? findMatches(lines.value, query.value) : []))
 // XML layout preview (v32): Code | Split | Design for res/layout*/ files, per-user mode.
 const LAYOUT_MODE_KEY = 'ccm.layout.mode'
@@ -1141,6 +1151,7 @@ const headMore = computed<MenuEntry[]>(() => {
   if (isXmlPreview.value) for (const m of layoutModes.value) out.push({ id: `layout:${m.value}`, label: m.label, icon: layoutMode.value === m.value ? Check : m.icon })
   if (isDart.value && fwpProject.value) out.push({ id: 'fwp', label: t('fwp.toggle'), icon: fwpOpen.value ? Check : Smartphone })
   if (rendered.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
+  if (treeFmt.value) out.push({ id: 'tree', label: treeOn.value ? t('workspace.tree.code') : t('workspace.tree.toggle'), icon: treeOn.value ? Code : Network, disabled: editing.value })
   if (text) {
     out.push({ id: 'wrap', label: t('workspace.viewer.wrap'), icon: wrap.value ? Check : TextWrap, disabled: !showSource.value })
     out.push({ id: 'find', label: t('workspace.viewer.find'), icon: Search, shortcut: isMac ? '⌘F' : 'Ctrl+F' })
@@ -1167,6 +1178,7 @@ function pickHead(id: string): void {
   else if (id.startsWith('layout:')) layoutMode.value = id.slice('layout:'.length) as LayoutMode
   else if (id === 'fwp') fwpOpen.value = !fwpOpen.value
   else if (id === 'md') mdPreview.value = !mdPreview.value
+  else if (id === 'tree') treeOn.value = !treeOn.value
   else if (id === 'wrap') wrap.value = !wrap.value
   else if (id === 'blame') toggleBlame()
   else if (id === 'outline') openOutline()
@@ -1251,6 +1263,20 @@ function pickHead(id: string): void {
           <Code v-else :size="14" aria-hidden="true" />
         </button>
       </template>
+      <button
+        v-if="treeFmt"
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
+        :aria-pressed="treeOn"
+        :disabled="editing"
+        :title="treeOn ? t('workspace.tree.code') : t('workspace.tree.toggle')"
+        :aria-label="t('workspace.tree.toggle')"
+        data-file-tree-toggle
+        data-more="tree"
+        @click="treeOn = !treeOn"
+      >
+        <Network :size="14" aria-hidden="true" />
+      </button>
       <button
         v-if="view?.kind === 'text'"
         type="button"
@@ -1450,6 +1476,7 @@ function pickHead(id: string): void {
         <div v-else-if="view.kind === 'image'" class="grid min-h-full place-items-center p-6">
           <img v-if="imageUrl" :src="imageUrl" :alt="t('workspace.viewer.image')" class="max-h-full max-w-full object-contain" />
         </div>
+        <JsonTree v-else-if="treeShown && treeFmt" :text="treeText" :format="treeFmt" :name="name" @failed="onTreeFailed" />
         <webview v-else-if="htmlPage && !showSource && htmlUrl" :key="htmlRev" :src="htmlUrl" partition="persist:ccm-preview" class="size-full bg-page" />
         <div v-else-if="htmlPage && !showSource" class="size-full" />
         <article v-else-if="!showSource" ref="mdEl" class="md mx-auto max-w-3xl px-6 py-5" data-code-zoom v-html="markdownHtml" @click="onMarkdownClick" />

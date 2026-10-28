@@ -171,3 +171,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 hook bridge web + bottom sheet: `QuickSetup.vue` item `hooks` (on / off), `SessionCardSignals.vue` + `MainNode.vue` compacting / denied, docs §11y; `ui.narrow` (< 768 px) → `MonitorView.vue` Sessions bottom sheet (`ccm-sheet-up`).
 - 2026-10-29 v68: editor Checks problems (`lib/problems.ts`, `ProblemBar.vue`), turn review (`TurnReview.vue`), blame (`preview/blame.ts`, `lib/blame.ts`), merge state (`preview/mergeState.ts`).
 - 2026-10-29 v69: `ConflictView.vue`, prompt library (`preview/commands.ts`, `PromptPicker.vue`), `WorktreeCompare.vue`, overlap (`preview/overlap.ts`, `stores/overlap.ts`, `OverlapChip.vue`), outline (`lib/editor/outline.ts`, `OutlinePicker.vue`), inbox (`stores/inbox.ts`, `InboxPanel.vue`).
+- 2026-10-29 v70 JSON / YAML tree: `lib/jsonTree.ts`, `components/workspace/JsonTree.vue`, `FilePane.vue` `treeOn`; dep `yaml` 2.8.1 (web).

@@ -63,7 +63,8 @@
     "qrcode": "1.5.4",
     "shiki": "^4.5.0",
     "vue": "^3.5.22",
-    "vue-i18n": "^11.1.12"
+    "vue-i18n": "^11.1.12",
+    "yaml": "2.8.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",

@@ -175,3 +175,7 @@ Invariants:
 - Outline: `lib/editor/outline.ts` (regex per language, not Lezer), `OutlinePicker.vue` (Ctrl/⌘+F12); F12 declaration / Shift+F12 usages → `ExplorerSearch.seed`.
 - Inbox: `lib/inbox.ts` `inboxItems` / `SEVERITY`, `stores/inbox.ts` (`ccm.inbox`), `components/inbox/InboxPanel.vue` (J/K, Enter, E), badge `data-inbox-badge` in `AppHeader.vue`.
 - Contract: Vue mustache must not contain `}}` (only vite build fails); `insertRequest` holds one request → `await nextTick()` between two prefills.
+
+## v70 (2026-10-29)
+
+- JSON / YAML tree (item 11): `lib/jsonTree.ts` (`flattenTree` with `expanded` / `filter` / `shown`, `CHILD_PAGE` 200 children per container + "more" row, `ROW_LIMIT` 3000, `pathOf` → `a.b[2].c`, `parseTree` JSON.parse or lazy `yaml` `parseAllDocuments` (multi-doc → array)), `JsonTree.vue` (async chunk; filter by key opens the way to hits, expand / collapse all, Copy path per row, Ctrl/⌘+C on a row). `FilePane.vue` `treeFmt` / `treeOn` / `treeShown` (header `data-file-tree-toggle` + "…" entry `tree`; hides while editing; `showSource` false while shown); parse error → `onTreeFailed` (code view + notice). Strings `workspace.tree.*` in `i18n/workspace-commit.ts`.
