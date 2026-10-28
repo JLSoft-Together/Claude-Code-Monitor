@@ -5,7 +5,6 @@ import { commonDir, discardFile, discardHunk, diff as changesDiff, fileDiff, Git
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir, renameEntry, trashEntry } from './explorer'
 import { readFileForView } from './files'
-import { writeTextFile } from './fileWrite'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { filesystemRoots, FullAccess, GrantStore } from './grants'
@@ -23,6 +22,8 @@ import { compareBranch, diffBetween, fileBetween, mergeBranch, takeFile } from '
 import { CheckpointStore } from './checkpoints'
 import { NotesStore } from './notes'
 import { LocalHistory } from './localHistory'
+import { Formatter } from './format'
+import { MAX_WRITE_BYTES, writeTextFile } from './fileWrite'
 import { changedVsBase, dryMerge } from './overlap'
 import type { RunKind } from '../strings'
 import { existingDir } from '../pick-start'
@@ -107,7 +108,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -253,16 +254,32 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return writeTextFile(req, await writeRoots(), { onSaved })
   })
 
-  /** A file the editor may save (same roots as ccm:file-write), as its real path. */
-  async function historyFile(file: unknown): Promise<string | null> {
+  /**
+   * A file the editor may save (same roots as ccm:file-write): its real path and the widest project root holding it
+   * (a repo toplevel above the pane cwd wins, a drive / filesystem root never does).
+   */
+  async function editableFile(file: unknown): Promise<{ real: string; root: string } | null> {
     if (typeof file !== 'string' || file.length > 4096 || !path.isAbsolute(file)) return null
     const real = await realOrNull(file)
-    return real && rootOf(real, await writeRoots()) && (await fs.stat(real).catch(() => null))?.isFile() ? real : null
+    const roots = await writeRoots()
+    const deepest = real && rootOf(real, roots)
+    if (!real || !deepest || !(await fs.stat(real).catch(() => null))?.isFile()) return null
+    const wide = roots.filter((r) => path.parse(r).root !== r && rootOf(real, [r])).sort((a, b) => a.length - b.length)[0]
+    return { real, root: wide ?? deepest }
   }
+  const historyFile = async (file: unknown): Promise<string | null> => (await editableFile(file))?.real ?? null
 
   ipcMain.handle('ccm:lh-list', async (event, file: unknown) => {
     const real = history && isAppFrame(event) ? await historyFile(file) : null
     return real && history ? history.list(real) : { ok: false, error: 'denied' }
+  })
+  const formatter = new Formatter()
+  ipcMain.handle('ccm:format', async (event, req: unknown) => {
+    const { path: file, text } = (req ?? {}) as { path?: unknown; text?: unknown }
+    if (!isAppFrame(event) || typeof text !== 'string') return { ok: false, error: 'denied' }
+    if (text.length > MAX_WRITE_BYTES || Buffer.byteLength(text, 'utf8') > MAX_WRITE_BYTES) return { ok: false, error: 'too-large' }
+    const target = await editableFile(file)
+    return target ? formatter.format(target.real, target.root, text) : { ok: false, error: 'denied' }
   })
   ipcMain.handle('ccm:lh-read', async (event, req: unknown) => {
     const { path: file, id } = (req ?? {}) as { path?: unknown; id?: unknown }

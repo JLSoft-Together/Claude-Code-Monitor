@@ -5,7 +5,7 @@ let filePanes = 0
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network, History } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network, History, WandSparkles } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
@@ -44,13 +44,14 @@ import { treeFormat } from '../../lib/jsonTree'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
 import { blameRows, type BlameRow } from '../../lib/blame'
-import { baseName, changesDiscard, gitBlame, hasBlame, hasLocalHistory, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import { baseName, canFormat, changesDiscard, formatText, gitBlame, hasBlame, hasLocalHistory, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 // CodeMirror stays out of the main chunk until a file is edited.
 const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
 const JsonTree = defineAsyncComponent(() => import('./JsonTree.vue'))
 const LocalHistoryDialog = defineAsyncComponent(() => import('./LocalHistoryDialog.vue'))
+const TextCompareDialog = defineAsyncComponent(() => import('./TextCompareDialog.vue'))
 interface EditorApi {
   text: () => string
   markSaved: (saved?: string) => void
@@ -1171,6 +1172,30 @@ function restoreHistory(text: string): void {
   void applyBuffer(text)
 }
 
+/** Format on demand: the diff is always shown first; Apply only replaces the buffer. */
+const formatting = shallowRef<{ before: string; after: string | null; busy: boolean; error: string | null; source: string } | null>(null)
+async function runFormat(): Promise<void> {
+  if (view.value?.kind !== 'text' || block.value) return
+  const before = bufferText()
+  const state = { before, after: null, busy: true, error: null, source: '' }
+  formatting.value = state
+  const res = await formatText(filePath(), before)
+  if (formatting.value !== state) return
+  if (res.ok) {
+    formatting.value = { ...state, busy: false, after: res.text, source: `${res.tool} · ${t(res.local ? 'workspace.format.local' : 'workspace.format.global')}` }
+    return
+  }
+  const tool = res.tool ?? ''
+  const error = res.error === 'failed' && res.detail ? t('workspace.format.error.failedDetail', { tool, detail: res.detail.split(/\r?\n/).slice(-6).join(' ') }) : t(`workspace.format.error.${res.error}`, { tool })
+  formatting.value = { ...state, busy: false, error }
+}
+
+function applyFormat(): void {
+  const after = formatting.value?.after
+  formatting.value = null
+  if (after != null) void applyBuffer(after)
+}
+
 const headMore = computed<MenuEntry[]>(() => {
   const out: MenuEntry[] = []
   const text = view.value?.kind === 'text'
@@ -1187,6 +1212,7 @@ const headMore = computed<MenuEntry[]>(() => {
     out.push({ id: 'declaration', label: t('workspace.outline.declaration'), icon: Search, shortcut: 'F12' })
     if (hasBlame) out.push({ id: 'blame', label: t('workspace.blame.toggle'), icon: blameOn.value ? Check : GitCommitHorizontal, disabled: editing.value || !showSource.value })
     if (hasLocalHistory && canEdit.value) out.push({ id: 'history', label: t('workspace.localHistory.open'), icon: History, disabled: !!block.value })
+    if (canEdit.value && canFormat(filePath())) out.push({ id: 'format', label: t('workspace.format.open'), icon: WandSparkles, disabled: !!block.value || !!formatting.value?.busy })
   }
   if (canEdit.value) {
     out.push({ separator: true })
@@ -1210,6 +1236,7 @@ function pickHead(id: string): void {
   else if (id === 'wrap') wrap.value = !wrap.value
   else if (id === 'blame') toggleBlame()
   else if (id === 'history') openHistory()
+  else if (id === 'format') void runFormat()
   else if (id === 'outline') openOutline()
   else if (id === 'usages') findUsages()
   else if (id === 'declaration') findDeclaration()
@@ -1576,6 +1603,22 @@ function pickHead(id: string): void {
       @show-diff="showDiff"
     />
     <LocalHistoryDialog v-if="historyText !== null" :path="view?.path ?? path" :name="name" :current="historyText" :grammar="grammar" @restore="restoreHistory" @close="historyText = null" />
+    <TextCompareDialog
+      v-if="formatting"
+      :title="t('workspace.format.title', { name })"
+      :subtitle="formatting.source || (view?.path ?? path)"
+      :a="formatting.busy || formatting.after !== null ? formatting.before : null"
+      :b="formatting.after"
+      :labels="{ a: t('workspace.format.before'), b: t('workspace.format.after') }"
+      :grammar="grammar"
+      :primary="t('workspace.format.apply')"
+      :primary-disabled="formatting.after === null || formatting.after === formatting.before"
+      :loading="formatting.busy"
+      :message="formatting.busy ? t('workspace.format.running') : formatting.error"
+      :error="!!formatting.error"
+      @primary="applyFormat"
+      @close="formatting = null"
+    />
     <DiscardConfirm v-if="rollbackText" :title="rollbackText.title" :lines="rollbackText.lines" :preview="rollbackText.preview" @confirm="confirmRollback" @cancel="pendingRollback = null" />
 
   </section>

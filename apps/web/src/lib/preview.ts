@@ -178,6 +178,10 @@ export interface LhVersion {
   size: number
 }
 export type LhList = { ok: true; versions: LhVersion[] } | { ok: false; error: 'denied' | 'failed' | 'unavailable' }
+export type FormatTool = 'prettier' | 'dart' | 'ktlint'
+export type FormatResult =
+  | { ok: true; text: string; tool: FormatTool; local: boolean }
+  | { ok: false; error: 'denied' | 'unsupported' | 'not-found' | 'failed' | 'timeout' | 'too-large' | 'busy' | 'unavailable'; tool?: FormatTool; detail?: string }
 export type LhRead = { ok: true; text: string; time: number } | { ok: false; error: 'denied' | 'missing' | 'failed' | 'unavailable' }
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
@@ -219,6 +223,7 @@ interface PreviewBridge {
   notesWrite?: (root: string, text: string) => Promise<NoteWrite>
   lhList?: (file: string) => Promise<LhList>
   lhRead?: (file: string, id: string) => Promise<LhRead>
+  formatText?: (file: string, text: string) => Promise<FormatResult>
   wtDiff?: (dir: string, a: string, b: string) => Promise<WtBetween>
   wtFileDiff?: (dir: string, a: string, b: string, path: string) => Promise<WtBetweenDiff>
   wtTake?: (dir: string, from: string, path: string) => Promise<WtTake>
@@ -328,6 +333,12 @@ export const notesWrite = (root: string, text: string): Promise<NoteWrite> => br
 export const hasLocalHistory = typeof bridge?.lhList === 'function'
 /** Local History: disk text before each save the app made (data folder, 50 per file, 7 days). */
 export const lhList = (file: string): Promise<LhList> => bridge?.lhList?.(file) ?? Promise.resolve(unavailable)
+const FORMAT_EXT = /\.(?:[mc]?js|jsx|[mc]?ts|tsx|vue|jsonc?|json5|s?css|less|md|markdown|html?|ya?ml|dart|kts?)$/i
+export const hasFormat = typeof bridge?.formatText === 'function'
+/** prettier / dart format / ktlint picks by extension (desktop); the same list as `preview/format.ts` `formatterFor`. */
+export const canFormat = (file: string): boolean => hasFormat && FORMAT_EXT.test(file)
+/** Formats `text` (the buffer, not the disk file) with the project's formatter, else the one on PATH. */
+export const formatText = (file: string, text: string): Promise<FormatResult> => bridge?.formatText?.(file, text) ?? Promise.resolve(unavailable)
 export const lhRead = (file: string, id: string): Promise<LhRead> => bridge?.lhRead?.(file, id) ?? Promise.resolve(unavailable)
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
 export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
