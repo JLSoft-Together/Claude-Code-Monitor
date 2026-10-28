@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import type { BuildError } from '@ccm/shared'
 import { checkKey } from '../lib/checks'
 import { problemFiles, type ProblemRun } from '../lib/problems'
 import { checkCancel, checkRun, type CheckRequest, type CheckResult } from '../lib/preview'
@@ -31,6 +32,15 @@ export const useChecksStore = defineStore('checks', () => {
 
   const cancel = (root: string): Promise<boolean> => checkCancel(root)
 
+  /** Source `terminal`: the last "Scan errors" of each pane (absolute paths), replaced on the next scan of that pane. */
+  const terminal = ref<Record<string, ProblemRun>>({})
+  function setTerminal(paneKey: string, label: string, errors: readonly BuildError[]): void {
+    const next = { ...terminal.value }
+    if (errors.length) next[paneKey] = { label, at: Date.now(), errors }
+    else delete next[paneKey]
+    terminal.value = next
+  }
+
   const isAbs = (p: string) => /^(?:[A-Za-z]:[\/]|[\/])/.test(p)
   const problemRuns = computed<ProblemRun[]>(() => {
     const out: ProblemRun[] = []
@@ -39,9 +49,10 @@ export const useChecksStore = defineStore('checks', () => {
       const root = r.root.replace(/[\/]+$/, '')
       out.push({ label: r.check.name, at: r.at, errors: r.result.errors.map((e) => (isAbs(e.file) ? e : { ...e, file: `${root}/${e.file}` })) })
     }
+    out.push(...Object.values(terminal.value))
     return out
   })
   const marked = computed(() => problemFiles(problemRuns.value))
 
-  return { runs, of, run, cancel, problemRuns, marked }
+  return { runs, of, run, cancel, terminal, setTerminal, problemRuns, marked }
 })

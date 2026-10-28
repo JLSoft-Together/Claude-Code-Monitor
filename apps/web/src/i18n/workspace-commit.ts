@@ -271,6 +271,14 @@ const en = {
     cancel: 'Cancel',
     same: 'No differences.',
   },
+  termScan: {
+    button: 'Scan errors',
+    hint: 'Find file:line errors in this terminal (tsc, ESLint, dart, Gradle / Kotlin, pytest, Node stacks) and mark them in open files',
+    source: 'terminal {name}',
+    found: '{n} problem in {files} | {n} problems in {files}',
+    files: '{n} file | {n} files',
+    none: 'No file:line errors found in this terminal.',
+  },
   format: {
     open: 'Format',
     title: 'Format · {name}',
@@ -580,6 +588,14 @@ const vi: typeof en = {
     close: 'Đóng',
     cancel: 'Huỷ',
     same: 'Không có khác biệt.',
+  },
+  termScan: {
+    button: 'Quét lỗi',
+    hint: 'Tìm lỗi dạng file:dòng trong terminal này (tsc, ESLint, dart, Gradle / Kotlin, pytest, stack Node) và đánh dấu trong file đang mở',
+    source: 'terminal {name}',
+    found: '{n} lỗi trong {files} | {n} lỗi trong {files}',
+    files: '{n} file | {n} file',
+    none: 'Không thấy lỗi dạng file:dòng nào trong terminal này.',
   },
   format: {
     open: 'Định dạng',

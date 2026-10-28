@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, TriangleAlert, X } from 'lucide-vue-next'
+import { Columns2, FileText, GitBranch, Globe, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, ScanSearch, TriangleAlert, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -36,6 +36,8 @@ import { useTerminalsStore } from '../../stores/terminals'
 import { useTipsStore } from '../../stores/tips'
 import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
 import { hasScripts } from '../../lib/projects'
+import { bufferLines, parseTerminalProblems } from '../../lib/terminalProblems'
+import { useChecksStore } from '../../stores/checks'
 import { presetOf, useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
@@ -301,6 +303,7 @@ const moreEntries = computed<MenuEntry[]>(() => {
   if (canAttach.value)
     out.push({ id: 'attach', label: attachCount.value ? t('workspace.paneHead.attachCount', { label: t('attach.button'), n: attachCount.value }) : t('attach.button'), icon: Paperclip })
   if (hasScripts && cwd.value) out.push({ id: 'scripts', label: t('workspace.scripts.open'), icon: Play })
+  if (isShell.value) out.push({ id: 'scan', label: t('workspace.termScan.button'), icon: ScanSearch, hint: t('workspace.termScan.hint') })
   out.push({ id: 'restart', label: t(reconnectable.value ? 'workspace.reconnect' : 'workspace.restart'), icon: RotateCw })
   return out
 })
@@ -312,6 +315,7 @@ function pickMore(id: string): void {
   } else if (id === 'compact') compactFlow.start(props.pane.key)
   else if (id === 'attach') attachments.toggle(props.pane.key)
   else if (id === 'scripts') emit('scripts')
+  else if (id === 'scan') scanErrors()
   else if (id === 'restart') {
     if (reconnectable.value) reconnect()
     else restart()
@@ -322,6 +326,22 @@ const cwd = computed(() => workCwd(props.pane))
 // What runs in the pane now (a shell can be running `claude`); spawn and restart keep `pane.preset`.
 const preset = computed(() => presetOf(props.pane))
 let reportedCwd: string | null = null
+
+const isShell = computed(() => preset.value === 'shell')
+const checks = useChecksStore()
+const scanNotice = ref<string | null>(null)
+let scanTimer: ReturnType<typeof setTimeout> | null = null
+/** One-off read of the scrollback on click (no monitoring); results feed FilePane problems as source `terminal`. */
+function scanErrors(): void {
+  if (!term) return
+  const scan = parseTerminalProblems(bufferLines(term.buffer.active), cwd.value ?? null)
+  checks.setTerminal(props.pane.key, t('workspace.termScan.source', { name: props.pane.title || shortPath(cwd.value ?? '') || t('workspace.preset.shell') }), scan.errors)
+  const n = scan.errors.length
+  scanNotice.value = n ? t('workspace.termScan.found', { n, files: t('workspace.termScan.files', { n: scan.files }, scan.files) }, n) : t('workspace.termScan.none')
+  if (scanTimer) clearTimeout(scanTimer)
+  scanTimer = setTimeout(() => (scanNotice.value = null), 4000)
+}
+onBeforeUnmount(() => scanTimer && clearTimeout(scanTimer))
 
 /** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
 function onShellCwd(dir: string | null): void {
@@ -1135,6 +1155,18 @@ onBeforeUnmount(() => {
           <RotateCw :size="14" aria-hidden="true" />
         </button>
         <button
+          v-if="isShell"
+          type="button"
+          class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
+          data-term-scan
+          data-more="scan"
+          :title="t('workspace.termScan.hint')"
+          :aria-label="t('workspace.termScan.button')"
+          @click="scanErrors"
+        >
+          <ScanSearch :size="14" aria-hidden="true" />
+        </button>
+        <button
           v-if="hasScripts && cwd"
           type="button"
           class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
@@ -1246,6 +1278,11 @@ onBeforeUnmount(() => {
         data-pane-dim
         aria-hidden="true"
       />
+      <Transition name="ccm-fade">
+        <p v-if="scanNotice" class="ccm-sheet pointer-events-none absolute bottom-3 left-1/2 z-13 max-w-[90%] -translate-x-1/2 truncate px-3 py-1.5 text-xs text-ink" role="status" data-term-scan-notice>
+          {{ scanNotice }}
+        </p>
+      </Transition>
       <TermFind v-if="findOpen" ref="find" :addon="searchAddon" class="absolute top-1 right-2 z-10" @close="closeFind" />
       <span
         v-if="pane.attention"

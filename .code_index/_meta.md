@@ -176,3 +176,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 project notes: desktop `preview/notes.ts` + IPC `ccm:notes-read|write`; web `NotesPanel.vue`, `lib/noteLinks.ts`, key `notes` (Ctrl+Alt+N / ⌃⌥N).
 - 2026-10-29 v70 Local History: desktop `preview/localHistory.ts` + `writeTextFile` `onSaved` + IPC `ccm:lh-list|lh-read`; web `LocalHistoryDialog.vue`, `TextCompareDialog.vue`, `TextCompare.vue` (MergeView), `CodeEditor` `replace`.
 - 2026-10-29 v70 Format: desktop `preview/format.ts` + IPC `ccm:format`; web FilePane `runFormat` / `applyFormat` with `TextCompareDialog`, `lib/preview.ts` `canFormat` / `formatText`.
+- 2026-10-29 v70 terminal errors → Problems: `lib/terminalProblems.ts`, `stores/checks.ts` `setTerminal`, `TermPane.vue` `scanErrors` (shell panes).
