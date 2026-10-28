@@ -38,6 +38,7 @@ import { nextRevealStep } from '../../lib/explorer/reveal'
 import { fileGlyph, parentDirectory, resolveFocusIndex, type FileGlyph, type TreeRow } from '../../lib/explorer/tree'
 import { fileIcon, folderIcon, openDirectories, type AtomIcon } from '../../lib/explorer/fileIcons'
 import { modeOf } from '../../lib/themes'
+import { useChecksStore } from '../../stores/checks'
 import { useExplorerStore } from '../../stores/explorer'
 import { useSettingsStore } from '../../stores/settings'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -65,6 +66,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const explorer = useExplorerStore()
 const runMarks = useRunMarks(() => explorer.root)
+const checks = useChecksStore()
+const problemOf = (row: TreeRow) => (row.directory || !checks.marked.size ? undefined : checks.marked.get(pathKey(row.path)))
+const PROBLEM_CLASS = { error: 'underline decoration-wavy decoration-st-error underline-offset-3', warning: 'underline decoration-wavy decoration-warning underline-offset-3' } as const
 const runMark = (row: TreeRow) => (row.directory && !row.outOfRoot ? runMarks.value.get(dirKey(row.depth === 0 ? (explorer.root ?? row.path) : row.path)) : undefined)
 
 /** Fixed row height and overscan: the window is index arithmetic over `explorer.rows`. */
@@ -357,7 +361,8 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           </template>
           <span
             class="min-w-0 flex-1 truncate"
-            :class="[row.depth === 0 ? 'text-2xs tracking-wide uppercase' : '', !isActive(row) && gitKind(row) ? KIND_CLASS[gitKind(row)!] : '', !isActive(row) && gitDir(row) ? 'text-diff-mod' : '']"
+            :class="[row.depth === 0 ? 'text-2xs tracking-wide uppercase' : '', !isActive(row) && gitKind(row) ? KIND_CLASS[gitKind(row)!] : '', !isActive(row) && gitDir(row) ? 'text-diff-mod' : '', problemOf(row) ? PROBLEM_CLASS[problemOf(row)!] : '']"
+            :data-problem="problemOf(row)"
             :data-git="gitKind(row) ?? (gitDir(row) ? 'dir' : undefined)"
             data-row-name
             >{{ row.name }}</span
@@ -366,6 +371,7 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
           <span v-if="gitKind(row)" class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="isActive(row) ? 'text-accent-ink' : KIND_CLASS[gitKind(row)!]" aria-hidden="true">{{
             KIND_LETTER[gitKind(row)!]
           }}</span>
+          <span v-if="problemOf(row)" class="sr-only">, {{ t(`workspace.problems.has.${problemOf(row)}`) }}</span>
           <span v-if="gitKind(row)" class="sr-only">, {{ t(`workspace.changes.kind.${gitKind(row)}`) }}</span>
           <span v-else-if="gitDir(row)" class="mr-1 size-1.5 shrink-0 rounded-full bg-diff-mod" :title="t('workspace.gitStatus.contains')" aria-hidden="true" />
           <span v-if="gitDir(row)" class="sr-only">, {{ t('workspace.gitStatus.contains') }}</span>

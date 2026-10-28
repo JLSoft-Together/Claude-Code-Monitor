@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import ArtImage from './ArtImage.vue'
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, Ellipsis, History, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, Ellipsis, History, Inbox, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
 import { hasExtensions, hasTerminals, titleBar } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
 import { now, relativeTime } from '../lib/format'
@@ -11,15 +11,26 @@ import { isMac } from '../lib/platform'
 import { formatKeys } from '../lib/shortcuts'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
+import { useInboxStore } from '../stores/inbox'
 import { useUiStore, type View } from '../stores/ui'
 import PlanLimits from './PlanLimits.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
+const InboxPanel = defineAsyncComponent(() => import('./inbox/InboxPanel.vue'))
+
 const { t, locale } = useI18n()
 const connection = useConnectionStore()
 const extras = useExtrasStore()
 const ui = useUiStore()
+const inbox = useInboxStore()
+const inboxBtn = ref<HTMLButtonElement | null>(null)
+const inboxAt = ref<DOMRect | null>(null)
+const inboxCount = computed(() => inbox.items.length)
+watch(
+  () => inbox.open,
+  (o) => (inboxAt.value = o ? (inboxBtn.value?.getBoundingClientRect() ?? null) : null),
+)
 
 const primary = computed(() => [
   { id: 'monitor' as View, label: t('nav.monitor'), icon: Activity },
@@ -168,6 +179,26 @@ function onTabKey(e: KeyboardEvent): void {
 
       <div class="flex shrink-0 items-center gap-0.5">
         <button
+          ref="inboxBtn"
+          type="button"
+          class="ccm-btn-plain relative text-xs font-medium"
+          :aria-label="t('inbox.button', { n: inboxCount }, inboxCount)"
+          :title="t('inbox.button', { n: inboxCount }, inboxCount)"
+          aria-haspopup="dialog"
+          :aria-expanded="inbox.open"
+          data-inbox-button
+          @click="inbox.open = !inbox.open"
+        >
+          <Inbox :size="15" aria-hidden="true" />
+          <span
+            v-if="inboxCount"
+            class="absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-st-waiting px-0.5 text-[9px] leading-none font-semibold text-on-accent tabular-nums"
+            aria-hidden="true"
+            data-inbox-badge
+            >{{ inboxCount > 99 ? '99+' : inboxCount }}</span
+          >
+        </button>
+        <button
           type="button"
           class="ccm-btn-plain text-xs font-medium"
           :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
@@ -193,6 +224,7 @@ function onTabKey(e: KeyboardEvent): void {
         <SettingsMenu />
       </div>
     </div>
+    <InboxPanel v-if="inbox.open && inboxAt" :anchor="inboxAt" :trigger="inboxBtn" @close="inbox.open = false" />
     <ContextMenu v-if="moreAt" :at="moreAt" :entries="moreEntries" :label="t('nav.more')" :trigger="moreBtn" @pick="pickMore" @close="closeMore" />
     <Transition name="ccm-fade">
       <div

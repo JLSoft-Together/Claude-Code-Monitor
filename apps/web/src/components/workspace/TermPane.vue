@@ -51,6 +51,7 @@ import PaneMore from './PaneMore.vue'
 import PresetIcon from './PresetIcon.vue'
 import SplitMenu from './SplitMenu.vue'
 import WorktreeMenu from './WorktreeMenu.vue'
+import OverlapChip from './OverlapChip.vue'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean; zoomed: boolean; hiddenCount: number; dim: boolean }>()
 const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>]; scripts: []; zoom: [] }>()
@@ -982,6 +983,7 @@ onBeforeUnmount(() => {
           <span class="text-diff-del">−{{ diff.deletions }}</span>
         </span>
       </Transition>
+      <OverlapChip v-if="cwd && preset !== 'shell'" :cwd="cwd" :branch="branch" data-pane-chip />
       <Teleport to="body">
         <Transition name="ccm-menu" @before-leave="retireOverlay">
           <WorktreeMenu v-if="wtAnchor && cwd" :cwd="cwd" :anchor="wtAnchor" :trigger="wtButton" @close="closeWorktrees" />

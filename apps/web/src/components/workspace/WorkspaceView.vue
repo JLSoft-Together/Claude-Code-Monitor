@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BellRing, CircleHelp, FolderOpen, GraduationCap, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
@@ -14,7 +14,7 @@ import { folderName, projectOf } from '../../lib/sidebarRows'
 import { createStartGuard } from '../../lib/startGuard'
 import { dirKey } from '../../stores/favorites'
 import { isLoopbackUrl, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
-import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, openExternal, pickFile, previewUrl, readFile, requestAccess } from '../../lib/preview'
+import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, openExternal, pickFile, previewUrl, readFile, requestAccess, type SearchQuery } from '../../lib/preview'
 import { motionMs, pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import { dropKept, dustIn, dustOn, dustOutAll, hasKept, onDustLeave } from '../../lib/dust'
 import type { MenuEntry } from '../../lib/menu'
@@ -29,6 +29,7 @@ import { isMenuKey } from '../../lib/rail/railMenu'
 import type { TipAction } from '../../lib/tips'
 import { useTipsStore } from '../../stores/tips'
 import { usePeersStore } from '../../stores/peers'
+import { usePromptsStore } from '../../stores/prompts'
 import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
@@ -46,6 +47,8 @@ import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
+
+const PromptPicker = defineAsyncComponent(() => import('./PromptPicker.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -162,11 +165,11 @@ function resetExplorer(): void {
 }
 
 // Opened without a view transition: the tree must exist on the next tick to take focus.
-const explorerPanel = ref<{ showSearch: () => Promise<void> } | null>(null)
-async function showSearch(): Promise<void> {
+const explorerPanel = ref<{ showSearch: (query?: SearchQuery) => Promise<void> } | null>(null)
+async function showSearch(query?: SearchQuery): Promise<void> {
   explorerOpen.value = true
   await nextTick()
-  await explorerPanel.value?.showSearch()
+  await explorerPanel.value?.showSearch(query)
 }
 
 async function showExplorer(): Promise<void> {
@@ -829,6 +832,7 @@ function closeTab(tab: Tab): void {
 
 // Mouse paths of actions that have a chord: counted for the shortcut tip (stores/tips.ts).
 const tips = useTipsStore()
+const prompts = usePromptsStore()
 const ui = useUiStore()
 
 function mouseSplit(choice: SplitChoice, key: string): void {
@@ -1240,6 +1244,9 @@ function onGlobalKey(e: KeyboardEvent): void {
       break
     case 'reopen':
       void reopenLast()
+      break
+    case 'prompts':
+      prompts.open = !prompts.open
       break
   }
 }
@@ -2094,6 +2101,8 @@ onBeforeUnmount(() => {
             :active="visible && tabBoxes.has(pane.key)"
             @open="(path) => workspace.openFile(path, undefined, { cwd: pane.cwd })"
             @show-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path, split: { key: pane.key, dir: 'row' } }))"
+            @search="(q: SearchQuery) => void showSearch(q)"
+            @show-commit="(root, hash) => withViewTransition(() => workspace.openLog(root, { select: hash, split: { key: pane.key, dir: 'row' } }))"
           >
             <template #end>
               <ViewPaneControls
@@ -2352,6 +2361,7 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
+    <PromptPicker v-if="prompts.open && visible" @close="prompts.open = false" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { History, LoaderCircle, RotateCcw } from 'lucide-vue-next'
+import { GitCompareArrows, History, LoaderCircle, RotateCcw } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel } from '../../lib/changesView'
 import { now, relativeTime } from '../../lib/format'
-import { baseName, cpDiff, cpRestore, type CheckpointFile } from '../../lib/preview'
+import { baseName, cpDiff, cpRestore, type Checkpoint, type CheckpointFile } from '../../lib/preview'
+import { turnPair } from '../../lib/turnReview'
 import { useCheckpointsStore } from '../../stores/checkpoints'
 import { dirKey } from '../../stores/favorites'
+
+const TurnReview = defineAsyncComponent(() => import('./TurnReview.vue'))
 
 const props = defineProps<{ root: string }>()
 const emit = defineEmits<{ open: [path: string, keep: boolean] }>()
@@ -74,6 +77,13 @@ const labelOf = (label: string): string => {
   return kind === 'before' || kind === 'after' ? t(`workspace.checkpoints.${kind}`, { title }) : label
 }
 const STATUS_CLASS = { A: 'text-diff-add', D: 'text-diff-del', M: 'text-diff-mod' } as const
+
+const review = ref<{ before: Checkpoint; after: Checkpoint; title: string } | null>(null)
+const pairOf = (cp: Checkpoint) => (state.value ? turnPair(state.value.list, cp.id) : null)
+function openReview(cp: Checkpoint): void {
+  const pair = pairOf(cp)
+  if (pair) review.value = pair
+}
 </script>
 
 <template>
@@ -102,6 +112,9 @@ const STATUS_CLASS = { A: 'text-diff-add', D: 'text-diff-del', M: 'text-diff-mod
           <span class="shrink-0 text-2xs text-ink-faint tabular">{{ relativeTime(cp.at, locale, now) }}</span>
         </button>
         <div v-if="picked === cp.id && !busy" class="mx-1 mb-1 flex flex-col gap-1 rounded-inner bg-fill p-1.5">
+          <button v-if="pairOf(cp)" type="button" class="ccm-btn h-6 justify-center gap-1 text-2xs" data-turn-review-open @click="openReview(cp)">
+            <GitCompareArrows :size="12" aria-hidden="true" />{{ t('workspace.turnReview.open') }}
+          </button>
           <p v-if="!files.length" class="text-2xs text-ink-faint">{{ t('workspace.checkpoints.same') }}</p>
           <template v-else>
             <p class="text-2xs text-ink-faint">{{ t('workspace.checkpoints.since', { n: files.length }, files.length) }}</p>
@@ -125,5 +138,6 @@ const STATUS_CLASS = { A: 'text-diff-add', D: 'text-diff-del', M: 'text-diff-mod
       </li>
     </ul>
     <p v-if="notice" class="px-2 pb-1 text-2xs" :class="notice.ok ? 'text-ink-muted' : 'text-st-error'" role="status">{{ notice.text }}</p>
+    <TurnReview v-if="review" :root="root" :before="review.before" :after="review.after" :title="review.title" @close="review = null" @open="(p: string, k: boolean) => emit('open', p, k)" />
   </div>
 </template>

@@ -32,6 +32,8 @@ import {
   Palette,
   Lightbulb,
   GitGraph,
+  BookText,
+  Inbox,
 } from 'lucide-vue-next'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
@@ -48,6 +50,8 @@ import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
+import { usePromptsStore } from '../stores/prompts'
+import { useInboxStore } from '../stores/inbox'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
@@ -82,6 +86,8 @@ const terminals = useTerminalsStore()
 const favorites = useFavoritesStore()
 const settings = useSettingsStore()
 const connection = useConnectionStore()
+const prompts = usePromptsStore()
+const inbox = useInboxStore()
 
 const query = ref('')
 const scope = ref<Scope>('all')
@@ -154,7 +160,23 @@ const items = computed<Item[]>(() => {
           },
         ]
       : []),
+    ...(hasTerminals
+      ? [
+          {
+            id: 'c:prompts',
+            group: 'actions' as const,
+            label: t('workspace.prompts.palette'),
+            sub: isMac ? '⇧⌘P' : 'Alt+Shift+P',
+            icon: BookText,
+            run: () => {
+              ui.setView('workspace')
+              prompts.open = true
+            },
+          },
+        ]
+      : []),
     { id: 'c:compact', group: 'nav', label: ui.compact ? t('compact.exit') : t('compact.enter'), icon: Minimize2, run: () => ui.toggleCompact() },
+    { id: 'c:inbox', group: 'actions', label: t('inbox.palette'), sub: t('inbox.button', { n: inbox.items.length }, inbox.items.length), icon: Inbox, run: () => (inbox.open = true) },
     { id: 'c:recap', group: 'actions', label: t('palette.recap'), icon: FileDown, run: () => ui.openRecap() },
     ...(ended ? [{ id: 'c:clear', group: 'actions' as const, label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),
     { id: 'c:notify', group: 'prefs', label: t('settings.notifyEnable'), icon: Bell, on: settings.notifyEnabled, run: () => void settings.toggleNotifications() },

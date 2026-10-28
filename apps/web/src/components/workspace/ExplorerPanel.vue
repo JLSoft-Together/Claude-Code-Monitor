@@ -6,7 +6,7 @@ import { X } from 'lucide-vue-next'
 import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
 import { isMac } from '../../lib/platform'
-import { hasChecks, hasExplorer, hasSearch, revealPath } from '../../lib/preview'
+import { hasChecks, hasExplorer, hasSearch, revealPath, type SearchQuery } from '../../lib/preview'
 import { useExplorerChanges } from '../../composables/useExplorerChanges'
 import { useExplorerStore, type ExplorerView } from '../../stores/explorer'
 import CreateEntryDialog from './CreateEntryDialog.vue'
@@ -68,14 +68,15 @@ watch(changes.isRepo, (repo) => {
 
 const VIEWS: ExplorerView[] = ['files', 'changes', ...(hasSearch ? (['search'] as const) : []), ...(hasChecks ? (['checks'] as const) : [])]
 const tabs = ref<HTMLElement | null>(null)
-const searchView = ref<{ focus: () => void } | null>(null)
+const searchView = ref<{ focus: () => void; seed: (q: SearchQuery) => void } | null>(null)
 const flutterRoot = computed(() => !!explorer.root && !!explorer.state.listings.get(explorer.root)?.some((e) => e.name === 'pubspec.yaml'))
 
 /** Ctrl/⌘+Shift+F (Alt+Shift+F on Windows): Search view, input focused. */
-async function showSearch(): Promise<void> {
+async function showSearch(query?: SearchQuery): Promise<void> {
   if (!hasSearch || !changes.isRepo.value) return
   explorer.setView('search')
   await nextTick()
+  if (query) searchView.value?.seed(query)
   searchView.value?.focus()
 }
 defineExpose({ showSearch })

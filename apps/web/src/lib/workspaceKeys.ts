@@ -22,6 +22,8 @@ export type WorkspaceAction =
   | { t: 'moveTab'; step: 1 | -1 }
   | { t: 'zoom' }
   | { t: 'reopen' }
+  /** Prompt library (⇧⌘P; Alt+Shift+P elsewhere: Ctrl+Shift+P is Quick Open). */
+  | { t: 'prompts' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
@@ -46,6 +48,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyE' && shift && !alt) return { t: 'explorer' }
     if (code === 'KeyF' && shift && !alt) return { t: 'search' }
     if (code === 'KeyO' && shift && !alt) return { t: 'mission' }
+    if (code === 'KeyP' && shift && !alt) return { t: 'prompts' }
     if ((code === 'BracketLeft' || code === 'BracketRight') && shift && !alt) return { t: 'cycleTab', step: code === 'BracketRight' ? 1 : -1 }
     if (PAGES[code] && shift && !alt) return { t: 'moveTab', step: PAGES[code]! }
     if (digit && !shift && !alt) return { t: 'tab', index: Number(digit[1]) - 1 }
@@ -65,6 +68,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (alt && shift && !ctrl) {
     if (code === 'KeyD') return { t: 'split' }
     if (code === 'KeyF') return { t: 'search' }
+    if (code === 'KeyP') return { t: 'prompts' }
     if (code === 'Equal' || code === 'NumpadAdd') return { t: 'split', dir: 'row' }
     if (code === 'Minus' || code === 'NumpadSubtract') return { t: 'split', dir: 'col' }
   }

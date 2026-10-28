@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, indentOnInput } from '@codemirror/language'
+import { lintGutter, lintKeymap, setDiagnostics, type Diagnostic } from '@codemirror/lint'
 import { unifiedMergeView } from '@codemirror/merge'
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { Compartment, EditorSelection, EditorState, Text, type Extension } from '@codemirror/state'
@@ -19,17 +20,22 @@ import {
   lineNumbers,
   rectangularSelection,
 } from '@codemirror/view'
+import type { BuildError } from '@ccm/shared'
 import { editorHighlight, editorTheme } from '../../lib/editor/cmTheme'
 import { languageFor } from '../../lib/editor/cmLanguage'
 import { isMac } from '../../lib/platform'
 import { useSettingsStore } from '../../stores/settings'
 
-const props = withDefaults(defineProps<{ doc: string; base?: string | null; grammar: string | null; wrap?: boolean; compare?: string | null; line?: number | null }>(), {
+const props = withDefaults(
+  defineProps<{ doc: string; base?: string | null; grammar: string | null; wrap?: boolean; compare?: string | null; line?: number | null; problems?: readonly BuildError[] | null }>(),
+  {
+  problems: null,
   base: null,
   wrap: false,
   compare: null,
   line: null,
-})
+  },
+)
 const emit = defineEmits<{
   dirty: [dirty: boolean]
   change: []
@@ -89,6 +95,7 @@ function extensions(): Extension[] {
     crosshairCursor(),
     highlightActiveLine(),
     highlightSelectionMatches(),
+    lintGutter(),
     search({ top: true }),
     keymap.of([
       { key: 'Mod-s', preventDefault: true, run: () => (emit('save'), true) },
@@ -96,6 +103,7 @@ function extensions(): Extension[] {
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...searchKeymap,
+      ...lintKeymap,
       ...historyKeymap,
       indentWithTab,
     ]),
@@ -119,6 +127,23 @@ function extensions(): Extension[] {
 async function applyLanguage(grammar: string | null): Promise<void> {
   const ext = await languageFor(grammar).catch(() => null)
   if (view && grammar === props.grammar) view.dispatch({ effects: language.reconfigure(ext ?? []) })
+}
+
+function diagnostics(state: EditorState, list: readonly BuildError[] | null): Diagnostic[] {
+  const doc = state.doc
+  const out: Diagnostic[] = []
+  for (const e of list ?? []) {
+    if (e.line < 1 || e.line > doc.lines) continue
+    const l = doc.line(e.line)
+    const from = Math.min(l.from + Math.max(0, e.col - 1), l.to)
+    const word = /^[\w$.]+/.exec(doc.sliceString(from, l.to))?.[0].length ?? 0
+    out.push({ from, to: word ? from + word : l.to, severity: e.severity, message: e.message })
+  }
+  return out
+}
+
+function applyProblems(): void {
+  if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, props.problems)))
 }
 
 function revealLine(line: number, select = false): void {
@@ -154,6 +179,13 @@ defineExpose({
   revealLine,
   focus: (): void => view?.focus(),
   openFind: (): void => void (view && openSearchPanel(view)),
+  /** Selected text, else the word at the cursor. */
+  word: (): string => {
+    if (!view) return ''
+    const sel = view.state.selection.main
+    const range = sel.empty ? view.state.wordAt(sel.head) : sel
+    return range ? view.state.sliceDoc(range.from, range.to) : ''
+  },
 })
 
 onMounted(() => {
@@ -163,6 +195,7 @@ onMounted(() => {
   baseline = props.base === null ? view.state.doc : Text.of(props.base.split(/\r\n|\r|\n/))
   setDirty(!view.state.doc.eq(baseline))
   void applyLanguage(props.grammar)
+  applyProblems()
   if (props.line) revealLine(props.line)
 })
 
@@ -175,6 +208,7 @@ watch(
   () => props.grammar,
   (g) => void applyLanguage(g),
 )
+watch(() => props.problems, applyProblems)
 watch(
   () => props.wrap,
   (on) => view?.dispatch({ effects: wrapping.reconfigure(on ? EditorView.lineWrapping : []) }),
@@ -199,6 +233,42 @@ watch(
 </template>
 
 <style>
+/* Check problems: theme tokens instead of @codemirror/lint's fixed colours (one extra class to beat its scoped theme). */
+.ccm-editor .cm-content .cm-lintRange-error,
+.ccm-editor .cm-content .cm-lintRange-warning {
+  background-image: none;
+  text-decoration: underline wavy var(--ccm-error);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+.ccm-editor .cm-content .cm-lintRange-warning {
+  text-decoration-color: var(--ccm-warning);
+}
+.ccm-editor .cm-tooltip.cm-tooltip-lint {
+  background: var(--ccm-surface);
+  color: var(--ccm-ink);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.ccm-editor .cm-tooltip .cm-diagnostic-error {
+  border-left-color: var(--ccm-error);
+}
+.ccm-editor .cm-tooltip .cm-diagnostic-warning {
+  border-left-color: var(--ccm-warning);
+}
+.ccm-editor .cm-gutter .cm-lint-marker-error,
+.ccm-editor .cm-gutter .cm-lint-marker-warning {
+  content: '';
+  display: block;
+  width: 0.5em;
+  height: 0.5em;
+  margin: 0.25em;
+  border-radius: 50%;
+  background: var(--ccm-error);
+}
+.ccm-editor .cm-gutter .cm-lint-marker-warning {
+  background: var(--ccm-warning);
+}
 /* Search / replace panel = chrome (material), outside the scoped block because CodeMirror builds it. */
 .ccm-editor .cm-panels {
   background: var(--ccm-material);

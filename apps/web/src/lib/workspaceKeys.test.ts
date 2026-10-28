@@ -56,6 +56,12 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('KeyZ', { metaKey: true, shiftKey: true }), true, false)).toBeNull()
   })
 
+  it('Alt+Shift+P (⇧⌘P on macOS) opens the prompt library', () => {
+    expect(workspaceAction(key('KeyP', { altKey: true, shiftKey: true }), false, false)).toEqual({ t: 'prompts' })
+    expect(workspaceAction(key('KeyP', { metaKey: true, shiftKey: true }), true, false)).toEqual({ t: 'prompts' })
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'quickOpen' })
+  })
+
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })

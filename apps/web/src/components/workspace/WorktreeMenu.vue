@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Asterisk, Check, GitBranch, GitMerge, Hexagon, LoaderCircle, Plus, SquareTerminal, Trash2 } from 'lucide-vue-next'
+import { Asterisk, Check, GitBranch, GitCompareArrows, GitMerge, Hexagon, LoaderCircle, Plus, SquareTerminal, Trash2 } from 'lucide-vue-next'
 import type { PtyPreset, PtyServerMessage, PtyWorktree, WorktreeError } from '@ccm/shared'
 import { shortPath } from '../../lib/format'
-import { hasWtMerge, wtCompare, wtMerge, type WtCompare } from '../../lib/preview'
+import { hasWtCompare, hasWtMerge, wtCompare, wtMerge, type WtCompare } from '../../lib/preview'
 import { PtyConnection } from '../../lib/ptyClient'
 import { dirKey } from '../../stores/favorites'
 import { useSettingsStore } from '../../stores/settings'
 import { useWorkspaceStore } from '../../stores/workspace'
 import SegmentedControl from '../ui/SegmentedControl.vue'
+
+const WorktreeCompare = defineAsyncComponent(() => import('./WorktreeCompare.vue'))
 
 const props = defineProps<{ cwd: string; anchor: DOMRect; trigger?: HTMLElement | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -21,7 +23,19 @@ const settings = useSettingsStore()
 const compares = ref<Record<string, WtCompare>>({})
 const merging = ref<string | null>(null)
 const mergeNote = ref<{ path: string; ok: boolean; text: string } | null>(null)
+/** Worktree whose squash hit conflicts: offers to keep them in the main checkout. */
+const conflictAt = ref<string | null>(null)
 const editCopy = ref(false)
+/** Compare: first worktree picked, then the dialog once a second one is. */
+const compareFirst = ref<PtyWorktree | null>(null)
+const comparing = ref<{ a: PtyWorktree; b: PtyWorktree } | null>(null)
+
+function pickCompare(wt: PtyWorktree): void {
+  const first = compareFirst.value
+  if (!first) return void (compareFirst.value = wt)
+  compareFirst.value = null
+  if (first.path !== wt.path) comparing.value = { a: first, b: wt }
+}
 const copyText = ref(settings.worktreeCopy.join(', '))
 
 async function loadCompares(): Promise<void> {
@@ -35,13 +49,32 @@ async function merge(wt: PtyWorktree, mode: 'ff' | 'squash'): Promise<void> {
   if (!wt.branch || busy.value) return
   busy.value = true
   mergeNote.value = null
+  conflictAt.value = null
   const res = await wtMerge(props.cwd, wt.branch, mode)
   busy.value = false
+  if (!res.ok && res.error === 'conflict' && mode === 'squash') conflictAt.value = wt.path
   if (res.ok) {
     merging.value = null
     mergeNote.value = { path: wt.path, ok: true, text: t('workspace.wt.merge.done', { branch: wt.branch, hash: res.hash.slice(0, 7) }) }
     await loadCompares()
     confirming.value = wt.path
+  } else if (res.error !== 'cancelled') {
+    mergeNote.value = { path: wt.path, ok: false, text: t(`workspace.wt.merge.error.${res.error}`, { detail: res.detail ?? '' }) }
+  }
+}
+
+async function keepConflicts(wt: PtyWorktree): Promise<void> {
+  if (!wt.branch || busy.value) return
+  busy.value = true
+  const res = await wtMerge(props.cwd, wt.branch, 'squash', true)
+  busy.value = false
+  conflictAt.value = null
+  if (!res.ok && res.kept) {
+    workspace.openChanges(res.kept)
+    emit('close')
+  } else if (res.ok) {
+    mergeNote.value = { path: wt.path, ok: true, text: t('workspace.wt.merge.done', { branch: wt.branch, hash: res.hash.slice(0, 7) }) }
+    await loadCompares()
   } else if (res.error !== 'cancelled') {
     mergeNote.value = { path: wt.path, ok: false, text: t(`workspace.wt.merge.error.${res.error}`, { detail: res.detail ?? '' }) }
   }
@@ -142,6 +175,7 @@ async function remove(wt: PtyWorktree): Promise<void> {
 
 function onOutside(e: PointerEvent): void {
   const target = e.target as Node
+  if (comparing.value || (target as Element).closest?.('[data-wt-compare-layer]')) return
   if (!root.value?.contains(target) && !props.trigger?.contains(target)) emit('close')
 }
 
@@ -164,7 +198,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
     role="dialog"
     tabindex="-1"
     :aria-label="t('workspace.wt.title')"
-    @keydown.esc.stop="emit('close')"
+    @keydown.esc.stop="compareFirst ? (compareFirst = null) : emit('close')"
   >
     <div class="flex items-center gap-2 px-2 pt-1">
       <GitBranch :size="14" class="shrink-0 text-ink-muted" aria-hidden="true" />
@@ -213,6 +247,19 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
               <GitMerge :size="14" aria-hidden="true" />
             </button>
             <button
+              v-if="hasWtCompare && wt.branch && !wt.prunable && worktrees.length > 1"
+              type="button"
+              class="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-inner hover:bg-fill hover:text-ink"
+              :class="compareFirst?.path === wt.path ? 'bg-accent-soft text-accent-ink' : 'text-ink-faint'"
+              :title="compareFirst && compareFirst.path !== wt.path ? t('workspace.wt.compare.with', { a: compareFirst.branch, b: wt.branch }) : t('workspace.wt.compare.pick')"
+              :aria-label="compareFirst && compareFirst.path !== wt.path ? t('workspace.wt.compare.with', { a: compareFirst.branch, b: wt.branch }) : t('workspace.wt.compare.pick')"
+              :aria-pressed="compareFirst?.path === wt.path"
+              :data-wt-compare-pick="wt.branch"
+              @click="pickCompare(wt)"
+            >
+              <GitCompareArrows :size="14" aria-hidden="true" />
+            </button>
+            <button
               v-if="!wt.main"
               type="button"
               class="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-inner text-ink-faint hover:bg-fill hover:text-st-error focus-visible:text-st-error"
@@ -248,9 +295,14 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
             </div>
           </div>
           <p v-if="mergeNote?.path === wt.path" class="mx-2 mb-1 text-xs" :class="mergeNote.ok ? 'text-ink-muted' : 'text-st-error'" role="status">{{ mergeNote.text }}</p>
+          <div v-if="conflictAt === wt.path" class="mx-2 mb-1 flex items-center gap-2 text-xs text-ink-muted">
+            <span class="min-w-0 flex-1">{{ t('workspace.conflicts.keepHint') }}</span>
+            <button type="button" class="ccm-btn h-7 shrink-0" :disabled="busy" data-wt-keep-conflicts @click="keepConflicts(wt)">{{ t('workspace.conflicts.keep') }}</button>
+          </div>
           <p v-if="rowError?.path === wt.path" class="mx-2 mb-1 text-xs text-st-error" role="alert">{{ rowError.message }}</p>
         </li>
       </ul>
+      <p v-if="compareFirst" class="px-2 text-2xs text-ink-muted" role="status">{{ t('workspace.wt.compare.pickSecond', { a: compareFirst.branch }) }}</p>
 
       <form class="flex flex-col gap-1.5 border-t border-line px-1 pt-2" @submit.prevent="create">
         <label :for="`wt-branch`" class="px-1 text-2xs font-semibold text-ink-faint">{{ t('workspace.wt.new') }}</label>
@@ -283,5 +335,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
         </p>
       </form>
     </template>
+    <WorktreeCompare
+      v-if="comparing"
+      :cwd="cwd"
+      :a="{ branch: comparing.a.branch!, path: comparing.a.path }"
+      :b="{ branch: comparing.b.branch!, path: comparing.b.path }"
+      :here="herePath"
+      @close="comparing = null"
+    />
   </div>
 </template>

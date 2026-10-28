@@ -121,7 +121,38 @@ export type WtError = 'denied' | 'not-repo' | 'unknown' | 'dirty-base' | 'not-ff
 export type WtCompare =
   | { ok: true; base: string; branch: string; ahead: number; behind: number; files: number; added: number; removed: number; merged: boolean }
   | { ok: false; error: WtError; detail?: string }
-export type WtMerge = { ok: true; mode: 'ff' | 'squash'; hash: string } | { ok: false; error: WtError; detail?: string }
+export type WtMerge = { ok: true; mode: 'ff' | 'squash'; hash: string } | { ok: false; error: WtError; detail?: string; kept?: string }
+export interface SlashCommand {
+  name: string
+  description: string
+  scope: 'project' | 'user'
+}
+export type CommandsListResult = { ok: true; commands: SlashCommand[] } | { ok: false; error: 'denied' | 'unavailable' }
+export interface WtBetweenFile {
+  path: string
+  status: 'A' | 'M' | 'D' | 'T'
+  added: number
+  removed: number
+  binary: boolean
+}
+export type WtBetween = { ok: true; a: string; b: string; files: WtBetweenFile[]; truncated: boolean } | { ok: false; error: WtError | 'denied'; detail?: string }
+export type WtBetweenDiff = { ok: true; text: string; tooLarge: boolean } | { ok: false; error: WtError | 'denied'; detail?: string }
+export type WtTake = { ok: true } | { ok: false; error: WtError | 'denied' | 'dirty' | 'missing'; detail?: string }
+export type OverlapFiles =
+  | { ok: true; root: string; common: string | null; branch: string | null; base: string | null; files: string[]; truncated: boolean }
+  | { ok: false; error: 'not-repo' | 'failed' | 'unavailable' }
+export type DryMerge = { ok: true; clean: boolean; conflicts: string[] } | { ok: false; error: 'unknown' | 'unsupported' | 'failed' | 'cancelled' | 'unavailable'; detail?: string }
+export type MergeKind = 'merge' | 'squash' | 'rebase' | 'cherry-pick' | 'revert'
+export type MergeStateResult = { ok: true; kind: MergeKind | null } | { ok: false; error: 'failed' | 'unavailable' }
+export type MergeAbortResult = { ok: true } | { ok: false; error: 'none' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
+export interface BlameCommit {
+  author: string
+  time: number
+  summary: string
+}
+export type BlameResult =
+  | { ok: true; root: string; commits: Record<string, BlameCommit>; lines: string[] }
+  | { ok: false; error: 'denied' | 'not-repo' | 'untracked' | 'too-large' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
 export interface Checkpoint {
   id: string
   at: number
@@ -133,9 +164,10 @@ export interface CheckpointFile {
   added?: number
   removed?: number
 }
-export type CpError = 'denied' | 'off' | 'busy' | 'unknown' | 'failed' | 'cancelled' | 'unavailable'
+export type CpError = 'denied' | 'off' | 'busy' | 'unknown' | 'failed' | 'cancelled' | 'stale' | 'unavailable'
 export type CpState = { ok: true; root: string; on: boolean; list: Checkpoint[] } | { ok: false; error: CpError }
 export type CpDiff = { ok: true; files: CheckpointFile[] } | { ok: false; error: CpError; detail?: string }
+export type CpFileDiff = { ok: true; text: string; tooLarge: boolean } | { ok: false; error: CpError; detail?: string }
 export type CpResult = { ok: true; id?: string | null } | { ok: false; error: CpError; detail?: string }
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
@@ -168,11 +200,22 @@ interface PreviewBridge {
   checkRun?: (dir: string, check: CheckRequest) => Promise<CheckResult>
   checkCancel?: (dir: string) => Promise<boolean>
   wtCompare?: (dir: string, branch: string) => Promise<WtCompare>
-  wtMerge?: (dir: string, branch: string, mode: 'ff' | 'squash') => Promise<WtMerge>
+  wtMerge?: (dir: string, branch: string, mode: 'ff' | 'squash', keep?: boolean) => Promise<WtMerge>
+  mergeState?: (root: string) => Promise<MergeStateResult>
+  mergeAbort?: (root: string) => Promise<MergeAbortResult>
+  gitBlame?: (file: string) => Promise<BlameResult>
+  commandsList?: (dir: string) => Promise<CommandsListResult>
+  wtDiff?: (dir: string, a: string, b: string) => Promise<WtBetween>
+  wtFileDiff?: (dir: string, a: string, b: string, path: string) => Promise<WtBetweenDiff>
+  wtTake?: (dir: string, from: string, path: string) => Promise<WtTake>
+  overlapFiles?: (dir: string) => Promise<OverlapFiles>
+  overlapDryRun?: (dir: string, a: string, b: string) => Promise<DryMerge>
   cpState?: (root: string) => Promise<CpState>
   cpSet?: (root: string, on: boolean) => Promise<boolean>
   cpTake?: (root: string, label: string) => Promise<CpResult>
-  cpDiff?: (root: string, id: string) => Promise<CpDiff>
+  cpDiff?: (root: string, id: string, to?: string) => Promise<CpDiff>
+  cpFileDiff?: (root: string, from: string, to: string, path: string) => Promise<CpFileDiff>
+  cpRevertHunk?: (root: string, path: string, patch: string) => Promise<CpResult>
   cpRestore?: (root: string, id: string, paths: string[]) => Promise<CpResult>
   logRefs?: (dir: string) => Promise<RefsResult>
   logPage?: (root: string, query: LogQuery) => Promise<LogPageResult>
@@ -245,12 +288,31 @@ export const checkRun = (dir: string, check: CheckRequest): Promise<CheckResult>
 export const checkCancel = (dir: string): Promise<boolean> => bridge?.checkCancel?.(dir) ?? Promise.resolve(false)
 export const hasWtMerge = typeof bridge?.wtMerge === 'function'
 export const wtCompare = (dir: string, branch: string): Promise<WtCompare> => bridge?.wtCompare?.(dir, branch) ?? Promise.resolve(unavailable)
-export const wtMerge = (dir: string, branch: string, mode: 'ff' | 'squash'): Promise<WtMerge> => bridge?.wtMerge?.(dir, branch, mode) ?? Promise.resolve(unavailable)
+export const wtMerge = (dir: string, branch: string, mode: 'ff' | 'squash', keep = false): Promise<WtMerge> => bridge?.wtMerge?.(dir, branch, mode, keep) ?? Promise.resolve(unavailable)
+export const mergeState = (root: string): Promise<MergeStateResult> => bridge?.mergeState?.(root) ?? Promise.resolve(unavailable)
+export const mergeAbort = (root: string): Promise<MergeAbortResult> => bridge?.mergeAbort?.(root) ?? Promise.resolve(unavailable)
 export const hasCheckpoints = typeof bridge?.cpState === 'function'
+export const hasBlame = typeof bridge?.gitBlame === 'function'
+export const gitBlame = (file: string): Promise<BlameResult> => bridge?.gitBlame?.(file) ?? Promise.resolve(unavailable)
+export const hasOverlap = typeof bridge?.overlapFiles === 'function'
+/** Files the checkout of `dir` changed against the main branch (committed since the merge base + uncommitted). */
+export const overlapFiles = (dir: string): Promise<OverlapFiles> => bridge?.overlapFiles?.(dir) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+/** `git merge-tree --write-tree` of two branch tips: nothing on disk changes. */
+export const overlapDryRun = (dir: string, a: string, b: string): Promise<DryMerge> => bridge?.overlapDryRun?.(dir, a, b) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const hasWtCompare = typeof bridge?.wtDiff === 'function'
+export const wtDiff = (dir: string, a: string, b: string): Promise<WtBetween> => bridge?.wtDiff?.(dir, a, b) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const wtFileDiff = (dir: string, a: string, b: string, path: string): Promise<WtBetweenDiff> =>
+  bridge?.wtFileDiff?.(dir, a, b, path) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+/** `git checkout <from> -- path` in the checkout of `dir`, after a native confirm; refused while the file is dirty. */
+export const wtTake = (dir: string, from: string, path: string): Promise<WtTake> => bridge?.wtTake?.(dir, from, path) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+/** `.claude/commands` of the folder (and its repo) plus the user's, names + descriptions only. */
+export const commandsList = (dir: string): Promise<CommandsListResult> => bridge?.commandsList?.(dir) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
 export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
 export const cpTake = (root: string, label: string): Promise<CpResult> => bridge?.cpTake?.(root, label) ?? Promise.resolve(unavailable)
-export const cpDiff = (root: string, id: string): Promise<CpDiff> => bridge?.cpDiff?.(root, id) ?? Promise.resolve(unavailable)
+export const cpDiff = (root: string, id: string, to?: string): Promise<CpDiff> => bridge?.cpDiff?.(root, id, to) ?? Promise.resolve(unavailable)
+export const cpFileDiff = (root: string, from: string, to: string, path: string): Promise<CpFileDiff> => bridge?.cpFileDiff?.(root, from, to, path) ?? Promise.resolve(unavailable)
+export const cpRevertHunk = (root: string, path: string, patch: string): Promise<CpResult> => bridge?.cpRevertHunk?.(root, path, patch) ?? Promise.resolve(unavailable)
 export const cpRestore = (root: string, id: string, paths: string[]): Promise<CpResult> => bridge?.cpRestore?.(root, id, paths) ?? Promise.resolve(unavailable)
 export const hasSearch = typeof bridge?.search === 'function'
 export const searchFiles = (dir: string, query: SearchQuery): Promise<SearchResult> => bridge?.search?.(dir, query) ?? Promise.resolve(unavailable)

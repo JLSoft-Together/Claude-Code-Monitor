@@ -31,6 +31,7 @@ import { runState, type RailState } from '../../lib/rail/railModel'
 import { leaves } from '../../lib/splitLayout'
 import { useRunStore } from '../../stores/run'
 import { useSettingsStore } from '../../stores/settings'
+import { useOverlapStore } from '../../stores/overlap'
 import { isTerm, useWorkspaceStore, type Pane, type Tab } from '../../stores/workspace'
 import ArtImage from '../ArtImage.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
@@ -45,6 +46,8 @@ const emit = defineEmits<{ close: [focusOpener: boolean] }>()
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
+const overlap = useOverlapStore()
+watch(() => props.open, (o) => o && void overlap.scan(true), { immediate: true })
 const settings = useSettingsStore()
 const run = useRunStore()
 const rail = useRail()

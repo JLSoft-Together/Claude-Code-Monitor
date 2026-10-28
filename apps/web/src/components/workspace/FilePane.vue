@@ -5,7 +5,7 @@ let filePanes = 0
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
@@ -20,6 +20,8 @@ import { isMac } from '../../lib/platform'
 import { useFileChanges } from '../../composables/useFileChanges'
 import { useWindowCopy } from '../../composables/useWindowCopy'
 import { useSettingsStore } from '../../stores/settings'
+import { useChecksStore } from '../../stores/checks'
+import { problemsFor, stepProblem } from '../../lib/problems'
 import AccessPrompt from './AccessPrompt.vue'
 import ChangeRuler from './ChangeRuler.vue'
 import CodeMinimap from './CodeMinimap.vue'
@@ -33,13 +35,18 @@ import { nextStacked } from '../../lib/sideWidth'
 import { desktop } from '../../lib/desktop'
 import type { MenuEntry } from '../../lib/menu'
 import PaneMore from './PaneMore.vue'
+import ProblemBar from './ProblemBar.vue'
+import { declarationQuery, outline, type OutlineItem } from '../../lib/editor/outline'
+import type { SearchQuery } from '../../lib/preview'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
-import { baseName, changesDiscard, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
+import { blameRows, type BlameRow } from '../../lib/blame'
+import { baseName, changesDiscard, gitBlame, hasBlame, type BlameResult, dirOf, fileWrite, hasFileWrite, hasPreview, onPreviewChanged, openExternal, openPath, previewUrl, readFile, revealPath, unwatchRoot, watchRoot, type FileView } from '../../lib/preview'
 
 // CodeMirror stays out of the main chunk until a file is edited.
 const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
+const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
 interface EditorApi {
   text: () => string
   markSaved: (saved?: string) => void
@@ -47,6 +54,7 @@ interface EditorApi {
   revealLine: (line: number, select?: boolean) => void
   focus: () => void
   openFind: () => void
+  word: () => string
 }
 
 const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean; paneKey?: string }>(), { active: true, paneKey: undefined })
@@ -54,9 +62,13 @@ const emit = defineEmits<{
   open: [path: string]
   /** Repo root + absolute file path: open the Changes pane on this file. */
   showDiff: [root: string, path: string]
+  /** Blame annotation clicked: open the Git Log on that commit. */
+  showCommit: [root: string, hash: string]
+  /** Find usages / declaration: Find in Files with this query. */
+  search: [query: SearchQuery]
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const settings = useSettingsStore()
 const FLASH_MS = 1200
 // Only debounce between a keystroke and a live XML render (the preview renders at once on a new revision).
@@ -293,10 +305,13 @@ const html = computed(() => {
   for (let i = start; i < end; i++) {
     const lineTokens = tok?.[i] ?? [{ content: lines.value[i]! }]
     const g = marks.get(i)
-    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${flash.value.has(i) ? ' is-flash' : ''}${g ? ` g-${g.kind}` : ''}`
+    const pk = problemLines.value.get(i + 1)
+    const bl = blameLabels.value[i]
+    const bAttr = bl ? `<span class="b${bl.text ? '' : ' is-cont'}" aria-hidden="true"${bl.hash ? ` data-blame="${bl.hash}" title="${escapeHtml(bl.title)}"` : ''}>${escapeHtml(bl.text)}</span>` : ''
+    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${pk ? ` p-${pk}` : ''}${flash.value.has(i) ? ' is-flash' : ''}${g ? ` g-${g.kind}` : ''}`
     const gAttr = g ? ` data-block="${g.block}"` : ''
     const nAttr = g ? ` data-gutter title="${gutterTitle(g.block)}"` : ''
-    out += `<div class="${cls}" data-line="${i + 1}" data-i="${i}"${gAttr}><span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
+    out += `<div class="${cls}" data-line="${i + 1}" data-i="${i}"${gAttr}>${bAttr}<span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
   }
   if (windowed.value) out += spacer((n - end) * rowH.value)
   return out
@@ -420,6 +435,85 @@ function finishEdit(): void {
 }
 
 let editorLine: number | null = null
+const blameOn = ref(false)
+const blame = shallowRef<BlameResult | null>(null)
+let blameTicket = 0
+const blameShown = computed(() => blameOn.value && !editing.value && showSource.value && !!blame.value?.ok)
+const blameLabels = computed<BlameRow[]>(() => (blameShown.value && blame.value?.ok ? blameRows(blame.value, locale.value, t('workspace.blame.uncommitted')) : []))
+
+async function loadBlame(): Promise<void> {
+  const file = view.value?.path ?? props.path
+  const ticket = ++blameTicket
+  const res = await gitBlame(file)
+  if (ticket === blameTicket && blameOn.value) blame.value = res
+}
+function toggleBlame(): void {
+  blameOn.value = !blameOn.value
+  if (blameOn.value) void loadBlame()
+  else {
+    blameTicket++
+    blame.value = null
+  }
+}
+watch(
+  () => [view.value?.path, view.value?.mtimeMs],
+  () => blameOn.value && !editing.value && void loadBlame(),
+)
+
+const checks = useChecksStore()
+const problems = computed(() => (view.value?.kind === 'text' ? problemsFor(checks.problemRuns, view.value.path ?? props.path) : null))
+const problemLines = computed(() => {
+  const m = new Map<number, 'error' | 'warning'>()
+  for (const e of problems.value?.items ?? []) if (m.get(e.line) !== 'error') m.set(e.line, e.severity)
+  return m
+})
+/** Edited or saved after the check started: line numbers may have moved. */
+const problemsStale = computed(() => !!problems.value && (dirty.value || (view.value?.mtimeMs ?? 0) > problems.value.at))
+const problemIndex = ref(-1)
+watch(problems, () => (problemIndex.value = -1))
+
+const outlineItems = shallowRef<OutlineItem[] | null>(null)
+const outlineOpen = ref(false)
+function openOutline(): void {
+  const text = editing.value ? (editor.value?.text() ?? '') : (pending.value ?? view.value?.text ?? '')
+  outlineItems.value = outline(text, grammar.value)
+  outlineOpen.value = true
+}
+function pickOutline(line: number): void {
+  outlineOpen.value = false
+  if (editing.value) {
+    editor.value?.revealLine(line, true)
+    editor.value?.focus()
+  } else void jumpTo(line)
+}
+function closeOutline(): void {
+  outlineOpen.value = false
+  if (editing.value) editor.value?.focus()
+}
+
+/** Word at the editor cursor, else the selected text in the viewer (one line). */
+function currentWord(): string {
+  const raw = editing.value ? (editor.value?.word() ?? '') : (window.getSelection()?.toString() ?? '')
+  const w = raw.trim()
+  return w.includes('\n') || w.length > 200 ? '' : w
+}
+function findUsages(word = currentWord()): void {
+  if (word) emit('search', { q: word, regex: false, caseSensitive: true, word: /^\w+$/.test(word) })
+}
+function findDeclaration(word = currentWord()): void {
+  if (word) emit('search', { q: declarationQuery(word), regex: true, caseSensitive: true, word: false })
+}
+
+function stepProblems(dir: 1 | -1): void {
+  const p = problems.value
+  if (!p) return
+  const from = problemIndex.value >= 0 ? (p.items[problemIndex.value]?.line ?? 0) : editing.value ? (editorLine ?? 0) : (targetLine.value ?? 0)
+  const i = stepProblem(p.items, from, dir)
+  if (i < 0) return
+  problemIndex.value = i
+  void jumpTo(p.items[i]!.line)
+}
+
 function onCursorLine(line: number): void {
   editorLine = line
   if (showDesign.value) layoutLine.value = line
@@ -699,6 +793,22 @@ function onWindowKey(e: KeyboardEvent): void {
     void save()
     return
   }
+  if (inPane && e.key === 'F12' && !e.altKey && (isMac ? e.metaKey : e.ctrlKey) && !e.shiftKey) {
+    e.preventDefault()
+    openOutline()
+    return
+  }
+  if (inPane && e.key === 'F12' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault()
+    if (e.shiftKey) findUsages()
+    else findDeclaration()
+    return
+  }
+  if (inPane && e.key === 'F8' && !e.ctrlKey && !e.metaKey && !e.altKey && problems.value && !inEditor(e.target)) {
+    e.preventDefault()
+    stepProblems(e.shiftKey ? -1 : 1)
+    return
+  }
   if (editing.value) {
     // Find / replace / F7 inside the editor belong to CodeMirror.
     if (inEditor(e.target)) return
@@ -781,6 +891,11 @@ function closePopup(refocus = false): void {
 }
 
 function onCodeClick(e: MouseEvent): void {
+  const blamed = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-blame]')
+  if (blamed?.dataset.blame && blame.value?.ok) {
+    emit('showCommit', blame.value.root, blamed.dataset.blame)
+    return
+  }
   const marker = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-gutter]')
   const row = marker?.closest<HTMLElement>('[data-block]')
   if (!row) {
@@ -960,6 +1075,10 @@ const headMore = computed<MenuEntry[]>(() => {
   if (text) {
     out.push({ id: 'wrap', label: t('workspace.viewer.wrap'), icon: wrap.value ? Check : TextWrap, disabled: !showSource.value })
     out.push({ id: 'find', label: t('workspace.viewer.find'), icon: Search, shortcut: isMac ? '⌘F' : 'Ctrl+F' })
+    out.push({ id: 'outline', label: t('workspace.outline.open'), icon: ListTree, shortcut: isMac ? '⌘F12' : 'Ctrl+F12', disabled: !showSource.value && !editing.value })
+    out.push({ id: 'usages', label: t('workspace.outline.usages'), icon: Search, shortcut: '⇧F12' })
+    out.push({ id: 'declaration', label: t('workspace.outline.declaration'), icon: Search, shortcut: 'F12' })
+    if (hasBlame) out.push({ id: 'blame', label: t('workspace.blame.toggle'), icon: blameOn.value ? Check : GitCommitHorizontal, disabled: editing.value || !showSource.value })
   }
   if (canEdit.value) {
     out.push({ separator: true })
@@ -980,6 +1099,10 @@ function pickHead(id: string): void {
   else if (id === 'fwp') fwpOpen.value = !fwpOpen.value
   else if (id === 'md') mdPreview.value = !mdPreview.value
   else if (id === 'wrap') wrap.value = !wrap.value
+  else if (id === 'blame') toggleBlame()
+  else if (id === 'outline') openOutline()
+  else if (id === 'usages') findUsages()
+  else if (id === 'declaration') findDeclaration()
   else if (id === 'find') {
     if (editing.value) editor.value?.openFind()
     else if (findOpen.value) closeFind()
@@ -995,7 +1118,7 @@ function pickHead(id: string): void {
 </script>
 
 <template>
-  <section ref="root" tabindex="-1" class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-well shadow-card outline-none" :aria-label="t('workspace.viewer.title')" @focusout="onFocusOut">
+  <section ref="root" tabindex="-1" class="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-well shadow-card outline-none" :aria-label="t('workspace.viewer.title')" @focusout="onFocusOut">
     <div class="ccm-material @container flex h-9 min-w-0 shrink-0 items-center gap-0.5 border-b border-line px-2 select-none" role="toolbar" :aria-label="t('workspace.viewer.toolbar')" data-pane-head>
       <FileText :size="15" class="mr-1 shrink-0 text-agent-file @max-[300px]:mr-0" aria-hidden="true" />
       <span class="min-w-0 truncate text-xs font-semibold text-ink" :title="view?.path ?? path">{{ name }}</span>
@@ -1219,6 +1342,8 @@ function pickHead(id: string): void {
       <span class="min-w-0 flex-1">{{ t('editor.disk.comparing') }}</span>
       <button type="button" class="ccm-btn-plain shrink-0 text-2xs" @click="compareText = null">{{ t('editor.disk.closeCompare') }}</button>
     </div>
+    <OutlinePicker v-if="outlineOpen" :items="outlineItems" @pick="pickOutline" @close="closeOutline" />
+    <ProblemBar v-if="problems && showSource" :problems="problems" :index="problemIndex" :stale="problemsStale" @step="stepProblems" />
     <p v-if="liveText !== null && showDesign" class="flex shrink-0 items-center gap-1.5 border-b border-line px-3 py-1 text-2xs text-ink-muted" data-file-live>
       <Eye :size="12" aria-hidden="true" />{{ t('editor.live') }}
     </p>
@@ -1234,6 +1359,7 @@ function pickHead(id: string): void {
         :wrap="wrap"
         :compare="compareText"
         :line="targetLine ?? line ?? null"
+        :problems="problems?.items ?? null"
         @dirty="(d: boolean) => (dirty = d)"
         @change="onEditorChange"
         @save="save()"
@@ -1261,7 +1387,7 @@ function pickHead(id: string): void {
           v-else
           ref="codeEl"
           class="code ccm-code min-w-full py-2"
-          :class="[wrap ? 'is-wrap' : 'w-max', { 'is-all': allSelected }]"
+          :class="[wrap ? 'is-wrap' : 'w-max', { 'is-all': allSelected, 'is-blame': blameShown }]"
           :style="codeMinWidth ? { minWidth: codeMinWidth } : undefined"
           role="document"
           :data-windowed="windowed ? '' : undefined"
@@ -1343,6 +1469,34 @@ function pickHead(id: string): void {
   grid-template-columns: max-content minmax(0, 1fr);
   transition: background-color var(--ccm-dur-slow, 300ms) var(--ease-out-quint, ease-out);
 }
+.code.is-blame :deep(.r) {
+  grid-template-columns: 15em max-content minmax(0, 1fr);
+}
+.code :deep(.b) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  overflow: hidden;
+  padding-inline: 0.75em 0.5em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--ccm-well-ink) 70%, var(--ccm-well));
+  background: var(--ccm-well);
+  box-shadow: inset -1px 0 0 var(--ccm-line);
+  font-family: var(--font-sans);
+  font-size: 0.85em;
+  user-select: none;
+}
+.code :deep(.b[data-blame]) {
+  cursor: pointer;
+}
+.code :deep(.b[data-blame]:hover) {
+  color: var(--ccm-well-ink);
+  text-decoration: underline;
+}
+.code.is-blame :deep(.n) {
+  left: 15em;
+}
 .code :deep(.n) {
   position: sticky;
   left: 0;
@@ -1387,6 +1541,16 @@ function pickHead(id: string): void {
 .code :deep(.r.g-del-end .n::after) {
   top: auto;
   bottom: -4px;
+}
+.code :deep(.r.p-error .c) {
+  text-decoration: underline wavy var(--ccm-error);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+.code :deep(.r.p-warning .c) {
+  text-decoration: underline wavy var(--ccm-warning);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
 }
 .code :deep(.r.is-target) {
   background: color-mix(in srgb, var(--ccm-selection, #3f638b) 45%, transparent);

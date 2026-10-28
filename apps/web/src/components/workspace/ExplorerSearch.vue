@@ -105,7 +105,13 @@ function clear(): void {
   input.value?.focus()
 }
 
-defineExpose({ focus: () => input.value?.select() ?? input.value?.focus() })
+/** Find usages / declaration from the editor: fills the query and its options, then searches. */
+function seed(q: SearchQuery): void {
+  opts.value = { regex: q.regex, caseSensitive: q.caseSensitive, word: q.word }
+  text.value = q.q
+}
+
+defineExpose({ focus: () => input.value?.select() ?? input.value?.focus(), seed })
 </script>
 
 <template>

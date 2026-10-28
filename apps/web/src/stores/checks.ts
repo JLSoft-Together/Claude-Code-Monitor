@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { checkKey } from '../lib/checks'
+import { problemFiles, type ProblemRun } from '../lib/problems'
 import { checkCancel, checkRun, type CheckRequest, type CheckResult } from '../lib/preview'
 import { dirKey } from './favorites'
 
 export interface CheckRun {
+  root: string
   check: CheckRequest
   running: boolean
   result: CheckResult | null
@@ -20,7 +22,7 @@ export const useChecksStore = defineStore('checks', () => {
   async function run(root: string, check: CheckRequest): Promise<void> {
     const key = dirKey(root)
     if (runs.value[key]?.running) return
-    runs.value = { ...runs.value, [key]: { check, running: true, result: null, at: Date.now() } }
+    runs.value = { ...runs.value, [key]: { root, check, running: true, result: null, at: Date.now() } }
     const result = await checkRun(root, check)
     const cur = runs.value[key]
     if (!cur || checkKey(cur.check) !== checkKey(check)) return
@@ -29,5 +31,17 @@ export const useChecksStore = defineStore('checks', () => {
 
   const cancel = (root: string): Promise<boolean> => checkCancel(root)
 
-  return { runs, of, run, cancel }
+  const isAbs = (p: string) => /^(?:[A-Za-z]:[\/]|[\/])/.test(p)
+  const problemRuns = computed<ProblemRun[]>(() => {
+    const out: ProblemRun[] = []
+    for (const r of Object.values(runs.value)) {
+      if (r.running || !r.result?.ok || !r.result.errors.length) continue
+      const root = r.root.replace(/[\/]+$/, '')
+      out.push({ label: r.check.name, at: r.at, errors: r.result.errors.map((e) => (isAbs(e.file) ? e : { ...e, file: `${root}/${e.file}` })) })
+    }
+    return out
+  })
+  const marked = computed(() => problemFiles(problemRuns.value))
+
+  return { runs, of, run, cancel, problemRuns, marked }
 })

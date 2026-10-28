@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Columns2, LoaderCircle, X } from 'lucide-vue-next'
+import { Columns2, LoaderCircle, TriangleAlert, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweeps, type PanePeer } from '../../../composables/usePaneInfo'
 import type { MissionCard, MissionTile } from '../../../lib/rail/mission'
 import { peerSlot, stateWord, type PeerSlot, type RailState } from '../../../lib/rail/railModel'
 import type { RunBadge } from '../../../lib/runUi'
 import type { Box } from '../../../lib/splitLayout'
-import { isTerm, useWorkspaceStore, type Pane } from '../../../stores/workspace'
+import { useOverlapStore } from '../../../stores/overlap'
+import { isTerm, useWorkspaceStore, workCwd, type Pane } from '../../../stores/workspace'
 import StatusIcon from '../../StatusIcon.vue'
 import PaneIcon from '../PaneIcon.vue'
 import TabRenameInput from '../TabRenameInput.vue'
@@ -43,6 +44,17 @@ const { t } = useI18n()
 const info = usePaneInfo()
 const workspace = useWorkspaceStore()
 const paneOf = (k: string): Pane | undefined => workspace.panes.find((p) => p.key === k)
+const overlap = useOverlapStore()
+const overlaps = computed<Record<string, string>>(() =>
+  Object.fromEntries(
+    props.card.tiles.flatMap((x) => {
+      const pane = paneOf(x.paneKey)
+      const hits = pane && isTerm(pane) ? overlap.hitsFor(workCwd(pane)) : []
+      const n = new Set(hits.flatMap((h) => h.files)).size
+      return n ? [[x.paneKey, t('workspace.overlap.chip', { n, name: hits[0]!.branch ?? '' }, n)]] : []
+    }),
+  ),
+)
 
 const BADGE: Record<string, string> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', idle: 'idle', parked: 'stale' }
 const badgeOf = (s: RailState | null): string | undefined => (s ? BADGE[s] : undefined)
@@ -257,6 +269,9 @@ onBeforeUnmount(() => clearTimeout(clickTimer))
                 </Transition>
               </span>
               <span class="min-w-0 flex-1 truncate font-medium text-ink">{{ tile.title }}</span>
+              <span v-if="overlaps[tile.paneKey]" class="inline-flex shrink-0 items-center text-warning" :title="overlaps[tile.paneKey]" data-mission-overlap>
+                <TriangleAlert :size="10" aria-hidden="true" /><span class="sr-only">{{ overlaps[tile.paneKey] }}</span>
+              </span>
               <Transition name="ccm-fade" mode="out-in">
                 <span
                   v-if="peerLine(tile.paneKey)"

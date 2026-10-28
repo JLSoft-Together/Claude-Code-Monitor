@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, SquareCheck, SquareMinus, SquarePlus, Undo2 } from 'lucide-vue-next'
+import { Check, ChevronRight, FileWarning, GitMerge, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, SquareCheck, SquareMinus, SquarePlus, Undo2 } from 'lucide-vue-next'
 import { absoluteIn, dirOfRel, fileStepKey, groupChanges, KIND_CLASS, KIND_LETTER, samePath, scrollSideways, stageState } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
@@ -23,15 +23,20 @@ import {
   hasChanges,
   hasCommit,
   hasLog,
+  mergeAbort,
+  mergeState,
   onChangesUpdated,
   type ChangeEntry,
   type ChangesError,
+  type MergeKind,
   type StageResult,
 } from '../../lib/preview'
 import type { MenuEntry } from '../../lib/menu'
 import DiffView from './DiffView.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import PaneMore from './PaneMore.vue'
+
+const ConflictView = defineAsyncComponent(() => import('./ConflictView.vue'))
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
 const emit = defineEmits<{
@@ -67,6 +72,8 @@ const hiddenImports = ref(0)
 const diffState = ref<'idle' | 'loading' | 'binary' | 'too-large' | 'empty' | 'error'>('idle')
 const diffError = ref<ChangesError | null>(null)
 const notice = ref<string | null>(null)
+const mergeKind = ref<MergeKind | null>(null)
+const aborting = ref(false)
 const currentBlock = ref(0)
 const opts = ref<DiffOpts>(readDiffOpts())
 const treeMode = ref(readLocal(TREE_KEY) === '1')
@@ -155,9 +162,25 @@ async function loadStatus(): Promise<void> {
   entries.value = res.entries
   truncated.value = res.truncated
   emit('count', res.entries.length)
+  void loadMergeState(res.root)
   if (applySelect()) return
   if (!selected.value || !res.entries.some((e) => e.path === selected.value)) selected.value = ordered.value[0]?.path ?? null
   else void loadDiff(true)
+}
+
+async function loadMergeState(root: string): Promise<void> {
+  const res = await mergeState(root)
+  if (repoRoot.value === root) mergeKind.value = res.ok ? res.kind : null
+}
+
+async function abortMerge(): Promise<void> {
+  const root = repoRoot.value
+  if (!root || aborting.value) return
+  aborting.value = true
+  const res = await mergeAbort(root)
+  aborting.value = false
+  if (!res.ok && res.error !== 'cancelled' && res.error !== 'none') notice.value = t('workspace.conflicts.abortFailed', { detail: res.detail ?? res.error })
+  await loadStatus()
 }
 
 /** `select` prop (Show diff / Ctrl+D elsewhere) → that file, once the list is in. */
@@ -183,7 +206,7 @@ watch(
 async function loadDiff(keepPosition = false): Promise<void> {
   const run = ++diffSeq
   const entry = selectedEntry.value
-  if (!entry || !repoRoot.value) {
+  if (!entry || !repoRoot.value || entry.kind === 'conflict') {
     diffFile.value = null
     diffState.value = 'idle'
     return
@@ -826,6 +849,13 @@ function pickHead(id: string): void {
       <span class="min-w-0 flex-1 truncate" :title="notice">{{ notice }}</span>
     </p>
 
+    <div v-if="mergeKind" class="flex shrink-0 items-center gap-2 border-b border-line bg-st-waiting-soft px-3 py-1.5 text-xs text-ink" role="status" data-merge-banner>
+      <GitMerge :size="13" class="shrink-0" aria-hidden="true" />
+      <span class="shrink-0 font-semibold">{{ t(`workspace.conflicts.state.${mergeKind}`) }}</span>
+      <span class="min-w-0 flex-1 truncate text-ink-muted">{{ t('workspace.conflicts.stateHint') }}</span>
+      <button type="button" class="ccm-btn h-6 shrink-0 text-2xs" :disabled="aborting" data-merge-abort @click="abortMerge()">{{ t('workspace.conflicts.abort') }}</button>
+    </div>
+
     <div v-if="!hasChanges || statusError" class="grid min-h-0 flex-1 place-items-center p-6">
       <div class="flex max-w-sm flex-col items-center gap-2 text-center">
         <FileWarning :size="26" class="text-ink-faint" aria-hidden="true" />
@@ -985,7 +1015,15 @@ function pickHead(id: string): void {
         <p v-if="hiddenImports && (diffState === 'idle' || diffState === 'empty')" class="shrink-0 border-b border-well-line px-3 py-1 text-2xs text-well-ink" data-diff-imports-hidden>
           {{ t('workspace.diff.importsHidden', { n: hiddenImports }, hiddenImports) }}
         </p>
-        <div class="ccm-scroll min-h-0 flex-1" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
+        <ConflictView
+          v-if="selectedEntry?.kind === 'conflict' && repoRoot"
+          :root="repoRoot"
+          :path="selectedEntry.path"
+          :abs="absolute(selectedEntry.path)"
+          @open="(p: string, l?: number) => emit('open', p, l)"
+          @staged="loadStatus()"
+        />
+        <div v-else class="ccm-scroll min-h-0 flex-1" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
           <div v-if="!selectedEntry" class="grid size-full place-items-center p-6 text-sm text-well-ink">{{ t('workspace.changes.selectFile') }}</div>
           <div v-else-if="diffState === 'loading'" class="grid size-full place-items-center text-xs text-well-ink" role="status">{{ t('workspace.changes.loading') }}</div>
           <div v-else-if="diffState !== 'idle' || !diffFile" class="grid size-full place-items-center p-6 text-center text-sm text-well-ink">
