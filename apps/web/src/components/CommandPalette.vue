@@ -35,7 +35,9 @@ import {
   GitGraph,
   BookText,
   Inbox,
+  Wrench,
 } from 'lucide-vue-next'
+import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
@@ -194,6 +196,14 @@ const items = computed<Item[]>(() => {
     { id: 'c:compact', group: 'nav', label: ui.compact ? t('compact.exit') : t('compact.enter'), icon: Minimize2, run: () => ui.toggleCompact() },
     { id: 'c:inbox', group: 'actions', label: t('inbox.palette'), sub: t('inbox.button', { n: inbox.items.length }, inbox.items.length), icon: Inbox, run: () => (inbox.open = true) },
     { id: 'c:recap', group: 'actions', label: t('palette.recap'), icon: FileDown, run: () => ui.openRecap() },
+    ...DEV_TOOLS.map((id) => ({
+      id: `c:tool:${id}`,
+      group: 'actions' as const,
+      label: t('workspace.devTools.palette', { name: t(`workspace.devTools.tab.${id}`) }),
+      sub: t(`workspace.devTools.sub.${id}`),
+      icon: Wrench,
+      run: () => (ui.devTools = id),
+    })),
     ...(ended ? [{ id: 'c:clear', group: 'actions' as const, label: t('sessions.clearEnded', { n: ended }), icon: Trash2, run: () => void connection.dismissEnded() }] : []),
     { id: 'c:notify', group: 'prefs', label: t('settings.notifyEnable'), icon: Bell, on: settings.notifyEnabled, run: () => void settings.toggleNotifications() },
     { id: 'c:sound', group: 'prefs', label: t('settings.sound'), icon: Volume2, on: settings.sound, run: () => (settings.sound = !settings.sound) },

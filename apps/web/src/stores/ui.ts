@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { TourId } from '../lib/tour'
+import type { DevTool } from '../lib/devTools'
 import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
 import type { NodeSize, Point } from '../lib/layout'
@@ -222,6 +223,8 @@ export const useUiStore = defineStore('ui', () => {
   const diagnosticsOpen = ref(false)
   /** Workspace `.planning` board (PlanBoard.vue): open with a folder, or null = the focused pane's project. */
   const planBoard = ref<{ dir: string | null } | null>(null)
+  /** Local developer tools dialog (DevToolsDialog.vue), opened on a tool from the palette. */
+  const devTools = ref<DevTool | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
@@ -491,6 +494,7 @@ export const useUiStore = defineStore('ui', () => {
     recapOpen,
     diagnosticsOpen,
     planBoard,
+    devTools,
     tourOpen,
     setupOpen,
     settingsOpen,

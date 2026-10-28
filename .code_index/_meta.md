@@ -187,3 +187,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 markdown split preview: `FilePane.vue` `mdSplit` / `showMdSplit` / `syncMdSplit`, `lib/markdown.ts` `renderMarkdown(text, { sourceLines })`, `lib/markdownSync.ts` `previewScrollFor`, `CodeEditor.vue` `topLine` emit.
 - 2026-10-29 v70 colour swatches: `lib/editor/colors.ts` (`findColors`, `replaceRgb`, `alphaFirst`), `lib/editor/colorSwatches.ts` `colorSwatches`, `CodeEditor.vue` compartment `swatches`.
 - 2026-10-29 v70 compare two files: `lib/explorer/contextMenu.ts` ctx `compare` + actions `compare-*`, `ExplorerTree.vue` prop `compareSel`, `ExplorerPanel.vue` `openCompare` / `compareClipboard` → `TextCompareDialog`.
+- 2026-10-29 v70 dev tools: `lib/devTools.ts`, `DevToolsDialog.vue`, `ui.devTools`, palette `c:tool:<id>`.

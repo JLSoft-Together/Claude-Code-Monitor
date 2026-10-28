@@ -34,6 +34,7 @@ import { isMac } from './lib/platform'
 const WorkspaceView = defineAsyncComponent(() => import('./components/workspace/WorkspaceView.vue'))
 const ExtensionsView = defineAsyncComponent(() => import('./components/extensions/ExtensionsView.vue'))
 const DevicesView = defineAsyncComponent(() => import('./components/devices/DevicesView.vue'))
+const DevToolsDialog = defineAsyncComponent(() => import('./components/DevToolsDialog.vue'))
 
 const { t } = useI18n()
 const connection = useConnectionStore()
@@ -131,6 +132,7 @@ onBeforeUnmount(() => {
     </div>
     <CommandPalette />
     <RecapDialog />
+    <DevToolsDialog v-if="ui.devTools" :tool="ui.devTools" @close="ui.devTools = null" />
     <DiagnosticsDialog />
     <QuickSetup />
     <OnboardingTour />
