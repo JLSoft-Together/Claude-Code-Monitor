@@ -3,6 +3,7 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import commitI18n from './workspace-commit'
 import diff from './workspace-diff'
 import log from './workspace-log'
 import rail from './workspace-rail'
@@ -73,6 +74,7 @@ export default {
     ...viewer.en,
     ...tier2.en,
     ...explorer.en,
+    ...commitI18n.en,
     ...diff.en,
     ...log.en,
     ...rail.en,
@@ -122,6 +124,35 @@ export default {
       body: 'Pick what to run and where. Terminals run inside Orrery, so keystrokes never leave this machine.',
     },
     wt: {
+      merge: {
+        open: 'Merge into {base}…',
+        ahead: '{n} commit to {base} · {files} files | {n} commits to {base} · {files} files',
+        merged: 'in {base}',
+        explain: 'Bring {branch} into {base} in the main checkout. You confirm the exact git commands first; the main checkout must have no uncommitted changes.',
+        stats: '{files} files, +{added} −{removed}; {base} has {behind} newer commits.',
+        ff: 'Fast-forward',
+        squash: 'Squash into one commit',
+        done: '{branch} is in {hash}. Remove the worktree now? (the branch is kept)',
+        error: {
+          denied: 'This folder is not open in a pane.',
+          'not-repo': 'Not a git repository.',
+          unknown: 'That branch is gone.',
+          'dirty-base': 'The main checkout has uncommitted changes; commit or stash them first.',
+          'not-ff': 'The main branch moved on, so fast-forward is not possible; use Squash. {detail}',
+          conflict: 'The squash hit conflicts and was undone; nothing changed. {detail}',
+          cancelled: 'Cancelled.',
+          failed: 'Merge failed. {detail}',
+          empty: 'Nothing to bring in: the changes are already there.',
+          unavailable: 'Merging needs the desktop app.',
+        },
+      },
+      copy: {
+        label: 'Files copied into a new worktree (comma separated; **/ for any folder)',
+        summary: 'Copies {list} from the main checkout',
+        nothing: 'nothing',
+        edit: 'Edit',
+        save: 'Save',
+      },
       title: 'Worktrees',
       openIn: 'Open a terminal in {path}',
       detached: 'detached {head}',
@@ -251,6 +282,11 @@ export default {
     diffTitle: 'Uncommitted in this checkout: {files} changed files, {untracked} new. Checked {checked}.',
     loop: '{tool} failed {n}× in 5 min',
     loopTitle: '{n} of {calls} tool calls failed in the last 5 minutes (mostly {tool}). Claude may be retrying the same thing.',
+    compacting: 'Compacting context · {for}',
+    compactingAuto: 'Auto-compacting context · {for}',
+    compactingTitle: 'Claude Code is summarizing this conversation (hook bridge). The session answers again when it finishes.',
+    denied: 'Auto mode denied {n}×',
+    deniedTitle: 'Tool calls auto mode refused (hook bridge): {tools}',
     conflict: 'Same checkout as {names}',
     conflictHot: 'Editing the same checkout as {names}',
     conflictTitle: 'Several sessions work in one repo and branch; they can overwrite each other\'s files. A git worktree per session avoids it. Click to show the other session.',
@@ -389,6 +425,16 @@ export default {
     loadingSessions: 'Loading sessions…',
     offline: 'Collector not reachable.',
     offlineHint: 'Start it with npm run dev in the project folder. Retrying automatically.',
+    projects: {
+      label: 'Live sessions by project',
+      noProject: 'No folder',
+      sessions: '{n} session | {n} sessions',
+      waiting: '{n} waiting',
+      working: '{n} working',
+      costTitle: 'Status line cost of these sessions',
+      filterTitle: 'Show only sessions in {name}',
+      clearTitle: 'Show sessions of every project',
+    },
   },
   activity: {
     filterSession: 'This session only',
@@ -468,6 +514,7 @@ export default {
     unpin: 'Unpin (float over the map)',
     close: 'Close',
     session: 'Session',
+    closeSheet: 'Close panel',
     resize: 'Resize {panel}',
     resizeHint: 'Drag to resize, arrow keys to adjust, double-click to reset',
     collapse: 'Collapse',
@@ -529,6 +576,7 @@ export default {
       wsFocus: 'Move focus to the pane beside it',
       wsQuickOpen: 'Go to file in the project',
       wsExplorer: 'Show the file explorer',
+    wsSearch: 'Search in project files',
       wsNextChange: 'Next / previous change (file viewer, Changes)',
       wsDiffFile: 'Previous / next file in Changes',
       wsJumpSource: 'Open the file at the current change (Changes)',
@@ -939,34 +987,26 @@ export default {
         body: 'This page watches every Claude Code session running on this machine, plus the Codex CLI runs they start, and tells you which one needs you. It only reads local files: it never types into an agent, never calls an API and costs no tokens. Take a one-minute tour?',
       },
       tabs: {
-        title: 'Three views',
-        body: 'Monitor shows what is running right now. Usage adds up tokens and cost by day, model and project. History shows how today went: time working versus waiting for you.',
+        title: 'Monitor and Workspace',
+        body: 'Monitor shows what is running right now. Workspace holds your terminals, editor and git. The … button next to them opens Usage (tokens and cost by day, model and project), History (how today went), Extensions and Devices.',
       },
       waiting: {
         title: 'Who needs you',
         body: 'When a session stops to ask for permission or an answer, it shows up in this strip with how long it has waited. Click the name to find it on the map, the window icon to bring its terminal to the front, or the bell to snooze it for 15 minutes.',
         absent: 'Nobody is waiting right now, so the strip is hidden. It appears here as soon as a session needs you.',
       },
-      metrics: {
-        title: 'At a glance',
-        body: 'Live numbers: sessions, sub-agents, working, waiting, errors, tokens, how fast you reply and the daily budget. Hover a number for what it includes.',
-      },
       sessions: {
         title: 'Your sessions',
-        body: 'One card per terminal: status, folder, git branch, uncommitted changes and context use. Its buttons jump to the terminal, open the folder in Explorer or VS Code, rename the session or pin it. Favorites below start a new session in a saved folder with one click.',
+        body: 'One card per terminal: status, folder, git branch, uncommitted changes and context use. Its buttons jump to the terminal, open the folder in Explorer or VS Code, rename the session or pin it. Favorites below start a new session in a saved folder with one click. The panel starts closed; open it from the map toolbar.',
       },
       map: {
         title: 'Agent Map',
         body: 'Each session with the sub-agents it started, live. Click a node for details. Drag nodes, resize them from any edge, scroll to zoom. The layout is remembered; Rearrange resets it.',
       },
-      activity: {
-        title: 'Activity',
-        body: 'A running log of what happened: status changes, sub-agents starting and finishing, tool calls. Tool calls can be hidden when the list gets noisy.',
-      },
       limits: {
         title: 'Plan limits',
         body: 'Your 5-hour and weekly usage with time until reset and a forecast. Click for details.',
-        absent: 'Not shown yet: these numbers come from the status line bridge. Open Settings, copy the snippet into ~/.claude/settings.json and they appear after the next Claude reply.',
+        absent: 'Not shown yet: these numbers come from the status line bridge. Turn it on in Settings (one click, after you confirm) and they appear after the next Claude reply.',
       },
       palette: {
         title: 'Find anything: {palette}',
@@ -978,11 +1018,11 @@ export default {
       },
       settings: {
         title: 'Notifications and settings',
-        body: 'The bell turns on desktop notifications when a session waits. The gear holds sound, reminders for long waits, a daily budget, the status line setup and Diagnostics for when something looks wrong.',
+        body: 'This menu turns on desktop notifications when a session waits (its icon becomes a bell). It also holds sound, reminders for long waits, a daily budget, the status line bridge and Diagnostics for when something looks wrong.',
       },
       finish: {
         title: 'You are set',
-        body: 'Leave this tab open while you work; it updates on its own. Open this guide again from Settings or {palette}.',
+        body: 'Leave Orrery open while you work; it updates on its own, also from the tray. Open this guide again from Settings or {palette}.',
       },
     },
   },
@@ -1001,6 +1041,16 @@ export default {
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   },
   history: {
+    heatmap: {
+      title: 'When agents work',
+      hint: 'Claude replies per weekday and hour over the last 4 weeks, from the usage scan (no content read).',
+      loading: 'Loading…',
+      empty: 'No replies in the last 4 weeks yet.',
+      cell: '{day} {hour}:00 — {n} reply | {day} {hour}:00 — {n} replies',
+      peak: 'Busiest: {day} around {hour}:00',
+      less: 'Less',
+      more: 'More',
+    },
     workShare: '{p}% working',
     showHours: 'Show by hour',
     hideHours: 'Hide by hour',
@@ -1028,6 +1078,13 @@ export default {
   recap: {
     open: 'Daily recap',
     title: 'Daily recap',
+    titleWeek: 'Weekly recap',
+    span: 'Period',
+    spanDay: 'One day',
+    spanWeek: '7 days',
+    weekEnd: 'Last day of the period',
+    byDay: 'By day',
+    vsPrevious: '{pct} vs the 7 days before',
     day: 'Day',
     today: 'Today',
     cost: 'Est. cost',

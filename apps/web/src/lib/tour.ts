@@ -4,13 +4,15 @@ export interface TourStep {
   target?: string
   /** Has a `tour.steps.<id>.absent` hint for when the element is not on screen yet. */
   absent?: boolean
+  /** Monitor panel opened while this step shows (closed again after, if the tour opened it). */
+  panel?: 'sessions'
 }
 
 export const TOUR_STEPS: TourStep[] = [
   { id: 'welcome' },
   { id: 'tabs', target: 'tabs' },
   { id: 'waiting', target: 'waiting', absent: true },
-  { id: 'sessions', target: 'sessions' },
+  { id: 'sessions', target: 'sessions', panel: 'sessions' },
   { id: 'map', target: 'map' },
   { id: 'limits', target: 'limits', absent: true },
   { id: 'palette', target: 'palette' },

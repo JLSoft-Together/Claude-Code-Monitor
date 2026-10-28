@@ -60,14 +60,29 @@ function measure(): void {
   })
 }
 
+let openedPanel: 'sessions' | null = null
+
+function syncPanel(want: 'sessions' | null): boolean {
+  if (openedPanel && openedPanel !== want) {
+    if (ui.panels[openedPanel].open) ui.togglePanel(openedPanel)
+    openedPanel = null
+  }
+  if (!want || ui.panels[want].open) return false
+  ui.togglePanel(want)
+  openedPanel = want
+  return true
+}
+
 async function show(): Promise<void> {
+  const opened = syncPanel(ui.tourOpen ? (step.value.panel ?? null) : null)
   await nextTick()
   const el = target()
   const reduce = reducedMotion()
   el?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
   measure()
-  // Smooth scrolling moves the target after the first measurement.
+  // Smooth scrolling and the panel slide-in move the target after the first measurement.
   if (el && !reduce) window.setTimeout(measure, 350)
+  else if (opened) window.setTimeout(measure, 350)
   card.value?.focus()
 }
 
@@ -135,6 +150,7 @@ watch(
       index.value = 0
       void show()
     } else {
+      syncPanel(null)
       restoreFocus?.focus?.()
       restoreFocus = null
     }

@@ -64,6 +64,8 @@ export interface RunSettings {
 /** The folder settings of `RunSettings` (SDK / JDK paths). */
 export type RunSdkKey = 'flutterSdk' | 'androidSdk' | 'jdk'
 
+export type HooksState = 'ours' | 'partial' | 'none' | 'unreadable'
+
 export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
 
 interface DesktopBridge {
@@ -84,6 +86,9 @@ interface DesktopBridge {
   statusLineState?: () => Promise<StatusLineState | null>
   /** Native confirm, then writes the bridge into settings.json. */
   enableStatusLine?: () => Promise<'ok' | 'ours' | 'unreadable' | 'failed' | 'cancelled'>
+  /** Hook bridge in settings.json (docs §11y): read, or add / remove after a native confirm. */
+  hooksState?: () => Promise<HooksState | null>
+  setHooks?: (on: boolean) => Promise<'ok' | 'unreadable' | 'failed' | 'cancelled'>
   /** Native folder picker; the folder becomes readable by browser / file tabs. */
   grantFolder?: () => Promise<string | null>
   logs?: (action: 'copy' | 'save', report: string) => Promise<{ ok: boolean; path?: string } | null>

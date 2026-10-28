@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpFromLine, GitBranch, GitCompare, GitGraph, RotateCw } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, groupChanges, isShowDiffKey, KIND_CLASS, KIND_LETTER } from '../../lib/changesView'
+import { ArrowUpFromLine, Circle, CircleCheck, CircleDot, GitBranch, GitCompare, GitGraph, Minus, Plus, RotateCw } from 'lucide-vue-next'
+import { absoluteIn, dirOfRel, groupChanges, isShowDiffKey, KIND_CLASS, KIND_LETTER, stageState } from '../../lib/changesView'
 import { setDragPath } from '../../lib/explorer/dragPath'
 import { isMac } from '../../lib/platform'
-import { baseName, hasLog, hasPush, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
+import { baseName, gitStage, gitUnstage, hasCheckpoints, hasCommit, hasLog, hasPush, type ChangeEntry, type ChangesStatus } from '../../lib/preview'
+import CommitBox from './CommitBox.vue'
+import CheckpointsPanel from './CheckpointsPanel.vue'
 
 const props = defineProps<{ status: ChangesStatus | null; reading: boolean }>()
 const emit = defineEmits<{ open: [path: string, keep: boolean]; openDiff: [root: string, path?: string]; openLog: [root: string]; push: [root: string, branch: string]; refresh: [] }>()
@@ -67,6 +69,19 @@ const pushTitle = computed(() => {
   return s.ahead ? t('workspace.explorer.changesView.pushAhead', { n: s.ahead, upstream: s.upstream }, s.ahead) : t('workspace.explorer.changesView.push')
 })
 
+const stageError = ref<string | null>(null)
+async function setStaged(entries: readonly ChangeEntry[], on: boolean): Promise<void> {
+  const root = ok.value?.root
+  const paths = entries.filter((e) => e.kind !== 'conflict').flatMap((e) => (e.origPath ? [e.origPath, e.path] : [e.path]))
+  if (!root || !paths.length) return
+  const res = on ? await gitStage(root, paths) : await gitUnstage(root, paths)
+  stageError.value = res.ok ? null : t('workspace.commit.stageFailed', { detail: res.ok ? '' : (res.detail ?? res.error) })
+  emit('refresh')
+}
+const toggleStage = (e: ChangeEntry) => setStaged([e], stageState(e) !== 'staged')
+const STAGE_ICON = { staged: CircleCheck, partial: CircleDot, none: Circle } as const
+const groupStaged = (items: readonly ChangeEntry[]) => items.every((e) => stageState(e) === 'staged')
+
 const title = (e: ChangeEntry): string =>
   `${t(`workspace.changes.kind.${e.kind}`)}: ${e.origPath ? `${t('workspace.changes.renamedFrom', { path: e.origPath })} → ` : ''}${e.path}`
 </script>
@@ -122,6 +137,8 @@ const title = (e: ChangeEntry): string =>
       </button>
     </div>
 
+    <CommitBox v-if="hasCommit && ok" :status="ok" @committed="emit('refresh')" />
+    <p v-if="stageError" class="px-3 pb-1 text-2xs text-st-error" role="status">{{ stageError }}</p>
     <p v-if="!status" class="px-3 py-2 text-xs text-ink-muted" role="status">{{ t('workspace.changes.loading') }}</p>
     <p v-else-if="!status.ok" class="px-3 py-2 text-xs text-ink-muted">{{ t(`workspace.changes.error.${status.error}`) }}</p>
     <p v-else-if="!status.entries.length" class="px-3 py-2 text-xs text-ink-faint">{{ t('workspace.explorer.changesView.none') }}</p>
@@ -130,6 +147,16 @@ const title = (e: ChangeEntry): string =>
         <p :id="`xchg-${g.key}`" class="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-2xs font-semibold text-ink-faint">
           {{ t(`workspace.changes.groups.${g.key}`) }}
           <span class="tabular font-normal">{{ g.items.length }}</span>
+          <button
+            v-if="hasCommit && g.key !== 'conflicts'"
+            type="button"
+            class="ms-auto inline-flex size-4 cursor-pointer items-center justify-center rounded-[4px] text-ink-faint hover:bg-fill-strong hover:text-ink"
+            :title="groupStaged(g.items) ? t('workspace.commit.unstageAll') : t('workspace.commit.stageAll')"
+            :aria-label="groupStaged(g.items) ? t('workspace.commit.unstageAll') : t('workspace.commit.stageAll')"
+            @click="setStaged(g.items, !groupStaged(g.items))"
+          >
+            <component :is="groupStaged(g.items) ? Minus : Plus" :size="12" aria-hidden="true" />
+          </button>
         </p>
         <div
           v-for="e in g.items"
@@ -148,6 +175,20 @@ ${t('workspace.gutter.showDiff')}: ${isMac ? '⌥⌘D' : 'Ctrl+D'}`"
           @click="open(e)"
           @dblclick="open(e, true)"
         >
+          <button
+            v-if="hasCommit && e.kind !== 'conflict'"
+            type="button"
+            tabindex="-1"
+            class="inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-[4px] hover:bg-fill-strong"
+            :class="stageState(e) === 'none' ? 'text-ink-faint' : 'text-accent-ink'"
+            :title="t(`workspace.commit.state.${stageState(e)}`)"
+            :aria-label="t(`workspace.commit.state.${stageState(e)}`)"
+            :aria-pressed="stageState(e) === 'staged'"
+            @click.stop="toggleStage(e)"
+            @dblclick.stop
+          >
+            <component :is="STAGE_ICON[stageState(e)]" :size="12" aria-hidden="true" />
+          </button>
           <span class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="KIND_CLASS[e.kind]" aria-hidden="true">{{ KIND_LETTER[e.kind] }}</span>
           <span class="sr-only">{{ t(`workspace.changes.kind.${e.kind}`) }}:</span>
           <span class="min-w-0 flex-1 truncate">
@@ -162,5 +203,6 @@ ${t('workspace.gutter.showDiff')}: ${isMac ? '⌥⌘D' : 'Ctrl+D'}`"
       </div>
       <p v-if="status.truncated" class="px-2 py-1.5 text-2xs text-ink-faint">{{ t('workspace.explorer.changesView.truncated', { n: status.entries.length }) }}</p>
     </div>
+    <CheckpointsPanel v-if="hasCheckpoints && ok" :root="ok.root" class="shrink-0" @open="(p, keep) => emit('open', p, keep)" />
   </div>
 </template>

@@ -1117,6 +1117,18 @@ body {
   translate: 24px 0;
 }
 
+/* narrow window: Sessions panel as a bottom sheet */
+.ccm-sheet-up-enter-active {
+  transition: translate var(--ccm-dur-base) var(--ease-out-quint);
+}
+.ccm-sheet-up-leave-active {
+  transition: translate var(--ccm-dur-fast) var(--ease-exit);
+}
+.ccm-sheet-up-enter-from,
+.ccm-sheet-up-leave-to {
+  translate: 0 100%;
+}
+
 /* key hints pop in (delay set per badge, left to right) */
 @keyframes ccm-kbd-in {
   from {

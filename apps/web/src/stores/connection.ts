@@ -196,6 +196,9 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'timeline.data':
           history.setTimeline(event.payload)
           break
+        case 'heatmap.data':
+          history.setHeatmap(event.payload)
+          break
         case 'terminal.openResult':
           ui.reportOpenResult(event.payload.terminalId, event.payload.app, event.payload.result)
           break
@@ -351,6 +354,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const stopJob = (jobId: string): boolean => request({ type: 'job.stop', jobId })
   const loadHistory = (): boolean => request({ type: 'history.get' })
   const loadTimeline = (): boolean => request({ type: 'timeline.get' })
+  const loadHeatmap = (): boolean => request({ type: 'heatmap.get' })
   const loadToolSpans = (terminalId: string | undefined, since: string): boolean => request({ type: 'toolSpans.get', terminalId, since })
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
     const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
@@ -421,6 +425,7 @@ export const useConnectionStore = defineStore('connection', () => {
     testToast,
     loadHistory,
     loadTimeline,
+    loadHeatmap,
     loadToolSpans,
     subscribeOffice,
   }

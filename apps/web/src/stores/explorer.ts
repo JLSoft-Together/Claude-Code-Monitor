@@ -24,7 +24,7 @@ export interface RootState {
   focused: string | null
 }
 
-export type ExplorerView = 'files' | 'changes'
+export type ExplorerView = 'files' | 'changes' | 'search' | 'checks'
 
 /** One transient line under the header; the component translates `key`. */
 export interface ExplorerStatus {

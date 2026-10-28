@@ -15,6 +15,8 @@ export type WorkspaceAction =
   | { t: 'quickOpen' }
   /** Sidebar → Explorer (⇧⌘E / Ctrl+Shift+E, as in VS Code). */
   | { t: 'explorer' }
+  /** Explorer → Search (⇧⌘F; Alt+Shift+F elsewhere: Ctrl+Shift+F is terminal find). */
+  | { t: 'search' }
   /** Mission Control: every tab of every project (⇧⌘O / Ctrl+Shift+O). */
   | { t: 'mission' }
   | { t: 'moveTab'; step: 1 | -1 }
@@ -42,6 +44,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyW' && !shift && !alt) return { t: 'closePane' }
     if (code === 'KeyP' && !shift && !alt) return { t: 'quickOpen' }
     if (code === 'KeyE' && shift && !alt) return { t: 'explorer' }
+    if (code === 'KeyF' && shift && !alt) return { t: 'search' }
     if (code === 'KeyO' && shift && !alt) return { t: 'mission' }
     if ((code === 'BracketLeft' || code === 'BracketRight') && shift && !alt) return { t: 'cycleTab', step: code === 'BracketRight' ? 1 : -1 }
     if (PAGES[code] && shift && !alt) return { t: 'moveTab', step: PAGES[code]! }
@@ -61,6 +64,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (ctrl && shift && !alt && PAGES[code]) return { t: 'moveTab', step: PAGES[code]! }
   if (alt && shift && !ctrl) {
     if (code === 'KeyD') return { t: 'split' }
+    if (code === 'KeyF') return { t: 'search' }
     if (code === 'Equal' || code === 'NumpadAdd') return { t: 'split', dir: 'row' }
     if (code === 'Minus' || code === 'NumpadSubtract') return { t: 'split', dir: 'col' }
   }

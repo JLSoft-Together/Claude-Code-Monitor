@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { GitMerge, Hourglass, Repeat, Snowflake } from 'lucide-vue-next'
+import { FoldVertical, GitMerge, Hourglass, Repeat, ShieldX, Snowflake } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { cacheState, formatUsd, quietFor } from '../lib/attention'
 import { compactNumber, duration, now } from '../lib/format'
@@ -56,6 +56,18 @@ const conflict = computed(() => {
   const names = c.others.map((id) => displayTitle(terminals.byId[id]) || id)
   return { hot: c.hot, first: c.others[0], label: t(c.hot ? 'terminal.conflictHot' : 'terminal.conflict', { names: names.join(', ') }) }
 })
+const compacting = computed(() => {
+  const since = props.terminal.compactingSince
+  if (!since || ended.value) return null
+  const key = props.terminal.compactTrigger === 'auto' ? 'terminal.compactingAuto' : 'terminal.compacting'
+  return t(key, { for: duration(since, now.value) ?? '' })
+})
+const denied = computed(() => {
+  const n = props.terminal.deniedCount
+  if (!n || ended.value) return null
+  const tools = props.terminal.deniedTools?.join(', ') || t('activity.unknownTool')
+  return { label: t('terminal.denied', { n }), title: t('terminal.deniedTitle', { tools }) }
+})
 const coldBump = useBump(() => cache.value?.cold)
 </script>
 
@@ -70,6 +82,12 @@ const coldBump = useBump(() => cache.value?.cold)
     :title="cache.title"
   >
     <Snowflake :key="coldBump" :size="13" class="shrink-0" :class="coldBump ? 'ccm-pop' : ''" aria-hidden="true" /><span class="truncate">{{ cache.label }}</span>
+  </p>
+  <p v-if="compacting" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-ink-muted" :title="t('terminal.compactingTitle')" data-card-compacting>
+    <FoldVertical :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate tabular-nums">{{ compacting }}</span>
+  </p>
+  <p v-if="denied" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-warning" :title="denied.title" data-card-denied>
+    <ShieldX :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ denied.label }}</span>
   </p>
   <p v-if="loop" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-warning" :title="loop.title">
     <Repeat :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ loop.label }}</span>

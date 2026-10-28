@@ -42,7 +42,7 @@ const en = {
     later: 'Skip for now',
     done: 'Done',
     open: 'Quick setup',
-    openHint: 'Notifications, status line bridge, folder access',
+    openHint: 'Notifications, status line and hook bridges, folder access',
     notify: {
       title: 'Desktop notifications',
       body: 'Know when an agent waits for you, finishes, or gets stuck.',
@@ -67,6 +67,15 @@ const en = {
       title: 'Projects folder',
       body: 'Let browser and file tabs open files anywhere under the folder that holds your projects, without asking per folder.',
       granted: 'Allowed: {path}',
+    },
+    turnOff: 'Turn off',
+    hooks: {
+      title: 'Hook bridge',
+      body: 'Shows when a session is compacting and how many tool calls auto mode denied. Adds three async hooks to ~/.claude/settings.json after you confirm; only the session id, times and tool names are kept.',
+      unreadable: 'settings.json could not be read.',
+      failed: 'Could not write settings.json.',
+      partial: 'Only some of the hooks are installed. Turn on again to repair.',
+      newSessions: 'New Claude sessions pick it up.',
     },
   },
 }
@@ -114,7 +123,7 @@ const vi: typeof en = {
     later: 'Để sau',
     done: 'Xong',
     open: 'Thiết lập nhanh',
-    openHint: 'Thông báo, status line bridge, quyền thư mục',
+    openHint: 'Thông báo, status line và hook bridge, quyền thư mục',
     notify: {
       title: 'Thông báo desktop',
       body: 'Biết ngay khi agent chờ bạn, làm xong hoặc bị kẹt.',
@@ -139,6 +148,15 @@ const vi: typeof en = {
       title: 'Thư mục project',
       body: 'Cho tab trình duyệt và tab tệp mở file ở bất kỳ đâu trong thư mục chứa các project, không phải hỏi từng thư mục.',
       granted: 'Đã cho phép: {path}',
+    },
+    turnOff: 'Tắt',
+    hooks: {
+      title: 'Hook bridge',
+      body: 'Cho biết session nào đang compact và auto mode đã từ chối bao nhiêu lệnh tool. Sau khi bạn xác nhận, app thêm ba hook chạy nền vào ~/.claude/settings.json; chỉ giữ id session, thời điểm và tên tool.',
+      unreadable: 'Không đọc được settings.json.',
+      failed: 'Không ghi được settings.json.',
+      partial: 'Mới cài một phần hook. Bật lại để sửa.',
+      newSessions: 'Các session Claude mới sẽ dùng cấu hình này.',
     },
   },
 }

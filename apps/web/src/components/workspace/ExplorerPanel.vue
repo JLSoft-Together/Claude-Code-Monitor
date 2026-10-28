@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BranchOpResult } from '@ccm/shared'
 import { X } from 'lucide-vue-next'
 import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
 import { isMac } from '../../lib/platform'
-import { hasExplorer, revealPath } from '../../lib/preview'
+import { hasChecks, hasExplorer, hasSearch, revealPath } from '../../lib/preview'
 import { useExplorerChanges } from '../../composables/useExplorerChanges'
 import { useExplorerStore, type ExplorerView } from '../../stores/explorer'
 import CreateEntryDialog from './CreateEntryDialog.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import ExplorerChanges from './ExplorerChanges.vue'
+import ExplorerSearch from './ExplorerSearch.vue'
+import ExplorerChecks from './ExplorerChecks.vue'
 import ExplorerTree from './ExplorerTree.vue'
 import PushDialog from './log/PushDialog.vue'
 
@@ -24,7 +26,7 @@ const props = defineProps<{
   visible: boolean
 }>()
 const emit = defineEmits<{
-  open: [path: string, keep: boolean]
+  open: [path: string, keep: boolean, line?: number]
   openDiff: [root: string, path?: string]
   openLog: [root: string]
   openSplit: [path: string]
@@ -59,17 +61,31 @@ watch(
 )
 
 // A plain folder has no Changes view.
+const needsRepo = (v: ExplorerView): boolean => v === 'changes' || v === 'search'
 watch(changes.isRepo, (repo) => {
-  if (!repo && explorer.view === 'changes') explorer.setView('files')
+  if (!repo && needsRepo(explorer.view)) explorer.setView('files')
 })
 
-const VIEWS: ExplorerView[] = ['files', 'changes']
+const VIEWS: ExplorerView[] = ['files', 'changes', ...(hasSearch ? (['search'] as const) : []), ...(hasChecks ? (['checks'] as const) : [])]
 const tabs = ref<HTMLElement | null>(null)
+const searchView = ref<{ focus: () => void } | null>(null)
+const flutterRoot = computed(() => !!explorer.root && !!explorer.state.listings.get(explorer.root)?.some((e) => e.name === 'pubspec.yaml'))
+
+/** Ctrl/⌘+Shift+F (Alt+Shift+F on Windows): Search view, input focused. */
+async function showSearch(): Promise<void> {
+  if (!hasSearch || !changes.isRepo.value) return
+  explorer.setView('search')
+  await nextTick()
+  searchView.value?.focus()
+}
+defineExpose({ showSearch })
 
 function onTabKey(e: KeyboardEvent): void {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
   e.preventDefault()
-  const next: ExplorerView = explorer.view === 'files' && changes.isRepo.value ? 'changes' : 'files'
+  const usable = VIEWS.filter((v) => !needsRepo(v) || changes.isRepo.value)
+  const at = Math.max(0, usable.indexOf(explorer.view))
+  const next = usable[(at + (e.key === 'ArrowRight' ? 1 : usable.length - 1)) % usable.length]!
   explorer.setView(next)
   tabs.value?.querySelector<HTMLElement>(`[data-view="${next}"]`)?.focus()
 }
@@ -204,8 +220,8 @@ const statusText = computed(() => {
           :data-view="v"
           :aria-selected="explorer.view === v"
           :tabindex="explorer.view === v ? 0 : -1"
-          :disabled="v === 'changes' && !changes.isRepo.value"
-          :title="v === 'changes' && !changes.isRepo.value ? t('workspace.explorer.notRepo') : undefined"
+          :disabled="needsRepo(v) && !changes.isRepo.value"
+          :title="needsRepo(v) && !changes.isRepo.value ? t('workspace.explorer.notRepo') : undefined"
           class="flex h-6 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1 rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast) disabled:cursor-default disabled:opacity-50"
           :class="explorer.view === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
           @click="explorer.setView(v)"
@@ -243,6 +259,18 @@ const statusText = computed(() => {
         @open-diff="(p) => changes.status.value?.ok && emit('openDiff', changes.status.value.root, p)"
         @create="askCreate"
         @action="onAction"
+      />
+      <ExplorerChecks
+        v-else-if="explorer.view === 'checks'"
+        :root="explorer.root"
+        :flutter="flutterRoot"
+        @open="(p, keep, line) => emit('open', p, keep, line)"
+      />
+      <ExplorerSearch
+        v-else-if="explorer.view === 'search'"
+        ref="searchView"
+        :root="explorer.root"
+        @open="(p, keep, line) => emit('open', p, keep, line)"
       />
       <ExplorerChanges
         v-else

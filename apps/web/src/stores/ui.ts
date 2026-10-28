@@ -173,6 +173,10 @@ export const useUiStore = defineStore('ui', () => {
   })
   const layoutRequest = ref(0)
   const panels = ref(initialPanels())
+  // Below 768 px the Sessions panel is a bottom sheet over the map, so Esc closes it even when pinned.
+  const narrowQuery = typeof window !== 'undefined' ? window.matchMedia?.('(max-width: 767px)') : undefined
+  const narrow = ref(narrowQuery?.matches ?? false)
+  narrowQuery?.addEventListener('change', (e) => (narrow.value = e.matches))
   const savedBar = initialBar()
   const barDock = ref<BarDock>(savedBar.dock)
   const barMin = ref(savedBar.min)
@@ -327,8 +331,8 @@ export const useUiStore = defineStore('ui', () => {
   /** Closes panels floating over the map; returns whether any was open. */
   function closeFloating(): boolean {
     let closed = false
-    for (const p of Object.values(panels.value)) {
-      if (p.open && !p.pinned) {
+    for (const [key, p] of Object.entries(panels.value)) {
+      if (p.open && (!p.pinned || (narrow.value && key === 'sessions'))) {
         p.open = false
         closed = true
       }
@@ -449,6 +453,7 @@ export const useUiStore = defineStore('ui', () => {
     compact,
     toggleCompact,
     panels,
+    narrow,
     isCollapsed,
     togglePanel,
     togglePanelPin,

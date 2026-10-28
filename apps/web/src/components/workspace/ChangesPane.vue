@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, Undo2 } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, fileStepKey, groupChanges, KIND_CLASS, KIND_LETTER, samePath, scrollSideways } from '../../lib/changesView'
+import { Check, ChevronRight, FileWarning, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, SquareCheck, SquareMinus, SquarePlus, Undo2 } from 'lucide-vue-next'
+import { absoluteIn, dirOfRel, fileStepKey, groupChanges, KIND_CLASS, KIND_LETTER, samePath, scrollSideways, stageState } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
 import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
@@ -18,11 +18,15 @@ import {
   changesStatus,
   changesUnwatch,
   changesWatch,
+  gitStage,
+  gitUnstage,
   hasChanges,
+  hasCommit,
   hasLog,
   onChangesUpdated,
   type ChangeEntry,
   type ChangesError,
+  type StageResult,
 } from '../../lib/preview'
 import type { MenuEntry } from '../../lib/menu'
 import DiffView from './DiffView.vue'
@@ -485,6 +489,35 @@ async function confirmDiscard(): Promise<void> {
   await loadStatus()
 }
 
+const selectedStaged = computed(() => !!selectedEntry.value && stageState(selectedEntry.value) === 'staged')
+// The shown diff is HEAD → worktree, so a hunk applies to an index that still matches HEAD for this file.
+const canStageBlock = computed(
+  () => selectedEntry.value?.kind === 'modified' && stageState(selectedEntry.value) === 'none' && opts.value.whitespace === 'none' && !!blocks.value[currentBlock.value],
+)
+
+async function afterStage(res: StageResult): Promise<void> {
+  if (res.ok) notice.value = null
+  else notice.value = t('workspace.commit.stageFailed', { detail: res.detail ?? t(`workspace.changes.error.${res.error}`) })
+  await loadStatus()
+}
+
+async function toggleFileStage(): Promise<void> {
+  const e = selectedEntry.value
+  const root = repoRoot.value
+  if (!e || !root) return
+  const paths = e.origPath ? [e.origPath, e.path] : [e.path]
+  await afterStage(selectedStaged.value ? await gitUnstage(root, paths) : await gitStage(root, paths))
+}
+
+async function stageBlock(): Promise<void> {
+  const e = selectedEntry.value
+  const root = repoRoot.value
+  const file = diffFile.value
+  const block = blocks.value[currentBlock.value]
+  if (!e || !root || !file || !block || !canStageBlock.value) return
+  await afterStage(await gitStage(root, [e.path], blockPatch(file, block)))
+}
+
 function setOpt<K extends keyof DiffOpts>(key: K, value: DiffOpts[K]): void {
   opts.value = { ...opts.value, [key]: value }
 }
@@ -918,6 +951,24 @@ function pickHead(id: string): void {
             <span class="hidden @md:inline">{{ t('workspace.changes.openFile') }}</span>
             <span class="sr-only @md:hidden">{{ t('workspace.changes.openFile') }}</span>
           </button>
+          <template v-if="hasCommit && selectedEntry.kind !== 'conflict'">
+            <button
+              v-if="canStageBlock"
+              type="button"
+              class="well-btn ccm-btn-plain shrink-0 gap-1 text-2xs"
+              :title="t('workspace.commit.stageHunk')"
+              @click="stageBlock()"
+            >
+              <SquarePlus :size="13" aria-hidden="true" />
+              <span class="hidden @lg:inline">{{ t('workspace.commit.stageHunk') }}</span>
+              <span class="sr-only @lg:hidden">{{ t('workspace.commit.stageHunk') }}</span>
+            </button>
+            <button type="button" class="well-btn ccm-btn-plain shrink-0 gap-1 text-2xs" :title="selectedStaged ? t('workspace.commit.unstageFile') : t('workspace.commit.stageFile')" @click="toggleFileStage()">
+              <component :is="selectedStaged ? SquareMinus : SquareCheck" :size="13" aria-hidden="true" />
+              <span class="hidden @md:inline">{{ selectedStaged ? t('workspace.commit.unstageFile') : t('workspace.commit.stageFile') }}</span>
+              <span class="sr-only @md:hidden">{{ selectedStaged ? t('workspace.commit.unstageFile') : t('workspace.commit.stageFile') }}</span>
+            </button>
+          </template>
           <button
             v-if="selectedEntry.kind !== 'conflict'"
             type="button"

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bell, CircleAlert, CircleCheck, FolderOpen, Gauge, LoaderCircle, MessageSquareMore, Volume2, X } from 'lucide-vue-next'
-import { desktop, type StatusLineState } from '../lib/desktop'
+import { Bell, CircleAlert, CircleCheck, FolderOpen, Gauge, LoaderCircle, Webhook, MessageSquareMore, Volume2, X } from 'lucide-vue-next'
+import { desktop, type HooksState, type StatusLineState } from '../lib/desktop'
 import { retireOverlay } from '../lib/motion'
 import { playChime } from '../lib/sound'
 import { useConnectionStore } from '../stores/connection'
@@ -10,7 +10,7 @@ import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 
-type ItemId = 'notify' | 'toast' | 'sound' | 'statusLine' | 'folder'
+type ItemId = 'notify' | 'toast' | 'sound' | 'statusLine' | 'hooks' | 'folder'
 
 const DONE_KEY = 'ccm.setupDone'
 const { t } = useI18n()
@@ -23,6 +23,8 @@ let restoreFocus: HTMLElement | null = null
 
 const statusLine = ref<StatusLineState | null>(null)
 const statusLineNote = ref<'failed' | null>(null)
+const hooks = ref<HooksState | null>(null)
+const hooksNote = ref<'failed' | null>(null)
 const busy = ref<ItemId | null>(null)
 const folder = ref<string | null>(null)
 /** Rows of this showing: on the first run only what was off when it opened (turned-on rows stay, marked On). */
@@ -49,6 +51,7 @@ const available = (id: ItemId): boolean => {
   if (id === 'notify') return settings.notifyPermission !== 'unsupported'
   if (id === 'toast') return extras.toast === 'on' || extras.toast === 'off'
   if (id === 'statusLine') return !!desktop?.enableStatusLine && statusLine.value !== null
+  if (id === 'hooks') return !!desktop?.setHooks && hooks.value !== null
   if (id === 'folder') return !!desktop?.grantFolder
   return true
 }
@@ -58,11 +61,12 @@ const isOn = (id: ItemId): boolean => {
   if (id === 'toast') return extras.toast === 'on'
   if (id === 'sound') return settings.sound
   if (id === 'statusLine') return statusLine.value === 'ours'
+  if (id === 'hooks') return hooks.value === 'ours'
   return folder.value !== null
 }
 
-const ORDER: ItemId[] = ['notify', 'toast', 'sound', 'statusLine', 'folder']
-const ICONS = { notify: Bell, toast: MessageSquareMore, sound: Volume2, statusLine: Gauge, folder: FolderOpen } as const
+const ORDER: ItemId[] = ['notify', 'toast', 'sound', 'statusLine', 'hooks', 'folder']
+const ICONS = { notify: Bell, toast: MessageSquareMore, sound: Volume2, statusLine: Gauge, hooks: Webhook, folder: FolderOpen } as const
 
 const rows = computed(() =>
   shown.value.map((id) => {
@@ -77,6 +81,12 @@ const rows = computed(() =>
       blocked = true
     } else if (id === 'statusLine' && statusLineNote.value) note = t(`setup.statusLine.${statusLineNote.value}`)
     else if (id === 'statusLine' && on) note = t('setup.statusLine.newSessions')
+    else if (id === 'hooks' && hooks.value === 'unreadable') {
+      note = t('setup.hooks.unreadable')
+      blocked = true
+    } else if (id === 'hooks' && hooksNote.value) note = t(`setup.hooks.${hooksNote.value}`)
+    else if (id === 'hooks' && hooks.value === 'partial') note = t('setup.hooks.partial')
+    else if (id === 'hooks' && on) note = t('setup.hooks.newSessions')
     else if (id === 'folder' && folder.value) note = t('setup.folder.granted', { path: folder.value })
     return { id, icon: ICONS[id], title: t(`setup.${id}.title`), body: t(`setup.${id}.body`), on, note, blocked }
   }),
@@ -98,10 +108,29 @@ async function enable(id: ItemId): Promise<void> {
       if (res === 'ok' || res === 'ours') statusLine.value = 'ours'
       else if (res === 'unreadable') statusLine.value = 'unreadable'
       else if (res === 'failed') statusLineNote.value = 'failed'
-    } else if (id === 'folder') {
+    } else if (id === 'hooks') await setHooks(true)
+    else if (id === 'folder') {
       const picked = await desktop?.grantFolder?.()
       if (picked) folder.value = picked
     }
+  } finally {
+    busy.value = null
+  }
+}
+
+async function setHooks(on: boolean): Promise<void> {
+  hooksNote.value = null
+  const res = await desktop?.setHooks?.(on)
+  if (res === 'ok') hooks.value = on ? 'ours' : 'none'
+  else if (res === 'unreadable') hooks.value = 'unreadable'
+  else if (res === 'failed') hooksNote.value = 'failed'
+}
+
+async function disableHooks(): Promise<void> {
+  if (busy.value) return
+  busy.value = 'hooks'
+  try {
+    await setHooks(false)
   } finally {
     busy.value = null
   }
@@ -143,6 +172,7 @@ async function prepare(firstRun: boolean): Promise<void> {
       )
     })
   statusLine.value = (await desktop?.statusLineState?.().catch(() => null)) ?? null
+  hooks.value = (await desktop?.hooksState?.().catch(() => null)) ?? null
   shown.value = ORDER.filter((id) => available(id) && (!firstRun || !isOn(id)))
   if (!shown.value.length) {
     // Everything is on already: nothing to ask on a first run.
@@ -211,13 +241,26 @@ onBeforeUnmount(() => (ready.value = false))
                 <p
                   v-if="r.note"
                   class="mt-1 flex items-start gap-1 text-2xs leading-relaxed break-all"
-                  :class="r.blocked || (r.id === 'statusLine' && !r.on) ? 'text-warning' : 'text-ink-faint'"
+                  :class="r.blocked || ((r.id === 'statusLine' || r.id === 'hooks') && !r.on) ? 'text-warning' : 'text-ink-faint'"
                   :role="r.blocked ? 'alert' : undefined"
                 >
                   <CircleAlert v-if="r.blocked" :size="12" class="mt-0.5 shrink-0" aria-hidden="true" />{{ r.note }}
                 </p>
               </div>
-              <div class="flex shrink-0 items-start pt-0.5">
+              <div class="flex shrink-0 items-start gap-2 pt-0.5">
+                <button
+                  v-if="r.on && r.id === 'hooks'"
+                  type="button"
+                  class="ccm-btn"
+                  :disabled="busy !== null"
+                  :aria-busy="busy === r.id || undefined"
+                  :aria-label="`${t('setup.turnOff')}: ${r.title}`"
+                  data-setup-off="hooks"
+                  @click="disableHooks"
+                >
+                  <LoaderCircle v-if="busy === r.id" :size="13" class="animate-spin" aria-hidden="true" />
+                  {{ t('setup.turnOff') }}
+                </button>
                 <span v-if="r.on && r.id !== 'folder'" class="inline-flex h-7 items-center gap-1 text-xs font-medium text-success" :data-setup-on="r.id">
                   <CircleCheck :size="14" aria-hidden="true" />{{ t('setup.on') }}
                 </span>

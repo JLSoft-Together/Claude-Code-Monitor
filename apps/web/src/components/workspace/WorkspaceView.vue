@@ -162,6 +162,13 @@ function resetExplorer(): void {
 }
 
 // Opened without a view transition: the tree must exist on the next tick to take focus.
+const explorerPanel = ref<{ showSearch: () => Promise<void> } | null>(null)
+async function showSearch(): Promise<void> {
+  explorerOpen.value = true
+  await nextTick()
+  await explorerPanel.value?.showSearch()
+}
+
 async function showExplorer(): Promise<void> {
   explorerOpen.value = true
   await nextTick()
@@ -459,9 +466,9 @@ const activeProject = computed(() => (workspace.active ? paneProject(workspace.a
 const activeFile = computed(() => (workspace.active?.kind === 'file' ? (workspace.active.path ?? null) : null))
 
 /** Every file opened from the Explorer gets its own viewer, kept in the project. */
-function openFromExplorer(path: string): void {
+function openFromExplorer(path: string, _keep?: boolean, line?: number): void {
   const cwd = activeProject.value ?? undefined
-  withViewTransition(() => workspace.openFile(path, undefined, { cwd }))
+  withViewTransition(() => workspace.openFile(path, line, { cwd }))
 }
 
 function openSplitFromExplorer(path: string): void {
@@ -1218,6 +1225,9 @@ function onGlobalKey(e: KeyboardEvent): void {
       break
     case 'explorer':
       void showExplorer()
+      break
+    case 'search':
+      void showSearch()
       break
     case 'mission':
       toggleMission()
@@ -2218,7 +2228,7 @@ onBeforeUnmount(() => {
       data-explorer-panel
     >
       <div class="ccm-material flex min-h-0 flex-1 flex-col rounded-card p-1.5">
-        <ExplorerPanel :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" @open-split="openSplitFromExplorer" @terminal="(dir) => withViewTransition(() => workspace.open('shell', dir))" @run="(dir) => withViewTransition(() => workspace.openRun(dir))" @renamed="onExplorerRenamed" @trashed="onExplorerTrashed" />
+        <ExplorerPanel ref="explorerPanel" :root="activeProject" :active-path="activeFile" :visible="visible" @open="openFromExplorer" @open-diff="(root, path) => withViewTransition(() => workspace.openChanges(root, { select: path }))" @open-log="(root) => withViewTransition(() => workspace.openLog(root))" @open-split="openSplitFromExplorer" @terminal="(dir) => withViewTransition(() => workspace.open('shell', dir))" @run="(dir) => withViewTransition(() => workspace.openRun(dir))" @renamed="onExplorerRenamed" @trashed="onExplorerTrashed" />
       </div>
       <SideResizer
         v-model:dragging="explorerDragging"

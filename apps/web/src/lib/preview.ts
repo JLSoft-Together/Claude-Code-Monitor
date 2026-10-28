@@ -1,4 +1,4 @@
-import type { BranchOpResult, CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, PushPreview, RefsResult } from '@ccm/shared'
+import type { BranchOpResult, BuildError, CommitDetail, ContainsResult, EntryNameProblem, LogPageResult, LogQuery, PushPreview, RefsResult } from '@ccm/shared'
 import { desktop } from './desktop'
 import type { DirEntry } from './explorer/tree'
 
@@ -94,6 +94,53 @@ export type RenameEntryResult =
   | { ok: false; error: 'exists' | 'denied' | 'missing' | 'busy' | 'failed' | 'unavailable' }
 export type TrashEntryResult = { ok: true } | { ok: false; error: 'denied' | 'missing' | 'busy' | 'failed' | 'unavailable' }
 
+export interface SearchQuery {
+  q: string
+  regex: boolean
+  caseSensitive: boolean
+  word: boolean
+}
+/** One `git grep` hit; `path` relative to the searched folder, `col` 1-based in `text`. */
+export interface SearchMatch {
+  path: string
+  line: number
+  col: number
+  text: string
+}
+export type CommitError = 'denied' | 'no-git' | 'not-repo' | 'failed' | 'conflict' | 'stale' | 'missing' | 'nothing' | 'empty-message' | 'pushed' | 'cancelled' | 'hook' | 'timeout' | 'unavailable'
+export type StageResult = { ok: true } | { ok: false; error: CommitError; detail?: string }
+export type CommitResult = { ok: true; hash: string; subject: string } | { ok: false; error: CommitError; detail?: string }
+export interface CheckRequest {
+  source: string
+  name: string
+}
+export type CheckResult =
+  | { ok: true; code: number | null; ms: number; errors: BuildError[]; errorsTruncated: boolean; tail: string }
+  | { ok: false; error: 'denied' | 'unknown-script' | 'busy' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
+export type WtError = 'denied' | 'not-repo' | 'unknown' | 'dirty-base' | 'not-ff' | 'conflict' | 'cancelled' | 'failed' | 'empty' | 'unavailable'
+export type WtCompare =
+  | { ok: true; base: string; branch: string; ahead: number; behind: number; files: number; added: number; removed: number; merged: boolean }
+  | { ok: false; error: WtError; detail?: string }
+export type WtMerge = { ok: true; mode: 'ff' | 'squash'; hash: string } | { ok: false; error: WtError; detail?: string }
+export interface Checkpoint {
+  id: string
+  at: number
+  label: string
+}
+export interface CheckpointFile {
+  path: string
+  status: 'A' | 'D' | 'M'
+  added?: number
+  removed?: number
+}
+export type CpError = 'denied' | 'off' | 'busy' | 'unknown' | 'failed' | 'cancelled' | 'unavailable'
+export type CpState = { ok: true; root: string; on: boolean; list: Checkpoint[] } | { ok: false; error: CpError }
+export type CpDiff = { ok: true; files: CheckpointFile[] } | { ok: false; error: CpError; detail?: string }
+export type CpResult = { ok: true; id?: string | null } | { ok: false; error: CpError; detail?: string }
+export type SearchResult =
+  | { ok: true; matches: SearchMatch[]; truncated: boolean }
+  | { ok: false; error: 'denied' | 'not-repo' | 'no-git' | 'bad-query' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
+
 /** Preview methods added to `window.ccmDesktop` by the v21 preload (see .planning/PLAN-v21-integration.md). */
 interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
@@ -112,6 +159,21 @@ interface PreviewBridge {
   changesStatus?: (dir: string) => Promise<ChangesStatus>
   changesDiff?: (root: string, path: string, opts?: ChangesDiffOpts) => Promise<ChangesDiff>
   changesFile?: (path: string) => Promise<ChangesFile>
+  search?: (dir: string, query: SearchQuery) => Promise<SearchResult>
+  gitStage?: (root: string, paths: string[], hunk?: string) => Promise<StageResult>
+  gitUnstage?: (root: string, paths: string[]) => Promise<StageResult>
+  gitCanAmend?: (root: string) => Promise<boolean>
+  gitCommit?: (root: string, message: string, amend: boolean) => Promise<CommitResult>
+  gitCommitCancel?: (root: string) => Promise<boolean>
+  checkRun?: (dir: string, check: CheckRequest) => Promise<CheckResult>
+  checkCancel?: (dir: string) => Promise<boolean>
+  wtCompare?: (dir: string, branch: string) => Promise<WtCompare>
+  wtMerge?: (dir: string, branch: string, mode: 'ff' | 'squash') => Promise<WtMerge>
+  cpState?: (root: string) => Promise<CpState>
+  cpSet?: (root: string, on: boolean) => Promise<boolean>
+  cpTake?: (root: string, label: string) => Promise<CpResult>
+  cpDiff?: (root: string, id: string) => Promise<CpDiff>
+  cpRestore?: (root: string, id: string, paths: string[]) => Promise<CpResult>
   logRefs?: (dir: string) => Promise<RefsResult>
   logPage?: (root: string, query: LogQuery) => Promise<LogPageResult>
   logCommit?: (root: string, hash: string) => Promise<CommitDetail>
@@ -172,6 +234,26 @@ export const changesDiff = (root: string, path: string, opts?: ChangesDiffOpts):
   bridge?.changesDiff?.(root, path, opts) ?? Promise.resolve(unavailable)
 export const hasFileChanges = typeof bridge?.changesFile === 'function'
 export const changesFile = (path: string): Promise<ChangesFile> => bridge?.changesFile?.(path) ?? Promise.resolve(unavailable)
+export const hasCommit = typeof bridge?.gitCommit === 'function'
+export const gitStage = (root: string, paths: string[], hunk?: string): Promise<StageResult> => bridge?.gitStage?.(root, paths, hunk) ?? Promise.resolve(unavailable)
+export const gitUnstage = (root: string, paths: string[]): Promise<StageResult> => bridge?.gitUnstage?.(root, paths) ?? Promise.resolve(unavailable)
+export const gitCanAmend = (root: string): Promise<boolean> => bridge?.gitCanAmend?.(root) ?? Promise.resolve(false)
+export const gitCommit = (root: string, message: string, amend: boolean): Promise<CommitResult> => bridge?.gitCommit?.(root, message, amend) ?? Promise.resolve(unavailable)
+export const gitCommitCancel = (root: string): Promise<boolean> => bridge?.gitCommitCancel?.(root) ?? Promise.resolve(false)
+export const hasChecks = typeof bridge?.checkRun === 'function'
+export const checkRun = (dir: string, check: CheckRequest): Promise<CheckResult> => bridge?.checkRun?.(dir, check) ?? Promise.resolve(unavailable)
+export const checkCancel = (dir: string): Promise<boolean> => bridge?.checkCancel?.(dir) ?? Promise.resolve(false)
+export const hasWtMerge = typeof bridge?.wtMerge === 'function'
+export const wtCompare = (dir: string, branch: string): Promise<WtCompare> => bridge?.wtCompare?.(dir, branch) ?? Promise.resolve(unavailable)
+export const wtMerge = (dir: string, branch: string, mode: 'ff' | 'squash'): Promise<WtMerge> => bridge?.wtMerge?.(dir, branch, mode) ?? Promise.resolve(unavailable)
+export const hasCheckpoints = typeof bridge?.cpState === 'function'
+export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
+export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
+export const cpTake = (root: string, label: string): Promise<CpResult> => bridge?.cpTake?.(root, label) ?? Promise.resolve(unavailable)
+export const cpDiff = (root: string, id: string): Promise<CpDiff> => bridge?.cpDiff?.(root, id) ?? Promise.resolve(unavailable)
+export const cpRestore = (root: string, id: string, paths: string[]): Promise<CpResult> => bridge?.cpRestore?.(root, id, paths) ?? Promise.resolve(unavailable)
+export const hasSearch = typeof bridge?.search === 'function'
+export const searchFiles = (dir: string, query: SearchQuery): Promise<SearchResult> => bridge?.search?.(dir, query) ?? Promise.resolve(unavailable)
 
 type Unavailable = { ok: false; error: 'unavailable' }
 export type WebRefs = RefsResult | Unavailable

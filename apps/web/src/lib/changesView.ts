@@ -13,6 +13,16 @@ export const KIND_CLASS: Record<ChangeEntry['kind'], string> = {
   conflict: 'text-warning',
 }
 
+export type StageState = 'staged' | 'partial' | 'none'
+
+/** porcelain v2 XY: X = index, Y = worktree; untracked (`??`) is never staged. */
+export function stageState(e: Pick<ChangeEntry, 'x' | 'y' | 'kind'>): StageState {
+  if (e.kind === 'untracked' || e.kind === 'conflict' || e.x === '.' || e.x === '?') return 'none'
+  return e.y === '.' ? 'staged' : 'partial'
+}
+
+export const stagedCount = (entries: readonly ChangeEntry[]): number => entries.filter((e) => stageState(e) !== 'none').length
+
 export type ChangeGroupKey = 'conflicts' | 'changed' | 'untracked'
 
 /** Conflicts, then changed, then untracked; empty groups dropped. */

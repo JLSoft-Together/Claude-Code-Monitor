@@ -45,13 +45,17 @@ function maxFor(p: Panel): number {
 
 const PANEL_BASE = 'flex min-h-0 flex-col bg-canvas p-3'
 const PANEL_FLOAT = 'absolute inset-y-2 z-20 rounded-card shadow-pop'
+const SHEET = 'absolute inset-x-0 bottom-0 z-30 h-[min(70%,560px)] rounded-t-card border-t border-line shadow-pop'
+const sheet = computed(() => ui.narrow)
 function panelClass(p: Panel): string {
+  if (sheet.value) return `${PANEL_BASE} ${SHEET} pt-1`
   const { pinned } = ui.panels[p]
   if (p === 'sessions') return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-r border-line' : `${PANEL_FLOAT} left-2`}`
   return `${PANEL_BASE} ${pinned ? 'relative shrink-0 border-l border-line' : `${PANEL_FLOAT} right-2`}`
 }
 /** Floating panels slide in from their edge; pinned ones only fade (sliding would resize the map every frame). */
 function panelTransition(p: Panel): string {
+  if (sheet.value) return 'ccm-sheet-up'
   if (ui.panels[p].pinned) return 'ccm-fade'
   return p === 'sessions' ? 'ccm-panel-left' : 'ccm-panel-right'
 }
@@ -68,13 +72,33 @@ function panelTransition(p: Panel): string {
     </div>
 
     <div ref="stage" class="relative flex min-h-0 flex-1" :class="dragging ? 'select-none' : ''">
+      <Transition name="ccm-fade">
+        <div
+          v-if="sheet && ui.panels.sessions.open"
+          class="ccm-scrim absolute inset-0 z-30"
+          aria-hidden="true"
+          data-sheet-scrim
+          @mousedown="ui.panels.sessions.open = false"
+        />
+      </Transition>
       <Transition :name="panelTransition('sessions')">
         <aside
           v-show="ui.panels.sessions.open"
           data-tour="sessions"
+          :data-sheet="sheet || undefined"
           :class="panelClass('sessions')"
-          :style="{ width: `${widthOf('sessions')}px` }"
+          :style="sheet ? undefined : { width: `${widthOf('sessions')}px` }"
         >
+          <button
+            v-if="sheet"
+            type="button"
+            class="mx-auto mb-1 flex h-4 w-16 shrink-0 cursor-pointer items-center justify-center"
+            :aria-label="t('panel.closeSheet')"
+            :title="t('panel.closeSheet')"
+            @click="ui.panels.sessions.open = false"
+          >
+            <span class="h-1 w-9 rounded-full bg-fill-strong" aria-hidden="true" />
+          </button>
           <SessionList v-if="!ui.sessionTab" />
           <section v-else-if="tabTerminal" aria-labelledby="session-panel-title" class="flex h-full min-h-0 flex-col">
             <PanelHeader panel="sessions" title-id="session-panel-title" :title="t('panel.session')" />
@@ -83,6 +107,7 @@ function panelTransition(p: Panel): string {
             </div>
           </section>
           <PanelSplitter
+            v-if="!sheet"
             v-model:dragging="dragging"
             size="sessions"
             axis="x"

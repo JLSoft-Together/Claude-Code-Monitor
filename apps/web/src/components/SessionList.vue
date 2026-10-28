@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, ref, watch } from 'vue'
 import { reducedMotion, pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
 import { ArrowDownUp, Trash2 } from 'lucide-vue-next'
@@ -12,6 +12,8 @@ import FavoritesList from './FavoritesList.vue'
 import JobsList from './JobsList.vue'
 import LottieArt from './LottieArt.vue'
 import PanelHeader from './PanelHeader.vue'
+import ProjectStrip from './ProjectStrip.vue'
+import { projectGroups, sameGroups, type ProjectGroup } from '../lib/projectGroups'
 import SessionCard from './SessionCard.vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -34,8 +36,21 @@ const sorted = computed(() => {
   const pos = new Map(frozenOrder.value.map((id, i) => [id, i]))
   return [...terminals.list].sort((a, b) => (pos.get(a.id) ?? Infinity) - (pos.get(b.id) ?? Infinity))
 })
+const groups = computed<ProjectGroup[]>((prev) => {
+  const next = projectGroups(terminals.list)
+  return sameGroups(prev, next) ? prev! : next
+})
+const projectFilter = ref<string | null>(null)
+const filterIds = computed(() => {
+  const g = projectFilter.value ? groups.value.find((x) => x.key === projectFilter.value) : undefined
+  return g && groups.value.length > 1 ? new Set(g.ids) : null
+})
+watch(groups, (gs) => {
+  if (projectFilter.value && !gs.some((g) => g.key === projectFilter.value)) projectFilter.value = null
+})
 const sortedIds = computed<string[]>((prev) => {
-  const next = sorted.value.map((x) => x.id)
+  const keep = filterIds.value
+  const next = sorted.value.filter((x) => !keep || keep.has(x.id)).map((x) => x.id)
   return prev?.length === next.length && next.every((id, i) => id === prev[i]) ? prev : next
 })
 const CardById = defineComponent({
@@ -74,8 +89,12 @@ function onFocusOut(e: FocusEvent): void {
 const listEl = ref<{ $el: HTMLElement } | null>(null)
 watch(
   () => ui.revealRequest,
-  () => {
+  async () => {
     const id = ui.focusedTerminalId
+    if (id && filterIds.value && !filterIds.value.has(id)) {
+      projectFilter.value = null
+      await nextTick()
+    }
     const root = listEl.value?.$el
     if (!id || !root || ui.isCollapsed('sessions')) return
     const item = [...root.querySelectorAll<HTMLElement>('[data-terminal-id]')].find((el) => el.dataset.terminalId === id)
@@ -93,6 +112,7 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
     <div id="sessions-body" class="ccm-scroll -m-1 min-h-0 flex-1 overflow-y-auto p-1">
     <FavoritesList />
     <JobsList />
+    <ProjectStrip v-if="connection.hasData" v-model="projectFilter" :groups="groups" />
     <div v-if="connection.hasData && terminals.list.length > 1" class="mb-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
       <AppSelect v-model="sortBy" :options="sortOptions" :label="t('sessions.sortLabel')" :icon="ArrowDownUp" size="sm" />
       <button

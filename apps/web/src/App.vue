@@ -27,6 +27,7 @@ import HistoryView from './components/history/HistoryView.vue'
 import { desktop, hasExtensions, hasTerminals } from './lib/desktop'
 import { hasDevices } from './lib/devices'
 import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
+import { useTurnCheckpoints } from './composables/useTurnCheckpoints'
 import { isMac } from './lib/platform'
 
 // xterm + addons (~400 KB) load only when the workspace is first opened.
@@ -38,6 +39,7 @@ const { t } = useI18n()
 const connection = useConnectionStore()
 const ui = useUiStore()
 useSettingsStore()
+useTurnCheckpoints()
 useNotifications()
 useBreakReminder()
 useWheelZoom()

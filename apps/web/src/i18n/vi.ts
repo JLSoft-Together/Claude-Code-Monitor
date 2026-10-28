@@ -4,6 +4,7 @@ import tier2 from './workspace-tier2'
 import v25 from './workspace-v25'
 import v27 from './workspace-v27'
 import explorer from './workspace-explorer'
+import commitI18n from './workspace-commit'
 import diff from './workspace-diff'
 import log from './workspace-log'
 import rail from './workspace-rail'
@@ -74,6 +75,7 @@ const vi: typeof en = {
     ...viewer.vi,
     ...tier2.vi,
     ...explorer.vi,
+    ...commitI18n.vi,
     ...diff.vi,
     ...log.vi,
     ...rail.vi,
@@ -123,6 +125,35 @@ const vi: typeof en = {
       body: 'Chọn chạy gì và ở đâu. Terminal chạy bên trong Orrery, phím gõ không rời khỏi máy này.',
     },
     wt: {
+      merge: {
+        open: 'Gộp vào {base}…',
+        ahead: '{n} commit chưa có trên {base} · {files} file',
+        merged: 'đã có trên {base}',
+        explain: 'Đưa {branch} vào {base} ở checkout chính. Chủ nhân xác nhận đúng các lệnh git trước; checkout chính không được có thay đổi chưa commit.',
+        stats: '{files} file, +{added} −{removed}; {base} có {behind} commit mới hơn.',
+        ff: 'Fast-forward',
+        squash: 'Gộp thành một commit',
+        done: '{branch} đã vào {hash}. Xoá worktree luôn không? (nhánh vẫn giữ)',
+        error: {
+          denied: 'Thư mục này chưa mở trong pane nào.',
+          'not-repo': 'Không phải git repository.',
+          unknown: 'Nhánh đó không còn.',
+          'dirty-base': 'Checkout chính còn thay đổi chưa commit; hãy commit hoặc stash trước.',
+          'not-ff': 'Nhánh chính đã đi tiếp nên không fast-forward được; dùng Gộp thành một commit. {detail}',
+          conflict: 'Gộp bị conflict và đã hoàn tác; không có gì thay đổi. {detail}',
+          cancelled: 'Đã huỷ.',
+          failed: 'Gộp thất bại. {detail}',
+          empty: 'Không có gì để gộp: thay đổi đã có sẵn.',
+          unavailable: 'Gộp nhánh cần ứng dụng desktop.',
+        },
+      },
+      copy: {
+        label: 'File copy sang worktree mới (cách nhau dấu phẩy; **/ cho mọi thư mục)',
+        summary: 'Copy {list} từ checkout chính',
+        nothing: 'không có',
+        edit: 'Sửa',
+        save: 'Lưu',
+      },
       title: 'Worktree',
       openIn: 'Mở terminal trong {path}',
       detached: 'detached {head}',
@@ -252,6 +283,11 @@ const vi: typeof en = {
     diffTitle: 'Chưa commit trong thư mục này: {files} file đã sửa, {untracked} mới. Kiểm {checked}.',
     loop: '{tool} lỗi {n} lần trong 5 phút',
     loopTitle: '{n}/{calls} lần gọi tool lỗi trong 5 phút qua (chủ yếu {tool}). Claude có thể đang thử lại cùng một việc.',
+    compacting: 'Đang compact · {for}',
+    compactingAuto: 'Đang tự compact · {for}',
+    compactingTitle: 'Claude Code đang tóm tắt hội thoại này (hook bridge). Xong thì session trả lời tiếp.',
+    denied: 'Auto mode từ chối {n} lần',
+    deniedTitle: 'Các lệnh tool auto mode đã chặn (hook bridge): {tools}',
     conflict: 'Chung thư mục làm việc với {names}',
     conflictHot: 'Đang cùng sửa một thư mục với {names}',
     conflictTitle: 'Nhiều session làm trong cùng repo và branch, có thể sửa đè file của nhau. Dùng git worktree riêng cho từng session để tránh. Bấm để xem session kia.',
@@ -390,6 +426,16 @@ const vi: typeof en = {
     loadingSessions: 'Đang tải session…',
     offline: 'Không kết nối được collector.',
     offlineHint: 'Chạy npm run dev trong thư mục project. Tự thử lại liên tục.',
+    projects: {
+      label: 'Session đang chạy theo project',
+      noProject: 'Không rõ thư mục',
+      sessions: '{n} session',
+      waiting: '{n} đang chờ',
+      working: '{n} đang chạy',
+      costTitle: 'Chi phí của các session này (theo status line)',
+      filterTitle: 'Chỉ hiện session trong {name}',
+      clearTitle: 'Hiện session của mọi project',
+    },
   },
   activity: {
     filterSession: 'Chỉ session này',
@@ -469,6 +515,7 @@ const vi: typeof en = {
     unpin: 'Bỏ ghim (nổi trên map)',
     close: 'Đóng',
     session: 'Session',
+    closeSheet: 'Đóng bảng',
     resize: 'Đổi kích thước {panel}',
     resizeHint: 'Kéo để đổi kích thước, phím mũi tên để chỉnh, nhấp đúp để đặt lại',
     collapse: 'Thu gọn',
@@ -530,6 +577,7 @@ const vi: typeof en = {
       wsFocus: 'Chuyển sang pane bên cạnh',
       wsQuickOpen: 'Mở nhanh tệp trong dự án',
       wsExplorer: 'Hiện cây thư mục (Explorer)',
+    wsSearch: 'Tìm trong file của project',
       wsNextChange: 'Thay đổi kế / trước (xem tệp, Thay đổi)',
       wsDiffFile: 'Tệp trước / sau trong Thay đổi',
       wsJumpSource: 'Mở tệp tại thay đổi đang chọn (Thay đổi)',
@@ -940,34 +988,26 @@ const vi: typeof en = {
         body: 'Trang này theo dõi mọi session Claude Code đang chạy trên máy, cả các lần Codex CLI do chúng gọi, và cho biết session nào đang cần chủ nhân. Nó chỉ đọc file trên máy: không gõ gì vào agent, không gọi API, không tốn token. Xem nhanh một phút nhé?',
       },
       tabs: {
-        title: 'Ba màn chính',
-        body: 'Giám sát: những gì đang chạy. Thống kê: token và chi phí theo ngày, model, project. Lịch sử: hôm nay làm việc bao lâu, chờ chủ nhân bao lâu.',
+        title: 'Giám sát và Workspace',
+        body: 'Giám sát: những gì đang chạy. Workspace: terminal, editor và git. Nút … bên cạnh mở Thống kê (token và chi phí theo ngày, model, project), Lịch sử (hôm nay làm việc bao lâu, chờ chủ nhân bao lâu), Mở rộng và Thiết bị.',
       },
       waiting: {
         title: 'Session đang cần chủ nhân',
         body: 'Khi một session dừng lại để xin quyền hoặc hỏi ý, nó hiện ở dải này kèm thời gian đã chờ. Bấm tên để tìm trên Agent Map, bấm biểu tượng cửa sổ để đưa terminal lên trước, bấm chuông để hoãn nhắc 15 phút.',
         absent: 'Hiện chưa có session nào chờ nên dải này đang ẩn. Có session cần chủ nhân là nó hiện ra ngay đây.',
       },
-      metrics: {
-        title: 'Tổng quan nhanh',
-        body: 'Số liệu trực tiếp: số session, subagent, đang chạy, đang chờ, lỗi, token, thời gian chủ nhân trả lời và ngân sách ngày. Rê chuột vào từng ô để xem gồm những gì.',
-      },
       sessions: {
         title: 'Danh sách session',
-        body: 'Mỗi terminal là một thẻ: trạng thái, thư mục, git branch, thay đổi chưa commit, mức dùng context. Các nút trên thẻ dùng để nhảy tới terminal, mở thư mục bằng Explorer hoặc VS Code, đổi tên hay ghim session. Mục Yêu thích bên dưới mở session mới trong thư mục đã lưu chỉ với một cú bấm.',
+        body: 'Mỗi terminal là một thẻ: trạng thái, thư mục, git branch, thay đổi chưa commit, mức dùng context. Các nút trên thẻ dùng để nhảy tới terminal, mở thư mục bằng Explorer hoặc VS Code, đổi tên hay ghim session. Mục Yêu thích bên dưới mở session mới trong thư mục đã lưu chỉ với một cú bấm. Panel này đóng sẵn khi mở app; mở lại bằng nút trên thanh công cụ của Agent Map.',
       },
       map: {
         title: 'Agent Map',
         body: 'Mỗi session cùng các subagent nó gọi, cập nhật trực tiếp. Bấm vào node để xem chi tiết. Kéo để di chuyển, kéo cạnh để đổi kích thước, cuộn chuột để phóng to. Bố cục được ghi nhớ; nút Sắp xếp lại đặt về mặc định.',
       },
-      activity: {
-        title: 'Hoạt động',
-        body: 'Nhật ký những gì vừa xảy ra: đổi trạng thái, subagent bắt đầu và xong, tool call. Có thể ẩn tool call khi danh sách quá dày.',
-      },
       limits: {
         title: 'Giới hạn gói',
         body: 'Mức dùng 5 giờ và weekly, thời gian tới lúc reset và dự báo. Bấm vào để xem chi tiết.',
-        absent: 'Chưa hiện vì số liệu này lấy từ status line bridge. Mở Cài đặt, chép đoạn cấu hình vào ~/.claude/settings.json, sau lần Claude trả lời kế tiếp là có.',
+        absent: 'Chưa hiện vì số liệu này lấy từ status line bridge. Bật nó trong Cài đặt (một cú bấm, sau khi chủ nhân xác nhận), sau lần Claude trả lời kế tiếp là có.',
       },
       palette: {
         title: 'Tìm mọi thứ: {palette}',
@@ -979,11 +1019,11 @@ const vi: typeof en = {
       },
       settings: {
         title: 'Thông báo và cài đặt',
-        body: 'Nút chuông bật thông báo desktop khi có session chờ. Nút bánh răng chứa âm thanh, nhắc khi chờ lâu, ngân sách ngày, hướng dẫn cài status line và Chẩn đoán khi có gì không ổn.',
+        body: 'Menu này bật thông báo desktop khi có session chờ (biểu tượng đổi thành cái chuông). Trong đó còn âm thanh, nhắc khi chờ lâu, ngân sách ngày, status line bridge và Chẩn đoán khi có gì không ổn.',
       },
       finish: {
         title: 'Xong rồi',
-        body: 'Cứ để tab này mở trong lúc làm việc, nó tự cập nhật. Muốn xem lại hướng dẫn thì mở trong Cài đặt hoặc {palette}.',
+        body: 'Cứ để Orrery mở trong lúc làm việc, nó tự cập nhật, kể cả khi thu xuống khay. Muốn xem lại hướng dẫn thì mở trong Cài đặt hoặc {palette}.',
       },
     },
   },
@@ -1002,6 +1042,16 @@ const vi: typeof en = {
     days: ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'],
   },
   history: {
+    heatmap: {
+      title: 'Agent làm việc lúc nào',
+      hint: 'Số lần Claude trả lời theo thứ và giờ trong 4 tuần gần nhất, lấy từ lần quét usage (không đọc nội dung).',
+      loading: 'Đang tải…',
+      empty: '4 tuần gần nhất chưa có lần trả lời nào.',
+      cell: '{day} {hour}:00 — {n} lần trả lời',
+      peak: 'Bận nhất: {day} khoảng {hour}:00',
+      less: 'Ít',
+      more: 'Nhiều',
+    },
     workShare: '{p}% làm',
     showHours: 'Xem theo giờ',
     hideHours: 'Ẩn theo giờ',
@@ -1029,6 +1079,13 @@ const vi: typeof en = {
   recap: {
     open: 'Tổng kết ngày',
     title: 'Tổng kết ngày',
+    titleWeek: 'Tổng kết tuần',
+    span: 'Khoảng thời gian',
+    spanDay: 'Một ngày',
+    spanWeek: '7 ngày',
+    weekEnd: 'Ngày cuối của kỳ',
+    byDay: 'Theo ngày',
+    vsPrevious: '{pct} so với 7 ngày trước đó',
     day: 'Ngày',
     today: 'Hôm nay',
     cost: 'Chi phí ước tính',

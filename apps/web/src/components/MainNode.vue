@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
-import { ArrowRightLeft, ChevronDown, ChevronRight, CornerDownRight, Mail, Network, Send } from 'lucide-vue-next'
+import { ArrowRightLeft, ChevronDown, ChevronRight, CornerDownRight, FoldVertical, Mail, Network, Send, ShieldX } from 'lucide-vue-next'
 import { useMapNode, usePeerMap, usePeerName } from '../composables/useMapNode'
 import { duration, now } from '../lib/format'
 import { MAIN_HEIGHT, MAIN_WIDTH, TRUNK_X } from '../lib/layout'
@@ -31,10 +31,23 @@ const title = computed(() => displayTitle(terminal.value) || agent.value?.name |
 const attention = computed(() => terminal.value?.status === 'waiting' || agent.value?.status === 'waiting')
 const wait = computed(() => (terminal.value?.status === 'waiting' ? waitDisplay(terminal.value.waitingFor, agent.value?.currentTool, t) : null))
 
+const ended = computed(() => !terminal.value || terminal.value.status === 'stale')
+const compacting = computed(() => !ended.value && !!terminal.value?.compactingSince)
+const denied = computed(() => {
+  const n = ended.value ? 0 : (terminal.value?.deniedCount ?? 0)
+  if (!n) return null
+  const tools = terminal.value?.deniedTools?.join(', ') || t('activity.unknownTool')
+  return { label: t('terminal.denied', { n }), title: t('terminal.deniedTitle', { tools }) }
+})
+
 const activity = computed(() => {
   const a = agent.value
   if (!a) return ''
   if (wait.value) return wait.value.reason === 'other' ? t('terminal.waitingFor', { reason: wait.value.text }) : wait.value.text
+  if (compacting.value) {
+    const key = terminal.value?.compactTrigger === 'auto' ? 'terminal.compactingAuto' : 'terminal.compacting'
+    return t(key, { for: duration(terminal.value?.compactingSince, now.value) ?? '' })
+  }
   if (a.currentTool && working.value) return t('terminal.running', { tool: a.currentTool })
   return t(meta.value.labelKey)
 })
@@ -252,11 +265,15 @@ onBeforeUnmount(() => stop?.())
               <span v-if="peerChip.count" class="tabular-nums">{{ peerChip.count }}</span>
             </button>
           </Transition>
+          <span v-if="denied" class="inline-flex shrink-0 items-center gap-0.5 text-2xs font-medium text-warning tabular-nums" role="img" :aria-label="denied.label" :title="denied.title" data-node-denied>
+            <ShieldX :size="12" aria-hidden="true" />{{ terminal?.deniedCount }}
+          </span>
           <ContextRing v-if="showContext" :tokens="agent.contextTokens ?? 0" :window="agent.contextWindow ?? 0" :pct="contextPctOf(agent)" />
           <TokenCount v-if="agent.totalTokens !== undefined" delta="none" class="font-semibold text-ink" :value="agent.totalTokens" />
         </div>
         <div class="flex min-w-0 items-center gap-1.5 text-xs" :class="working || attention ? 'text-ink' : 'text-ink-muted'">
           <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0 text-st-waiting" aria-hidden="true" />
+          <FoldVertical v-else-if="compacting" :size="13" class="ccm-pulse shrink-0 text-ink-muted" aria-hidden="true" />
           <span
             v-if="peerLine"
             :key="`peer:${peerLine.text}`"

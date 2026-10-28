@@ -6,8 +6,18 @@ export interface RecapRow {
   cost: number
 }
 
-export interface Recap {
+export interface RecapDay {
   day: string
+  tokens: number
+  cost: number
+}
+
+export interface Recap {
+  /** Last day of the period. */
+  day: string
+  /** Days covered, oldest first (one entry for a daily recap). */
+  days: string[]
+  perDay: RecapDay[]
   tokens: { input: number; output: number; cacheWrite: number; cacheRead: number; messages: number }
   cost: number
   models: RecapRow[]
@@ -29,8 +39,34 @@ function top(map: Map<string, RecapRow>, n: number): RecapRow[] {
   return [...map.values()].sort((a, b) => b.cost - a.cost || b.tokens - a.tokens).slice(0, n)
 }
 
+/** `span` local days ending at `end` (YYYY-MM-DD), oldest first. */
+export function periodDays(end: string, span: number): string[] {
+  const [y, m, d] = end.split('-').map(Number) as [number, number, number]
+  const out: string[] = []
+  for (let i = span - 1; i >= 0; i--) {
+    const dt = new Date(y, m - 1, d - i, 12)
+    out.push(localDay(dt.toISOString()))
+  }
+  return out
+}
+
+/** Cost and tokens of a set of days, for the previous-period comparison. */
+export function periodTotals(buckets: UsageBucket[], days: readonly string[]): { cost: number; tokens: number } {
+  const set = new Set(days)
+  let cost = 0
+  let tokens = 0
+  for (const b of buckets) {
+    if (!set.has(b.day)) continue
+    cost += estimateCost(b, b.model, b.fast) ?? 0
+    tokens += b.input + b.output + b.cacheWrite5m + b.cacheWrite1h
+  }
+  return { cost, tokens }
+}
+
 export function buildRecap(input: {
   day: string
+  /** Days in the period (default 1 = daily recap). */
+  span?: number
   buckets: UsageBucket[]
   projectOf: (dir: string) => string
   history: SessionRecord[]
@@ -41,11 +77,17 @@ export function buildRecap(input: {
   const tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, messages: 0 }
   const models = new Map<string, RecapRow>()
   const projects = new Map<string, RecapRow>()
+  const days = periodDays(input.day, Math.max(1, input.span ?? 1))
+  const daySet = new Set(days)
+  const perDay = new Map<string, RecapDay>(days.map((day) => [day, { day, tokens: 0, cost: 0 }]))
   let cost = 0
   for (const b of input.buckets) {
-    if (b.day !== input.day) continue
+    if (!daySet.has(b.day)) continue
     const c = estimateCost(b, b.model, b.fast) ?? 0
     const tk = b.input + b.output + b.cacheWrite5m + b.cacheWrite1h
+    const pd = perDay.get(b.day)!
+    pd.tokens += tk
+    pd.cost += c
     tokens.input += b.input
     tokens.output += b.output
     tokens.cacheWrite += b.cacheWrite5m + b.cacheWrite1h
@@ -62,7 +104,8 @@ export function buildRecap(input: {
       map.set(id, row)
     }
   }
-  const tl = input.timeline?.day === input.day ? input.timeline : null
+  const daily = days.length === 1
+  const tl = daily && input.timeline?.day === input.day ? input.timeline : null
   let time: Record<LaneStatus, number> | null = null
   if (tl) {
     time = { working: 0, waiting: 0, idle: 0 }
@@ -71,14 +114,16 @@ export function buildRecap(input: {
   }
   return {
     day: input.day,
+    days,
+    perDay: [...perDay.values()],
     tokens,
     cost,
     models: top(models, 8),
     projects: top(projects, 8),
-    ended: input.history.filter((r) => localDay(r.endedAt) === input.day),
+    ended: input.history.filter((r) => daySet.has(localDay(r.endedAt))),
     time,
     sessionsSeen: tl ? tl.lanes.length : null,
-    response: input.response?.day === input.day ? input.response : null,
+    response: daily && input.response?.day === input.day ? input.response : null,
   }
 }
 

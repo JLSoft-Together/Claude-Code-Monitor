@@ -38,6 +38,17 @@ function persist(key: string, value: string): void {
 export { STUCK_CHOICES }
 
 /** Explorer tree icons: Atom Material (v59) or the lucide glyphs from before. */
+/** Untracked setup files copied into a new worktree (desktop `pty/wtCopy.ts` patterns). */
+export const DEFAULT_WORKTREE_COPY = ['.env*', 'local.properties', 'key.properties', '**/google-services.json']
+function readWorktreeCopy(): string[] {
+  try {
+    const v: unknown = JSON.parse(read('ccm.worktreeCopy') ?? 'null')
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 20) : [...DEFAULT_WORKTREE_COPY]
+  } catch {
+    return [...DEFAULT_WORKTREE_COPY]
+  }
+}
+
 export type FileIconStyle = 'atom' | 'simple'
 const isFileIconStyle = (value: unknown): value is FileIconStyle => value === 'atom' || value === 'simple'
 export const ACTIVITY_PAGE_SIZES = [50, 100, 200, 500]
@@ -78,6 +89,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const dimInactive = ref(read('ccm.workspace.dim') === '1')
   const dustEffect = ref(read('ccm.dust') === '1')
   const fileIcons = ref<FileIconStyle>(isFileIconStyle(read('ccm.fileIcons')) ? (read('ccm.fileIcons') as FileIconStyle) : 'atom')
+  const worktreeCopy = ref<string[]>(readWorktreeCopy())
   const pinned = ref<Set<string>>(readPinned())
   const budgetRaw = Number(read('ccm.budget'))
   /** Daily spend budget in USD at API list prices; 0 = off. */
@@ -107,6 +119,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(dustEffect, (value) => persist('ccm.dust', value ? '1' : '0'))
   watch(dustEffect, setDustEnabled, { flush: 'sync', immediate: true })
   watch(fileIcons, (value) => persist('ccm.fileIcons', value))
+  watch(worktreeCopy, (value) => persist('ccm.worktreeCopy', JSON.stringify(value)))
   watch(pinned, (value) => persist('ccm.pinned', JSON.stringify([...value])))
   watch(activityPageSize, (value) => persist('ccm.activityPage', String(value)))
   watch(dailyBudget, (value) => persist('ccm.budget', String(value)))
@@ -225,6 +238,7 @@ export const useSettingsStore = defineStore('settings', () => {
     hideTools,
     keyHints,
     minimap,
+    worktreeCopy,
     autoSave,
     autoSaveDelay,
     dimInactive,
