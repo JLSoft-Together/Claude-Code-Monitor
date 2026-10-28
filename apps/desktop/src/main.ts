@@ -41,6 +41,7 @@ import { paneOpenResult, parseOpenLink, realDir, takeLinkSlot, type OpenLink } f
 import { dustSize } from './capture'
 import { removeDeadShortcuts } from './shortcuts'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
+import { plannedHooks, readHooks, writeHooks } from './hooks'
 import { stringsFor, type Strings } from './strings'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
@@ -95,6 +96,7 @@ let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
 let editors: EditorTracker | null = null
 let bridge: BridgeInstall | null = null
+let hookBridge: BridgeInstall | null = null
 const claudeSettings = (): string => claudeSettingsFile(process.env, os.homedir())
 const ROOTS_TTL_MS = 2_000
 let rootsCache: { at: number; dirs: string[] } | null = null
@@ -541,6 +543,11 @@ function boot(): Promise<void> {
 function collectorEnv(): NodeJS.ProcessEnv {
   const portable = PORTABLE_EXE !== undefined
   bridge = installBridge(resource('bridge/statusline-bridge.mjs', 'scripts/statusline-bridge.mjs'), DATA_DIR, process.execPath, portable || !app.isPackaged)
+  try {
+    hookBridge = installBridge(resource('bridge/hook-bridge.mjs', 'scripts/hook-bridge.mjs'), DATA_DIR, process.execPath, portable || !app.isPackaged, 'hook-bridge')
+  } catch (err) {
+    console.error('[desktop] hook bridge not installed:', (err as Error).message)
+  }
   return {
     ...process.env,
     CCM_PORT: String(PORT),
@@ -793,6 +800,28 @@ async function ready(): Promise<void> {
     // Re-read: the file may have changed while the dialog was open.
     return writeStatusLine(file, readStatusLine(file), command)
   })
+  ipcMain.handle('ccm:hooks-state', (event) => (isAppFrame(event) ? readHooks(claudeSettings()).state : null))
+  // Same consent as the status line: the native dialog shows the exact `hooks` block that will be written.
+  ipcMain.handle('ccm:hooks-set', async (event, on: unknown) => {
+    if (!isAppFrame(event) || typeof on !== 'boolean' || !hookBridge) return 'failed'
+    const file = claudeSettings()
+    const read = readHooks(file)
+    if (read.state === 'unreadable' || !read.settings) return 'unreadable'
+    if (on ? read.state === 'ours' : read.state === 'none') return 'ok'
+    const command = on ? hookBridge.command : null
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const opts: Electron.MessageBoxOptions = {
+      type: 'question',
+      message: on ? t.hooksOnTitle : t.hooksOffTitle,
+      detail: t.hooksDetail(file, JSON.stringify({ hooks: plannedHooks(read.settings, command) }, null, 2), on),
+      buttons: [on ? t.statusLineConfirm : t.runConfirm, t.statusLineCancel],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }
+    if (!(await confirmBox(win, opts))) return 'cancelled'
+    return writeHooks(file, readHooks(file), command)
+  })
   // Native picker so a folder for a terminal comes from the user, not from page script.
   // Quick setup: a whole projects folder (e.g. D:\Code) readable by the browser / file tabs, picked natively.
   ipcMain.handle('ccm:grant-folder', async (event) => {
@@ -887,6 +916,19 @@ async function ready(): Promise<void> {
       }
       return confirmBox(mainWindow, opts)
     },
+    confirmRun: async (req) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: t.runTitle(req.kind, req.a, req.b),
+        detail: t.runDetail(req.kind, req.lines),
+        buttons: [t.runConfirm, t.gitDeleteCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(mainWindow, opts)
+    },
+    dataDir: DATA_DIR,
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
   runManager = new RunManager({

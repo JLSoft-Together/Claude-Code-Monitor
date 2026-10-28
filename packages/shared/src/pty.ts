@@ -26,7 +26,8 @@ export type PtyClientMessage =
   /** Git worktrees of the repo holding cwd. */
   | { t: 'wt.list'; cwd: string }
   /** New worktree in `<repo>-wt/<branch>`; an existing branch is checked out, otherwise created from cwd's HEAD. */
-  | { t: 'wt.add'; cwd: string; branch: string }
+  // `copy`: patterns of untracked setup files (.env files, google-services.json) copied from the main checkout.
+  | { t: 'wt.add'; cwd: string; branch: string; copy?: string[] }
   /** Never forced: refused while dirty, for the main checkout, or while a terminal runs inside it. */
   | { t: 'wt.remove'; cwd: string; path: string }
 
@@ -44,7 +45,7 @@ export type PtyServerMessage =
   /** Validated (real, existing) shell folder; null = the reported one was refused. Re-sent on attach. */
   | { t: 'cwd'; cwd: string | null }
   | { t: 'wt.list'; repo: string | null; worktrees: PtyWorktree[] }
-  | { t: 'wt.added'; path: string; branch: string }
+  | { t: 'wt.added'; path: string; branch: string; copied?: string[] }
   | { t: 'wt.removed'; path: string }
   | { t: 'wt.error'; code: WorktreeError; detail?: string }
 

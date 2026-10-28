@@ -36,6 +36,8 @@ extraResources:
     to: layout-daemon/ccm-project-model.gradle
   - from: ../../scripts/statusline-bridge.mjs
     to: bridge/statusline-bridge.mjs
+  - from: ../../scripts/hook-bridge.mjs
+    to: bridge/hook-bridge.mjs
   - from: ../../scripts/assets/ccm.ico
     to: ccm.ico
   - from: ../../scripts/assets/ccmTrayTemplate.png

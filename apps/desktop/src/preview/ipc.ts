@@ -13,6 +13,12 @@ import { FileListCache } from './listFiles'
 import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, remoteUrl, runDelete, updateBranch, type GitAuth } from './branches'
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
+import { cleanQuery, search } from './search'
+import { cleanCommit, commit, headUnpushed, stageHunk, stagePaths, unstagePaths } from './commit'
+import { CheckRunner, cleanCheck, resolveCheck } from './checks'
+import { compareBranch, mergeBranch } from './worktrees'
+import { CheckpointStore } from './checkpoints'
+import type { RunKind } from '../strings'
 import { existingDir } from '../pick-start'
 import type { GitHubAccounts } from '../github/accounts'
 import type { PreviewServer } from './server'
@@ -64,6 +70,10 @@ export interface PreviewIpcDeps {
   confirmAccess: (folder: string) => Promise<boolean>
   /** Native yes/no showing the exact git commands; the page cannot delete a branch without it. */
   confirmGit?: (req: { title: string; commands: string[]; force?: boolean }) => Promise<boolean>
+  /** Native yes/no for amend / merge / checkpoint restore, worded per kind; `a` / `b` = branch / base or file count. */
+  confirmRun?: (req: { kind: RunKind; a: string; b: string; lines: string[] }) => Promise<boolean>
+  /** App data folder: checkpoint stores live in `checkpoints/` there. Checkpoints are off without it. */
+  dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
   trash?: (path: string) => Promise<void>
   /** nativeImage decode + PNG clipboard write; defaults to Electron's own, loaded on first use. */
@@ -91,7 +101,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:cp-diff', 'ccm:cp-restore',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -354,6 +364,26 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     })
   })
 
+  // One search per page: a newer query kills the git grep still running for the older one.
+  const searches = new Map<number, AbortController>()
+  ipcMain.handle('ccm:search', async (event, req: unknown) => {
+    const { dir, query } = (req ?? {}) as { dir?: unknown; query?: unknown }
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    const q = cleanQuery(query)
+    if (!q) return { ok: false, error: 'bad-query' }
+    const ok = await allowedPath(dir)
+    if (!ok || !(await fs.stat(ok.real).catch(() => null))?.isDirectory()) return { ok: false, error: 'denied' }
+    const id = event.sender.id
+    searches.get(id)?.abort()
+    const ctl = new AbortController()
+    searches.set(id, ctl)
+    try {
+      return await search(ok.real, q, ctl.signal)
+    } finally {
+      if (searches.get(id) === ctl) searches.delete(id)
+    }
+  })
+
   ipcMain.handle('ccm:log-refs', async (event, dir: unknown) => {
     if (!isAppFrame(event)) return { ok: false, error: 'denied' }
     const repo = await registerRepo(dir)
@@ -453,6 +483,125 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const res = await discardFile(repo, rel, { trash })
     fileLists.invalidate(repo)
     return res
+  })
+
+  const checks = new CheckRunner()
+  const checkDir = async (dir: unknown): Promise<string | null> => {
+    const real = (await repoOf(dir)) ?? (await allowedPath(dir))?.real
+    return real && (await fs.stat(real).catch(() => null))?.isDirectory() ? real : null
+  }
+  ipcMain.handle('ccm:check-run', async (event, req: unknown) => {
+    const { dir, check } = (req ?? {}) as { dir?: unknown; check?: unknown }
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    const spec = cleanCheck(check)
+    if (!real || !spec) return { ok: false, error: 'denied' }
+    const line = await resolveCheck(real, spec)
+    if (!line) return { ok: false, error: 'unknown-script' }
+    return checks.run(rootKey(real), real, line)
+  })
+  ipcMain.handle('ccm:check-cancel', async (event, dir: unknown) => {
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    return real ? checks.cancel(rootKey(real)) : false
+  })
+
+  ipcMain.handle('ccm:wt-compare', async (event, req: unknown) => {
+    const { dir, branch } = (req ?? {}) as { dir?: unknown; branch?: unknown }
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    return real ? compareBranch(real, branch) : { ok: false, error: 'denied' }
+  })
+  let merging = false
+  ipcMain.handle('ccm:wt-merge', async (event, req: unknown) => {
+    const { dir, branch, mode } = (req ?? {}) as { dir?: unknown; branch?: unknown; mode?: unknown }
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    if (!real || (mode !== 'ff' && mode !== 'squash') || !deps.confirmRun) return { ok: false, error: 'denied' }
+    if (merging) return { ok: false, error: 'failed', detail: 'busy' }
+    merging = true
+    try {
+      return await mergeBranch(real, branch, mode, (commands, target, base) => deps.confirmRun!({ kind: mode, a: String(branch), b: base, lines: [`cd ${target}`, ...commands] }))
+    } finally {
+      merging = false
+    }
+  })
+
+  const cps = deps.dataDir ? new CheckpointStore(deps.dataDir) : null
+  const cpRepo = async (event: IpcMainInvokeEvent, root: unknown): Promise<string | null> => (cps && isAppFrame(event) ? registerRepo(root).then((r) => (typeof r === 'string' ? r : null)) : null)
+  ipcMain.handle('ccm:cp-state', async (event, root: unknown) => {
+    const repo = await cpRepo(event, root)
+    if (!repo || !cps) return { ok: false, error: 'denied' }
+    return { ok: true, root: repo, on: await cps.isOn(repo), list: await cps.list(repo) }
+  })
+  ipcMain.handle('ccm:cp-set', async (event, req: unknown) => {
+    const { root, on } = (req ?? {}) as { root?: unknown; on?: unknown }
+    const repo = await cpRepo(event, root)
+    if (!repo || !cps || typeof on !== 'boolean') return false
+    await cps.setOn(repo, on)
+    return true
+  })
+  ipcMain.handle('ccm:cp-take', async (event, req: unknown) => {
+    const { root, label } = (req ?? {}) as { root?: unknown; label?: unknown }
+    const repo = await cpRepo(event, root)
+    return repo && cps ? cps.take(repo, typeof label === 'string' ? label : 'turn') : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:cp-diff', async (event, req: unknown) => {
+    const { root, id } = (req ?? {}) as { root?: unknown; id?: unknown }
+    const repo = await cpRepo(event, root)
+    return repo && cps ? cps.diff(repo, id) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:cp-restore', async (event, req: unknown) => {
+    const { root, id, paths } = (req ?? {}) as { root?: unknown; id?: unknown; paths?: unknown }
+    const repo = await cpRepo(event, root)
+    const trash = trashFn()
+    if (!repo || !cps || !trash || !deps.confirmRun || !Array.isArray(paths) || !paths.length) return { ok: false, error: 'denied' }
+    const shown = paths.slice(0, 12).map(String)
+    const ok = await deps.confirmRun({ kind: 'restore', a: paths.length === 1 ? shown[0]! : `${paths.length} files`, b: '', lines: paths.length > 12 ? [...shown, '…'] : shown })
+    if (!ok) return { ok: false, error: 'cancelled' }
+    const res = await cps.restore(repo, id, paths, trash)
+    fileLists.invalidate(repo)
+    return res
+  })
+
+  ipcMain.handle('ccm:git-stage', async (event, req: unknown) => {
+    const { root, paths, hunk } = (req ?? {}) as { root?: unknown; paths?: unknown; hunk?: unknown }
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    if (!repo) return { ok: false, error: 'denied' }
+    if (hunk !== undefined) return stageHunk(repo, Array.isArray(paths) ? paths[0] : paths, hunk)
+    return stagePaths(repo, paths)
+  })
+  ipcMain.handle('ccm:git-unstage', async (event, req: unknown) => {
+    const { root, paths } = (req ?? {}) as { root?: unknown; paths?: unknown }
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    return repo ? unstagePaths(repo, paths) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:git-can-amend', async (event, root: unknown) => {
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    return repo ? headUnpushed(repo) : false
+  })
+  const commits = new Map<string, AbortController>()
+  ipcMain.handle('ccm:git-commit', async (event, req: unknown) => {
+    const { root, ...rest } = (req ?? {}) as { root?: unknown }
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    const input = cleanCommit(rest)
+    if (!repo || !input) return { ok: false, error: 'denied' }
+    const key = rootKey(repo)
+    if (commits.has(key)) return { ok: false, error: 'failed', detail: 'busy' }
+    if (input.opts.amend) {
+      if (!(await headUnpushed(repo))) return { ok: false, error: 'pushed' }
+      const ok = await deps.confirmRun?.({ kind: 'amend', a: '', b: '', lines: ['git commit --amend'] })
+      if (!ok) return { ok: false, error: 'cancelled' }
+    }
+    const ctl = new AbortController()
+    commits.set(key, ctl)
+    try {
+      return await commit(repo, input.message, input.opts, ctl.signal)
+    } finally {
+      commits.delete(key)
+    }
+  })
+  ipcMain.handle('ccm:git-commit-cancel', async (event, root: unknown) => {
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    const ctl = repo ? commits.get(rootKey(repo)) : undefined
+    ctl?.abort()
+    return !!ctl
   })
 
   ipcMain.handle('ccm:changes-watch', async (event, root: unknown) => {
@@ -612,6 +761,7 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
       for (const id of new Set([...subs.keys(), ...changeSubs.keys()])) release(id)
       gitDirs.closeAll()
       fileLists.clear()
+      checks.dispose()
     },
   }
 }

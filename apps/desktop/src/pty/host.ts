@@ -20,6 +20,7 @@ import {
   type WorktreeError,
 } from '../../../../packages/shared/src/pty'
 import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, runGit, worktreeDest } from './git'
+import { copySetupFiles } from './wtCopy'
 import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome } from './mcp'
 import { ownersOf, readPidTable } from './owners'
 import { childEnv, clampDim, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
@@ -306,7 +307,8 @@ async function answerWorktree(ws: WebSocket, msg: Extract<PtyClientMessage, { t:
       const args = known.ok ? ['worktree', 'add', '--', dest, branch] : ['worktree', 'add', '-b', branch, '--', dest]
       const res = await runGit(cwd, args, 120_000)
       if (!res.ok) return wtError(ws, 'git', res.stderr)
-      return send(ws, { t: 'wt.added', path: dest, branch })
+      const copied = await copySetupFiles(main.path, dest, msg.copy).catch(() => [])
+      return send(ws, { t: 'wt.added', path: dest, branch, ...(copied.length ? { copied } : {}) })
     }
     const target = list.find((w) => typeof msg.path === 'string' && path.resolve(w.path) === path.resolve(msg.path))
     if (!target) return wtError(ws, 'unknown')

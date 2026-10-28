@@ -1,3 +1,5 @@
+export type RunKind = 'amend' | 'ff' | 'squash' | 'restore'
+
 const en = {
   appName: 'Orrery',
   loading: 'Starting the monitor…',
@@ -60,6 +62,11 @@ const en = {
   gitDeleteDetail: (commands: string[]) => `Orrery will run:\n\n${commands.join('\n')}\n\nCommits only on this branch can be lost.`,
   gitDeleteConfirm: 'Delete',
   gitDeleteCancel: 'Cancel',
+  runTitle: (kind: RunKind, a: string, b: string) =>
+    kind === 'amend' ? 'Amend the last commit?' : kind === 'ff' ? `Fast-forward ${b} to ${a}?` : kind === 'squash' ? `Squash ${a} into one commit on ${b}?` : `Restore ${a} from the checkpoint?`,
+  runDetail: (kind: RunKind, lines: string[]) =>
+    kind === 'restore' ? `These go back to how they were at the checkpoint; files that did not exist then go to the trash:\n\n${lines.join('\n')}` : `Orrery will run:\n\n${lines.join('\n')}`,
+  runConfirm: 'Continue',
   ghRemoveTitle: (login: string) => `Remove GitHub account ${login}?`,
   ghRemoveDetail: 'Orrery forgets its token. Repos that used it go back to automatic choice. The token stays valid on GitHub until you revoke it there.',
   ghRemoveConfirm: 'Remove',
@@ -72,6 +79,14 @@ ${json}
 The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up.`,
   statusLineConfirm: 'Turn on',
   statusLineCancel: 'Cancel',
+  hooksOnTitle: 'Turn on the hook bridge?',
+  hooksOffTitle: 'Turn off the hook bridge?',
+  hooksDetail: (file: string, json: string, on: boolean) =>
+    `Orrery will ${on ? 'add async hooks (PreCompact, PostCompact, PermissionDenied) to' : 'remove its hooks from'} ${file}; your other hooks stay:
+
+${json}
+
+They run in the background and keep only the event name, trigger and tool name. The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up.`,
   grantTitle: 'Choose your projects folder',
   extTitle: (kind: 'install' | 'remove' | 'source'): string =>
     kind === 'install' ? 'Install into Claude Code?' : kind === 'remove' ? 'Remove from Claude Code?' : 'Add to Claude Code?',
@@ -153,6 +168,11 @@ const vi: typeof en = {
   gitDeleteDetail: (commands) => `Orrery sẽ chạy:\n\n${commands.join('\n')}\n\nCác commit chỉ có trên nhánh này có thể bị mất.`,
   gitDeleteConfirm: 'Xoá',
   gitDeleteCancel: 'Huỷ',
+  runTitle: (kind, a, b) =>
+    kind === 'amend' ? 'Sửa commit cuối?' : kind === 'ff' ? `Fast-forward ${b} lên ${a}?` : kind === 'squash' ? `Gộp ${a} thành một commit trên ${b}?` : `Khôi phục ${a} từ checkpoint?`,
+  runDetail: (kind, lines) =>
+    kind === 'restore' ? `Các file này trở về như lúc checkpoint; file chưa có lúc đó sẽ vào thùng rác:\n\n${lines.join('\n')}` : `Orrery sẽ chạy:\n\n${lines.join('\n')}`,
+  runConfirm: 'Tiếp tục',
   ghRemoveTitle: (login) => `Gỡ tài khoản GitHub ${login}?`,
   ghRemoveDetail: 'Orrery sẽ quên token của tài khoản này. Các repo đang dùng nó quay về chế độ tự chọn. Token vẫn còn hiệu lực trên GitHub cho tới khi bạn thu hồi ở đó.',
   ghRemoveConfirm: 'Gỡ',
@@ -165,6 +185,14 @@ ${json}
 Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Claude mới sẽ dùng cấu hình này.`,
   statusLineConfirm: 'Bật',
   statusLineCancel: 'Huỷ',
+  hooksOnTitle: 'Bật hook bridge?',
+  hooksOffTitle: 'Tắt hook bridge?',
+  hooksDetail: (file, json, on) =>
+    `Orrery sẽ ${on ? 'thêm hook chạy nền (PreCompact, PostCompact, PermissionDenied) vào' : 'gỡ hook của mình khỏi'} ${file}; các hook khác của bạn giữ nguyên:
+
+${json}
+
+Hook chạy nền và chỉ giữ tên sự kiện, trigger và tên tool. Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Claude mới sẽ dùng cấu hình này.`,
   grantTitle: 'Chọn thư mục chứa các project',
   extTitle: (kind) => (kind === 'install' ? 'Cài vào Claude Code?' : kind === 'remove' ? 'Gỡ khỏi Claude Code?' : 'Thêm vào Claude Code?'),
   extDetail: (where, commands) => `Orrery sẽ chạy, cho ${where}:

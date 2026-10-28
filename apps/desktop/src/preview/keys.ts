@@ -24,7 +24,7 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
     if (!meta || ctrl) return null
     if (alt) return null
     if (code === 'KeyT' || code === 'KeyW' || code === 'KeyK' || code === 'KeyP') return shift ? null : hit()
-    if (code === 'KeyA' || code === 'KeyE' || code === 'KeyO') return shift ? hit() : null
+    if (code === 'KeyA' || code === 'KeyE' || code === 'KeyO' || code === 'KeyF') return shift ? hit() : null
     if (code === 'KeyD') return hit()
     if (code === 'BracketLeft' || code === 'BracketRight') return shift ? hit() : null
     if (DIGIT.test(code)) return shift ? null : hit()
@@ -32,7 +32,7 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
   }
   if (meta) return null
   if (ctrl && shift && !alt && (code === 'KeyT' || code === 'KeyW' || code === 'KeyA' || code === 'KeyP' || code === 'KeyE' || code === 'KeyO')) return hit()
-  if (alt && shift && !ctrl && ['KeyD', 'Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract'].includes(code)) return hit()
+  if (alt && shift && !ctrl && ['KeyD', 'KeyF', 'Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract'].includes(code)) return hit()
   if (ctrl && !alt && code === 'Tab') return hit()
   if (ctrl && !alt && !shift && code === 'KeyK') return hit()
   // AltGr arrives as Ctrl+Alt and types characters (@ { [) on many layouts: a non-digit key means it typed one.

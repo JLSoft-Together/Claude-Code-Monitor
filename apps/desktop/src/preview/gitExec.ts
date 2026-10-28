@@ -20,6 +20,8 @@ export interface GitExecOptions {
   killTree?: boolean
   /** Extra env on top of ours, e.g. `gitAuthEnv` for a GitHub account. */
   env?: Record<string, string>
+  /** Kills the process when aborted (a newer search replaced this one); resolves with code null. */
+  signal?: AbortSignal
 }
 
 let gitPath: string | null | undefined
@@ -54,10 +56,15 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
     let stderr = ''
     let done = false
     let timedOut = false
+    const onAbort = (): void => {
+      child.kill()
+      finish(null)
+    }
     const finish = (code: number | null): void => {
       if (done) return
       done = true
       clearTimeout(timer)
+      opts.signal?.removeEventListener('abort', onAbort)
       resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated, ...(timedOut ? { timedOut } : {}) })
     }
     const timer = setTimeout(() => {
@@ -66,6 +73,8 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
       else child.kill()
       finish(null)
     }, opts.timeoutMs ?? 30_000)
+    if (opts.signal?.aborted) onAbort()
+    else opts.signal?.addEventListener('abort', onAbort, { once: true })
     child.stdout!.on('data', (chunk: Buffer) => {
       if (truncated) return
       if (size + chunk.length > maxBytes) {
