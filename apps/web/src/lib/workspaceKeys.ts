@@ -24,6 +24,13 @@ export type WorkspaceAction =
   | { t: 'reopen' }
   /** Prompt library (⇧⌘P; Alt+Shift+P elsewhere: Ctrl+Shift+P is Quick Open). */
   | { t: 'prompts' }
+  /** Recent files / edit locations / bookmarks (⌘E; Alt+Shift+E elsewhere: Ctrl+E is readline end-of-line). */
+  | { t: 'recent' }
+  /** Every bookmark (Shift+F11, as in IntelliJ). */
+  | { t: 'bookmarks' }
+  /** Back / forward through file locations (⌃- / ⌃⇧- on macOS, Ctrl+Alt+← / → elsewhere). */
+  | { t: 'navBack' }
+  | { t: 'navForward' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
@@ -36,8 +43,11 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (e.type !== 'keydown' || e.isComposing) return null
   const { ctrlKey: ctrl, shiftKey: shift, altKey: alt, metaKey: meta, code } = e
   const digit = /^Digit([1-9])$/.exec(code)
+  if (code === 'F11' && shift && !ctrl && !alt && !meta) return { t: 'bookmarks' }
   if (mac) {
+    if (ctrl && !meta && !alt && code === 'Minus') return { t: shift ? 'navForward' : 'navBack' }
     if (!meta || ctrl) return null
+    if (code === 'KeyE' && !shift && !alt) return { t: 'recent' }
     if (code === 'KeyT' && !shift && !alt) return { t: 'newTab' }
     if (code === 'KeyT' && shift && !alt) return { t: 'reopen' }
     if (code === 'Enter' && shift && !alt) return { t: 'zoom' }
@@ -69,9 +79,11 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
     if (code === 'KeyD') return { t: 'split' }
     if (code === 'KeyF') return { t: 'search' }
     if (code === 'KeyP') return { t: 'prompts' }
+    if (code === 'KeyE') return { t: 'recent' }
     if (code === 'Equal' || code === 'NumpadAdd') return { t: 'split', dir: 'row' }
     if (code === 'Minus' || code === 'NumpadSubtract') return { t: 'split', dir: 'col' }
   }
+  if (ctrl && alt && !shift && (code === 'ArrowLeft' || code === 'ArrowRight') && !e.getModifierState?.('AltGraph')) return { t: code === 'ArrowLeft' ? 'navBack' : 'navForward' }
   if (ctrl && !alt && code === 'Tab') return { t: 'cycleTab', step: shift ? -1 : 1 }
   // AltGr arrives as Ctrl+Alt on Windows; AltGr+digit types characters like @ { [ on many layouts.
   if (ctrl && alt && !shift && digit && !e.getModifierState?.('AltGraph')) return { t: 'tab', index: Number(digit[1]) - 1 }

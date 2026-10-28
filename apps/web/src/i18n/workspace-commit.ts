@@ -163,6 +163,15 @@ const en = {
       unavailable: 'Needs the desktop app.',
     },
   },
+  nav: {
+    title: 'Recent',
+    search: 'Filter by file name or line text',
+    tab: { recent: 'Recent files', edits: 'Recent edits', bookmarks: 'Bookmarks' },
+    empty: { recent: 'No file opened yet.', edits: 'No edit yet.', bookmarks: 'No bookmark yet. F11 toggles one on the current line.' },
+    noMatch: 'Nothing matches.',
+    remove: 'Remove bookmark',
+    hint: 'Enter opens · Tab switches list · Delete removes a bookmark',
+  },
   outline: {
     open: 'Outline (symbols in file)…',
     title: 'Symbols in this file',
@@ -375,6 +384,15 @@ const vi: typeof en = {
       cancelled: 'Đã huỷ.',
       unavailable: 'Cần app desktop.',
     },
+  },
+  nav: {
+    title: 'Gần đây',
+    search: 'Lọc theo tên file hoặc nội dung dòng',
+    tab: { recent: 'File gần đây', edits: 'Vừa sửa', bookmarks: 'Bookmark' },
+    empty: { recent: 'Chưa mở file nào.', edits: 'Chưa sửa chỗ nào.', bookmarks: 'Chưa có bookmark. F11 bật / tắt ở dòng hiện tại.' },
+    noMatch: 'Không có kết quả.',
+    remove: 'Xoá bookmark',
+    hint: 'Enter để mở · Tab đổi danh sách · Delete xoá bookmark',
   },
   outline: {
     open: 'Outline (ký hiệu trong file)…',

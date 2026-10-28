@@ -62,6 +62,19 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('KeyP', { ctrlKey: true, shiftKey: true }), false, false)).toEqual({ t: 'quickOpen' })
   })
 
+  it('recent, bookmarks and back / forward', () => {
+    expect(workspaceAction(key('KeyE', { altKey: true, shiftKey: true }), false, false)).toEqual({ t: 'recent' })
+    expect(workspaceAction(key('KeyE', { metaKey: true }), true, false)).toEqual({ t: 'recent' })
+    expect(workspaceAction(key('KeyE', { ctrlKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('F11', { shiftKey: true }), false, false)).toEqual({ t: 'bookmarks' })
+    expect(workspaceAction(key('F11', { shiftKey: true }), true, false)).toEqual({ t: 'bookmarks' })
+    expect(workspaceAction(key('ArrowLeft', { ctrlKey: true, altKey: true }), false, true)).toEqual({ t: 'navBack' })
+    expect(workspaceAction(key('ArrowRight', { ctrlKey: true, altKey: true }), false, true)).toEqual({ t: 'navForward' })
+    expect(workspaceAction(key('Minus', { ctrlKey: true }), true, false)).toEqual({ t: 'navBack' })
+    expect(workspaceAction(key('Minus', { ctrlKey: true, shiftKey: true }), true, false)).toEqual({ t: 'navForward' })
+    expect(workspaceAction(key('ArrowLeft', { altKey: true }), false, true)).toEqual({ t: 'focus', dir: 'left' })
+  })
+
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })

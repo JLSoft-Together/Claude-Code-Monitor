@@ -30,6 +30,7 @@ import type { TipAction } from '../../lib/tips'
 import { useTipsStore } from '../../stores/tips'
 import { usePeersStore } from '../../stores/peers'
 import { usePromptsStore } from '../../stores/prompts'
+import { useNavigationStore } from '../../stores/navigation'
 import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
@@ -49,6 +50,7 @@ import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
 
 const PromptPicker = defineAsyncComponent(() => import('./PromptPicker.vue'))
+const NavPicker = defineAsyncComponent(() => import('./NavPicker.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -833,6 +835,7 @@ function closeTab(tab: Tab): void {
 // Mouse paths of actions that have a chord: counted for the shortcut tip (stores/tips.ts).
 const tips = useTipsStore()
 const prompts = usePromptsStore()
+const nav = useNavigationStore()
 const ui = useUiStore()
 
 function mouseSplit(choice: SplitChoice, key: string): void {
@@ -1191,6 +1194,8 @@ function onGlobalKey(e: KeyboardEvent): void {
   if (inEditor(e.target) && editorKeepsKey(e, isMac)) return
   const action = workspaceAction(e, isMac, multiPane.value)
   if (!action) return
+  // ⌃- is readline undo in a macOS terminal.
+  if ((action.t === 'navBack' || action.t === 'navForward') && isMac && (e.target as Element | null)?.closest?.('.xterm')) return
   if (action.t === 'reopen' && !isMac && (inEditor(e.target) || (isTyping(e.target) && !(e.target as Element).closest?.('.xterm')))) return
   e.preventDefault()
   e.stopPropagation()
@@ -1247,6 +1252,14 @@ function onGlobalKey(e: KeyboardEvent): void {
       break
     case 'prompts':
       prompts.open = !prompts.open
+      break
+    case 'recent':
+    case 'bookmarks':
+      nav.picker = nav.picker ? null : action.t
+      break
+    case 'navBack':
+    case 'navForward':
+      nav.step(action.t === 'navBack' ? -1 : 1)
       break
   }
 }
@@ -2362,6 +2375,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <PromptPicker v-if="prompts.open && visible" @close="prompts.open = false" />
+    <NavPicker v-if="nav.picker && visible" @close="nav.picker = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

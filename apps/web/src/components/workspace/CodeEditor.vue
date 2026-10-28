@@ -7,12 +7,14 @@ import { bracketMatching, indentOnInput } from '@codemirror/language'
 import { lintGutter, lintKeymap, setDiagnostics, type Diagnostic } from '@codemirror/lint'
 import { unifiedMergeView } from '@codemirror/merge'
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search'
-import { Compartment, EditorSelection, EditorState, Text, type Extension } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, RangeSet, StateEffect, StateField, Text, type Extension } from '@codemirror/state'
 import {
   crosshairCursor,
   drawSelection,
   dropCursor,
   EditorView,
+  GutterMarker,
+  gutterLineClass,
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
@@ -27,8 +29,9 @@ import { isMac } from '../../lib/platform'
 import { useSettingsStore } from '../../stores/settings'
 
 const props = withDefaults(
-  defineProps<{ doc: string; base?: string | null; grammar: string | null; wrap?: boolean; compare?: string | null; line?: number | null; problems?: readonly BuildError[] | null }>(),
+  defineProps<{ doc: string; base?: string | null; grammar: string | null; wrap?: boolean; compare?: string | null; line?: number | null; problems?: readonly BuildError[] | null; bookmarks?: readonly number[] }>(),
   {
+  bookmarks: () => [],
   problems: null,
   base: null,
   wrap: false,
@@ -77,6 +80,26 @@ function setDirty(next: boolean): void {
   emit('dirty', next)
 }
 
+class BookmarkMarker extends GutterMarker {
+  override elementClass = 'cm-bookmark'
+}
+const bookmarkMarker = new BookmarkMarker()
+const setBookmarks = StateEffect.define<readonly number[]>()
+const bookmarkRanges = (doc: Text, lines: readonly number[]): RangeSet<GutterMarker> =>
+  RangeSet.of(
+    [...new Set(lines)].filter((l) => l >= 1 && l <= doc.lines).sort((a, b) => a - b).map((l) => bookmarkMarker.range(doc.line(l).from)),
+  )
+// Mapped through edits so a mark stays on its text until the store's line list replaces it.
+const bookmarkField = StateField.define<RangeSet<GutterMarker>>({
+  create: () => RangeSet.empty,
+  update(value, tr) {
+    let next = value.map(tr.changes)
+    for (const e of tr.effects) if (e.is(setBookmarks)) next = bookmarkRanges(tr.state.doc, e.value)
+    return next
+  },
+  provide: (f) => gutterLineClass.from(f),
+})
+
 const mergeExt = (original: string | null): Extension => (original === null ? [] : unifiedMergeView({ original, gutter: true, mergeControls: true }))
 
 function extensions(): Extension[] {
@@ -96,6 +119,7 @@ function extensions(): Extension[] {
     highlightActiveLine(),
     highlightSelectionMatches(),
     lintGutter(),
+    bookmarkField,
     search({ top: true }),
     keymap.of([
       { key: 'Mod-s', preventDefault: true, run: () => (emit('save'), true) },
@@ -146,6 +170,10 @@ function applyProblems(): void {
   if (view) view.dispatch(setDiagnostics(view.state, diagnostics(view.state, props.problems)))
 }
 
+function applyBookmarks(): void {
+  view?.dispatch({ effects: setBookmarks.of(props.bookmarks) })
+}
+
 function revealLine(line: number, select = false): void {
   if (!view) return
   const doc = view.state.doc
@@ -180,6 +208,7 @@ defineExpose({
   focus: (): void => view?.focus(),
   openFind: (): void => void (view && openSearchPanel(view)),
   /** Selected text, else the word at the cursor. */
+  lineText: (line: number): string => (view && line >= 1 && line <= view.state.doc.lines ? view.state.doc.line(line).text : ''),
   word: (): string => {
     if (!view) return ''
     const sel = view.state.selection.main
@@ -196,6 +225,7 @@ onMounted(() => {
   setDirty(!view.state.doc.eq(baseline))
   void applyLanguage(props.grammar)
   applyProblems()
+  applyBookmarks()
   if (props.line) revealLine(props.line)
 })
 
@@ -209,6 +239,7 @@ watch(
   (g) => void applyLanguage(g),
 )
 watch(() => props.problems, applyProblems)
+watch(() => props.bookmarks, applyBookmarks)
 watch(
   () => props.wrap,
   (on) => view?.dispatch({ effects: wrapping.reconfigure(on ? EditorView.lineWrapping : []) }),
@@ -268,6 +299,20 @@ watch(
 }
 .ccm-editor .cm-gutter .cm-lint-marker-warning {
   background: var(--ccm-warning);
+}
+.ccm-editor .cm-lineNumbers .cm-gutterElement.cm-bookmark {
+  position: relative;
+}
+.ccm-editor .cm-lineNumbers .cm-gutterElement.cm-bookmark::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 6px;
+  height: 9px;
+  translate: 0 -50%;
+  background: var(--ccm-favorite);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
 }
 /* Search / replace panel = chrome (material), outside the scoped block because CodeMirror builds it. */
 .ccm-editor .cm-panels {

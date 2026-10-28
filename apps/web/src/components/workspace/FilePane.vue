@@ -21,6 +21,7 @@ import { useFileChanges } from '../../composables/useFileChanges'
 import { useWindowCopy } from '../../composables/useWindowCopy'
 import { useSettingsStore } from '../../stores/settings'
 import { useChecksStore } from '../../stores/checks'
+import { useNavigationStore } from '../../stores/navigation'
 import { problemsFor, stepProblem } from '../../lib/problems'
 import AccessPrompt from './AccessPrompt.vue'
 import ChangeRuler from './ChangeRuler.vue'
@@ -55,6 +56,7 @@ interface EditorApi {
   focus: () => void
   openFind: () => void
   word: () => string
+  lineText: (line: number) => string
 }
 
 const props = withDefaults(defineProps<{ path: string; line?: number; active?: boolean; paneKey?: string }>(), { active: true, paneKey: undefined })
@@ -308,7 +310,7 @@ const html = computed(() => {
     const pk = problemLines.value.get(i + 1)
     const bl = blameLabels.value[i]
     const bAttr = bl ? `<span class="b${bl.text ? '' : ' is-cont'}" aria-hidden="true"${bl.hash ? ` data-blame="${bl.hash}" title="${escapeHtml(bl.title)}"` : ''}>${escapeHtml(bl.text)}</span>` : ''
-    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${pk ? ` p-${pk}` : ''}${flash.value.has(i) ? ' is-flash' : ''}${g ? ` g-${g.kind}` : ''}`
+    const cls = `r${i + 1 === targetLine.value ? ' is-target' : ''}${pk ? ` p-${pk}` : ''}${flash.value.has(i) ? ' is-flash' : ''}${bookmarkSet.value.has(i + 1) ? ' bm' : ''}${g ? ` g-${g.kind}` : ''}`
     const gAttr = g ? ` data-block="${g.block}"` : ''
     const nAttr = g ? ` data-gutter title="${gutterTitle(g.block)}"` : ''
     out += `<div class="${cls}" data-line="${i + 1}" data-i="${i}"${gAttr}>${bAttr}<span class="n" aria-hidden="true"${nAttr}>${i + 1}</span><span class="c">${renderLine(lineTokens, byLine.get(i))}\n</span></div>`
@@ -519,6 +521,59 @@ function onCursorLine(line: number): void {
   if (showDesign.value) layoutLine.value = line
 }
 
+const nav = useNavigationStore()
+const paneCwd = computed(() => workspace.panes.find((p) => p.key === props.paneKey)?.cwd)
+const filePath = (): string => view.value?.path ?? props.path
+const bookmarkLines = computed(() => (view.value?.kind === 'text' ? nav.linesOf(filePath()) : []))
+const bookmarkSet = computed(() => new Set(bookmarkLines.value))
+let editSpotTimer: ReturnType<typeof setTimeout> | null = null
+const spotAt = (line: number) => ({ path: filePath(), line, ...(paneCwd.value ? { cwd: paneCwd.value } : {}) })
+
+/** Editor cursor; in the viewer the selected row, else the jump target, else the top visible row. */
+function currentLine(): number {
+  if (editing.value) return editorLine ?? 1
+  const node = window.getSelection()?.anchorNode
+  const el = node && codeEl.value?.contains(node) ? (node instanceof Element ? node : node.parentElement) : null
+  const row = el?.closest<HTMLElement>('[data-line]')
+  if (row) return Number(row.dataset.line)
+  if (targetLine.value) return targetLine.value
+  const sc = scroller.value
+  if (!sc) return 1
+  return Math.max(1, Math.min(lines.value.length, Math.floor((sc.scrollTop - rowOrigin()) / rowH.value) + 1))
+}
+
+const lineAt = (line: number): string => (editing.value ? (editor.value?.lineText(line) ?? '') : (lines.value[line - 1] ?? ''))
+
+function toggleBookmark(): void {
+  const line = currentLine()
+  nav.toggleBookmark(spotAt(line), lineAt(line))
+}
+
+function noteEdit(): void {
+  if (editSpotTimer) clearTimeout(editSpotTimer)
+  editSpotTimer = setTimeout(() => {
+    editSpotTimer = null
+    const line = editorLine ?? 1
+    nav.edited(spotAt(line), lineAt(line))
+  }, 800)
+}
+
+watch(
+  () => props.active,
+  (active) => {
+    if (view.value?.kind !== 'text') return
+    if (active) nav.visit(spotAt(currentLine()))
+    else nav.leave(spotAt(currentLine()))
+  },
+)
+watch(
+  () => view.value?.kind,
+  (kind) => {
+    if (kind === 'text' || kind === 'image') nav.opened(filePath(), paneCwd.value)
+    if (kind === 'text' && props.active && !props.line) nav.visit(spotAt(1))
+  },
+)
+
 watch(editor, (api) => {
   if (api && focusEditor) {
     focusEditor = false
@@ -527,6 +582,7 @@ watch(editor, (api) => {
 })
 
 function onEditorChange(): void {
+  noteEdit()
   if (firesOn(settings.autoSave, 'edit')) {
     cancelAutoSave()
     autoSaveTimer = setTimeout(() => {
@@ -699,6 +755,7 @@ function flashLines(changed: number[]): void {
 }
 
 async function jumpTo(line: number | undefined): Promise<void> {
+  if (line && props.active && view.value?.kind === 'text') nav.visit(spotAt(line))
   if (line && editing.value) return editor.value?.revealLine(line)
   if (!line || !showSource.value) return
   targetLine.value = line
@@ -802,6 +859,17 @@ function onWindowKey(e: KeyboardEvent): void {
     e.preventDefault()
     if (e.shiftKey) findUsages()
     else findDeclaration()
+    return
+  }
+  if (inPane && e.key === 'F11' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault()
+    toggleBookmark()
+    return
+  }
+  if (inPane && !isMac && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyE') {
+    e.preventDefault()
+    e.stopPropagation()
+    nav.picker = 'recent'
     return
   }
   if (inPane && e.key === 'F8' && !e.ctrlKey && !e.metaKey && !e.altKey && problems.value && !inEditor(e.target)) {
@@ -1059,6 +1127,7 @@ onBeforeUnmount(() => {
   if (stackTimer) clearTimeout(stackTimer)
   offChange()
   if (flashTimer) clearTimeout(flashTimer)
+  if (editSpotTimer) clearTimeout(editSpotTimer)
   if (rangeFrame) cancelAnimationFrame(rangeFrame)
   void setWatch(null)
 })
@@ -1360,6 +1429,7 @@ function pickHead(id: string): void {
         :compare="compareText"
         :line="targetLine ?? line ?? null"
         :problems="problems?.items ?? null"
+        :bookmarks="bookmarkLines"
         @dirty="(d: boolean) => (dirty = d)"
         @change="onEditorChange"
         @save="save()"
@@ -1519,6 +1589,17 @@ function pickHead(id: string): void {
 /* Change markers: a bar on the number column's code edge (triangle for a deletion), IntelliJ style. */
 .code :deep(.r[data-block] .n) {
   cursor: pointer;
+}
+.code :deep(.r.bm .n::before) {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 6px;
+  height: 9px;
+  translate: 0 -50%;
+  background: var(--ccm-favorite);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
 }
 .code :deep(.r[data-block] .n:hover) {
   color: var(--ccm-well-ink);
