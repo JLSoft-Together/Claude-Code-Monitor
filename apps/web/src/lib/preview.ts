@@ -75,6 +75,8 @@ export type ChangesFile =
   | { ok: false; error: ChangesError }
 
 export type ChangesResult = { ok: true } | { ok: false; error: ChangesError; detail?: string }
+/** Mirrors `apps/desktop/src/preview/gitImage.ts`. */
+export type HeadImage = { ok: true; dataUrl: string; size: number } | { ok: false; error: 'denied' | 'unsupported' | 'missing' | 'too-large' | 'failed' | 'unavailable' }
 
 export interface FileList {
   root: string
@@ -205,6 +207,7 @@ interface PreviewBridge {
   changesStatus?: (dir: string) => Promise<ChangesStatus>
   changesDiff?: (root: string, path: string, opts?: ChangesDiffOpts) => Promise<ChangesDiff>
   changesFile?: (path: string) => Promise<ChangesFile>
+  gitShowImage?: (root: string, path: string) => Promise<HeadImage>
   search?: (dir: string, query: SearchQuery) => Promise<SearchResult>
   gitStage?: (root: string, paths: string[], hunk?: string) => Promise<StageResult>
   gitUnstage?: (root: string, paths: string[]) => Promise<StageResult>
@@ -296,6 +299,9 @@ export const changesDiff = (root: string, path: string, opts?: ChangesDiffOpts):
   bridge?.changesDiff?.(root, path, opts) ?? Promise.resolve(unavailable)
 export const hasFileChanges = typeof bridge?.changesFile === 'function'
 export const changesFile = (path: string): Promise<ChangesFile> => bridge?.changesFile?.(path) ?? Promise.resolve(unavailable)
+export const hasGitShowImage = typeof bridge?.gitShowImage === 'function'
+/** HEAD's copy of an image (`rel` inside the repo `root`) as a data URL, ≤ 20 MB. */
+export const gitShowImage = (root: string, rel: string): Promise<HeadImage> => bridge?.gitShowImage?.(root, rel) ?? Promise.resolve(unavailable)
 export const hasCommit = typeof bridge?.gitCommit === 'function'
 export const gitStage = (root: string, paths: string[], hunk?: string): Promise<StageResult> => bridge?.gitStage?.(root, paths, hunk) ?? Promise.resolve(unavailable)
 export const gitUnstage = (root: string, paths: string[]): Promise<StageResult> => bridge?.gitUnstage?.(root, paths) ?? Promise.resolve(unavailable)

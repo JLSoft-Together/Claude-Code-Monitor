@@ -8,6 +8,7 @@ import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
 import { blockPatch, viewBlocks } from '../../lib/diffBlocks'
 import { hideImportChanges } from '../../lib/diffImports'
+import { isImagePath } from '../../lib/imageCompare'
 import { CONTEXTS, HIGHLIGHTS, readDiffOpts, WHITESPACE, writeDiffOpts, type DiffOpts } from '../../lib/diffOpts'
 import { isMac } from '../../lib/platform'
 import { keyCombo } from '../../lib/shortcuts'
@@ -22,6 +23,7 @@ import {
   gitUnstage,
   hasChanges,
   hasCommit,
+  hasGitShowImage,
   hasLog,
   mergeAbort,
   mergeState,
@@ -37,6 +39,7 @@ import DiscardConfirm from './DiscardConfirm.vue'
 import PaneMore from './PaneMore.vue'
 
 const ConflictView = defineAsyncComponent(() => import('./ConflictView.vue'))
+const ImageCompare = defineAsyncComponent(() => import('./ImageCompare.vue'))
 
 const props = withDefaults(defineProps<{ cwd: string; active?: boolean; select?: string }>(), { active: true })
 const emit = defineEmits<{
@@ -133,6 +136,12 @@ const rowKey = (g: string, r: ChangesTreeRow): string => (r.kind === 'dir' ? `d:
 const visibleKeys = computed(() => treeGroups.value.flatMap((g) => g.rows.map((r) => rowKey(g.key, r))))
 
 const selectedEntry = computed(() => entries.value.find((e) => e.path === selected.value) ?? null)
+const imageEntry = computed(() => {
+  const e = selectedEntry.value
+  return hasGitShowImage && e && e.kind !== 'conflict' && isImagePath(e.path) ? e : null
+})
+/** Bumped on every reload of the selected image so the working copy is fetched again. */
+const imageRev = ref(0)
 const blocks = computed(() => (diffFile.value ? viewBlocks(diffFile.value, opts.value.highlight) : []))
 const lineCount = computed(() => diffFile.value?.hunks.reduce((n, h) => n + h.lines.length, 0) ?? 0)
 const collapse = computed(() => opts.value.collapse || lineCount.value > FORCE_COLLAPSE_LINES)
@@ -209,6 +218,12 @@ async function loadDiff(keepPosition = false): Promise<void> {
   if (!entry || !repoRoot.value || entry.kind === 'conflict') {
     diffFile.value = null
     diffState.value = 'idle'
+    return
+  }
+  if (imageEntry.value) {
+    diffFile.value = null
+    diffState.value = 'idle'
+    imageRev.value++
     return
   }
   if (!keepPosition) {
@@ -1023,6 +1038,7 @@ function pickHead(id: string): void {
           @open="(p: string, l?: number) => emit('open', p, l)"
           @staged="loadStatus()"
         />
+        <ImageCompare v-else-if="imageEntry && repoRoot" :root="repoRoot" :entry="imageEntry" :abs="absolute(imageEntry.path)" :rev="imageRev" />
         <div v-else class="ccm-scroll min-h-0 flex-1" :class="opts.layout === 'split' && diffFile && diffState === 'idle' ? 'overflow-hidden' : 'overflow-auto'">
           <div v-if="!selectedEntry" class="grid size-full place-items-center p-6 text-sm text-well-ink">{{ t('workspace.changes.selectFile') }}</div>
           <div v-else-if="diffState === 'loading'" class="grid size-full place-items-center text-xs text-well-ink" role="status">{{ t('workspace.changes.loading') }}</div>

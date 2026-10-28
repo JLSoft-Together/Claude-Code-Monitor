@@ -10,6 +10,8 @@ export interface GitExecResult {
   truncated: boolean
   /** Killed after `timeoutMs` (code is null then; a spawn error also gives null without this flag). */
   timedOut?: boolean
+  /** Raw stdout when `binary` was asked (then `stdout` is ''). */
+  bytes?: Buffer
 }
 
 export interface GitExecOptions {
@@ -22,6 +24,8 @@ export interface GitExecOptions {
   env?: Record<string, string>
   /** Kills the process when aborted (a newer search replaced this one); resolves with code null. */
   signal?: AbortSignal
+  /** Keep stdout as bytes (`bytes`), e.g. a `cat-file blob` of an image. */
+  binary?: boolean
 }
 
 let gitPath: string | null | undefined
@@ -65,7 +69,9 @@ export function execGit(cwd: string, args: string[], opts: GitExecOptions = {}):
       done = true
       clearTimeout(timer)
       opts.signal?.removeEventListener('abort', onAbort)
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated, ...(timedOut ? { timedOut } : {}) })
+      const buf = Buffer.concat(out)
+      const body = opts.binary ? { stdout: '', bytes: buf } : { stdout: buf.toString('utf8') }
+      resolve({ code, ...body, stderr, truncated, ...(timedOut ? { timedOut } : {}) })
     }
     const timer = setTimeout(() => {
       timedOut = true

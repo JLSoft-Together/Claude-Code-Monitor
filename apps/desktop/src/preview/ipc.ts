@@ -5,6 +5,7 @@ import { commonDir, discardFile, discardHunk, diff as changesDiff, fileDiff, Git
 import { electronClipboardImage, writeClipboardImage, writeClipboardImageFile, type ClipboardImageDeps } from './clipboardImage'
 import { createEntry, listDir, renameEntry, trashEntry } from './explorer'
 import { readFileForView } from './files'
+import { headImage } from './gitImage'
 import { detectScripts } from './scripts'
 import { workspaceChord } from './keys'
 import { filesystemRoots, FullAccess, GrantStore } from './grants'
@@ -105,7 +106,7 @@ export interface PreviewIpc {
 
 const CHANNELS = [
   'ccm:preview-url', 'ccm:read-file', 'ccm:watch', 'ccm:unwatch', 'ccm:pick-file', 'ccm:open-external', 'ccm:reveal', 'ccm:open-path', 'ccm:request-access',
-  'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
+  'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
   'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format',
@@ -391,6 +392,13 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const repo = isAppFrame(event) ? await repoOf(root) : null
     if (!repo) return { ok: false, error: 'denied' }
     return changesDiff(repo, rel, opts)
+  })
+
+  ipcMain.handle('ccm:git-show-image', async (event, req: unknown) => {
+    const { root, path: rel } = (req ?? {}) as { root?: unknown; path?: unknown }
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    if (!repo) return { ok: false, error: 'denied' }
+    return headImage(repo, rel)
   })
 
   // File viewer gutter: the file must be readable here; its repo is registered so a rollback can name it.
