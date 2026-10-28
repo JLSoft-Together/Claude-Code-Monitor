@@ -217,6 +217,30 @@ export interface EnvFileReport {
 export type EnvCheck =
   | { ok: true; root: string; template: { name: string; keys: { key: string; empty: boolean; line: number }[] } | null; files: EnvFileReport[]; truncated: boolean }
   | { ok: false; error: 'denied' | 'failed' | 'unavailable' }
+export type I18nKind = 'android' | 'flutter' | 'json'
+export type I18nIssue = 'missing' | 'extra' | 'same'
+export interface I18nKey {
+  key: string
+  file: string
+  line: number
+}
+export interface I18nLocale {
+  locale: string
+  files: string[]
+  keys: number
+  counts: Record<I18nIssue, number>
+  missing: I18nKey[]
+  extra: I18nKey[]
+  same: I18nKey[]
+  error?: 'invalid' | 'too-large'
+}
+export interface I18nSet {
+  kind: I18nKind
+  dir: string
+  base: { locale: string; files: string[]; keys: number; error?: 'invalid' | 'too-large' }
+  locales: I18nLocale[]
+}
+export type I18nScan = { ok: true; root: string; sets: I18nSet[]; truncated: boolean } | { ok: false; error: 'denied' | 'failed' | 'unavailable' }
 export type EnvReveal = { ok: true; value: string } | { ok: false; error: 'denied' | 'missing' | 'too-large' | 'failed' | 'unavailable' }
 export type LhRead = { ok: true; text: string; time: number } | { ok: false; error: 'denied' | 'missing' | 'failed' | 'unavailable' }
 export type SearchResult =
@@ -273,6 +297,7 @@ interface PreviewBridge {
   notesWrite?: (root: string, text: string) => Promise<NoteWrite>
   lhList?: (file: string) => Promise<LhList>
   envCheck?: (root: string) => Promise<EnvCheck>
+  i18nScan?: (root: string) => Promise<I18nScan>
   envReveal?: (root: string, file: string, key: string) => Promise<EnvReveal>
   lhRead?: (file: string, id: string) => Promise<LhRead>
   formatText?: (file: string, text: string) => Promise<FormatResult>
@@ -406,6 +431,9 @@ export const lhRead = (file: string, id: string): Promise<LhRead> => bridge?.lhR
 export const hasEnvCheck = typeof bridge?.envCheck === 'function'
 /** `.env*` in the project root against `.env.example` / `.sample` / `.template`: keys and empty flags, never values. */
 export const envCheck = (root: string): Promise<EnvCheck> => bridge?.envCheck?.(root) ?? Promise.resolve(unavailable)
+export const hasI18nScan = typeof bridge?.i18nScan === 'function'
+/** Android strings.xml, Flutter ARB and JSON locale folders under `root`: missing / extra / same-as-base keys per locale. */
+export const i18nScan = (root: string): Promise<I18nScan> => bridge?.i18nScan?.(root) ?? Promise.resolve(unavailable)
 /** One value of `key` in the root's `.env*` file `file`, read on click. */
 export const envReveal = (root: string, file: string, key: string): Promise<EnvReveal> => bridge?.envReveal?.(root, file, key) ?? Promise.resolve(unavailable)
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)

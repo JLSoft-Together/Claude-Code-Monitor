@@ -42,7 +42,7 @@ import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
-import { hasEnvCheck, hasExplorer, hasLog } from '../lib/preview'
+import { hasEnvCheck, hasExplorer, hasI18nScan, hasLog } from '../lib/preview'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -205,6 +205,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.envCheck = { dir: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasI18nScan
+      ? [
+          {
+            id: 'c:i18n',
+            group: 'actions' as const,
+            label: t('workspace.i18nScan.palette'),
+            sub: t('workspace.i18nScan.paletteSub'),
+            icon: Languages,
+            run: () => {
+              ui.setView('workspace')
+              ui.i18nScan = { dir: null }
             },
           },
         ]

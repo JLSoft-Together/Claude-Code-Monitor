@@ -190,3 +190,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 dev tools: `lib/devTools.ts`, `DevToolsDialog.vue`, `ui.devTools`, palette `c:tool:<id>`.
 - 2026-10-29 v70 .env check: `preview/envCheck.ts` (`parseEnv`, `checkEnv`, `revealEnv`), IPC `ccm:env-check` / `ccm:env-reveal`, `EnvCheckDialog.vue`, `ui.envCheck`, palette `c:env`, rail menu `env`.
 - 2026-10-29 v70 replace in files: `preview/replaceFiles.ts` (`applyReplace`, `planFile`, `expandReplacement`), IPC `ccm:replace-files` + `confirmReplace`, `ExplorerSearch.vue` replace row, `lib/searchView.ts` `replaceRuns` / `replacePlan` / `fileTick`.
+- 2026-10-29 v70 i18n missing keys: `preview/i18nScan.ts` (`scanI18n`, `parseAndroidStrings`, `parseArb`, `parseJsonKeys`, `compareLocale`), IPC `ccm:i18n-scan`, `I18nScanDialog.vue`, `lib/i18nReport.ts`, `ui.i18nScan`, palette `c:i18n`, rail menu `i18n`.

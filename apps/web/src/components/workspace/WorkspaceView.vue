@@ -55,6 +55,7 @@ const NotesPanel = defineAsyncComponent(() => import('./NotesPanel.vue'))
 const DropTerminal = defineAsyncComponent(() => import('./DropTerminal.vue'))
 const PlanBoard = defineAsyncComponent(() => import('./PlanBoard.vue'))
 const EnvCheckDialog = defineAsyncComponent(() => import('./EnvCheckDialog.vue'))
+const I18nScanDialog = defineAsyncComponent(() => import('./I18nScanDialog.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -871,6 +872,16 @@ watch(
     if (!open) return
     const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
     envRoot.value = dir ? (rootOf(dir) ?? dir) : null
+  },
+  { immediate: true },
+)
+const i18nRoot = ref<string | null>(null)
+watch(
+  () => ui.i18nScan,
+  (open) => {
+    if (!open) return
+    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
+    i18nRoot.value = dir ? (rootOf(dir) ?? dir) : null
   },
   { immediate: true },
 )
@@ -2425,6 +2436,7 @@ onBeforeUnmount(() => {
     <NotesPanel v-if="notesRoot !== undefined && visible" :root="notesRoot" @close="notesRoot = undefined" />
     <PlanBoard v-if="ui.planBoard && visible" :root="planRoot" @close="ui.planBoard = null" />
     <EnvCheckDialog v-if="ui.envCheck && visible" :root="envRoot" @close="ui.envCheck = null" />
+    <I18nScanDialog v-if="ui.i18nScan && visible" :root="i18nRoot" @close="ui.i18nScan = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"
