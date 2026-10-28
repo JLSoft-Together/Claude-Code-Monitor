@@ -29,6 +29,7 @@ import { createFlutterRunner } from './run/flutter/runner'
 import { registerRunIpc } from './run/ipc'
 import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
+import { registerHttpIpc } from './preview/httpSend'
 import { DeviceManager } from './devices/manager'
 import type { LayoutIpc } from './layout/ipc'
 import { wireLayout } from './layout/wire'
@@ -87,6 +88,7 @@ const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
 let disposeExtensions: (() => void) | null = null
+let disposeHttp: (() => void) | null = null
 let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
@@ -174,6 +176,8 @@ function stopPreview(): Promise<void> {
   disposeLayouts = null
   disposeExtensions?.()
   disposeExtensions = null
+  disposeHttp?.()
+  disposeHttp = null
   disposeGitHub?.()
   disposeGitHub = null
   disposeRun?.()
@@ -1056,6 +1060,23 @@ async function ready(): Promise<void> {
         noLink: true,
       }
       return confirmBox(win, opts)
+    },
+  })
+  // .http files: any host (owner decision); one native confirm per public host per app session.
+  disposeHttp = registerHttpIpc({
+    ipcMain,
+    isAppFrame,
+    confirmHost: async (event, host, method) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'question',
+        message: t.httpHostTitle(host),
+        detail: t.httpHostDetail(method),
+        buttons: [t.httpHostSend, t.extCancel],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(BrowserWindow.fromWebContents(event.sender), opts)
     },
   })
   ipcMain.handle('ccm:logs', async (event, action: unknown, pageReport: unknown) => {

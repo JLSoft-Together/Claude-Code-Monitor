@@ -181,3 +181,4 @@ One line per change: what, then the key file / symbol. Details live in `collecto
 - 2026-10-29 v70 plan board: `lib/planBoard.ts`, `PlanBoard.vue` (dialog, not a pane kind), `ui.planBoard`, palette `c:plan`, rail menu `plan`.
 - 2026-10-29 v70 image compare: desktop `preview/gitImage.ts` + `execGit` `binary` + IPC `ccm:git-show-image`; web `ImageCompare.vue`, `lib/imageCompare.ts`, `ChangesPane.vue` `imageEntry`.
 - 2026-10-29 v70 log viewer: desktop `preview/logRead.ts` + IPC `ccm:log-read`; web `LogFileView.vue`, `lib/logView.ts`, `FilePane.vue` `logMode`.
+- 2026-10-29 v70 HTTP client: desktop `preview/httpSend.ts` (`ccm:http-send` / `ccm:http-cancel`, `classifyHost`, confirm in `main.ts`); web `HttpPanel.vue`, `lib/httpFile.ts`, `FilePane.vue` `isHttp` / `showHttp`.

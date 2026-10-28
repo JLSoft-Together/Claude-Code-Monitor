@@ -120,6 +120,10 @@ New Claude sessions pick up the change.`,
   linkOpenBadFolder: 'Orrery cannot open this folder',
   linkOpenFailed: 'Orrery could not open the terminal. Open the Workspace and try again.',
   linkOpenLive: 'This session is still running in another terminal. Close it there first, then open the link again.',
+  httpHostTitle: (host: string) => `Send a request to ${host}?`,
+  httpHostDetail: (method: string) =>
+    `This ${method} request from a .http file goes out to the internet, with the headers and body it shows (variable values included). Orrery asks once per host until the app restarts.`,
+  httpHostSend: 'Send',
 }
 
 const vi: typeof en = {
@@ -241,6 +245,10 @@ Các phiên Claude mới sẽ nhận thay đổi.`,
   linkOpenBadFolder: 'Orrery không mở được thư mục này',
   linkOpenFailed: 'Orrery không mở được terminal. Hãy mở Workspace rồi thử lại.',
   linkOpenLive: 'Session này vẫn đang chạy ở một terminal khác. Hãy đóng nó ở đó trước rồi mở lại liên kết.',
+  httpHostTitle: (host) => `Gửi request tới ${host}?`,
+  httpHostDetail: (method) =>
+    `Request ${method} này từ file .http sẽ đi ra internet, kèm header và body như đang hiện (gồm cả giá trị biến). Orrery hỏi một lần cho mỗi host tới khi khởi động lại ứng dụng.`,
+  httpHostSend: 'Gửi',
 }
 
 export type Strings = typeof en

@@ -75,6 +75,18 @@ export type ChangesFile =
   | { ok: false; error: ChangesError }
 
 export type ChangesResult = { ok: true } | { ok: false; error: ChangesError; detail?: string }
+/** Mirrors `apps/desktop/src/preview/httpSend.ts`. */
+export type HttpResult =
+  | { ok: true; status: number; statusText: string; headers: Array<[string, string]>; body: string; binary: boolean; truncated: boolean; size: number; timeMs: number; url: string }
+  | { ok: false; error: 'bad-request' | 'get-body' | 'declined' | 'timeout' | 'cancelled' | 'network' | 'unavailable'; detail?: string }
+export interface HttpSendRequest {
+  id: string
+  method: string
+  url: string
+  headers: Array<[string, string]>
+  body?: string
+}
+
 /** Mirrors `apps/desktop/src/preview/logRead.ts`. */
 export type LogChunk =
   | { ok: true; path: string; text: string; start: number; end: number; size: number; mtimeMs: number; reset?: true }
@@ -199,6 +211,8 @@ interface PreviewBridge {
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>
   logRead?: (req: { path: string; from?: number; end?: number; bytes?: number }) => Promise<LogChunk>
+  httpSend?: (req: HttpSendRequest) => Promise<HttpResult>
+  httpCancel?: (id: string) => Promise<boolean>
   fileWrite?: (req: { path: string; text: string; expectedMtime?: number }) => Promise<FileWriteResult>
   watch?: (root: string) => Promise<boolean>
   unwatch?: (root: string) => Promise<boolean>
@@ -278,6 +292,10 @@ export const hasPreview = typeof bridge?.previewUrl === 'function'
 
 export const previewUrl = (path: string): Promise<PreviewTarget | null> => bridge?.previewUrl?.(path) ?? Promise.resolve(null)
 export const readFile = (path: string): Promise<FileView | null> => bridge?.readFile?.(path) ?? Promise.resolve(null)
+export const hasHttpSend = typeof bridge?.httpSend === 'function'
+/** Sent by the main process (30 s timeout, body ≤ 5 MB); a public host gets a native confirm once per session. */
+export const httpSend = (req: HttpSendRequest): Promise<HttpResult> => bridge?.httpSend?.(req) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const httpCancel = (id: string): Promise<boolean> => bridge?.httpCancel?.(id) ?? Promise.resolve(false)
 export const hasLogRead = typeof bridge?.logRead === 'function'
 /** Log chunk ≤ 2 MB cut on line breaks: backwards ending at `end` (default EOF), or forward from `from` (follow). */
 export const logRead = (path: string, opts: { from?: number; end?: number; bytes?: number } = {}): Promise<LogChunk> =>

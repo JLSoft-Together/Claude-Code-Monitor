@@ -5,7 +5,7 @@ let filePanes = 0
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network, History, WandSparkles } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Code, Columns2, Copy, Eye, FileText, FileWarning, FolderOpen, GitCommitHorizontal, GitCompare, Info, LayoutTemplate, LoaderCircle, Pencil, Save, Search, Smartphone, SquarePen, TextWrap, X, ListTree, Network, History, WandSparkles, Send } from 'lucide-vue-next'
 import { diskChangeAction, editBlock, inEditor, isEditKey, isSaveKey, isSelectAllKey, type EditBlock } from '../../lib/fileEditor'
 import { isTyping } from '../../lib/shortcuts'
 import { firesOn, type AutoSaveTrigger } from '../../lib/autoSave'
@@ -42,6 +42,7 @@ import type { SearchQuery } from '../../lib/preview'
 import SegmentedControl, { type Segment } from '../ui/SegmentedControl.vue'
 import { treeFormat } from '../../lib/jsonTree'
 import { isLogFile } from '../../lib/logView'
+import { isHttpFile } from '../../lib/httpFile'
 import { hasLayoutPreview, isLayoutXml, layoutWarmup, type LayoutMode } from '../../lib/layoutPreview'
 import { hasDrawablePreview, isDrawableXml } from '../../lib/drawablePreview'
 import { blameRows, type BlameRow } from '../../lib/blame'
@@ -52,6 +53,7 @@ const CodeEditor = defineAsyncComponent(() => import('./CodeEditor.vue'))
 const OutlinePicker = defineAsyncComponent(() => import('./OutlinePicker.vue'))
 const JsonTree = defineAsyncComponent(() => import('./JsonTree.vue'))
 const LogFileView = defineAsyncComponent(() => import('./LogFileView.vue'))
+const HttpPanel = defineAsyncComponent(() => import('./HttpPanel.vue'))
 const LocalHistoryDialog = defineAsyncComponent(() => import('./LocalHistoryDialog.vue'))
 const TextCompareDialog = defineAsyncComponent(() => import('./TextCompareDialog.vue'))
 interface EditorApi {
@@ -265,7 +267,33 @@ watch(
   },
   { immediate: true },
 )
-const sidePanel = computed(() => showDesign.value || showFwp.value)
+// .http / .rest (v70): request list + response beside the code; open state per user like the Flutter panel.
+const HTTP_OPEN_KEY = 'ccm.http.open'
+function readHttpOpen(): boolean {
+  try {
+    return localStorage.getItem(HTTP_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+const httpOpen = ref(readHttpOpen())
+watch(httpOpen, (on) => {
+  try {
+    localStorage.setItem(HTTP_OPEN_KEY, on ? '1' : '0')
+  } catch {
+    // storage off
+  }
+})
+const isHttp = computed(() => view.value?.kind === 'text' && isHttpFile(view.value.path || props.path))
+const showHttp = computed(() => isHttp.value && httpOpen.value)
+const httpRev = ref(0)
+const httpCursor = ref<number | null>(null)
+let httpTimer: ReturnType<typeof setTimeout> | null = null
+const httpText = computed(() => {
+  void httpRev.value
+  return editing.value && editor.value ? editor.value.text() : treeText.value
+})
+const sidePanel = computed(() => showDesign.value || showFwp.value || showHttp.value)
 
 const codeWidth = computed(() => (sidePanel.value && !layoutStacked.value ? paneWidth.value / 2 : paneWidth.value))
 const minimap = computed(() => settings.minimap && !editing.value && showSource.value && showCode.value && !loading.value && codeWidth.value >= MINIMAP_MIN_WIDTH)
@@ -542,6 +570,7 @@ function stepProblems(dir: 1 | -1): void {
 
 function onCursorLine(line: number): void {
   editorLine = line
+  if (isHttp.value) httpCursor.value = line
   if (showDesign.value) layoutLine.value = line
 }
 
@@ -607,6 +636,13 @@ watch(editor, (api) => {
 
 function onEditorChange(): void {
   noteEdit()
+  if (isHttp.value) {
+    if (httpTimer) clearTimeout(httpTimer)
+    httpTimer = setTimeout(() => {
+      httpTimer = null
+      httpRev.value++
+    }, 300)
+  }
   if (firesOn(settings.autoSave, 'edit')) {
     cancelAutoSave()
     autoSaveTimer = setTimeout(() => {
@@ -1144,6 +1180,7 @@ onBeforeUnmount(() => {
   }
   if (liveTimer) clearTimeout(liveTimer)
   if (savedTimer) clearTimeout(savedTimer)
+  if (httpTimer) clearTimeout(httpTimer)
   cancelAutoSave()
   window.removeEventListener('keydown', onWindowKey, true)
   window.removeEventListener('blur', onWindowBlur)
@@ -1214,6 +1251,7 @@ const headMore = computed<MenuEntry[]>(() => {
   if (changes.blocks.value.length && changes.ok.value) out.push({ id: 'diff', label: t('workspace.gutter.showDiff'), hint: t('workspace.gutter.summary', changeTotals.value), icon: GitCompare })
   if (isXmlPreview.value) for (const m of layoutModes.value) out.push({ id: `layout:${m.value}`, label: m.label, icon: layoutMode.value === m.value ? Check : m.icon })
   if (isDart.value && fwpProject.value) out.push({ id: 'fwp', label: t('fwp.toggle'), icon: fwpOpen.value ? Check : Smartphone })
+  if (isHttp.value) out.push({ id: 'http', label: t('workspace.http.toggle'), icon: httpOpen.value ? Check : Send })
   if (rendered.value) out.push({ id: 'md', label: mdPreview.value ? t('workspace.viewer.source') : t('workspace.viewer.preview'), icon: mdPreview.value ? Code : Eye, disabled: editing.value })
   if (treeFmt.value) out.push({ id: 'tree', label: treeOn.value ? t('workspace.tree.code') : t('workspace.tree.toggle'), icon: treeOn.value ? Code : Network, disabled: editing.value })
   if (text) {
@@ -1243,6 +1281,7 @@ function pickHead(id: string): void {
   if (id === 'diff') showDiff()
   else if (id.startsWith('layout:')) layoutMode.value = id.slice('layout:'.length) as LayoutMode
   else if (id === 'fwp') fwpOpen.value = !fwpOpen.value
+  else if (id === 'http') httpOpen.value = !httpOpen.value
   else if (id === 'md') mdPreview.value = !mdPreview.value
   else if (id === 'tree') treeOn.value = !treeOn.value
   else if (id === 'wrap') wrap.value = !wrap.value
@@ -1315,6 +1354,19 @@ function pickHead(id: string): void {
         @click="fwpOpen = !fwpOpen"
       >
         <Smartphone :size="14" aria-hidden="true" />
+      </button>
+      <button
+        v-if="isHttp"
+        type="button"
+        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
+        :aria-pressed="httpOpen"
+        :title="t('workspace.http.toggle')"
+        :aria-label="t('workspace.http.toggle')"
+        data-http-toggle
+        data-more="http"
+        @click="httpOpen = !httpOpen"
+      >
+        <Send :size="14" aria-hidden="true" />
       </button>
       <template v-if="rendered">
         <button
@@ -1592,6 +1644,14 @@ function pickHead(id: string): void {
         :line="layoutLine"
         :active="active"
         @reveal="revealLayoutLine"
+      />
+      <HttpPanel
+        v-if="showHttp"
+        :class="layoutStacked ? 'border-t border-line' : 'border-l border-line'"
+        :path="view?.path ?? path"
+        :text="httpText"
+        :cursor-line="editing ? httpCursor : null"
+        @reveal="(line: number) => revealLayoutLine(line, false)"
       />
       <FlutterPreviewPanel
         v-if="showFwp"
