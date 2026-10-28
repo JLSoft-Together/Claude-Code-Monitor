@@ -51,6 +51,7 @@ import QuickOpen from './QuickOpen.vue'
 
 const PromptPicker = defineAsyncComponent(() => import('./PromptPicker.vue'))
 const NavPicker = defineAsyncComponent(() => import('./NavPicker.vue'))
+const NotesPanel = defineAsyncComponent(() => import('./NotesPanel.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -837,6 +838,8 @@ const tips = useTipsStore()
 const prompts = usePromptsStore()
 const nav = useNavigationStore()
 const ui = useUiStore()
+/** Project whose notes are open (undefined = closed); taken when opened so a focus change does not swap notes. */
+const notesRoot = ref<string | null | undefined>(undefined)
 
 function mouseSplit(choice: SplitChoice, key: string): void {
   tips.mouse('split')
@@ -1260,6 +1263,9 @@ function onGlobalKey(e: KeyboardEvent): void {
     case 'navBack':
     case 'navForward':
       nav.step(action.t === 'navBack' ? -1 : 1)
+      break
+    case 'notes':
+      notesRoot.value = notesRoot.value === undefined ? activeProject.value : undefined
       break
   }
 }
@@ -2376,6 +2382,7 @@ onBeforeUnmount(() => {
 
     <PromptPicker v-if="prompts.open && visible" @close="prompts.open = false" />
     <NavPicker v-if="nav.picker && visible" @close="nav.picker = null" />
+    <NotesPanel v-if="notesRoot !== undefined && visible" :root="notesRoot" @close="notesRoot = undefined" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

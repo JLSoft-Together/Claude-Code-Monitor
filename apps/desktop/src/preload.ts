@@ -94,6 +94,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   mergeAbort: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-merge-abort', root),
   gitBlame: (file: string): Promise<unknown> => ipcRenderer.invoke('ccm:git-blame', file),
   commandsList: (dir: string): Promise<unknown> => ipcRenderer.invoke('ccm:commands-list', dir),
+  notesRead: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:notes-read', root),
+  notesWrite: (root: string, text: string): Promise<unknown> => ipcRenderer.invoke('ccm:notes-write', { root, text }),
   cpState: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:cp-state', root),
   cpSet: (root: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:cp-set', { root, on }),
   cpTake: (root: string, label: string): Promise<unknown> => ipcRenderer.invoke('ccm:cp-take', { root, label }),

@@ -620,6 +620,7 @@ export default {
       wsBookmark: 'Toggle bookmark (Shift+F11: all bookmarks)',
       wsNavBack: 'Back to the previous location',
       wsNavForward: 'Forward to the next location',
+      wsNotes: 'Project notes',
       wsExplorer: 'Show the file explorer',
     wsSearch: 'Search in project files',
       wsNextChange: 'Next / previous change (file viewer, Changes)',

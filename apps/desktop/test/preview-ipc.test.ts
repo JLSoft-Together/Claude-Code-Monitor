@@ -106,6 +106,7 @@ describe('workspaceChord', () => {
       key('Tab', { control: true, shift: true }),
       key('Digit3', { control: true, alt: true }, '3'),
       key('KeyK', { control: true }),
+      key('KeyN', { control: true, alt: true }),
     ])
       expect(workspaceChord(k, false), k.code).not.toBeNull()
   })
@@ -117,6 +118,7 @@ describe('workspaceChord', () => {
       key('KeyC', { control: true }),
       key('ArrowLeft', { alt: true }),
       key('Digit2', { control: true, alt: true }, '@'),
+      key('KeyN', { control: true, alt: true }, 'ń'),
       key('F5'),
       { ...key('KeyT', { control: true, shift: true }), type: 'keyUp' as const },
       { ...key('KeyK', { control: true }), isComposing: true },
@@ -126,6 +128,7 @@ describe('workspaceChord', () => {
 
   it('uses Cmd chords on macOS', () => {
     expect(workspaceChord(key('KeyT', { meta: true }), true)).toMatchObject({ code: 'KeyT', metaKey: true })
+    expect(workspaceChord(key('KeyN', { control: true, alt: true }), true)).toMatchObject({ code: 'KeyN', ctrlKey: true, altKey: true })
     expect(workspaceChord(key('KeyD', { meta: true, shift: true }), true)).not.toBeNull()
     expect(workspaceChord(key('BracketRight', { meta: true, shift: true }), true)).not.toBeNull()
     expect(workspaceChord(key('Digit1', { meta: true }, '1'), true)).not.toBeNull()

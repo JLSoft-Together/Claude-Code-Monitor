@@ -75,6 +75,15 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('ArrowLeft', { altKey: true }), false, true)).toEqual({ t: 'focus', dir: 'left' })
   })
 
+  it('Ctrl+Alt+N (⌃⌥N on macOS) opens project notes, not AltGr+N', () => {
+    expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true }), false, false)).toEqual({ t: 'notes' })
+    expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true }), true, false)).toEqual({ t: 'notes' })
+    expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true }, true), false, false)).toBeNull()
+    expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true, shiftKey: true }), false, false)).toBeNull()
+    expect(workspaceAction(key('KeyN', { metaKey: true, altKey: true, ctrlKey: true }), true, false)).toBeNull()
+    expect(workspaceAction(key('KeyN', { ctrlKey: true }), false, false)).toBeNull()
+  })
+
   it('Cmd+digit jumps to a tab on macOS', () => {
     expect(workspaceAction(key('Digit3', { metaKey: true }), true, false)).toEqual({ t: 'tab', index: 2 })
   })

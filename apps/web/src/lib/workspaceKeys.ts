@@ -31,6 +31,8 @@ export type WorkspaceAction =
   /** Back / forward through file locations (⌃- / ⌃⇧- on macOS, Ctrl+Alt+← / → elsewhere). */
   | { t: 'navBack' }
   | { t: 'navForward' }
+  /** Project notes (⌃⌥N on macOS, Ctrl+Alt+N elsewhere). */
+  | { t: 'notes' }
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
@@ -46,6 +48,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (code === 'F11' && shift && !ctrl && !alt && !meta) return { t: 'bookmarks' }
   if (mac) {
     if (ctrl && !meta && !alt && code === 'Minus') return { t: shift ? 'navForward' : 'navBack' }
+    if (ctrl && alt && !meta && !shift && code === 'KeyN') return { t: 'notes' }
     if (!meta || ctrl) return null
     if (code === 'KeyE' && !shift && !alt) return { t: 'recent' }
     if (code === 'KeyT' && !shift && !alt) return { t: 'newTab' }
@@ -87,6 +90,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (ctrl && !alt && code === 'Tab') return { t: 'cycleTab', step: shift ? -1 : 1 }
   // AltGr arrives as Ctrl+Alt on Windows; AltGr+digit types characters like @ { [ on many layouts.
   if (ctrl && alt && !shift && digit && !e.getModifierState?.('AltGraph')) return { t: 'tab', index: Number(digit[1]) - 1 }
+  if (ctrl && alt && !shift && code === 'KeyN' && !e.getModifierState?.('AltGraph')) return { t: 'notes' }
   if (alt && !ctrl && ARROWS[code] && multiPane) return { t: shift ? 'swap' : 'focus', dir: ARROWS[code]! }
   return null
 }

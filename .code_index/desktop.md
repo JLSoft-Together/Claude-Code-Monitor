@@ -168,3 +168,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 | `ccm:overlap-files` / `-dryrun` | `preview/overlap.ts` | `changedVsBase` (merge-base → working tree), `dryMerge` `merge-tree --write-tree` (old git → `unsupported`) |
 
 - `checkpoints.ts` turn diff for TurnReview. Tests `blame`, `commands`, `overlap`, `worktrees`, `checkpoints`; E2E `e2e/v69-ide.cjs`.
+
+## v70 (2026-10-29)
+
+- Project notes (item 6): `preview/notes.ts` `NotesStore` (`<dataDir>/notes/<sha1(rootKey(root))>.md`, ≤ `NOTES_MAX_BYTES` 1 MB, temp file + rename with busy retry, writes queued per root, empty text deletes the file); IPC `ccm:notes-read` (root) / `ccm:notes-write` ({root, text}) gated by `isAppFrame` + `checkDir`; preload `notesRead` / `notesWrite`. `keys.ts` forwards Ctrl+Alt+N (⌃⌥N mac; not when AltGr typed another key). Tests `test/notes.test.ts`, `preview-ipc.test.ts` `workspaceChord`.

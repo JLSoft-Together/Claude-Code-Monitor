@@ -621,6 +621,7 @@ const vi: typeof en = {
       wsBookmark: 'Bật / tắt bookmark (Shift+F11: mọi bookmark)',
       wsNavBack: 'Quay lại vị trí trước',
       wsNavForward: 'Tới vị trí sau',
+      wsNotes: 'Ghi chú dự án',
       wsExplorer: 'Hiện cây thư mục (Explorer)',
     wsSearch: 'Tìm trong file của project',
       wsNextChange: 'Thay đổi kế / trước (xem tệp, Thay đổi)',

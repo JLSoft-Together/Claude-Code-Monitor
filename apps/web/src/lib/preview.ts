@@ -169,6 +169,9 @@ export type CpState = { ok: true; root: string; on: boolean; list: Checkpoint[] 
 export type CpDiff = { ok: true; files: CheckpointFile[] } | { ok: false; error: CpError; detail?: string }
 export type CpFileDiff = { ok: true; text: string; tooLarge: boolean } | { ok: false; error: CpError; detail?: string }
 export type CpResult = { ok: true; id?: string | null } | { ok: false; error: CpError; detail?: string }
+export type NoteError = 'denied' | 'too-large' | 'failed' | 'unavailable'
+export type NoteRead = { ok: true; text: string; mtimeMs: number | null } | { ok: false; error: NoteError }
+export type NoteWrite = { ok: true; mtimeMs: number | null } | { ok: false; error: NoteError }
 export type SearchResult =
   | { ok: true; matches: SearchMatch[]; truncated: boolean }
   | { ok: false; error: 'denied' | 'not-repo' | 'no-git' | 'bad-query' | 'cancelled' | 'failed' | 'unavailable'; detail?: string }
@@ -205,6 +208,8 @@ interface PreviewBridge {
   mergeAbort?: (root: string) => Promise<MergeAbortResult>
   gitBlame?: (file: string) => Promise<BlameResult>
   commandsList?: (dir: string) => Promise<CommandsListResult>
+  notesRead?: (root: string) => Promise<NoteRead>
+  notesWrite?: (root: string, text: string) => Promise<NoteWrite>
   wtDiff?: (dir: string, a: string, b: string) => Promise<WtBetween>
   wtFileDiff?: (dir: string, a: string, b: string, path: string) => Promise<WtBetweenDiff>
   wtTake?: (dir: string, from: string, path: string) => Promise<WtTake>
@@ -307,6 +312,10 @@ export const wtFileDiff = (dir: string, a: string, b: string, path: string): Pro
 export const wtTake = (dir: string, from: string, path: string): Promise<WtTake> => bridge?.wtTake?.(dir, from, path) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 /** `.claude/commands` of the folder (and its repo) plus the user's, names + descriptions only. */
 export const commandsList = (dir: string): Promise<CommandsListResult> => bridge?.commandsList?.(dir) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const hasNotes = typeof bridge?.notesRead === 'function'
+/** Project notes kept by the app in its data folder (`notes/<sha1 of root>.md`), never in the repo. */
+export const notesRead = (root: string): Promise<NoteRead> => bridge?.notesRead?.(root) ?? Promise.resolve(unavailable)
+export const notesWrite = (root: string, text: string): Promise<NoteWrite> => bridge?.notesWrite?.(root, text) ?? Promise.resolve(unavailable)
 export const cpState = (root: string): Promise<CpState> => bridge?.cpState?.(root) ?? Promise.resolve(unavailable)
 export const cpSet = (root: string, on: boolean): Promise<boolean> => bridge?.cpSet?.(root, on) ?? Promise.resolve(false)
 export const cpTake = (root: string, label: string): Promise<CpResult> => bridge?.cpTake?.(root, label) ?? Promise.resolve(unavailable)

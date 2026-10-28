@@ -21,6 +21,7 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
   const { control: ctrl, shift, alt, meta, code } = input
   const hit = (): ForwardedKey => ({ key: input.key, code, ctrlKey: ctrl, shiftKey: shift, altKey: alt, metaKey: meta })
   if (mac) {
+    if (ctrl && alt && !meta && !shift && code === 'KeyN') return hit()
     if (!meta || ctrl) return null
     if (alt) return null
     if (code === 'KeyT' || code === 'KeyW' || code === 'KeyK' || code === 'KeyP') return shift ? null : hit()
@@ -37,5 +38,6 @@ export function workspaceChord(input: KeyInput, mac: boolean): ForwardedKey | nu
   if (ctrl && !alt && !shift && code === 'KeyK') return hit()
   // AltGr arrives as Ctrl+Alt and types characters (@ { [) on many layouts: a non-digit key means it typed one.
   if (ctrl && alt && !shift && DIGIT.test(code) && /^[1-9]$/.test(input.key) && !input.modifiers?.includes('altgraph')) return hit()
+  if (ctrl && alt && !shift && code === 'KeyN' && input.key.toLowerCase() === 'n' && !input.modifiers?.includes('altgraph')) return hit()
   return null
 }

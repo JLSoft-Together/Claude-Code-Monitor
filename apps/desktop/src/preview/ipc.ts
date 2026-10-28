@@ -21,6 +21,7 @@ import { cleanCommit, commit, headUnpushed, stageHunk, stagePaths, unstagePaths 
 import { CheckRunner, cleanCheck, resolveCheck } from './checks'
 import { compareBranch, diffBetween, fileBetween, mergeBranch, takeFile } from './worktrees'
 import { CheckpointStore } from './checkpoints'
+import { NotesStore } from './notes'
 import { changedVsBase, dryMerge } from './overlap'
 import type { RunKind } from '../strings'
 import { existingDir } from '../pick-start'
@@ -76,7 +77,7 @@ export interface PreviewIpcDeps {
   confirmGit?: (req: { title: string; commands: string[]; force?: boolean }) => Promise<boolean>
   /** Native yes/no for amend / merge / checkpoint restore, worded per kind; `a` / `b` = branch / base or file count. */
   confirmRun?: (req: { kind: RunKind; a: string; b: string; lines: string[] }) => Promise<boolean>
-  /** App data folder: checkpoint stores live in `checkpoints/` there. Checkpoints are off without it. */
+  /** App data folder: checkpoint stores (`checkpoints/`) and project notes (`notes/`). Both are off without it. */
   dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
   trash?: (path: string) => Promise<void>
@@ -105,7 +106,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -650,6 +651,17 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const res = await cps.restore(repo, id, paths, trash)
     fileLists.invalidate(repo)
     return res
+  })
+
+  const notes = deps.dataDir ? new NotesStore(deps.dataDir) : null
+  ipcMain.handle('ccm:notes-read', async (event, root: unknown) => {
+    const real = notes && isAppFrame(event) ? await checkDir(root) : null
+    return real && notes ? notes.read(real) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:notes-write', async (event, req: unknown) => {
+    const { root, text } = (req ?? {}) as { root?: unknown; text?: unknown }
+    const real = notes && isAppFrame(event) ? await checkDir(root) : null
+    return real && notes ? notes.write(real, text) : { ok: false, error: 'denied' }
   })
 
   ipcMain.handle('ccm:git-stage', async (event, req: unknown) => {

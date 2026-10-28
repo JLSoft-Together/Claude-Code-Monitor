@@ -244,6 +244,28 @@ const en = {
     none: 'No TODO, FIXME, HACK or XXX in this repository.',
     summary: '{n} note in {files} file | {n} notes in {files} files',
   },
+  notes: {
+    title: 'Project notes',
+    titleOf: 'Notes · {name}',
+    mode: 'Notes view',
+    edit: 'Edit',
+    preview: 'Preview',
+    close: 'Close',
+    loading: 'Loading…',
+    saving: 'Saving…',
+    saved: 'Saved',
+    empty: 'No notes yet. Write in Edit; {\'@\'}path:line links to a file. Kept by Orrery outside the repo.',
+    noProject: 'Open a terminal in a project folder to keep notes for it.',
+    fill: 'Fill into agent',
+    into: 'Fills the note into {pane}; you press Enter.',
+    noTarget: 'Open an agent pane to fill the note into.',
+    error: {
+      denied: 'This project is not open in a pane.',
+      'too-large': 'The note is over 1 MB and was not saved.',
+      failed: 'Could not read or save the note.',
+      unavailable: 'Notes need the desktop app.',
+    },
+  },
 }
 
 const vi: typeof en = {
@@ -490,6 +512,28 @@ const vi: typeof en = {
     scanning: 'Đang tìm TODO, FIXME, HACK và XXX…',
     none: 'Repo này không có TODO, FIXME, HACK hay XXX nào.',
     summary: '{n} ghi chú trong {files} file',
+  },
+  notes: {
+    title: 'Ghi chú dự án',
+    titleOf: 'Ghi chú · {name}',
+    mode: 'Chế độ ghi chú',
+    edit: 'Sửa',
+    preview: 'Xem',
+    close: 'Đóng',
+    loading: 'Đang tải…',
+    saving: 'Đang lưu…',
+    saved: 'Đã lưu',
+    empty: 'Chưa có ghi chú. Viết ở chế độ Sửa; {\'@\'}đường-dẫn:dòng sẽ thành link mở file. Orrery giữ ghi chú ngoài repo.',
+    noProject: 'Mở một terminal trong thư mục project để ghi chú cho project đó.',
+    fill: 'Điền vào agent',
+    into: 'Điền ghi chú vào {pane}; bạn tự bấm Enter.',
+    noTarget: 'Mở một pane agent để điền ghi chú vào.',
+    error: {
+      denied: 'Project này chưa mở trong pane nào.',
+      'too-large': 'Ghi chú quá 1 MB nên chưa lưu.',
+      failed: 'Không đọc hoặc lưu được ghi chú.',
+      unavailable: 'Ghi chú cần ứng dụng desktop.',
+    },
   },
 }
 
