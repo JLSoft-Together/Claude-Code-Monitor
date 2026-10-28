@@ -60,6 +60,25 @@ describe.skipIf(!git)('CheckpointStore', () => {
     expect(await store.restore(repo, cp!.id, ['../x'], trash)).toMatchObject({ ok: false, error: 'denied' })
   })
 
+  it('reviews a turn: diff between two checkpoints, undo one hunk, refuse a stale one', async () => {
+    const lines = (n: number, edit: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => edit[i] ?? `l${i}`).join('\n') + '\n'
+    writeFileSync(path.join(repo, 'b.txt'), lines(30))
+    const before = await store.take(repo, 'before:t')
+    writeFileSync(path.join(repo, 'b.txt'), lines(30, { 2: 'A', 25: 'B' }))
+    const after = await store.take(repo, 'after:t')
+    if (!before.ok || !after.ok || !before.id || !after.id) throw new Error('no checkpoints')
+    const files = await store.diff(repo, before.id, after.id)
+    expect(files.ok && files.files.map((f) => f.path)).toEqual(['b.txt'])
+    const d = await store.fileDiff(repo, before.id, after.id, 'b.txt')
+    if (!d.ok) throw new Error(d.error)
+    const second = d.text.slice(d.text.lastIndexOf('@@ -'))
+    expect(await store.revertHunk(repo, 'b.txt', second)).toEqual({ ok: true })
+    expect(readFileSync(path.join(repo, 'b.txt'), 'utf8')).toBe(lines(30, { 2: 'A' }))
+    expect(await store.revertHunk(repo, 'b.txt', second)).toMatchObject({ ok: false, error: 'stale' })
+    expect(await store.fileDiff(repo, before.id, after.id, '../x')).toMatchObject({ ok: false })
+    expect(run('diff', '--cached', '--name-only').trim()).toBe('')
+  })
+
   it('turning off deletes the store', async () => {
     await store.setOn(repo, false)
     expect(await store.list(repo)).toEqual([])

@@ -1,4 +1,4 @@
-export type RunKind = 'amend' | 'ff' | 'squash' | 'restore'
+export type RunKind = 'amend' | 'ff' | 'squash' | 'restore' | 'abort' | 'take'
 
 const en = {
   appName: 'Orrery',
@@ -63,9 +63,25 @@ const en = {
   gitDeleteConfirm: 'Delete',
   gitDeleteCancel: 'Cancel',
   runTitle: (kind: RunKind, a: string, b: string) =>
-    kind === 'amend' ? 'Amend the last commit?' : kind === 'ff' ? `Fast-forward ${b} to ${a}?` : kind === 'squash' ? `Squash ${a} into one commit on ${b}?` : `Restore ${a} from the checkpoint?`,
+    kind === 'amend'
+      ? 'Amend the last commit?'
+      : kind === 'ff'
+        ? `Fast-forward ${b} to ${a}?`
+        : kind === 'squash'
+          ? `Squash ${a} into one commit on ${b}?`
+          : kind === 'abort'
+            ? `Abort the ${a} in progress?`
+            : kind === 'take'
+              ? `Take ${a} from ${b} into this checkout?`
+              : `Restore ${a} from the checkpoint?`,
   runDetail: (kind: RunKind, lines: string[]) =>
-    kind === 'restore' ? `These go back to how they were at the checkpoint; files that did not exist then go to the trash:\n\n${lines.join('\n')}` : `Orrery will run:\n\n${lines.join('\n')}`,
+    kind === 'restore'
+      ? `These go back to how they were at the checkpoint; files that did not exist then go to the trash:\n\n${lines.join('\n')}`
+      : kind === 'abort'
+        ? `Orrery will run:\n\n${lines.join('\n')}\n\nConflict resolutions not yet committed are lost.`
+        : kind === 'take'
+          ? `Orrery will run:\n\n${lines.join('\n')}\n\nThe file in this checkout is replaced (it has no uncommitted changes).`
+          : `Orrery will run:\n\n${lines.join('\n')}`,
   runConfirm: 'Continue',
   ghRemoveTitle: (login: string) => `Remove GitHub account ${login}?`,
   ghRemoveDetail: 'Orrery forgets its token. Repos that used it go back to automatic choice. The token stays valid on GitHub until you revoke it there.',
@@ -169,9 +185,25 @@ const vi: typeof en = {
   gitDeleteConfirm: 'Xoá',
   gitDeleteCancel: 'Huỷ',
   runTitle: (kind, a, b) =>
-    kind === 'amend' ? 'Sửa commit cuối?' : kind === 'ff' ? `Fast-forward ${b} lên ${a}?` : kind === 'squash' ? `Gộp ${a} thành một commit trên ${b}?` : `Khôi phục ${a} từ checkpoint?`,
+    kind === 'amend'
+      ? 'Sửa commit cuối?'
+      : kind === 'ff'
+        ? `Fast-forward ${b} lên ${a}?`
+        : kind === 'squash'
+          ? `Gộp ${a} thành một commit trên ${b}?`
+          : kind === 'abort'
+            ? `Huỷ ${a} đang làm dở?`
+            : kind === 'take'
+              ? `Lấy ${a} từ ${b} vào checkout này?`
+              : `Khôi phục ${a} từ checkpoint?`,
   runDetail: (kind, lines) =>
-    kind === 'restore' ? `Các file này trở về như lúc checkpoint; file chưa có lúc đó sẽ vào thùng rác:\n\n${lines.join('\n')}` : `Orrery sẽ chạy:\n\n${lines.join('\n')}`,
+    kind === 'restore'
+      ? `Các file này trở về như lúc checkpoint; file chưa có lúc đó sẽ vào thùng rác:\n\n${lines.join('\n')}`
+      : kind === 'abort'
+        ? `Orrery sẽ chạy:\n\n${lines.join('\n')}\n\nPhần giải xung đột chưa commit sẽ mất.`
+        : kind === 'take'
+          ? `Orrery sẽ chạy:\n\n${lines.join('\n')}\n\nFile ở checkout này bị thay (nó không có thay đổi chưa commit).`
+          : `Orrery sẽ chạy:\n\n${lines.join('\n')}`,
   runConfirm: 'Tiếp tục',
   ghRemoveTitle: (login) => `Gỡ tài khoản GitHub ${login}?`,
   ghRemoveDetail: 'Orrery sẽ quên token của tài khoản này. Các repo đang dùng nó quay về chế độ tự chọn. Token vẫn còn hiệu lực trên GitHub cho tới khi bạn thu hồi ở đó.',

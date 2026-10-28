@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { safeRepoPath } from './changes'
+import { hunkPatchFor, MAX_DIFF_BYTES, safeRepoPath } from './changes'
 import { execGit } from './gitExec'
 import { rootKey } from './paths'
 
@@ -22,6 +22,8 @@ export interface CheckpointFile {
 export type CheckpointError = 'denied' | 'off' | 'busy' | 'unknown' | 'failed'
 export type TakeResult = { ok: true; id: string | null } | { ok: false; error: CheckpointError; detail?: string }
 export type DiffResult = { ok: true; files: CheckpointFile[] } | { ok: false; error: CheckpointError; detail?: string }
+export type FileDiffResult = { ok: true; text: string; tooLarge: boolean } | { ok: false; error: CheckpointError; detail?: string }
+export type RevertResult = { ok: true } | { ok: false; error: CheckpointError | 'stale'; detail?: string }
 
 const KEEP = 30
 const ID = /^[0-9a-f]{40,64}$/
@@ -86,8 +88,8 @@ export class CheckpointStore {
     return true
   }
 
-  private git(root: string, args: string[], timeoutMs = 60_000) {
-    return execGit(root, args, { env: this.env(root), timeoutMs, maxBytes: 16 * 1024 * 1024 })
+  private git(root: string, args: string[], timeoutMs = 60_000, input?: string) {
+    return execGit(root, args, { env: this.env(root), timeoutMs, maxBytes: 16 * 1024 * 1024, ...(input === undefined ? {} : { input }) })
   }
 
   private async tree(root: string): Promise<string | null> {
@@ -147,15 +149,16 @@ export class CheckpointStore {
     return (await this.list(root)).some((c) => c.id === id) ? id : null
   }
 
-  /** What changed between the checkpoint and the working tree now. */
-  async diff(root: string, idInput: unknown): Promise<DiffResult> {
+  /** What changed between the checkpoint and `to` (another checkpoint), or the working tree now. */
+  async diff(root: string, idInput: unknown, toInput?: unknown): Promise<DiffResult> {
     const key = rootKey(root)
     const id = await this.known(root, idInput)
-    if (!id) return { ok: false, error: 'unknown' }
+    const to = toInput === undefined || toInput === null ? null : await this.known(root, toInput)
+    if (!id || (toInput != null && !to)) return { ok: false, error: 'unknown' }
     if (this.busy.has(key)) return { ok: false, error: 'busy' }
     this.busy.add(key)
     try {
-      const now = await this.tree(root)
+      const now = to ?? (await this.tree(root))
       if (!now) return { ok: false, error: 'failed' }
       const names = await this.git(root, ['diff-tree', '-r', '-z', '--no-renames', '--name-status', id, now])
       const nums = await this.git(root, ['diff-tree', '-r', '-z', '--no-renames', '--numstat', id, now])
@@ -174,6 +177,40 @@ export class CheckpointStore {
         files.push({ path: parts[i + 1]!, status, ...counts.get(parts[i + 1]!) })
       }
       return { ok: true, files }
+    } finally {
+      this.busy.delete(key)
+    }
+  }
+
+  /** Unified diff of one file between two checkpoints (turn review). */
+  async fileDiff(root: string, fromInput: unknown, toInput: unknown, relInput: unknown): Promise<FileDiffResult> {
+    const from = await this.known(root, fromInput)
+    const to = await this.known(root, toInput)
+    const safe = safeRepoPath(root, relInput)
+    if (!from || !to || !safe) return { ok: false, error: 'unknown' }
+    const res = await execGit(root, ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', from, to, '--', safe.rel], { env: this.env(root), timeoutMs: 20_000, maxBytes: MAX_DIFF_BYTES })
+    if (res.truncated) return { ok: true, text: '', tooLarge: true }
+    if (res.code !== 0) return { ok: false, error: 'failed', detail: detail(res.stderr) }
+    return { ok: true, text: res.stdout, tooLarge: false }
+  }
+
+  /**
+   * Undoes one hunk of a turn in the working tree (`git apply -R` through the store, so the repo's index stays
+   * untouched); refused when the file changed around the hunk since.
+   */
+  async revertHunk(root: string, relInput: unknown, patch: unknown): Promise<RevertResult> {
+    const safe = safeRepoPath(root, relInput)
+    const text = safe ? hunkPatchFor(safe.rel, patch) : null
+    if (!safe || !text) return { ok: false, error: 'denied' }
+    const key = rootKey(root)
+    if (this.busy.has(key)) return { ok: false, error: 'busy' }
+    this.busy.add(key)
+    try {
+      const args = ['apply', '-R', '--whitespace=nowarn']
+      const check = await this.git(root, [...args, '--check', '-'], 20_000, text)
+      if (check.code !== 0) return { ok: false, error: 'stale', detail: detail(check.stderr) }
+      const res = await this.git(root, [...args, '-'], 20_000, text)
+      return res.code === 0 ? { ok: true } : { ok: false, error: 'failed', detail: detail(res.stderr) }
     } finally {
       this.busy.delete(key)
     }

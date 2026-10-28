@@ -5,7 +5,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { findGit } from '../src/pty/git'
 import { copySetupFiles, parsePatterns } from '../src/pty/wtCopy'
-import { compareBranch, mergeBranch, mergeCommands } from '../src/preview/worktrees'
+import { compareBranch, diffBetween, fileBetween, mergeBranch, mergeCommands, takeFile } from '../src/preview/worktrees'
+import { abortMerge, mergeState } from '../src/preview/mergeState'
 
 describe('parsePatterns', () => {
   it('accepts names, prefix globs and deep names only', () => {
@@ -72,5 +73,45 @@ describe.skipIf(!git)('compare and merge a branch', () => {
     expect(await mergeBranch(dir, 'feat', 'ff', yes)).toMatchObject({ ok: true, mode: 'ff' })
     expect(await compareBranch(dir, 'feat')).toMatchObject({ ok: true, merged: true })
     expect(mergeCommands('main', 'feat', 'squash')).toContain('git merge --squash feat')
+  })
+
+  it('keeps a squash conflict for resolving when asked, reports it, then aborts', async () => {
+    run('switch', '-q', '-c', 'clash')
+    writeFileSync(path.join(dir, 'a.txt'), 'theirs\n')
+    run('commit', '-q', '-am', 'theirs')
+    run('switch', '-q', 'main')
+    writeFileSync(path.join(dir, 'a.txt'), 'ours\n')
+    run('commit', '-q', '-am', 'ours')
+    expect(await mergeBranch(dir, 'clash', 'squash', yes)).toMatchObject({ ok: false, error: 'conflict' })
+    expect(await mergeState(dir)).toEqual({ ok: true, kind: null })
+    const kept = await mergeBranch(dir, 'clash', 'squash', yes, true)
+    expect(kept).toMatchObject({ ok: false, error: 'conflict', kept: expect.any(String) })
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8')).toMatch(/^<<<<<<< /m)
+    expect(await mergeState(dir)).toEqual({ ok: true, kind: 'squash' })
+    let shown = ''
+    expect(await abortMerge(dir, async (_k, cmd) => ((shown = cmd), false))).toEqual({ ok: false, error: 'cancelled' })
+    expect(shown).toBe('git reset --merge')
+    expect(await abortMerge(dir, yes)).toEqual({ ok: true })
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8').trim()).toBe('ours')
+    expect(await abortMerge(dir, yes)).toEqual({ ok: false, error: 'none' })
+  })
+
+  it('lists files between two branch tips, shows one diff, and takes a file after the check', async () => {
+    const res = await diffBetween(dir, 'main', 'clash')
+    expect(res).toMatchObject({ ok: true, a: 'main', b: 'clash', truncated: false })
+    expect(res.ok && res.files).toEqual([{ path: 'a.txt', status: 'M', added: 1, removed: 1, binary: false }])
+    expect(await diffBetween(dir, 'main', 'main')).toMatchObject({ ok: false, error: 'unknown' })
+    const one = await fileBetween(dir, dir, 'main', 'clash', 'a.txt')
+    expect(one.ok && one.text).toMatch(/^-ours$/m)
+    expect(await fileBetween(dir, dir, 'main', 'clash', '../x')).toMatchObject({ ok: false, error: 'denied' })
+    writeFileSync(path.join(dir, 'a.txt'), 'local edit\n')
+    expect(await takeFile(dir, 'clash', 'a.txt', yes)).toEqual({ ok: false, error: 'dirty' })
+    run('checkout', '--', 'a.txt')
+    expect(await takeFile(dir, 'clash', 'nope.txt', yes)).toEqual({ ok: false, error: 'missing' })
+    let shown: string[] = []
+    expect(await takeFile(dir, 'clash', 'a.txt', async (lines) => ((shown = lines), false))).toEqual({ ok: false, error: 'cancelled' })
+    expect(shown[1]).toBe('git checkout clash -- a.txt')
+    expect(await takeFile(dir, 'clash', 'a.txt', yes)).toEqual({ ok: true })
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8').trim()).toBe('theirs')
   })
 })

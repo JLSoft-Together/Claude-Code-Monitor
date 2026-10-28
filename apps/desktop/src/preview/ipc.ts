@@ -14,10 +14,14 @@ import { createBranch, deletePlan, fetchAll, pushBranch, pushPreview, remoteUrl,
 import { branchesContaining, commitDetail, commitDiff, listRefs, logPage } from './log'
 import { realOrNull, realRoots, rootKey, rootOf } from './paths'
 import { cleanQuery, search } from './search'
+import { blame } from './blame'
+import { listCommands, userCommandsDir, type CommandScope } from './commands'
+import { abortMerge, mergeState } from './mergeState'
 import { cleanCommit, commit, headUnpushed, stageHunk, stagePaths, unstagePaths } from './commit'
 import { CheckRunner, cleanCheck, resolveCheck } from './checks'
-import { compareBranch, mergeBranch } from './worktrees'
+import { compareBranch, diffBetween, fileBetween, mergeBranch, takeFile } from './worktrees'
 import { CheckpointStore } from './checkpoints'
+import { changedVsBase, dryMerge } from './overlap'
 import type { RunKind } from '../strings'
 import { existingDir } from '../pick-start'
 import type { GitHubAccounts } from '../github/accounts'
@@ -101,7 +105,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:cp-diff', 'ccm:cp-restore',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -384,6 +388,36 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     }
   })
 
+  // Blame on demand for the file a viewer shows; one per page, a newer request (another file) aborts the older one.
+  const blames = new Map<number, AbortController>()
+  ipcMain.handle('ccm:git-blame', async (event, file: unknown) => {
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    const ok = await allowedPath(file)
+    if (!ok || !(await fs.stat(ok.real).catch(() => null))?.isFile()) return { ok: false, error: 'denied' }
+    const repo = await registerRepo(path.dirname(ok.real))
+    if (typeof repo !== 'string') return { ok: false, error: 'not-repo' }
+    const id = event.sender.id
+    blames.get(id)?.abort()
+    const ctl = new AbortController()
+    blames.set(id, ctl)
+    try {
+      return await blame(repo, ok.real, ctl.signal)
+    } finally {
+      if (blames.get(id) === ctl) blames.delete(id)
+    }
+  })
+
+  // Slash commands for the prompt picker: names + descriptions only, read when the picker opens.
+  ipcMain.handle('ccm:commands-list', async (event, dir: unknown) => {
+    if (!isAppFrame(event)) return { ok: false, error: 'denied' }
+    const ok = await allowedPath(dir)
+    if (!ok) return { ok: false, error: 'denied' }
+    const top = await toplevel(ok.real)
+    const roots = [...new Set([ok.real, ...('error' in top ? [] : [top.root])])]
+    const dirs: { dir: string; scope: CommandScope }[] = [...roots.map((r) => ({ dir: path.join(r, '.claude', 'commands'), scope: 'project' as const })), { dir: userCommandsDir(), scope: 'user' }]
+    return { ok: true, commands: await listCommands(dirs) }
+  })
+
   ipcMain.handle('ccm:log-refs', async (event, dir: unknown) => {
     if (!isAppFrame(event)) return { ok: false, error: 'denied' }
     const repo = await registerRepo(dir)
@@ -509,18 +543,66 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     const real = isAppFrame(event) ? await checkDir(dir) : null
     return real ? compareBranch(real, branch) : { ok: false, error: 'denied' }
   })
+  ipcMain.handle('ccm:wt-diff', async (event, req: unknown) => {
+    const { dir, a, b } = (req ?? {}) as { dir?: unknown; a?: unknown; b?: unknown }
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    return real ? diffBetween(real, a, b) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:wt-file-diff', async (event, req: unknown) => {
+    const { dir, a, b, path: rel } = (req ?? {}) as { dir?: unknown; a?: unknown; b?: unknown; path?: unknown }
+    const repo = isAppFrame(event) ? await registerRepo(dir) : null
+    return typeof repo === 'string' ? fileBetween(repo, repo, a, b, rel) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:wt-take', async (event, req: unknown) => {
+    const { dir, from, path: rel } = (req ?? {}) as { dir?: unknown; from?: unknown; path?: unknown }
+    const repo = isAppFrame(event) ? await registerRepo(dir) : null
+    if (typeof repo !== 'string' || !deps.confirmRun) return { ok: false, error: 'denied' }
+    return takeFile(repo, from, rel, (lines, branch, file) => deps.confirmRun!({ kind: 'take', a: file, b: branch, lines }))
+  })
+  ipcMain.handle('ccm:overlap-files', async (event, dir: unknown) => {
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    return real ? changedVsBase(real) : { ok: false, error: 'failed' }
+  })
+  // One dry run per page: a newer pair aborts the older one.
+  const dryRuns = new Map<number, AbortController>()
+  ipcMain.handle('ccm:overlap-dryrun', async (event, req: unknown) => {
+    const { dir, a, b } = (req ?? {}) as { dir?: unknown; a?: unknown; b?: unknown }
+    const real = isAppFrame(event) ? await checkDir(dir) : null
+    if (!real) return { ok: false, error: 'unknown' }
+    const id = event.sender.id
+    dryRuns.get(id)?.abort()
+    const ctl = new AbortController()
+    dryRuns.set(id, ctl)
+    try {
+      return await dryMerge(real, a, b, ctl.signal)
+    } finally {
+      if (dryRuns.get(id) === ctl) dryRuns.delete(id)
+    }
+  })
   let merging = false
   ipcMain.handle('ccm:wt-merge', async (event, req: unknown) => {
-    const { dir, branch, mode } = (req ?? {}) as { dir?: unknown; branch?: unknown; mode?: unknown }
+    const { dir, branch, mode, keep } = (req ?? {}) as { dir?: unknown; branch?: unknown; mode?: unknown; keep?: unknown }
     const real = isAppFrame(event) ? await checkDir(dir) : null
     if (!real || (mode !== 'ff' && mode !== 'squash') || !deps.confirmRun) return { ok: false, error: 'denied' }
     if (merging) return { ok: false, error: 'failed', detail: 'busy' }
     merging = true
     try {
-      return await mergeBranch(real, branch, mode, (commands, target, base) => deps.confirmRun!({ kind: mode, a: String(branch), b: base, lines: [`cd ${target}`, ...commands] }))
+      const res = await mergeBranch(real, branch, mode, (commands, target, base) => deps.confirmRun!({ kind: mode, a: String(branch), b: base, lines: [`cd ${target}`, ...commands] }), keep === true)
+      if (!res.ok && res.kept) await registerRepo(res.kept)
+      return res
     } finally {
       merging = false
     }
+  })
+
+  ipcMain.handle('ccm:git-merge-state', async (event, root: unknown) => {
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    return repo ? mergeState(repo) : { ok: false, error: 'failed' }
+  })
+  ipcMain.handle('ccm:git-merge-abort', async (event, root: unknown) => {
+    const repo = isAppFrame(event) ? await repoOf(root) : null
+    if (!repo || !deps.confirmRun) return { ok: false, error: 'failed' }
+    return abortMerge(repo, (kind, command) => deps.confirmRun!({ kind: 'abort', a: kind, b: repo, lines: [`cd ${repo}`, command] }))
   })
 
   const cps = deps.dataDir ? new CheckpointStore(deps.dataDir) : null
@@ -543,9 +625,19 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     return repo && cps ? cps.take(repo, typeof label === 'string' ? label : 'turn') : { ok: false, error: 'denied' }
   })
   ipcMain.handle('ccm:cp-diff', async (event, req: unknown) => {
-    const { root, id } = (req ?? {}) as { root?: unknown; id?: unknown }
+    const { root, id, to } = (req ?? {}) as { root?: unknown; id?: unknown; to?: unknown }
     const repo = await cpRepo(event, root)
-    return repo && cps ? cps.diff(repo, id) : { ok: false, error: 'denied' }
+    return repo && cps ? cps.diff(repo, id, to) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:cp-file-diff', async (event, req: unknown) => {
+    const { root, from, to, path: rel } = (req ?? {}) as { root?: unknown; from?: unknown; to?: unknown; path?: unknown }
+    const repo = await cpRepo(event, root)
+    return repo && cps ? cps.fileDiff(repo, from, to, rel) : { ok: false, error: 'denied' }
+  })
+  ipcMain.handle('ccm:cp-revert-hunk', async (event, req: unknown) => {
+    const { root, path: rel, patch } = (req ?? {}) as { root?: unknown; path?: unknown; patch?: unknown }
+    const repo = await cpRepo(event, root)
+    return repo && cps ? cps.revertHunk(repo, rel, patch) : { ok: false, error: 'denied' }
   })
   ipcMain.handle('ccm:cp-restore', async (event, req: unknown) => {
     const { root, id, paths } = (req ?? {}) as { root?: unknown; id?: unknown; paths?: unknown }

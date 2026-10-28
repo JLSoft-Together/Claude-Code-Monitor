@@ -1,0 +1,176 @@
+// v69: conflict resolver, prompt library, compare worktrees, overlap radar, outline, inbox.
+// Steps behind a native confirm (take a file, abort a merge) are covered by unit tests: a message box would block CDP.
+const { execFileSync } = require('node:child_process')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { launch } = require('./cdp.cjs')
+const S = `document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s`
+const W = `${S}.get('workspace')`
+const UI = `${S}.get('ui')`
+const results = []
+const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); console.log(results.at(-1)) }
+
+const BASE = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccm-e2e-v69-')))
+const DIR = path.join(BASE, 'clash')
+const DIR2 = path.join(BASE, 'radar')
+const WT2 = path.join(BASE, 'radar-wt')
+const FAKE = 'e2e-v69-waiting'
+const gitIn = (cwd) => (...args) => execFileSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@local', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], { cwd, stdio: 'pipe' })
+
+function fixture() {
+  fs.mkdirSync(DIR, { recursive: true })
+  const g = gitIn(DIR)
+  g('init', '-q', '-b', 'main')
+  fs.writeFileSync(path.join(DIR, 'a.txt'), 'base\n')
+  fs.writeFileSync(path.join(DIR, 'shapes.ts'), ['export interface Shape { area(): number }', '', 'export class Circle {', '  constructor(private r: number) {}', '  area(): number {', '    return Math.PI * this.r ** 2', '  }', '}', '', 'export function unitCircle() {', '  return new Circle(1)', '}', ''].join('\n'))
+  g('add', '-A')
+  g('commit', '-q', '-m', 'init')
+  g('switch', '-q', '-c', 'clash')
+  fs.writeFileSync(path.join(DIR, 'a.txt'), 'theirs\n')
+  g('commit', '-q', '-am', 'theirs')
+  g('switch', '-q', 'main')
+  fs.writeFileSync(path.join(DIR, 'a.txt'), 'ours\n')
+  g('commit', '-q', '-am', 'ours')
+  try { g('merge', '--squash', 'clash') } catch {}
+
+  fs.mkdirSync(DIR2, { recursive: true })
+  const h = gitIn(DIR2)
+  h('init', '-q', '-b', 'main')
+  fs.writeFileSync(path.join(DIR2, 'a.txt'), '1\n')
+  h('add', '-A')
+  h('commit', '-q', '-m', 'init')
+  h('worktree', 'add', '-q', '-b', 'feat', WT2)
+  const w = gitIn(WT2)
+  fs.writeFileSync(path.join(WT2, 'a.txt'), 'feat\n')
+  fs.writeFileSync(path.join(WT2, 'b.txt'), 'new\n')
+  w('add', '-A')
+  w('commit', '-q', '-m', 'feat')
+  fs.writeFileSync(path.join(DIR2, 'a.txt'), 'dirty\n')
+}
+
+async function main() {
+  fixture()
+  const app = await launch({ exe: process.argv[2] })
+  const { evaluate, waitFor, shot, sleep, cmd, key, type } = app
+  try {
+    await waitFor(`!!window.ccmDesktop && !!${UI}`, 30000, 'app ready')
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.prompts', JSON.stringify([{ id: 'e2e', name: 'E2E branch note', text: 'Branch {branch} in {wt} {checks}', scope: 'global' }]))`)
+    await cmd('Page.reload')
+    await waitFor(`!!${UI}`, 15000, 'reloaded')
+    await evaluate(`${UI}.view = 'workspace'`)
+    await waitFor(`!!document.querySelector('[data-launch-row]')`, 15000, 'picker')
+
+    // 1. Conflict resolver.
+    await evaluate(`${W}.open('shell', ${JSON.stringify(DIR)})`)
+    await waitFor(`${W}.panes.some((p) => p.state === 'running')`, 20000, 'shell running')
+    await evaluate(`${W}.openChanges(${JSON.stringify(DIR)})`)
+    const banner = await waitFor(`document.querySelector('[data-merge-banner]')?.textContent.trim()`, 15000, 'merge banner').catch(() => '')
+    check('Changes shows the squash in progress', /squash/i.test(banner), banner)
+    await waitFor(`!!document.querySelector('[data-conflict-view] [data-conflict-block]')`, 15000, 'conflict view').catch(() => {})
+    check('conflict entry opens the resolver with one block', (await evaluate(`document.querySelectorAll('[data-conflict-block]').length`)) === 1)
+    await shot('v69-01-conflict')
+    await evaluate(`document.querySelector('[data-take="theirs"]').click()`)
+    await waitFor(`!!document.querySelector('[data-conflict-resolved]')`, 10000, 'resolved button').catch(() => {})
+    check('Take theirs writes the file without markers', fs.readFileSync(path.join(DIR, 'a.txt'), 'utf8').trim() === 'theirs', fs.readFileSync(path.join(DIR, 'a.txt'), 'utf8'))
+    await evaluate(`document.querySelector('[data-conflict-resolved]').click()`)
+    await sleep(1500)
+    const unmerged = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: DIR, encoding: 'utf8' }).trim()
+    check('Mark resolved stages it: no unmerged paths left', unmerged === '', unmerged)
+
+    // 2. Prompt library: Alt+Shift+P with the shell focused, fill without Enter.
+    const shellKey = await evaluate(`${W}.panes.find((p) => (p.kind ?? 'term') === 'term').key`)
+    await evaluate(`${W}.activate('${shellKey}')`)
+    await sleep(400)
+    await key('P', 'KeyP', 80, 1 | 8)
+    await waitFor(`!!document.querySelector('[data-prompt-picker]')`, 8000, 'prompt picker').catch(() => {})
+    check('Alt+Shift+P opens the prompt library', await evaluate(`!!document.querySelector('[data-prompt-picker]')`))
+    await waitFor(`/Branch main/.test(document.querySelector('[data-prompt-preview]')?.textContent ?? '')`, 8000, 'preview').catch(() => {})
+    const preview = await evaluate(`document.querySelector('[data-prompt-preview]')?.textContent ?? ''`)
+    check('preview fills {branch} and {wt}', /Branch main in .*clash/.test(preview), preview)
+    check('missing {checks} is reported', /checks/.test(await evaluate(`document.querySelector('[data-prompt-missing]')?.textContent ?? ''`)))
+    await shot('v69-02-prompts')
+    await evaluate(`document.querySelector('[data-prompt-fill]').click()`)
+    await sleep(300)
+    const req = await evaluate(`(() => { const r = ${W}.insertRequest; return r && { pane: r.paneKey, text: r.text } })()`)
+    check('Fill inserts into the focused pane, no Enter', !!req && req.pane === shellKey && /^Branch main in /.test(req.text) && !/[\r\n]$/.test(req.text), JSON.stringify(req))
+    check('picker closes after fill', await evaluate(`!document.querySelector('[data-prompt-picker]')`))
+
+    // 5. Outline: Ctrl+F12 in a file pane, pick a symbol.
+    await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, 'shapes.ts'))})`)
+    await waitFor(`!!document.querySelector('[data-line="10"]')`, 15000, 'file shown')
+    await evaluate(`document.querySelector('[data-line="1"]').closest('section').focus()`)
+    await key('F12', 'F12', 123, 2)
+    await waitFor(`!!document.querySelector('[data-outline]')`, 8000, 'outline').catch(() => {})
+    const rows = await evaluate(`[...document.querySelectorAll('[data-outline-row]')].map((r) => r.dataset.outlineRow).join(',')`)
+    check('Ctrl+F12 lists the file symbols', rows === 'Shape,Circle,area,unitCircle', rows)
+    await type('unit')
+    await sleep(200)
+    await shot('v69-03-outline')
+    await key('Enter', 'Enter', 13)
+    await sleep(500)
+    check('Enter jumps and closes the outline', await evaluate(`!document.querySelector('[data-outline]') && document.querySelector('[data-line="10"]').getBoundingClientRect().top < innerHeight`))
+
+    // 3 + 4. Two agent checkouts of one repo: overlap chip, dry merge, compare dialog.
+    await evaluate(`${W}.open('shell', ${JSON.stringify(DIR2)})`)
+    await evaluate(`${W}.open('shell', ${JSON.stringify(WT2)})`)
+    await waitFor(`${W}.panes.filter((p) => (p.kind ?? 'term') === 'term' && p.state === 'running').length >= 3`, 20000, 'radar shells')
+    await evaluate(`${W}.panes.forEach((p) => { if ((p.kind ?? 'term') === 'term' && /radar/.test(p.cwd ?? '')) p.agent = 'claude' })`)
+    await evaluate(`${S}.get('overlap').scan(true)`)
+    const radarKey = await evaluate(`${W}.panes.find((p) => p.cwd === ${JSON.stringify(DIR2)}).key`)
+    await evaluate(`${W}.activate('${radarKey}')`)
+    const chip = await waitFor(`document.querySelector('[data-pane="${radarKey}"] [data-overlap-chip]')?.getAttribute('aria-label')`, 15000, 'overlap chip').catch(() => '')
+    check('overlap chip names the other worktree', /a\.txt|1 file|feat/.test(chip) && /feat/.test(chip), chip)
+    await evaluate(`document.querySelector('[data-pane="${radarKey}"] [data-overlap-chip]').click()`)
+    await waitFor(`!!document.querySelector('[data-overlap-pop] [data-overlap-try]')`, 5000, 'overlap popover').catch(() => {})
+    await evaluate(`document.querySelector('[data-overlap-try]').click()`)
+    const dry = await waitFor(`document.querySelector('[data-overlap-dry]')?.textContent.trim()`, 15000, 'dry run').catch(() => '')
+    check('Try merge reports a clean merge of the two tips', /clean|sạch/i.test(dry), dry)
+    await shot('v69-04-overlap')
+    await key('Escape', 'Escape', 27)
+
+    await evaluate(`document.querySelector('[data-pane="${radarKey}"] [data-pane-worktrees]').click()`)
+    await waitFor(`!!document.querySelector('[data-wt-compare-pick="main"]') && !!document.querySelector('[data-wt-compare-pick="feat"]')`, 15000, 'worktree menu').catch(() => {})
+    await evaluate(`document.querySelector('[data-wt-compare-pick="main"]').click()`)
+    await sleep(150)
+    await evaluate(`document.querySelector('[data-wt-compare-pick="feat"]').click()`)
+    const files = await waitFor(`(() => { const l = [...document.querySelectorAll('[data-wt-compare-file]')].map((b) => b.dataset.wtCompareFile); return l.length ? l.join(',') : '' })()`, 15000, 'compare files').catch(() => '')
+    check('compare lists files that differ between main and feat', files === 'a.txt,b.txt', files)
+    const diffShown = await waitFor(`!!document.querySelector('[data-wt-compare] [data-diff-view], [data-wt-compare] .ccm-diff, [data-wt-compare] table, [data-wt-compare] [data-block]')`, 10000, 'compare diff').catch(() => false)
+    check('first file diff is shown', !!diffShown)
+    check('take button offers the feat version', /feat/.test(await evaluate(`document.querySelector('[data-wt-take]')?.textContent ?? ''`)))
+    check('no horizontal page scroll', await evaluate(`document.documentElement.scrollWidth <= innerWidth`))
+    await shot('v69-05-compare')
+    await key('Escape', 'Escape', 27)
+    await sleep(300)
+
+    // 6. Inbox: a waiting agent shows in the badge, Enter jumps to its card.
+    await evaluate(`${S}.get('terminals').upsert({ id: '${FAKE}', title: 'E2E waiting', status: 'waiting', statusSince: new Date(Date.now() - 240000).toISOString(), lastActivityAt: new Date().toISOString() })`)
+    const badge = await waitFor(`document.querySelector('[data-inbox-badge]')?.textContent.trim()`, 8000, 'badge').catch(() => '')
+    check('inbox badge counts the waiting agent', Number(badge) >= 1, badge)
+    await evaluate(`document.querySelector('[data-inbox-button]').click()`)
+    await waitFor(`!!document.querySelector('[data-inbox] [data-inbox-reason="waiting"]')`, 5000, 'inbox row').catch(() => {})
+    const row = await evaluate(`document.querySelector('[data-inbox] [data-inbox-reason="waiting"]')?.textContent ?? ''`)
+    check('inbox row says waiting with its time', /E2E waiting/.test(row) && /4m|4 ph/.test(row), row)
+    await shot('v69-06-inbox')
+    await evaluate(`document.querySelector('[data-inbox] [data-inbox-reason="waiting"]').focus()`)
+    await key('e', 'KeyE', 69)
+    await sleep(300)
+    check('E marks it seen', await evaluate(`!document.querySelector('[data-inbox] [data-inbox-reason="waiting"]')`))
+    await evaluate(`${S}.get('terminals').patch({ id: '${FAKE}', statusSince: new Date().toISOString() })`)
+    await sleep(300)
+    await waitFor(`!!document.querySelector('[data-inbox] [data-inbox-reason="waiting"]')`, 5000, 'back').catch(() => {})
+    check('row comes back once its state changes', await evaluate(`!!document.querySelector('[data-inbox] [data-inbox-reason="waiting"]')`))
+    await evaluate(`document.querySelector('[data-inbox] [data-inbox-reason="waiting"]').focus()`)
+    await key('Enter', 'Enter', 13)
+    await sleep(500)
+    check('Enter jumps to the agent card in Monitor', await evaluate(`${UI}.view === 'monitor' && !document.querySelector('[data-inbox]')`))
+    await evaluate(`${S}.get('terminals').remove('${FAKE}')`)
+  } catch (e) {
+    check('run', false, e.message)
+  } finally {
+    app.stop()
+    try { fs.rmSync(BASE, { recursive: true, force: true }) } catch {}
+  }
+}
+main().then(() => process.exit(results.some((r) => r.startsWith('FAIL')) ? 1 : 0))
