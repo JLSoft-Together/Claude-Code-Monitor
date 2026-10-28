@@ -15,6 +15,10 @@ export type ExplorerAction =
   | 'run'
   | 'show-diff'
   | 'reload'
+  | 'compare-select'
+  | 'compare-clear'
+  | 'compare-with'
+  | 'compare-clipboard'
 
 export interface ExplorerMenuCtx {
   mac: boolean
@@ -24,6 +28,8 @@ export interface ExplorerMenuCtx {
   changed: boolean
   /** The Run pane exists (desktop `runDetect`): "Run…" shows on runnable rows. */
   run?: boolean
+  /** Files can be read for a compare: the Compare group shows on file rows, `selected` = file picked first. */
+  compare?: { selected: { path: string; name: string } | null; self: boolean }
 }
 
 const M = 'workspace.explorer.menu.'
@@ -47,7 +53,7 @@ export function riskHintKey(p: string): string | null {
 }
 
 /** Row menu: a small subset of Android Studio's Project view menu (see .planning/PLAN-v35-explorer-context-menu.md rulings). */
-export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string) => string): MenuEntry[] {
+export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string, params?: Record<string, string>) => string): MenuEntry[] {
   const isRoot = row.depth === 0
   const hintKey = isRoot ? null : riskHintKey(row.path)
   const configHint = hintKey ? t(hintKey) : undefined
@@ -67,6 +73,12 @@ export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string
     { id: 'open-in', label: t(`${M}openIn`), children: [{ id: 'reveal', label: t(`${M}${ctx.mac ? 'finder' : 'explorer'}`) }, { id: 'terminal', label: t(`${M}terminal`) }] },
   ]
   if (ctx.run && isRunnableRow(row)) entries.push({ id: 'run', label: t(`${M}run`) })
+  if (ctx.compare && !row.directory) {
+    const { selected, self } = ctx.compare
+    entries.push({ separator: true }, self ? { id: 'compare-clear', label: t(`${M}compareClear`) } : { id: 'compare-select', label: t(`${M}compareSelect`) })
+    if (selected && !self) entries.push({ id: 'compare-with', label: t(`${M}compareWith`, { name: selected.name }) })
+    entries.push({ id: 'compare-clipboard', label: t(`${M}compareClipboard`) })
+  }
   if (ctx.repo) {
     entries.push({ separator: true }, { id: 'git', label: t(`${M}git`), children: [{ id: 'show-diff', label: t(`${M}showDiff`), shortcut: ctx.mac ? '⌥⌘D' : 'Ctrl+D', disabled: !ctx.changed }] })
   }

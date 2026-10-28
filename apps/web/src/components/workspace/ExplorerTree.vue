@@ -29,6 +29,7 @@ import {
 import ContextMenu from '../ui/ContextMenu.vue'
 import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMarks } from '../../lib/changesView'
 import { hasRun } from '../../lib/desktop'
+import { hasPreview } from '../../lib/preview'
 import { warmOnIntent } from '../../lib/layoutPreview'
 import { explorerKey, explorerMenu, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { setDragPath } from '../../lib/explorer/dragPath'
@@ -53,6 +54,8 @@ const props = defineProps<{
   git?: GitMarks | null
   /** The project is a git repo: the row menu shows Git ▸ Show Diff. */
   repo?: boolean
+  /** File picked with "Select for Compare". */
+  compareSel?: { path: string; name: string } | null
 }>()
 const emit = defineEmits<{
   open: [path: string, keep: boolean]
@@ -163,9 +166,13 @@ const MENU_ICONS: Partial<Record<string, typeof File>> = {
   run: Play,
   git: GitCompare,
   reload: RefreshCw,
+  'compare-with': GitCompare,
+  'compare-clipboard': ClipboardCopy,
 }
 const withIcons = (list: MenuEntry[]): MenuEntry[] => list.map((e) => (isSeparator(e) ? e : { ...e, icon: MENU_ICONS[e.id], children: e.children && withIcons(e.children) }))
-const menuFor = (row: TreeRow): MenuEntry[] => withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun }, (k) => t(k)))
+const compareCtx = (row: TreeRow) => (hasPreview ? { selected: props.compareSel ?? null, self: !!props.compareSel && samePath(props.compareSel.path, row.path) } : undefined)
+const menuFor = (row: TreeRow): MenuEntry[] =>
+  withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun, compare: compareCtx(row) }, (k, p) => t(k, p ?? {})))
 
 const menu = ref<{ at: DOMRect; row: TreeRow; trigger: HTMLElement | null } | null>(null)
 
@@ -367,6 +374,8 @@ const ACTION = 'inline-flex size-[18px] shrink-0 cursor-pointer items-center jus
             data-row-name
             >{{ row.name }}</span
           >
+          <GitCompare v-if="compareSel && samePath(compareSel.path, row.path)" :size="12" class="shrink-0 text-accent-ink" :title="t('workspace.explorer.menu.compareSelected')" aria-hidden="true" data-compare-selected />
+          <span v-if="compareSel && samePath(compareSel.path, row.path)" class="sr-only">, {{ t('workspace.explorer.menu.compareSelected') }}</span>
           <RunProjectMark v-if="runMark(row)" :project="runMark(row)!.project" :module="runMark(row)!.module" />
           <span v-if="gitKind(row)" class="w-3 shrink-0 text-center font-mono text-2xs font-semibold" :class="isActive(row) ? 'text-accent-ink' : KIND_CLASS[gitKind(row)!]" aria-hidden="true">{{
             KIND_LETTER[gitKind(row)!]

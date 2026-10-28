@@ -41,6 +41,19 @@ describe('explorerMenu', () => {
     expect(findAction(cfg, 'trash')?.disabled).toBe(false)
     expect(findAction(explorerMenu(row({}), ctx, t), 'rename')?.hint).toBeUndefined()
   })
+  it('offers compare on files: select first, then compare with the selected one or the clipboard', () => {
+    const tp = (k: string, p?: Record<string, string>) => `${k.split('.').pop()!}${p?.name ? `:${p.name}` : ''}`
+    const none = explorerMenu(row({}), { ...ctx, repo: false, compare: { selected: null, self: false } }, tp)
+    expect(ids(none).slice(-5)).toEqual(['-', 'compare-select', 'compare-clipboard', '-', 'reload'])
+    expect(ids(none)).not.toContain('compare-with')
+    const other = explorerMenu(row({}), { ...ctx, compare: { selected: { path: 'C:\\r\\b.ts', name: 'b.ts' }, self: false } }, tp)
+    expect(findAction(other, 'compare-with')?.label).toBe('compareWith:b.ts')
+    const self = explorerMenu(row({}), { ...ctx, compare: { selected: { path: 'C:\\r\\a.ts', name: 'a.ts' }, self: true } }, tp)
+    expect(ids(self)).toContain('compare-clear')
+    expect(ids(self)).not.toContain('compare-with')
+    expect(ids(explorerMenu(row({ directory: true }), { ...ctx, compare: { selected: null, self: false } }, tp))).not.toContain('compare-select')
+    expect(ids(explorerMenu(row({}), ctx, t))).not.toContain('compare-clipboard')
+  })
   it('warns before deleting .git or anything inside it', () => {
     expect(findAction(explorerMenu(row({ path: 'C:\\r\\.git', name: '.git', directory: true }), ctx, t), 'trash')?.hint).toBe('gitHint')
     expect(findAction(explorerMenu(row({ path: '/r/.git/HEAD', name: 'HEAD' }), ctx, t), 'trash')?.hint).toBe('gitHint')

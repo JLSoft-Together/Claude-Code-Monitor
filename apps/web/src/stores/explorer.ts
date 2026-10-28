@@ -28,7 +28,7 @@ export type ExplorerView = 'files' | 'changes' | 'search' | 'todo' | 'checks'
 
 /** One transient line under the header; the component translates `key`. */
 export interface ExplorerStatus {
-  key: 'createFailed' | 'exists' | 'invalid' | 'denied' | 'shownHidden' | 'renameFailed' | 'renameInvalid' | 'trashFailed' | 'missing' | 'busy' | 'copied' | 'pushed'
+  key: 'createFailed' | 'exists' | 'invalid' | 'denied' | 'shownHidden' | 'renameFailed' | 'renameInvalid' | 'trashFailed' | 'missing' | 'busy' | 'copied' | 'pushed' | 'compareSelected' | 'clipboardDenied'
   name: string
   reason?: EntryNameProblem
   failed: boolean

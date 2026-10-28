@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BranchOpResult } from '@ccm/shared'
 import { X } from 'lucide-vue-next'
 import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
 import { isMac } from '../../lib/platform'
-import { hasChecks, hasExplorer, hasSearch, revealPath, type SearchQuery } from '../../lib/preview'
+import { baseName, hasChecks, hasExplorer, hasSearch, readFile, revealPath, type SearchQuery } from '../../lib/preview'
+import { grammarFor } from '../../lib/codeView'
 import { useExplorerChanges } from '../../composables/useExplorerChanges'
 import { useExplorerStore, type ExplorerView } from '../../stores/explorer'
 import CreateEntryDialog from './CreateEntryDialog.vue'
@@ -17,6 +18,8 @@ import ExplorerChecks from './ExplorerChecks.vue'
 import ExplorerTodo from './ExplorerTodo.vue'
 import ExplorerTree from './ExplorerTree.vue'
 import PushDialog from './log/PushDialog.vue'
+
+const TextCompareDialog = defineAsyncComponent(() => import('./TextCompareDialog.vue'))
 
 const props = defineProps<{
   /** Project root of the focused pane; null keeps the last one. */
@@ -144,6 +147,66 @@ async function copy(text: string): Promise<void> {
   }
 }
 
+// Compare any two files (v70): in-memory pick, cleared after the compare or on Esc.
+interface CompareSide {
+  label: string
+  name: string
+  text: string | null
+}
+const compareSel = ref<{ path: string; name: string } | null>(null)
+const compare = ref<{ a: CompareSide; b: CompareSide; grammar: string | null; loading: boolean; message: string | null } | null>(null)
+const compareTitle = computed(() => (compare.value ? t('workspace.explorer.compare.title', { a: compare.value.a.name, b: compare.value.b.name }) : ''))
+
+function relLabel(path: string): string {
+  return (explorer.root && relativeTo(explorer.root, path)) || path
+}
+
+async function readSide(path: string): Promise<{ text: string } | { error: string }> {
+  const v = await readFile(path)
+  if (v?.kind === 'text') return { text: v.text ?? '' }
+  const why = v?.kind === 'too-large' ? 'tooLarge' : v?.kind === 'binary' || v?.kind === 'image' ? 'binary' : 'unreadable'
+  return { error: t(`workspace.explorer.compare.${why}`, { name: baseName(path) }) }
+}
+
+async function openCompare(left: string, right: { path: string } | { clipboard: string }): Promise<void> {
+  const rightName = 'path' in right ? baseName(right.path) : t('workspace.explorer.compare.clipboard')
+  compare.value = {
+    a: { label: relLabel(left), name: baseName(left), text: null },
+    b: { label: 'path' in right ? relLabel(right.path) : rightName, name: rightName, text: null },
+    grammar: grammarFor(undefined, left),
+    loading: true,
+    message: null,
+  }
+  const current = compare.value
+  const [a, b] = await Promise.all([readSide(left), 'path' in right ? readSide(right.path) : Promise.resolve({ text: right.clipboard })])
+  if (compare.value !== current) return
+  const error = 'error' in a ? a.error : 'error' in b ? b.error : null
+  compare.value = { ...current, loading: false, message: error, a: { ...current.a, text: error || !('text' in a) ? null : a.text }, b: { ...current.b, text: error || !('text' in b) ? null : b.text } }
+}
+
+function swapCompare(): void {
+  const c = compare.value
+  if (c) compare.value = { ...c, a: c.b, b: c.a }
+}
+
+async function compareClipboard(path: string): Promise<void> {
+  let text: string
+  try {
+    text = await navigator.clipboard.readText()
+  } catch {
+    explorer.status = { key: 'clipboardDenied', name: baseName(path), failed: true }
+    return
+  }
+  await openCompare(path, { clipboard: text })
+}
+
+function onPanelKey(e: KeyboardEvent): void {
+  if (e.key !== 'Escape' || !compareSel.value || compare.value) return
+  e.preventDefault()
+  compareSel.value = null
+  if (explorer.status?.key === 'compareSelected') explorer.clearStatus()
+}
+
 async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
   const root = explorer.root
   if (!root) return
@@ -184,6 +247,25 @@ async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
     case 'show-diff':
       if (changes.status.value?.ok) emit('openDiff', changes.status.value.root, row.path)
       break
+    case 'compare-select':
+      compareSel.value = { path: row.path, name: row.name }
+      explorer.status = { key: 'compareSelected', name: row.name, failed: false }
+      break
+    case 'compare-clear':
+      compareSel.value = null
+      if (explorer.status?.key === 'compareSelected') explorer.clearStatus()
+      break
+    case 'compare-with': {
+      const first = compareSel.value
+      if (!first) break
+      compareSel.value = null
+      if (explorer.status?.key === 'compareSelected') explorer.clearStatus()
+      await openCompare(first.path, { path: row.path })
+      break
+    }
+    case 'compare-clipboard':
+      await compareClipboard(row.path)
+      break
   }
 }
 
@@ -209,7 +291,7 @@ const statusText = computed(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-1 flex-col gap-1" :aria-label="t('workspace.explorer.title')" data-explorer>
+  <section class="flex min-h-0 flex-1 flex-col gap-1" :aria-label="t('workspace.explorer.title')" data-explorer @keydown="onPanelKey">
     <p v-if="!hasExplorer" class="px-2 py-3 text-xs text-ink-muted">{{ t('workspace.explorer.unavailable') }}</p>
     <p v-else-if="!explorer.root" class="px-2 py-3 text-xs text-ink-muted">{{ t('workspace.explorer.noRoot') }}</p>
     <template v-else>
@@ -257,6 +339,7 @@ const statusText = computed(() => {
         :active-path="activePath"
         :git="changes.marks.value"
         :repo="changes.isRepo.value"
+        :compare-sel="compareSel"
         @open="(p, keep) => emit('open', p, keep)"
         @open-diff="(p) => changes.status.value?.ok && emit('openDiff', changes.status.value.root, p)"
         @create="askCreate"
@@ -292,6 +375,20 @@ const statusText = computed(() => {
     </template>
     <CreateEntryDialog :request="dialog" @create="submitEntry" @close="entryRequest = null" />
     <PushDialog :request="push" @done="pushed" @close="push = null" />
+    <TextCompareDialog
+      v-if="compare"
+      :title="compareTitle"
+      :a="compare.a.text"
+      :b="compare.b.text"
+      :labels="{ a: compare.a.label, b: compare.b.label }"
+      :grammar="compare.grammar"
+      :primary="t('workspace.explorer.compare.swap')"
+      :loading="compare.loading"
+      :message="compare.message"
+      :error="!!compare.message"
+      @primary="swapCompare"
+      @close="compare = null"
+    />
     <DiscardConfirm
       v-if="pendingTrash"
       :title="t('workspace.explorer.trash.title', { name: pendingTrash.name, trash: trashName })"
