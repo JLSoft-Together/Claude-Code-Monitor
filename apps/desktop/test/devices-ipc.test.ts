@@ -3,6 +3,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
 import { registerDevicesIpc } from '../src/devices/ipc'
 import type { DeviceManager } from '../src/devices/manager'
+import type { ScreenRecorder } from '../src/devices/recorder'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -41,8 +42,24 @@ function setup(app = true) {
   const sender = Object.assign(new EventEmitter(), { id: 7 })
   const event = { sender } as unknown as IpcMainInvokeEvent
   const resolveDir = vi.fn(async (dir: unknown) => (dir === '/allowed' ? '/allowed' : null))
-  const dispose = registerDevicesIpc({ ipcMain, isAppFrame: () => app, manager: manager as unknown as DeviceManager, resolveDir })
-  return { handlers, manager, sender, event, dispose }
+  const recorder = {
+    start: vi.fn(async () => ({ ok: true, startedAt: 1, limitMs: 30_000 })),
+    stop: vi.fn(async () => ok),
+    cancel: vi.fn(async () => ok),
+    hasFile: vi.fn((t: string) => t === 'a'.repeat(32)),
+    save: vi.fn(async (_t: string, dest: string | null) => ({ ok: true, name: dest })),
+    discard: vi.fn(() => true),
+  }
+  const saveRecording = vi.fn(async (_e: unknown, name: string) => `/videos/${name}`)
+  const dispose = registerDevicesIpc({
+    ipcMain,
+    isAppFrame: () => app,
+    manager: manager as unknown as DeviceManager,
+    resolveDir,
+    recorder: recorder as unknown as ScreenRecorder,
+    saveRecording,
+  })
+  return { handlers, manager, recorder, saveRecording, sender, event, dispose }
 }
 
 const DENIED = { ok: false, error: 'denied' }
@@ -169,9 +186,26 @@ describe('devices ipc', () => {
     expect(manager.releaseOwner).toHaveBeenCalledWith('7:')
   })
 
+  it('recording takes a plain serial and a hex token; the save name is cleaned', async () => {
+    const { handlers, recorder, saveRecording, event } = setup()
+    const call = (ch: string, ...a: unknown[]) => handlers.get(ch)!(event, ...a)
+    expect(await call('ccm:dev-rec-start', '-s; rm')).toEqual(DENIED)
+    await call('ccm:dev-rec-start', 'emulator-5554')
+    expect(recorder.start).toHaveBeenCalledWith('emulator-5554')
+    await call('ccm:dev-rec-stop', 'emulator-5554')
+    await call('ccm:dev-rec-cancel', 'emulator-5554')
+    expect(recorder.cancel).toHaveBeenCalledWith('emulator-5554')
+    expect(await call('ccm:dev-rec-save', '../x', 'n')).toEqual(DENIED)
+    expect(await call('ccm:dev-rec-save', 'b'.repeat(32), 'n')).toEqual({ ok: false, error: 'invalid' })
+    expect(await call('ccm:dev-rec-save', 'a'.repeat(32), '../Pixel 7/..')).toEqual({ ok: true, name: '/videos/Pixel-7-...mp4' })
+    expect(saveRecording).toHaveBeenCalledWith(event, 'Pixel-7-...mp4')
+    expect(await call('ccm:dev-rec-discard', 'nope')).toBe(false)
+    expect(await call('ccm:dev-rec-discard', 'a'.repeat(32))).toBe(true)
+  })
+
   it('dispose removes every handler', () => {
     const { handlers, dispose } = setup()
-    expect(handlers.size).toBe(23)
+    expect(handlers.size).toBe(28)
     dispose()
     expect(handlers.size).toBe(0)
   })

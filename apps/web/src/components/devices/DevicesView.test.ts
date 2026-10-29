@@ -24,6 +24,20 @@ const api = vi.hoisted(() => ({
   avdList: vi.fn(),
   avdStart: vi.fn(),
   avdStop: vi.fn(),
+  devRecStart: vi.fn(),
+  devRecStop: vi.fn(),
+  devRecCancel: vi.fn(),
+  devRecSave: vi.fn(),
+  devRecDiscard: vi.fn(),
+  perfHistory: vi.fn(),
+  perfReset: vi.fn(),
+  perfMeasure: vi.fn(),
+  perfCold: vi.fn(),
+  devFsList: vi.fn(),
+  devFsDelete: vi.fn(),
+  devFsPull: vi.fn(),
+  devFsPush: vi.fn(),
+  devFsOpen: vi.fn(),
 }))
 
 vi.mock('../../lib/devices', () => ({
@@ -53,6 +67,33 @@ vi.mock('../../lib/devices', () => ({
   avdList: () => api.avdList(),
   avdStart: (name: string, mode: string) => api.avdStart(name, mode),
   avdStop: (name: string) => api.avdStop(name),
+  hasDeviceRecord: true,
+  devRecStart: (id: string) => api.devRecStart(id),
+  devRecStop: (id: string) => api.devRecStop(id),
+  devRecCancel: (id: string) => api.devRecCancel(id),
+  devRecSave: (token: string, name: string) => api.devRecSave(token, name),
+  devRecDiscard: (token: string) => api.devRecDiscard(token),
+}))
+
+vi.mock('../../lib/devPerf', async (orig) => ({
+  ...(await orig<typeof import('../../lib/devPerf')>()),
+  hasDevPerf: true,
+  perfHistory: (pkg: string) => api.perfHistory(pkg),
+  perfReset: (id: string, pkg: string) => api.perfReset(id, pkg),
+  perfMeasure: (id: string, pkg: string, device: string) => api.perfMeasure(id, pkg, device),
+  perfCold: (id: string, pkg: string, device: string) => api.perfCold(id, pkg, device),
+}))
+
+vi.mock('../../lib/devFiles', async (orig) => ({
+  ...(await orig<typeof import('../../lib/devFiles')>()),
+  hasDevFiles: true,
+  devFsList: (id: string, scope: unknown, dir: string) => api.devFsList(id, scope, dir),
+  devFsDelete: (id: string, scope: unknown, path: string, dir: boolean) => api.devFsDelete(id, scope, path, dir),
+  devFsPull: (id: string, req: unknown) => api.devFsPull(id, req),
+  devFsPush: (id: string, req: unknown) => api.devFsPush(id, req),
+  devFsOpen: (local: string, mode: string) => api.devFsOpen(local, mode),
+  devFsCancel: async () => true,
+  onDevFsProgress: () => () => {},
 }))
 
 import { useDevicesStore } from '../../stores/devices'
@@ -207,6 +248,46 @@ describe('Devices view', () => {
     expect(api.devUiDump).toHaveBeenCalledWith('R58M')
     expect(dialog.querySelector('[data-capture-panel]')?.textContent).toContain(t('deviceTools.inspect.hint'))
     dialog.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
+    await flushPromises()
+  })
+
+  it('records the screen: elapsed timer, stop, save and discard on close', async () => {
+    api.devScreencap.mockResolvedValue({ ok: true, png: 'data:image/png;base64,AAAA', width: 100, height: 200 })
+    api.devRecStart.mockResolvedValue({ ok: true, startedAt: 1, limitMs: 30_000 })
+    api.devRecStop.mockResolvedValue({ ok: true, token: 'f'.repeat(32), bytes: 2 * 1024 * 1024, durationMs: 4200, frames: ['data:image/png;base64,AAAA'], framesFailed: 0 })
+    api.devRecSave.mockResolvedValue({ ok: true, name: 'R58M.mp4' })
+    api.devRecDiscard.mockResolvedValue(true)
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="capture"]').trigger('click')
+    await flushPromises()
+    const dialog = document.querySelector<HTMLElement>('[data-device-capture]')!
+    dialog.querySelector<HTMLButtonElement>('[data-capture-record]')!.click()
+    await flushPromises()
+    expect(api.devRecStart).toHaveBeenCalledWith('R58M')
+    expect(dialog.querySelector('[data-rec-elapsed]')?.textContent).toContain('0:30')
+    dialog.querySelector<HTMLButtonElement>('[data-rec-stop]')!.click()
+    await flushPromises()
+    expect(dialog.querySelector('[data-rec-result]')?.textContent).toContain('0:04')
+    expect(dialog.querySelector('[data-rec-result]')?.textContent).toContain('2.0 MB')
+    expect(dialog.querySelectorAll('[data-rec-frame]')).toHaveLength(1)
+    dialog.querySelector<HTMLButtonElement>('[data-rec-save]')!.click()
+    await flushPromises()
+    expect(api.devRecSave).toHaveBeenCalledWith('f'.repeat(32), expect.stringMatching(/^R58M-/))
+    dialog.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
+    await flushPromises()
+    expect(api.devRecDiscard).toHaveBeenCalledWith('f'.repeat(32))
+  })
+
+  it('a failed recording start shows its message', async () => {
+    api.devScreencap.mockResolvedValue({ ok: true, png: 'data:image/png;base64,AAAA', width: 100, height: 200 })
+    api.devRecStart.mockResolvedValue({ ok: false, error: 'busy' })
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="capture"]').trigger('click')
+    await flushPromises()
+    document.querySelector<HTMLButtonElement>('[data-capture-record]')!.click()
+    await flushPromises()
+    expect(document.querySelector('[data-capture-error]')?.textContent).toContain(t('deviceRec.error.busy'))
+    document.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
     await flushPromises()
   })
 

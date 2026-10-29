@@ -43,6 +43,8 @@ export type DevErrorCode =
   | 'launch-failed'
   | 'no-manifest'
   | 'unsupported'
+  | 'busy'
+  | 'record-failed'
 
 export type DevResult = { ok: true; detail?: string } | { ok: false; error: DevErrorCode; detail?: string }
 
@@ -72,12 +74,19 @@ export interface DevUiNode {
   pkg: string
   bounds: [number, number, number, number]
   clickable: boolean
+  focusable?: boolean
 }
 
 export type DevFailure = { ok: false; error: DevErrorCode; detail?: string }
 /** `png` is a base64 data URL. */
 export type DevCapture = { ok: true; png: string; width: number; height: number } | DevFailure
-export type DevUiDump = { ok: true; nodes: DevUiNode[]; rotation: number } | DevFailure
+/** `density` = dpi from `wm density` (override, else physical); null when the device did not say. */
+export type DevUiDump = { ok: true; nodes: DevUiNode[]; rotation: number; density?: number | null } | DevFailure
+
+export type DevRecStart = { ok: true; startedAt: number; limitMs: number } | DevFailure
+/** `token` names the pulled MP4 kept in main until saved or discarded; `frames` = PNG data URLs taken while recording. */
+export type DevRecResult = { ok: true; token: string; bytes: number; durationMs: number; frames: string[]; framesFailed: number } | DevFailure
+export type DevRecSave = { ok: true; name: string } | DevFailure
 
 export type DevNight = 'yes' | 'no' | 'auto' | 'custom'
 export type DevUiKey = 'night' | 'fontScale' | 'density' | 'animations' | 'locale'

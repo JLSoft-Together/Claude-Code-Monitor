@@ -8,7 +8,7 @@ import { AvdManager } from './emulators'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
 import { newQrSecret, qrPayload, runQrPairing } from './qr'
-import { launchCommand, parseLaunch } from './uiToggles'
+import { launchCommand, parseDensity, parseLaunch } from './uiToggles'
 import { DeviceUiTester } from './uiTester'
 
 export interface DeviceManagerTiming {
@@ -349,7 +349,12 @@ export class DeviceManager {
 
   async uiDump(id: string): Promise<DevUiDump> {
     const ready = await this.readyCheck(id)
-    return ready.ok ? this.commands.uiDump(id) : ready
+    if (!ready.ok) return ready
+    const dump = await this.commands.uiDump(id)
+    if (!dump.ok) return dump
+    const wm = await this.commands.shell(id, ['wm', 'density'])
+    const d = wm && wm.code === 0 ? parseDensity(wm.out) : null
+    return { ...dump, density: d?.override ?? d?.physical ?? null }
   }
 
   async uiRead(id: string, pkg: string | null): Promise<DevUiResult> {

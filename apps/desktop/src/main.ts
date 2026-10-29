@@ -29,6 +29,7 @@ import { createFlutterRunner } from './run/flutter/runner'
 import { registerRunIpc } from './run/ipc'
 import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
+import { ScreenRecorder } from './devices/recorder'
 import { registerApkIpc } from './apk/ipc'
 import { LibChecker } from './libs/checker'
 import { registerLibsIpc } from './libs/ipc'
@@ -45,7 +46,7 @@ import type { LayoutIpc } from './layout/ipc'
 import { wireLayout } from './layout/wire'
 import { wireFlutterPreview, type FlutterPreviewWire } from './flutterPreview/wire'
 import { afterRunTarget } from './layout/model'
-import { defaultSpawner } from './run/proc'
+import { defaultSpawner, killAdbClient } from './run/proc'
 import { RunManager } from './run/sessions'
 import { PtySupervisor } from './pty/supervisor'
 import { paneOpenResult, parseOpenLink, realDir, takeLinkSlot, type OpenLink } from './openLink'
@@ -123,6 +124,7 @@ let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let deviceManager: DeviceManager | null = null
+let recorder: ScreenRecorder | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
 let disposeLibs: (() => void) | null = null
@@ -242,6 +244,8 @@ function stopPreview(): Promise<void> {
   updates?.dispose()
   appData?.closeAll()
   appData = null
+  recorder?.dispose()
+  recorder = null
   deviceManager?.stop(true)
   deviceManager = null
   previewWatch.closeAll()
@@ -1201,7 +1205,23 @@ async function ready(): Promise<void> {
       }),
   })
   deviceManager = devices
-  disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices, resolveDir: (dir) => previewGate.resolveDir(dir) })
+  recorder = new ScreenRecorder({ withDevice: (id, fn) => devices.withReady(id, fn), tmpDir: path.join(os.tmpdir(), 'orrery-rec'), kill: killAdbClient })
+  // E2E: the native Save dialog cannot be driven over CDP.
+  const e2eRecFile = process.env.CCM_E2E_RECORD_FILE || null
+  disposeDevices = registerDevicesIpc({
+    ipcMain,
+    isAppFrame,
+    manager: devices,
+    resolveDir: (dir) => previewGate.resolveDir(dir),
+    recorder,
+    saveRecording: async (event, defaultName) => {
+      if (e2eRecFile) return e2eRecFile
+      const opts: Electron.SaveDialogOptions = { title: t.recSaveTitle, defaultPath: path.join(app.getPath('videos'), defaultName), filters: [{ name: t.recFilter, extensions: ['mp4'] }] }
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      return res.canceled ? null : (res.filePath ?? null)
+    },
+  })
   void devices.autoConnectOnce()
   appData = new AppDataInspector({
     withDevice: (id, fn) => devices.withReady(id, fn),

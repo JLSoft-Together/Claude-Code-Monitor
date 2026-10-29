@@ -3,6 +3,7 @@ import type { AvdStartMode, DevResult } from '@ccm/shared'
 import { isAvdName } from './avd'
 import { readProjectManifest } from './manifest'
 import type { DeviceManager } from './manager'
+import { isRecToken, type ScreenRecorder } from './recorder'
 import { cleanChange, cleanLaunch, isPackage } from './uiToggles'
 
 export interface DevicesIpcDeps {
@@ -11,6 +12,9 @@ export interface DevicesIpcDeps {
   manager: DeviceManager
   /** Same folder gate as the Explorer (`PreviewIpc.resolveDir`), for the project manifest. */
   resolveDir: (dir: unknown) => Promise<string | null>
+  recorder?: ScreenRecorder
+  /** Native Save dialog for a recording; null = cancelled. */
+  saveRecording?: (event: IpcMainInvokeEvent, defaultName: string) => Promise<string | null>
 }
 
 const CHANNELS = [
@@ -18,6 +22,7 @@ const CHANNELS = [
   'ccm:dev-remove', 'ccm:dev-alias', 'ccm:dev-auto-connect', 'ccm:dev-discover', 'ccm:dev-qr-start', 'ccm:dev-qr-cancel',
   'ccm:dev-screencap', 'ccm:dev-uidump', 'ccm:dev-ui-read', 'ccm:dev-ui-set', 'ccm:dev-ui-restore', 'ccm:dev-manifest', 'ccm:dev-launch',
   'ccm:avd-list', 'ccm:avd-start', 'ccm:avd-stop',
+  'ccm:dev-rec-start', 'ccm:dev-rec-stop', 'ccm:dev-rec-cancel', 'ccm:dev-rec-save', 'ccm:dev-rec-discard',
 ]
 const AVD_MODES = new Set(['normal', 'cold', 'wipe'])
 
@@ -29,7 +34,7 @@ const pkgOf = (v: unknown): string | null | undefined => (v === null || v === un
 const isAddress = (v: unknown): v is string => typeof v === 'string' && v.length >= 1 && v.length <= 300
 
 export function registerDevicesIpc(deps: DevicesIpcDeps): () => void {
-  const { ipcMain, isAppFrame, manager, resolveDir } = deps
+  const { ipcMain, isAppFrame, manager, resolveDir, recorder, saveRecording } = deps
 
   const tracked = new Set<number>()
   // A window that reloads / closes drops its holds and QR sessions, so the tracker can stop.
@@ -108,6 +113,17 @@ export function registerDevicesIpc(deps: DevicesIpcDeps): () => void {
     if (!isAppFrame(event)) return DENIED
     return isAvdName(name) ? manager.avdStop(name) : INVALID
   })
+
+  ipcMain.handle('ccm:dev-rec-start', (event, id: unknown) => (isAppFrame(event) && isId(id) && recorder ? recorder.start(id) : DENIED))
+  ipcMain.handle('ccm:dev-rec-stop', (event, id: unknown) => (isAppFrame(event) && isId(id) && recorder ? recorder.stop(id) : DENIED))
+  ipcMain.handle('ccm:dev-rec-cancel', (event, id: unknown) => (isAppFrame(event) && isId(id) && recorder ? recorder.cancel(id) : DENIED))
+  ipcMain.handle('ccm:dev-rec-save', async (event, token: unknown, name: unknown) => {
+    if (!isAppFrame(event) || !isRecToken(token) || !recorder || !saveRecording) return DENIED
+    if (!recorder.hasFile(token)) return INVALID
+    const base = typeof name === 'string' ? name.replace(/[^\w.-]+/g, '-').replace(/^[.-]+/, '').slice(0, 80) : ''
+    return recorder.save(token, await saveRecording(event, `${base || 'screen'}.mp4`))
+  })
+  ipcMain.handle('ccm:dev-rec-discard', (event, token: unknown) => (isAppFrame(event) && isRecToken(token) && recorder ? recorder.discard(token) : false))
 
   return () => {
     for (const ch of CHANNELS) ipcMain.removeHandler(ch)

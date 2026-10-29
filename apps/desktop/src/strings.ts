@@ -157,6 +157,8 @@ The app is force-stopped first, then the file is written on the device. The firs
   avdWipeTitle: (name: string) => `Wipe all data of the emulator ${name}?`,
   avdWipeDetail: 'Apps, accounts, files and snapshots inside this virtual device are erased, then it starts like new. This cannot be undone.',
   avdWipeConfirm: 'Wipe and start',
+  recSaveTitle: 'Save screen recording',
+  recFilter: 'MP4 video',
   hookToggleTitle: (on: boolean, event: string) => (on ? `Turn the ${event} hook back on?` : `Turn off this ${event} hook?`),
   hookToggleDetail: (on: boolean, file: string, diff: string) =>
     `Orrery will write ${file}. Other keys stay; the old file is kept as ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' The hook is kept in Orrery so it can be turned back on.'}
@@ -339,6 +341,8 @@ ${key}: ${clip(before)} → ${clip(after)}
   avdWipeTitle: (name) => `Xoá toàn bộ dữ liệu của emulator ${name}?`,
   avdWipeDetail: 'Ứng dụng, tài khoản, file và snapshot trong thiết bị ảo này sẽ bị xoá, rồi nó khởi động như mới. Không hoàn tác được.',
   avdWipeConfirm: 'Xoá và khởi động',
+  recSaveTitle: 'Lưu video quay màn hình',
+  recFilter: 'Video MP4',
   hookToggleTitle: (on, event) => (on ? `Bật lại hook ${event} này?` : `Tắt hook ${event} này?`),
   hookToggleDetail: (on, file, diff) =>
     `Orrery sẽ ghi ${file}. Các khoá khác giữ nguyên; file cũ được giữ thành ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' Hook được cất trong Orrery để bật lại sau.'}

@@ -80,6 +80,87 @@ function runAs() {
   }
 }
 
+// v75 screen recording: writes a minimal finished MP4 (ftyp + moov + mdat) to STATE/sdcard at once, then runs until
+// `pkill` (pid file) or the time limit.
+const SDCARD = path.join(STATE, 'sdcard')
+const MP4 = Buffer.concat([Buffer.from('00000010667479706973766d00000200', 'hex'), Buffer.from('000000086d6f6f76', 'hex'), Buffer.from('0000000c6d64617400000000', 'hex')])
+function screenrecord() {
+  const remote = args.at(-1)
+  const limit = Number(args[args.indexOf('--time-limit') + 1]) || 180
+  const name = path.posix.basename(remote, '.mp4')
+  fs.mkdirSync(SDCARD, { recursive: true })
+  fs.writeFileSync(path.join(SDCARD, `${name}.mp4`), MP4)
+  fs.writeFileSync(path.join(SDCARD, `${name}.pid`), String(process.pid))
+  const end = () => {
+    fs.rmSync(path.join(SDCARD, `${name}.pid`), { force: true })
+    process.exit(0)
+  }
+  process.on('SIGINT', end)
+  process.on('SIGTERM', end)
+  setTimeout(end, limit * 1000)
+  exitWithParent()
+}
+
+// v75 file browser: /sdcard/<rel> is STATE/sdcard/<rel>; argv words are re-split like the device sh does.
+function shWords(text) {
+  const words = []
+  let cur = null
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === "'") {
+      const j = text.indexOf("'", i + 1)
+      cur = (cur ?? '') + text.slice(i + 1, j)
+      i = j
+    } else if (ch === '\\') cur = (cur ?? '') + text[++i]
+    else if (/\s/.test(ch)) {
+      if (cur !== null) words.push(cur)
+      cur = null
+    } else cur = (cur ?? '') + ch
+  }
+  if (cur !== null) words.push(cur)
+  return words
+}
+const sh = () => shWords(args.slice(1).join(' '))
+const local = (dev) => {
+  const p = dev.replace(/\/+$/, '')
+  if (p !== '/sdcard' && !p.startsWith('/sdcard/')) return null
+  const rel = p.slice('/sdcard'.length).split('/').filter(Boolean)
+  return rel.includes('..') ? null : path.join(SDCARD, ...rel)
+}
+const lsLine = (full, name) => {
+  const st = fs.statSync(full)
+  return `${st.isDirectory() ? 'drwxrwx--x' : '-rw-rw----'} 1 root sdcard_rw ${st.isDirectory() ? 3488 : st.size} 2024-01-02 10:11 ${name}\n`
+}
+function fsLs(words) {
+  const target = words.at(-1)
+  const file = local(target)
+  if (!file || !fs.existsSync(file)) {
+    out(`ls: ${target}: ${file ? 'No such file or directory' : 'Permission denied'}\n`)
+    process.exitCode = 1
+  } else if (words[1] === '-d') out(`${target}\n`)
+  else if (fs.statSync(file).isDirectory() && target.endsWith('/')) {
+    out(`total 8\n${lsLine(file, '.')}`)
+    for (const name of fs.readdirSync(file).sort()) if (!name.endsWith('.pid')) out(lsLine(path.join(file, name), name))
+  } else out(lsLine(file, target))
+}
+function fsWrite(script) {
+  const words = shWords(script)
+  const [tmp, dest] = [words[2], words.at(-1)]
+  const file = local(dest)
+  const part = local(tmp)
+  if (!file || !part) {
+    process.stderr.write(`sh: ${tmp}: Permission denied\n`)
+    process.exitCode = 1
+    return
+  }
+  const chunks = []
+  process.stdin.on('data', (b) => chunks.push(b))
+  process.stdin.on('end', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, Buffer.concat(chunks))
+  })
+}
+
 if (args[0] === 'emu' && args[1] === 'avd' && args[2] === 'name') {
   const name = emus()[serial]
   if (name) out(`${name}\r\nOK\r\n`)

@@ -60,6 +60,7 @@ export function parseUiDump(xml: string): { nodes: DevUiNode[]; rotation: number
       pkg: clip(a.package),
       bounds,
       clickable: a.clickable === 'true',
+      focusable: a.focusable === 'true',
     })
     if (!m[3]) stack.push(index)
   }

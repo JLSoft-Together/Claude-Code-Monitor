@@ -31,6 +31,12 @@ export interface AdbCommands {
   execOut(id: string, args: string[], timeoutMs: number, max: number): Promise<Bytes | null>
   /** `adb -s id shell …` fed `input` on stdin (shell protocol v2 forwards it). */
   shellInput(id: string, args: string[], input: Buffer, timeoutMs: number): Promise<Bytes | null>
+  /** Long-running `adb -s id shell …` the caller owns (screen recording); null when adb is missing or spawn failed. */
+  spawnShell(id: string, args: string[]): Promise<ChildProcess | null>
+  /** `adb -s id …` the caller owns and streams (file browser pull / push); stdin piped when `stdin`. */
+  spawnAdb(id: string, args: string[], stdin: boolean): Promise<ChildProcess | null>
+  /** `adb -s id pull remote local`. */
+  pull(id: string, remote: string, local: string, timeoutMs: number): Promise<Collected | null>
 }
 
 const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000, captureMs: 15_000, dumpMs: 20_000 }
@@ -166,6 +172,25 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
       const adb = await opts.adb()
       return adb ? collectBytes(opts.spawn, adb, ['-s', id, 'shell', ...args], opts.cwd, timeoutMs, 64 * 1024, input) : null
     },
+    async spawnShell(id, args) {
+      const adb = await opts.adb()
+      if (!adb) return null
+      try {
+        return opts.spawn({ file: adb, args: ['-s', id, 'shell', ...args], cwd: opts.cwd })
+      } catch {
+        return null
+      }
+    },
+    async spawnAdb(id, args, stdin) {
+      const adb = await opts.adb()
+      if (!adb) return null
+      try {
+        return opts.spawn(stdin ? { file: adb, args: ['-s', id, ...args], cwd: opts.cwd, stdin: 'pipe' } : { file: adb, args: ['-s', id, ...args], cwd: opts.cwd })
+      } catch {
+        return null
+      }
+    },
+    pull: (id, remote, local, timeoutMs) => run(['-s', id, 'pull', remote, local], timeoutMs),
     async uiDump(id) {
       const dumped = await run(['-s', id, 'shell', 'uiautomator', 'dump', UI_DUMP_PATH], t.dumpMs)
       if (!dumped) return fail('adb-missing')

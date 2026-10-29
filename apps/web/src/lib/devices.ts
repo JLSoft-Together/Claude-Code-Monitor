@@ -1,4 +1,4 @@
-import type { AvdList, AvdResult, AvdStartMode, AppDataList, AppDbOpen, AppDbRows, AppPrefs, PrefEdit, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
+import type { AvdList, AvdResult, AvdStartMode, AppDataList, AppDbOpen, AppDbRows, AppPrefs, PrefEdit, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevRecResult, DevRecSave, DevRecStart, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 /** v61 ADB devices bridge (main owns adb; the page only sends ids and validated inputs). */
@@ -18,6 +18,11 @@ interface DevicesBridge {
   devQrCancel?: (id: string) => Promise<DevResult>
   devScreencap?: (id: string) => Promise<DevCapture>
   devUiDump?: (id: string) => Promise<DevUiDump>
+  devRecStart?: (id: string) => Promise<DevRecStart>
+  devRecStop?: (id: string) => Promise<DevRecResult>
+  devRecCancel?: (id: string) => Promise<{ ok: true } | DevFailure>
+  devRecSave?: (token: string, name: string) => Promise<DevRecSave>
+  devRecDiscard?: (token: string) => Promise<boolean>
   devUiRead?: (id: string, pkg: string | null) => Promise<DevUiResult>
   devUiSet?: (id: string, change: DevUiChange, pkg: string | null) => Promise<DevUiResult>
   devUiRestore?: (id: string, pkg: string | null) => Promise<DevUiResult>
@@ -63,6 +68,12 @@ export const avdStop = (name: string): Promise<AvdResult> => bridge?.avdStop?.(n
 export const hasDeviceCapture = typeof bridge?.devScreencap === 'function'
 export const devScreencap = (id: string): Promise<DevCapture> => bridge?.devScreencap?.(id) ?? Promise.resolve(unavailable)
 export const devUiDump = (id: string): Promise<DevUiDump> => bridge?.devUiDump?.(id) ?? Promise.resolve(unavailable)
+export const hasDeviceRecord = typeof bridge?.devRecStart === 'function'
+export const devRecStart = (id: string): Promise<DevRecStart> => bridge?.devRecStart?.(id) ?? Promise.resolve(unavailable)
+export const devRecStop = (id: string): Promise<DevRecResult> => bridge?.devRecStop?.(id) ?? Promise.resolve(unavailable)
+export const devRecCancel = (id: string): Promise<{ ok: true } | DevFailure> => bridge?.devRecCancel?.(id) ?? Promise.resolve(unavailable)
+export const devRecSave = (token: string, name: string): Promise<DevRecSave> => bridge?.devRecSave?.(token, name) ?? Promise.resolve(unavailable)
+export const devRecDiscard = (token: string): Promise<boolean> => bridge?.devRecDiscard?.(token) ?? Promise.resolve(false)
 export const hasDeviceUiTest = typeof bridge?.devUiRead === 'function'
 export const devUiRead = (id: string, pkg: string | null): Promise<DevUiResult> => bridge?.devUiRead?.(id, pkg) ?? Promise.resolve(unavailable)
 export const devUiSet = (id: string, change: DevUiChange, pkg: string | null): Promise<DevUiResult> => bridge?.devUiSet?.(id, change, pkg) ?? Promise.resolve(unavailable)
