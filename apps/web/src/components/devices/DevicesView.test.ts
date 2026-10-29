@@ -13,11 +13,17 @@ const api = vi.hoisted(() => ({
   devQrCancel: vi.fn(),
   devScreencap: vi.fn(),
   devUiDump: vi.fn(),
+  devUiRead: vi.fn(),
+  devUiSet: vi.fn(),
+  devUiRestore: vi.fn(),
+  devManifest: vi.fn(),
+  devLaunch: vi.fn(),
 }))
 
 vi.mock('../../lib/devices', () => ({
   hasDevices: true,
   hasDeviceCapture: true,
+  hasDeviceUiTest: true,
   onDevEvent: () => () => {},
   devHold: (on: boolean) => api.devHold(on),
   devSnapshot: () => api.devSnapshot(),
@@ -27,6 +33,11 @@ vi.mock('../../lib/devices', () => ({
   devQrCancel: (id: string) => api.devQrCancel(id),
   devScreencap: (id: string) => api.devScreencap(id),
   devUiDump: (id: string) => api.devUiDump(id),
+  devUiRead: (id: string, pkg: string | null) => api.devUiRead(id, pkg),
+  devUiSet: (id: string, c: unknown, pkg: string | null) => api.devUiSet(id, c, pkg),
+  devUiRestore: (id: string, pkg: string | null) => api.devUiRestore(id, pkg),
+  devManifest: (dir: string) => api.devManifest(dir),
+  devLaunch: (id: string, target: unknown) => api.devLaunch(id, target),
 }))
 
 import { useDevicesStore } from '../../stores/devices'
@@ -129,7 +140,7 @@ describe('Devices view', () => {
     })
     expect(actions('R58M')).toContain('toWifi')
     expect(actions('R58M')).not.toContain('disconnect')
-    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'disconnect'])
+    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'uiTest', 'disconnect'])
     expect(actions('192.168.1.9:5555')).toEqual(expect.arrayContaining(['reconnect', 'forget']))
     expect(actions('192.168.1.9:5555')).not.toContain('disconnect')
     expect(actions('192.168.1.9:5555')).not.toContain('capture')
@@ -154,6 +165,41 @@ describe('Devices view', () => {
     expect(api.devUiDump).toHaveBeenCalledWith('R58M')
     expect(dialog.querySelector('[data-capture-panel]')?.textContent).toContain(t('deviceTools.inspect.hint'))
     dialog.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
+    await flushPromises()
+  })
+
+  it('Test UI reads the device, applies a change, restores, and opens a typed deep link', async () => {
+    const state = (over = {}) => ({
+      sdk: 34, night: 'no', fontScale: 1, density: { physical: 400, override: null }, animationsOff: false,
+      locale: { supported: true, pkg: null, current: null }, changed: [], ...over,
+    })
+    api.devUiRead.mockResolvedValue({ ok: true, state: state() })
+    api.devUiSet.mockResolvedValue({ ok: true, state: state({ night: 'yes', changed: ['night'] }) })
+    api.devUiRestore.mockResolvedValue({ ok: true, state: state() })
+    api.devLaunch.mockResolvedValue({ ok: true })
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="uiTest"]').trigger('click')
+    await flushPromises()
+    expect(api.devUiRead).toHaveBeenCalledWith('R58M', null)
+    const dialog = document.querySelector<HTMLElement>('[data-device-uitest]')!
+    expect(dialog.querySelector('[data-uitest-locale]')!.hasAttribute('disabled')).toBe(true)
+    dialog.querySelector<HTMLButtonElement>('[data-uitest-dark] [role="switch"]')!.click()
+    await flushPromises()
+    expect(api.devUiSet).toHaveBeenCalledWith('R58M', { key: 'night', value: 'yes' }, null)
+    expect(dialog.querySelector('[data-uitest-changed]')?.textContent).toContain('1')
+    dialog.querySelector<HTMLButtonElement>('[data-uitest-restore]')!.click()
+    await flushPromises()
+    expect(api.devUiRestore).toHaveBeenCalledWith('R58M', null)
+    expect(dialog.querySelector('[data-uitest-changed]')).toBeNull()
+    const input = dialog.querySelector<HTMLInputElement>('[data-uitest-uri]')!
+    input.value = 'myapp://item/7'
+    input.dispatchEvent(new Event('input'))
+    await flushPromises()
+    dialog.querySelector<HTMLButtonElement>('[data-uitest-go]')!.click()
+    await flushPromises()
+    expect(api.devLaunch).toHaveBeenCalledWith('R58M', { kind: 'uri', uri: 'myapp://item/7', pkg: null })
+    expect(dialog.querySelector('[data-uitest-message]')?.textContent).toContain(t('deviceTools.open.launched'))
+    dialog.querySelector<HTMLButtonElement>('[data-uitest-close]')!.click()
     await flushPromises()
   })
 

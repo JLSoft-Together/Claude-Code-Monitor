@@ -25,6 +25,8 @@ export interface AdbCommands {
   screencap(id: string): Promise<DevCapture>
   /** Dumps to a temp file on the device, reads it back and removes it. */
   uiDump(id: string): Promise<DevUiDump>
+  /** `adb -s id shell …`: the caller quotes anything that is not a fixed word (remote sh joins argv). */
+  shell(id: string, args: string[], timeoutMs?: number): Promise<Collected | null>
 }
 
 const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000, captureMs: 15_000, dumpMs: 20_000 }
@@ -146,6 +148,7 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
       }
       return { ok: true, png: `data:image/png;base64,${png.toString('base64')}`, ...size }
     },
+    shell: (id, args, timeoutMs) => run(['-s', id, 'shell', ...args], timeoutMs ?? t.cmdMs),
     async uiDump(id) {
       const dumped = await run(['-s', id, 'shell', 'uiautomator', 'dump', UI_DUMP_PATH], t.dumpMs)
       if (!dumped) return fail('adb-missing')

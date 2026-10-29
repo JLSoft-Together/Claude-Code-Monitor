@@ -1,4 +1,4 @@
-import type { DevBatchResult, DevCapture, DevEvent, DevFailure, DevResult, DevSnapshot, DevUiDump } from '@ccm/shared'
+import type { DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 /** v61 ADB devices bridge (main owns adb; the page only sends ids and validated inputs). */
@@ -18,6 +18,11 @@ interface DevicesBridge {
   devQrCancel?: (id: string) => Promise<DevResult>
   devScreencap?: (id: string) => Promise<DevCapture>
   devUiDump?: (id: string) => Promise<DevUiDump>
+  devUiRead?: (id: string, pkg: string | null) => Promise<DevUiResult>
+  devUiSet?: (id: string, change: DevUiChange, pkg: string | null) => Promise<DevUiResult>
+  devUiRestore?: (id: string, pkg: string | null) => Promise<DevUiResult>
+  devManifest?: (dir: string) => Promise<DevManifest>
+  devLaunch?: (id: string, target: DevLaunch) => Promise<DevResult>
   onDevEvent?: (handler: (e: DevEvent) => void) => () => void
 }
 
@@ -42,3 +47,9 @@ export const onDevEvent = (handler: (e: DevEvent) => void): (() => void) => brid
 export const hasDeviceCapture = typeof bridge?.devScreencap === 'function'
 export const devScreencap = (id: string): Promise<DevCapture> => bridge?.devScreencap?.(id) ?? Promise.resolve(unavailable)
 export const devUiDump = (id: string): Promise<DevUiDump> => bridge?.devUiDump?.(id) ?? Promise.resolve(unavailable)
+export const hasDeviceUiTest = typeof bridge?.devUiRead === 'function'
+export const devUiRead = (id: string, pkg: string | null): Promise<DevUiResult> => bridge?.devUiRead?.(id, pkg) ?? Promise.resolve(unavailable)
+export const devUiSet = (id: string, change: DevUiChange, pkg: string | null): Promise<DevUiResult> => bridge?.devUiSet?.(id, change, pkg) ?? Promise.resolve(unavailable)
+export const devUiRestore = (id: string, pkg: string | null): Promise<DevUiResult> => bridge?.devUiRestore?.(id, pkg) ?? Promise.resolve(unavailable)
+export const devManifest = (dir: string): Promise<DevManifest> => bridge?.devManifest?.(dir) ?? Promise.resolve(unavailable)
+export const devLaunch = (id: string, target: DevLaunch): Promise<DevResult> => bridge?.devLaunch?.(id, target) ?? Promise.resolve(unavailable)

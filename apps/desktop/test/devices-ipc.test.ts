@@ -30,10 +30,15 @@ function setup(app = true) {
     qrCancel: vi.fn(() => ok),
     screencap: vi.fn(async () => ok),
     uiDump: vi.fn(async () => ok),
+    uiRead: vi.fn(async () => ok),
+    uiApply: vi.fn(async () => ok),
+    uiRestore: vi.fn(async () => ok),
+    launch: vi.fn(async () => ok),
   }
   const sender = Object.assign(new EventEmitter(), { id: 7 })
   const event = { sender } as unknown as IpcMainInvokeEvent
-  const dispose = registerDevicesIpc({ ipcMain, isAppFrame: () => app, manager: manager as unknown as DeviceManager })
+  const resolveDir = vi.fn(async (dir: unknown) => (dir === '/allowed' ? '/allowed' : null))
+  const dispose = registerDevicesIpc({ ipcMain, isAppFrame: () => app, manager: manager as unknown as DeviceManager, resolveDir })
   return { handlers, manager, sender, event, dispose }
 }
 
@@ -60,6 +65,11 @@ describe('devices ipc', () => {
     expect(await call('ccm:dev-qr-cancel', 'q')).toEqual(DENIED)
     expect(await call('ccm:dev-screencap', 'a')).toEqual(DENIED)
     expect(await call('ccm:dev-uidump', 'a')).toEqual(DENIED)
+    expect(await call('ccm:dev-ui-read', 'a', null)).toEqual(DENIED)
+    expect(await call('ccm:dev-ui-set', 'a', { key: 'night', value: 'yes' }, null)).toEqual(DENIED)
+    expect(await call('ccm:dev-ui-restore', 'a', null)).toEqual(DENIED)
+    expect(await call('ccm:dev-manifest', '/allowed')).toEqual(DENIED)
+    expect(await call('ccm:dev-launch', 'a', { kind: 'activity', pkg: 'com.app', activity: '.Main' })).toEqual(DENIED)
     for (const fn of Object.values(manager)) expect(fn).not.toHaveBeenCalled()
   })
 
@@ -82,6 +92,22 @@ describe('devices ipc', () => {
     expect(await handlers.get('ccm:dev-uidump')!(event, '-s; rm')).toEqual(DENIED)
     expect(await handlers.get('ccm:dev-screencap')!(event, 42)).toEqual(DENIED)
     expect(manager.uiDump).not.toHaveBeenCalled()
+  })
+
+  it('display test and launch values are checked before main runs anything', async () => {
+    const { handlers, manager, event } = setup()
+    const call = (ch: string, ...a: unknown[]) => handlers.get(ch)!(event, ...a)
+    await call('ccm:dev-ui-set', 'a', { key: 'fontScale', value: 1.3 }, 'com.app')
+    expect(manager.uiApply).toHaveBeenCalledWith('a', { key: 'fontScale', value: 1.3 }, 'com.app')
+    expect(await call('ccm:dev-ui-set', 'a', { key: 'fontScale', value: '1; reboot' }, null)).toEqual({ ok: false, error: 'invalid' })
+    expect(await call('ccm:dev-ui-read', 'a', 'not a pkg')).toEqual(DENIED)
+    await call('ccm:dev-ui-restore', 'a', undefined)
+    expect(manager.uiRestore).toHaveBeenCalledWith('a', null)
+    expect(await call('ccm:dev-launch', 'a', { kind: 'uri', uri: 'x://a\nb', pkg: null })).toEqual({ ok: false, error: 'invalid' })
+    await call('ccm:dev-launch', 'a', { kind: 'uri', uri: "myapp://it'em", pkg: 'com.app' })
+    expect(manager.launch).toHaveBeenCalledWith('a', { kind: 'uri', uri: "myapp://it'em", pkg: 'com.app' })
+    expect(await call('ccm:dev-manifest', '/elsewhere')).toEqual(DENIED)
+    expect(await call('ccm:dev-manifest', '/allowed')).toEqual({ ok: false, error: 'no-manifest' })
   })
 
   it('validates input', async () => {
@@ -124,7 +150,7 @@ describe('devices ipc', () => {
 
   it('dispose removes every handler', () => {
     const { handlers, dispose } = setup()
-    expect(handlers.size).toBe(15)
+    expect(handlers.size).toBe(20)
     dispose()
     expect(handlers.size).toBe(0)
   })

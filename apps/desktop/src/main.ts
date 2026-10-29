@@ -31,6 +31,7 @@ import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
 import { registerHttpIpc } from './preview/httpSend'
 import { DeviceManager } from './devices/manager'
+import { UI_ORIGINALS_FILE } from './devices/uiTester'
 import type { LayoutIpc } from './layout/ipc'
 import { wireLayout } from './layout/wire'
 import { wireFlutterPreview, type FlutterPreviewWire } from './flutterPreview/wire'
@@ -999,6 +1000,7 @@ async function ready(): Promise<void> {
     home: os.homedir(),
     getSettings: () => ({ androidSdk: runManager?.getSettings().androidSdk ?? null }),
     history: new DeviceHistory(path.join(DATA_DIR, DEVICES_FILE)),
+    uiOriginalsFile: path.join(DATA_DIR, UI_ORIGINALS_FILE),
     broadcast: (event) => {
       for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:dev-event', event)
     },
@@ -1014,7 +1016,7 @@ async function ready(): Promise<void> {
       }),
   })
   deviceManager = devices
-  disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices })
+  disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices, resolveDir: (dir) => previewGate.resolveDir(dir) })
   void devices.autoConnectOnce()
   layoutIpc = wireLayout({
     ipcMain,

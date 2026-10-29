@@ -33,6 +33,8 @@ export const CHANGELOG: Release[] = [
       { en: 'Ctrl+K developer tools, file and image compare, .env check and i18n key scan', vi: 'Công cụ dev trong Ctrl+K, so file và ảnh, kiểm .env và quét khoá i18n' },
       { en: 'Device screenshot from Devices or the Run pane, attached to an agent pane', vi: 'Chụp màn thiết bị từ tab Thiết bị hoặc Run pane, đính kèm vào pane agent' },
       { en: 'Inspect views on the screenshot: id, text, bounds, Find in files or fill into an agent', vi: 'Soi view trên ảnh chụp: id, chữ, khung, tìm trong file hoặc điền vào agent' },
+      { en: 'Test UI on a device: dark mode, font size, display size, app language, animations off, Restore all', vi: 'Thử UI trên máy: giao diện tối, cỡ chữ, kích thước hiển thị, ngôn ngữ app, tắt animation, Trả về như cũ' },
+      { en: "Open the project's deep links and exported activities on a device, or type a URI", vi: 'Mở deep link và activity exported của dự án trên máy, hoặc tự nhập URI' },
     ],
   },
   {

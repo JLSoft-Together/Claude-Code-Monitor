@@ -82,6 +82,9 @@ const en = {
       'capture-failed': 'Could not capture the screen.',
       secure: 'This screen is secure: Android does not allow capturing it.',
       'dump-failed': 'Could not read the view tree. Wait for the screen to settle, or the app may block it.',
+      'launch-failed': 'The device could not open it.',
+      'no-manifest': 'No AndroidManifest.xml found in this project.',
+      unsupported: 'This device does not support that setting.',
     },
   },
 }
@@ -169,6 +172,9 @@ const vi: typeof en = {
       'capture-failed': 'Không chụp được màn hình.',
       secure: 'Màn hình này được bảo mật: Android không cho chụp.',
       'dump-failed': 'Không đọc được cây view. Đợi màn hình đứng yên rồi thử lại, hoặc app đang chặn.',
+      'launch-failed': 'Máy không mở được.',
+      'no-manifest': 'Không tìm thấy AndroidManifest.xml trong dự án này.',
+      unsupported: 'Máy này không hỗ trợ cài đặt đó.',
     },
   },
 }

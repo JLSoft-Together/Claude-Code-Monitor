@@ -1,4 +1,4 @@
-import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevResult, DevSnapshot, DevUiDump } from '@ccm/shared'
+import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevLaunch, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { createAdbWatch, type AdbWatch } from '../run/android/adbWatch'
 import { findAdbTools } from '../run/android/devices'
 import type { EnvDeps } from '../run/android/env'
@@ -7,6 +7,8 @@ import { createAdbCommands, type AdbCommands } from './adb'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
 import { newQrSecret, qrPayload, runQrPairing } from './qr'
+import { launchCommand, parseLaunch } from './uiToggles'
+import { DeviceUiTester } from './uiTester'
 
 export interface DeviceManagerTiming {
   wifiSwitchMs: number
@@ -28,6 +30,8 @@ export interface DeviceManagerDeps {
   history: DeviceHistory
   broadcast: (e: DevEvent) => void
   confirmRemove: (ids: string[]) => Promise<boolean>
+  /** Where the display-test originals are kept (`UI_ORIGINALS_FILE` in the data dir). */
+  uiOriginalsFile: string
   timing?: Partial<DeviceManagerTiming>
   /** Test seams: replace the adb commands / the SDK file checks. */
   commands?: AdbCommands
@@ -112,6 +116,7 @@ export class DeviceManager {
   private rows: AdbDeviceRow[] = []
   private autoDone = false
   private readonly qrSessions = new Map<string, { owner: string; ctl: AbortController }>()
+  private readonly ui: DeviceUiTester
 
   constructor(private readonly deps: DeviceManagerDeps) {
     this.t = { ...TIMING, ...deps.timing }
@@ -123,6 +128,7 @@ export class DeviceManager {
         adb: async () => this.adb,
         timing: { connectMs: this.t.connectMs, pairMs: this.t.pairMs, cmdMs: this.t.cmdMs },
       })
+    this.ui = new DeviceUiTester({ shell: (id, args) => this.commands.shell(id, args), file: deps.uiOriginalsFile })
   }
 
   private async resolveAdb(): Promise<string | null> {
@@ -310,6 +316,31 @@ export class DeviceManager {
   async uiDump(id: string): Promise<DevUiDump> {
     const ready = await this.readyCheck(id)
     return ready.ok ? this.commands.uiDump(id) : ready
+  }
+
+  async uiRead(id: string, pkg: string | null): Promise<DevUiResult> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? this.ui.read(id, pkg) : ready
+  }
+
+  async uiApply(id: string, change: DevUiChange, pkg: string | null): Promise<DevUiResult> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? this.ui.apply(id, change, pkg) : ready
+  }
+
+  async uiRestore(id: string, pkg: string | null): Promise<DevUiResult> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? this.ui.restore(id, pkg) : ready
+  }
+
+  async launch(id: string, target: DevLaunch): Promise<DevResult> {
+    const ready = await this.readyCheck(id)
+    if (!ready.ok) return ready
+    const r = await this.commands.shell(id, launchCommand(target), this.t.connectMs)
+    if (!r) return MISSING
+    if (r.timedOut) return { ok: false, error: 'timeout' }
+    const p = parseLaunch(r.out)
+    return p.ok ? p : { ok: false, error: 'launch-failed', detail: p.detail }
   }
 
   setAlias(id: string, alias: string | null): DevResult {
