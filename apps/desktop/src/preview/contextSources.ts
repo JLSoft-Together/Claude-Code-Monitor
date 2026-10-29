@@ -138,7 +138,11 @@ export async function contextSources(cwd: string, ctx: CtxEnv): Promise<CtxSourc
   const userRules: string[] = []
   await mdFiles(path.join(config, 'rules'), RULES_DEPTH, userRules)
   for (const f of userRules) await add(f, { kind: 'rules', load: 'start' })
-  for (const dir of ancestors(cwd)) for (const name of PER_DIR) await add(path.join(dir, name), { kind: name.includes('local') ? 'local' : 'project', load: 'start' })
+  // With CLAUDE_CONFIG_DIR elsewhere, the walk still reaches ~/.claude/CLAUDE.md: it is the user's file, not the project's.
+  const homeKey = key(ctx.home)
+  const kindOf = (dir: string, name: string): CtxSource['kind'] =>
+    name.includes('local') ? 'local' : key(dir) === homeKey && name.startsWith('.claude') ? 'user' : 'project'
+  for (const dir of ancestors(cwd)) for (const name of PER_DIR) await add(path.join(dir, name), { kind: kindOf(dir, name), load: 'start' })
   const rules: string[] = []
   await mdFiles(path.join(cwd, '.claude', 'rules'), RULES_DEPTH, rules)
   for (const f of rules) await add(f, { kind: 'rules', load: 'start' })

@@ -67,4 +67,15 @@ describe('contextSources', () => {
     expect(res.plugins).toEqual(['x@m'])
     expect(JSON.stringify(res)).not.toContain('secret')
   })
+
+  it('labels ~/.claude/CLAUDE.md as user when CLAUDE_CONFIG_DIR points elsewhere', async () => {
+    const other = path.join(dir, 'other-config')
+    const inHome = path.join(home, 'code', 'app')
+    write(path.join(inHome, 'CLAUDE.md'), 'p\n')
+    const res = await contextSources(inHome, { env: { CLAUDE_CONFIG_DIR: other }, home, platform: process.platform })
+    if (!res.ok) throw new Error('scan failed')
+    const kindOf = (p: string) => res.files.find((f) => path.resolve(f.path) === path.resolve(p))?.kind
+    expect(kindOf(path.join(config, 'CLAUDE.md'))).toBe('user')
+    expect(kindOf(path.join(inHome, 'CLAUDE.md'))).toBe('project')
+  })
 })
