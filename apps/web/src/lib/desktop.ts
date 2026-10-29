@@ -78,6 +78,7 @@ interface DesktopBridge {
   setWindowBackground?: (color: string) => Promise<boolean>
   /** Theme colours (#RRGGBB) for the startup screen and new windows. */
   setAppearance?: (look: DesktopLook) => Promise<boolean>
+  setLocale?: (locale: 'en' | 'vi') => Promise<boolean>
   /** App zoom (Chromium level, saved by the app); resolves to the new percent. */
   zoomApp?: (action: 'in' | 'out' | 'reset' | 'get') => Promise<number | null>
   /** Start with Windows / open at login: no argument reads, a boolean sets; null in a dev build. */

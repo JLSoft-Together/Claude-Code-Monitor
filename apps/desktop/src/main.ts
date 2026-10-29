@@ -856,7 +856,7 @@ function createUpdates(): UpdateManager {
 }
 
 async function ready(): Promise<void> {
-  t = stringsFor(app.getLocale())
+  t = stringsFor(saved().locale ?? 'vi')
   if (IS_MAC) {
     setMacMenu()
     if (await offerMoveToApplications(t)) return
@@ -898,6 +898,12 @@ async function ready(): Promise<void> {
   ipcMain.handle('ccm:window-bg', (event, color: unknown) => {
     if (!isAppFrame(event) || typeof color !== 'string' || !HEX_COLOR.test(color)) return false
     setWindowBackground(color)
+    return true
+  })
+  ipcMain.handle('ccm:locale', (event, raw: unknown) => {
+    if (!isAppFrame(event) || (raw !== 'en' && raw !== 'vi')) return false
+    if (raw !== saved().locale) saveAppearance({ locale: raw })
+    t = stringsFor(raw)
     return true
   })
   ipcMain.handle('ccm:appearance', (event, raw: unknown) => {

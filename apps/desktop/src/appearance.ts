@@ -17,6 +17,8 @@ export interface Appearance {
   look?: Look
   /** Chromium zoom level of the app pages (0 = 100%). */
   zoom?: number
+  /** UI language picked in the page; native dialogs and the tray follow it (Vietnamese by default). */
+  locale?: 'en' | 'vi'
 }
 
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i
@@ -58,6 +60,7 @@ export function readAppearance(file: string): Appearance {
     const look = parseLook(raw.look)
     if (look) out.look = look
     if (raw.zoom !== undefined) out.zoom = clampZoom(raw.zoom)
+    if (raw.locale === 'en' || raw.locale === 'vi') out.locale = raw.locale
     return out
   } catch {
     return {}

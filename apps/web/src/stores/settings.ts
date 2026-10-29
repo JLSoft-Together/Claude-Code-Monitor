@@ -172,6 +172,7 @@ export const useSettingsStore = defineStore('settings', () => {
       i18n.global.locale.value = value
       document.documentElement.lang = value
       persist('ccm.locale', value)
+      void desktop?.setLocale?.(value)
     },
     { immediate: true },
   )

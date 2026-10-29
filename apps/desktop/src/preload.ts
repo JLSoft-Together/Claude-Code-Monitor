@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   pickFolder: (near?: string): Promise<unknown> => ipcRenderer.invoke('ccm:pick-folder', near),
   setWindowBackground: (color: string): Promise<unknown> => ipcRenderer.invoke('ccm:window-bg', color),
   setAppearance: (look: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:appearance', look),
+  setLocale: (locale: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:locale', locale),
   zoomApp: (action: 'in' | 'out' | 'reset' | 'get'): Promise<unknown> => ipcRenderer.invoke('ccm:zoom', action),
   loginItem: (on?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:login-item', on),
   statusLineState: (): Promise<unknown> => ipcRenderer.invoke('ccm:statusline-state'),
