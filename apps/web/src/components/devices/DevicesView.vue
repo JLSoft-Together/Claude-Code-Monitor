@@ -10,6 +10,8 @@ import DeviceConnectBar from './DeviceConnectBar.vue'
 import DeviceUiTestDialog from './DeviceUiTestDialog.vue'
 import DeviceAppDataDialog from './DeviceAppDataDialog.vue'
 import DeviceRow from './DeviceRow.vue'
+import DeviceEmulators from './DeviceEmulators.vue'
+import { hasEmulators } from '../../lib/devices'
 import { ROW_GRID } from './meta'
 
 const { t, te } = useI18n()
@@ -144,6 +146,7 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
           </div>
         </section>
       </template>
+      <DeviceEmulators v-if="hasEmulators" />
     </template>
     <DeviceCaptureDialog :open="!!captureFor" :device-id="captureFor?.id ?? null" :device-name="captureFor?.name ?? ''" @close="captureFor = null" />
     <DeviceUiTestDialog :open="!!testFor" :device-id="testFor?.id ?? null" :device-name="testFor?.name ?? ''" @close="testFor = null" />

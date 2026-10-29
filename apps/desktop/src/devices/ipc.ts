@@ -1,5 +1,6 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import type { DevResult } from '@ccm/shared'
+import type { AvdStartMode, DevResult } from '@ccm/shared'
+import { isAvdName } from './avd'
 import { readProjectManifest } from './manifest'
 import type { DeviceManager } from './manager'
 import { cleanChange, cleanLaunch, isPackage } from './uiToggles'
@@ -16,7 +17,9 @@ const CHANNELS = [
   'ccm:dev-snapshot', 'ccm:dev-hold', 'ccm:dev-connect', 'ccm:dev-pair', 'ccm:dev-disconnect', 'ccm:dev-connect-many', 'ccm:dev-to-wifi',
   'ccm:dev-remove', 'ccm:dev-alias', 'ccm:dev-auto-connect', 'ccm:dev-discover', 'ccm:dev-qr-start', 'ccm:dev-qr-cancel',
   'ccm:dev-screencap', 'ccm:dev-uidump', 'ccm:dev-ui-read', 'ccm:dev-ui-set', 'ccm:dev-ui-restore', 'ccm:dev-manifest', 'ccm:dev-launch',
+  'ccm:avd-list', 'ccm:avd-start', 'ccm:avd-stop',
 ]
+const AVD_MODES = new Set(['normal', 'cold', 'wipe'])
 
 const DENIED: DevResult = { ok: false, error: 'denied' }
 const INVALID: DevResult = { ok: false, error: 'invalid' }
@@ -95,6 +98,15 @@ export function registerDevicesIpc(deps: DevicesIpcDeps): () => void {
     if (!isAppFrame(event) || !isId(id)) return DENIED
     const l = cleanLaunch(target)
     return l ? manager.launch(id, l) : INVALID
+  })
+  ipcMain.handle('ccm:avd-list', (event) => (isAppFrame(event) ? manager.avdList() : DENIED))
+  ipcMain.handle('ccm:avd-start', (event, name: unknown, mode: unknown) => {
+    if (!isAppFrame(event)) return DENIED
+    return isAvdName(name) && typeof mode === 'string' && AVD_MODES.has(mode) ? manager.avdStart(name, mode as AvdStartMode) : INVALID
+  })
+  ipcMain.handle('ccm:avd-stop', (event, name: unknown) => {
+    if (!isAppFrame(event)) return DENIED
+    return isAvdName(name) ? manager.avdStop(name) : INVALID
   })
 
   return () => {

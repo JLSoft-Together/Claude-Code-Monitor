@@ -47,6 +47,7 @@ import apkV73 from './apk-v73'
 import appDataV73 from './appdata-v73'
 import shellMarksV73 from './shellmarks-v73'
 import updateV74 from './update-v74'
+import emulatorsV74 from './emulators-v74'
 
 export default {
   ...v25.en,
@@ -78,6 +79,7 @@ export default {
   ...appDataV73.en,
   ...shellMarksV73.en,
   ...updateV74.en,
+  ...emulatorsV74.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

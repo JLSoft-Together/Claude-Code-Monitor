@@ -1,9 +1,10 @@
-import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
+import type { AdbDevice, AdbState, AvdList, AvdResult, AvdStartMode, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { createAdbWatch, type AdbWatch } from '../run/android/adbWatch'
 import { findAdbTools } from '../run/android/devices'
-import type { EnvDeps } from '../run/android/env'
+import { fsEnvDeps, type EnvDeps } from '../run/android/env'
 import { killAdbClient, type Spawner } from '../run/proc'
 import { createAdbCommands, type AdbCommands } from './adb'
+import { AvdManager } from './emulators'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
 import { newQrSecret, qrPayload, runQrPairing } from './qr'
@@ -30,6 +31,8 @@ export interface DeviceManagerDeps {
   history: DeviceHistory
   broadcast: (e: DevEvent) => void
   confirmRemove: (ids: string[]) => Promise<boolean>
+  /** Native confirm before `emulator -wipe-data`; without it wiping is refused. */
+  confirmWipe?: (name: string) => Promise<boolean>
   /** Where the display-test originals are kept (`UI_ORIGINALS_FILE` in the data dir). */
   uiOriginalsFile: string
   timing?: Partial<DeviceManagerTiming>
@@ -110,6 +113,8 @@ export class DeviceManager {
   private readonly holds = new Set<string>()
   private readonly commands: AdbCommands
   private adb: string | null = null
+  private emulator: string | null = null
+  private readonly avds: AvdManager
   private watch: AdbWatch<AdbDeviceRow> | null = null
   private watchAdb: string | null = null
   private unwatch: (() => void) | null = null
@@ -129,12 +134,35 @@ export class DeviceManager {
         timing: { connectMs: this.t.connectMs, pairMs: this.t.pairMs, cmdMs: this.t.cmdMs },
       })
     this.ui = new DeviceUiTester({ shell: (id, args) => this.commands.shell(id, args), file: deps.uiOriginalsFile })
+    this.avds = new AvdManager({
+      spawn: deps.spawn,
+      env: deps.env,
+      platform: deps.platform,
+      home: deps.home,
+      tools: async () => ({ adb: await this.resolveAdb(), emulator: this.emulator }),
+      liveRows: async () => (this.adb ? this.liveRows(this.adb) : null),
+      readText: (file) => (deps.envDeps ?? fsEnvDeps).readText(file),
+      confirmWipe: (name) => deps.confirmWipe?.(name) ?? Promise.resolve(false),
+    })
   }
 
   private async resolveAdb(): Promise<string | null> {
     const { androidSdk } = this.deps.getSettings()
     const tools = await findAdbTools({ androidSdk, env: this.deps.env, platform: this.deps.platform, home: this.deps.home }, this.deps.envDeps)
+    this.emulator = tools.emulator
     return (this.adb = tools.adb)
+  }
+
+  avdList(): Promise<AvdList> {
+    return this.avds.list()
+  }
+
+  avdStart(name: string, mode: AvdStartMode): Promise<AvdResult> {
+    return this.avds.start(name, mode)
+  }
+
+  avdStop(name: string): Promise<AvdResult> {
+    return this.avds.stop(name)
   }
 
   private makeWatch(adb: string): AdbWatch<AdbDeviceRow> {

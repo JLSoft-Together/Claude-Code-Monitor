@@ -1108,6 +1108,16 @@ async function ready(): Promise<void> {
         cancelId: 1,
         noLink: true,
       }),
+    confirmWipe: (name) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.avdWipeTitle(name),
+        detail: t.avdWipeDetail,
+        buttons: [t.avdWipeConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
   })
   deviceManager = devices
   disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices, resolveDir: (dir) => previewGate.resolveDir(dir) })

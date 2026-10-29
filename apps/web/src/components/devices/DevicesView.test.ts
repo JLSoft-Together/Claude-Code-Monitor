@@ -21,6 +21,9 @@ const api = vi.hoisted(() => ({
   appDataList: vi.fn(),
   appDataPrefsRead: vi.fn(),
   appDataPrefsWrite: vi.fn(),
+  avdList: vi.fn(),
+  avdStart: vi.fn(),
+  avdStop: vi.fn(),
 }))
 
 vi.mock('../../lib/devices', () => ({
@@ -46,6 +49,10 @@ vi.mock('../../lib/devices', () => ({
   appDataPrefsRead: (id: string, pkg: string, name: string) => api.appDataPrefsRead(id, pkg, name),
   appDataPrefsWrite: (id: string, pkg: string, name: string, edit: unknown) => api.appDataPrefsWrite(id, pkg, name, edit),
   appDataDbClose: async () => true,
+  hasEmulators: true,
+  avdList: () => api.avdList(),
+  avdStart: (name: string, mode: string) => api.avdStart(name, mode),
+  avdStop: (name: string) => api.avdStop(name),
 }))
 
 import { useDevicesStore } from '../../stores/devices'
@@ -78,6 +85,7 @@ beforeEach(() => {
   for (const f of Object.values(api)) f.mockReset()
   api.devHold.mockResolvedValue(true)
   api.devQrCancel.mockResolvedValue({ ok: true })
+  api.avdList.mockResolvedValue({ ok: true, avds: [] })
 })
 
 afterEach(() => {
@@ -87,6 +95,32 @@ afterEach(() => {
 })
 
 describe('Devices view', () => {
+  it('lists emulators with actions by state and re-reads when an emulator appears', async () => {
+    const avd = (name: string, serial: string | null) => ({ name, displayName: name.replace(/_/g, ' '), api: 34, abi: 'x86_64', device: 'pixel_7', tag: null, serial })
+    api.avdList.mockResolvedValue({ ok: true, avds: [avd('Pixel_7', 'emulator-5554'), avd('Small', null)] })
+    api.avdStart.mockResolvedValue({ ok: true })
+    await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    expect(w!.get('[data-avd-row="Pixel_7"]').attributes('data-avd-state')).toBe('running')
+    expect(w!.get('[data-avd-row="Pixel_7"]').text()).toContain('API 34 · x86_64 · pixel_7')
+    const acts = (n: string) => w!.get(`[data-avd-row="${n}"]`).findAll('[data-avd-action]').map((b) => b.attributes('data-avd-action'))
+    expect(acts('Pixel_7')).toEqual(['stop'])
+    expect(acts('Small')).toEqual(['start', 'cold', 'wipe'])
+    await w!.get('[data-avd-row="Small"] [data-avd-action="cold"]').trigger('click')
+    await flushPromises()
+    expect(api.avdStart).toHaveBeenCalledWith('Small', 'cold')
+    expect(w!.get('[data-avd-row="Small"]').attributes('data-avd-state')).toBe('starting')
+    expect(api.avdList).toHaveBeenCalledTimes(1)
+    useDevicesStore().devices = [dev('emulator-5556', { transport: 'emulator' })]
+    await flushPromises()
+    expect(api.avdList).toHaveBeenCalledTimes(2)
+  })
+
+  it('says when the SDK has no emulator', async () => {
+    api.avdList.mockResolvedValue({ ok: false, error: 'emulator-missing' })
+    await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    expect(w!.get('[data-avd-missing]').text()).toContain(t('emulators.missing'))
+  })
+
   it('shows adb missing state', async () => {
     await mountWith({ adb: null, devices: [], autoConnect: true })
     const empty = w!.get('[data-dev-noadb]')

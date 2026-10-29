@@ -1,4 +1,4 @@
-import type { AppDataList, AppDbOpen, AppDbRows, AppPrefs, PrefEdit, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
+import type { AvdList, AvdResult, AvdStartMode, AppDataList, AppDbOpen, AppDbRows, AppPrefs, PrefEdit, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 /** v61 ADB devices bridge (main owns adb; the page only sends ids and validated inputs). */
@@ -24,6 +24,9 @@ interface DevicesBridge {
   devManifest?: (dir: string) => Promise<DevManifest>
   devLaunch?: (id: string, target: DevLaunch) => Promise<DevResult>
   onDevEvent?: (handler: (e: DevEvent) => void) => () => void
+  avdList?: () => Promise<AvdList>
+  avdStart?: (name: string, mode: AvdStartMode) => Promise<AvdResult>
+  avdStop?: (name: string) => Promise<AvdResult>
   appDataList?: (id: string, pkg: string) => Promise<AppDataList>
   appDataDbOpen?: (id: string, pkg: string, name: string) => Promise<AppDbOpen>
   appDataDbRows?: (handle: string, table: string, page: number) => Promise<AppDbRows>
@@ -52,6 +55,11 @@ export const devDiscover = (): Promise<DevBatchResult[] | DevResult> => bridge?.
 export const devQrStart = (): Promise<{ id: string; payload: string } | DevResult> => bridge?.devQrStart?.() ?? Promise.resolve(unavailable)
 export const devQrCancel = (id: string): Promise<DevResult> => bridge?.devQrCancel?.(id) ?? Promise.resolve(unavailable)
 export const onDevEvent = (handler: (e: DevEvent) => void): (() => void) => bridge?.onDevEvent?.(handler) ?? (() => {})
+export const hasEmulators = typeof bridge?.avdList === 'function'
+export const avdList = (): Promise<AvdList> => bridge?.avdList?.() ?? Promise.resolve(unavailable)
+/** Wipe asks for a native confirm in main first. */
+export const avdStart = (name: string, mode: AvdStartMode): Promise<AvdResult> => bridge?.avdStart?.(name, mode) ?? Promise.resolve(unavailable)
+export const avdStop = (name: string): Promise<AvdResult> => bridge?.avdStop?.(name) ?? Promise.resolve(unavailable)
 export const hasDeviceCapture = typeof bridge?.devScreencap === 'function'
 export const devScreencap = (id: string): Promise<DevCapture> => bridge?.devScreencap?.(id) ?? Promise.resolve(unavailable)
 export const devUiDump = (id: string): Promise<DevUiDump> => bridge?.devUiDump?.(id) ?? Promise.resolve(unavailable)

@@ -152,6 +152,9 @@ The app is force-stopped first, then the file is written on the device. The firs
   updateQuitTitle: (n: number) => (n === 1 ? 'Restart to update and close 1 session?' : `Restart to update and close ${n} sessions?`),
   updateQuitDetail: 'Orrery quits, installs the new version and opens again. Agents in closed panes can be reopened with resume.',
   updateQuitConfirm: 'Restart and update',
+  avdWipeTitle: (name: string) => `Wipe all data of the emulator ${name}?`,
+  avdWipeDetail: 'Apps, accounts, files and snapshots inside this virtual device are erased, then it starts like new. This cannot be undone.',
+  avdWipeConfirm: 'Wipe and start',
 }
 
 const vi: typeof en = {
@@ -302,6 +305,9 @@ ${key}: ${clip(before)} → ${clip(after)}
   updateQuitTitle: (n) => `Khởi động lại để cập nhật và đóng ${n} phiên?`,
   updateQuitDetail: 'Orrery sẽ thoát, cài bản mới rồi tự mở lại. Agent trong các pane bị đóng có thể mở lại bằng resume.',
   updateQuitConfirm: 'Khởi động lại và cập nhật',
+  avdWipeTitle: (name) => `Xoá toàn bộ dữ liệu của emulator ${name}?`,
+  avdWipeDetail: 'Ứng dụng, tài khoản, file và snapshot trong thiết bị ảo này sẽ bị xoá, rồi nó khởi động như mới. Không hoàn tác được.',
+  avdWipeConfirm: 'Xoá và khởi động',
 }
 
 export type Strings = typeof en

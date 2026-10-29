@@ -34,6 +34,9 @@ function setup(app = true) {
     uiApply: vi.fn(async () => ok),
     uiRestore: vi.fn(async () => ok),
     launch: vi.fn(async () => ok),
+    avdList: vi.fn(async () => ({ ok: true, avds: [] })),
+    avdStart: vi.fn(async () => ok),
+    avdStop: vi.fn(async () => ok),
   }
   const sender = Object.assign(new EventEmitter(), { id: 7 })
   const event = { sender } as unknown as IpcMainInvokeEvent
@@ -131,6 +134,24 @@ describe('devices ipc', () => {
     expect(manager.setAlias).not.toHaveBeenCalled()
   })
 
+  it('emulator calls take a whitelisted AVD name and mode', async () => {
+    const { handlers, manager, event } = setup()
+    const call = (ch: string, ...a: unknown[]) => handlers.get(ch)!(event, ...a)
+    await call('ccm:avd-list')
+    expect(manager.avdList).toHaveBeenCalled()
+    await call('ccm:avd-start', 'Pixel_7', 'cold')
+    expect(manager.avdStart).toHaveBeenCalledWith('Pixel_7', 'cold')
+    expect(await call('ccm:avd-start', '-wipe-data', 'normal')).toEqual({ ok: false, error: 'invalid' })
+    expect(await call('ccm:avd-start', 'Pixel_7', 'hack')).toEqual({ ok: false, error: 'invalid' })
+    expect(await call('ccm:avd-stop', 'a b')).toEqual({ ok: false, error: 'invalid' })
+    await call('ccm:avd-stop', 'Pixel_7')
+    expect(manager.avdStop).toHaveBeenCalledWith('Pixel_7')
+    const denied = setup(false)
+    expect(await denied.handlers.get('ccm:avd-list')!(denied.event)).toEqual(DENIED)
+    expect(await denied.handlers.get('ccm:avd-start')!(denied.event, 'Pixel_7', 'normal')).toEqual(DENIED)
+    expect(denied.manager.avdStart).not.toHaveBeenCalled()
+  })
+
   it('releases holds and QR sessions when the sender is destroyed', async () => {
     const { handlers, manager, sender, event } = setup()
     await handlers.get('ccm:dev-hold')!(event, true)
@@ -150,7 +171,7 @@ describe('devices ipc', () => {
 
   it('dispose removes every handler', () => {
     const { handlers, dispose } = setup()
-    expect(handlers.size).toBe(20)
+    expect(handlers.size).toBe(23)
     dispose()
     expect(handlers.size).toBe(0)
   })
