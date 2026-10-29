@@ -235,6 +235,8 @@ export const useUiStore = defineStore('ui', () => {
   const apkSize = ref<{ path: string | null; root: string | null } | null>(null)
   /** Strings table (StringsDialog.vue): a folder (null = the focused pane's project) + the Explorer path it was opened on. */
   const stringsTable = ref<{ dir: string | null; focus: string | null } | null>(null)
+  /** Library updates (LibUpdatesDialog.vue): a dependency file + its project. */
+  const libUpdates = ref<{ path: string; root: string } | null>(null)
   /** Background context of a session (ContextSourcesDialog.vue): its folder + monitor terminal, or nulls = the focused pane. */
   const contextSources = ref<{ cwd: string | null; terminalId: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
@@ -514,6 +516,7 @@ export const useUiStore = defineStore('ui', () => {
     permAdvisor,
     apkSize,
     stringsTable,
+    libUpdates,
     contextSources,
     tourOpen,
     setupOpen,

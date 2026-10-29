@@ -30,6 +30,9 @@ import { registerRunIpc } from './run/ipc'
 import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
 import { registerApkIpc } from './apk/ipc'
+import { LibChecker } from './libs/checker'
+import { registerLibsIpc } from './libs/ipc'
+import { isAllowedOverride } from './libs/registry'
 import { AppDataInspector } from './devices/appData'
 import { registerAppDataIpc } from './devices/appDataIpc'
 import type { SqlJsStatic } from 'sql.js'
@@ -120,6 +123,7 @@ let disposeRun: (() => void) | null = null
 let deviceManager: DeviceManager | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
+let disposeLibs: (() => void) | null = null
 let appData: AppDataInspector | null = null
 let disposeAppData: (() => void) | null = null
 let updates: UpdateManager | null = null
@@ -222,6 +226,8 @@ function stopPreview(): Promise<void> {
   disposeDevices = null
   disposeApk?.()
   disposeApk = null
+  disposeLibs?.()
+  disposeLibs = null
   disposeAppData?.()
   disposeAppData = null
   disposeUpdate?.()
@@ -1212,6 +1218,12 @@ async function ready(): Promise<void> {
       }),
   })
   disposeAppData = registerAppDataIpc({ ipcMain, isAppFrame, inspector: appData })
+  const libsOverride = process.env.CCM_LIBS_REGISTRY
+  disposeLibs = registerLibsIpc({
+    ipcMain,
+    isAppFrame,
+    checker: new LibChecker({ fetch: (url, init) => net.fetch(url, init), dataDir: DATA_DIR, override: isAllowedOverride(libsOverride) ? libsOverride : undefined }),
+  })
   disposeApk = registerApkIpc({
     ipcMain,
     isAppFrame,

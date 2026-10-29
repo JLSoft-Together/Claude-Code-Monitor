@@ -1,6 +1,7 @@
 import type { MenuEntry } from '../menu'
 import type { TreeRow } from './tree'
 import { isStringsPath } from '../strings/table'
+import { depFileKind } from '../libVersions'
 
 export type ExplorerAction =
   | 'new-file'
@@ -22,6 +23,7 @@ export type ExplorerAction =
   | 'compare-clipboard'
   | 'apk-size'
   | 'strings'
+  | 'lib-updates'
 
 export interface ExplorerMenuCtx {
   mac: boolean
@@ -37,6 +39,8 @@ export interface ExplorerMenuCtx {
   apk?: boolean
   /** The project can be scanned for translations (desktop `i18nScan`): strings table on res / values* / .arb / strings.xml rows. */
   strings?: boolean
+  /** Registry lookups exist (desktop `libsCheck`): Check for updates on dependency files. */
+  libs?: boolean
 }
 
 const M = 'workspace.explorer.menu.'
@@ -82,6 +86,7 @@ export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string
   if (ctx.run && isRunnableRow(row)) entries.push({ id: 'run', label: t(`${M}run`) })
   if (ctx.apk && !row.directory && /\.(apk|aab)$/i.test(row.name)) entries.push({ id: 'apk-size', label: t('apkSize.menu') })
   if (ctx.strings && !row.outOfRoot && isStringsPath(row.name, row.directory)) entries.push({ id: 'strings', label: t('stringsTable.menu') })
+  if (ctx.libs && !row.directory && !row.outOfRoot && depFileKind(row.name)) entries.push({ id: 'lib-updates', label: t('libUpdates.menu') })
   if (ctx.compare && !row.directory) {
     const { selected, self } = ctx.compare
     entries.push({ separator: true }, self ? { id: 'compare-clear', label: t(`${M}compareClear`) } : { id: 'compare-select', label: t(`${M}compareSelect`) })

@@ -248,6 +248,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   apkPick: (near: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:apk-pick', near),
   apkAnalyze: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:apk-analyze', req),
   apkCompare: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:apk-compare', req),
+  libsCheck: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:libs-check', req),
   onDevEvent: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:dev-event', handler),
   layoutStatus: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-status'),
   layoutDownload: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-download'),

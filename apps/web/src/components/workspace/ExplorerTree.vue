@@ -19,6 +19,7 @@ import {
   Languages,
   Link2,
   Package,
+  PackageSearch,
   Pencil,
   Play,
   Plus,
@@ -33,6 +34,7 @@ import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMark
 import { hasRun } from '../../lib/desktop'
 import { hasApkSize } from '../../lib/apkSize'
 import { hasI18nScan, hasPreview } from '../../lib/preview'
+import { hasLibsCheck } from '../../lib/libVersions'
 import { warmOnIntent } from '../../lib/layoutPreview'
 import { explorerKey, explorerMenu, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { setDragPath } from '../../lib/explorer/dragPath'
@@ -173,11 +175,12 @@ const MENU_ICONS: Partial<Record<string, typeof File>> = {
   'compare-clipboard': ClipboardCopy,
   'apk-size': Package,
   strings: Languages,
+  'lib-updates': PackageSearch,
 }
 const withIcons = (list: MenuEntry[]): MenuEntry[] => list.map((e) => (isSeparator(e) ? e : { ...e, icon: MENU_ICONS[e.id], children: e.children && withIcons(e.children) }))
 const compareCtx = (row: TreeRow) => (hasPreview ? { selected: props.compareSel ?? null, self: !!props.compareSel && samePath(props.compareSel.path, row.path) } : undefined)
 const menuFor = (row: TreeRow): MenuEntry[] =>
-  withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun, compare: compareCtx(row), apk: hasApkSize, strings: hasI18nScan }, (k, p) => t(k, p ?? {})))
+  withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun, compare: compareCtx(row), apk: hasApkSize, strings: hasI18nScan, libs: hasLibsCheck }, (k, p) => t(k, p ?? {})))
 
 const menu = ref<{ at: DOMRect; row: TreeRow; trigger: HTMLElement | null } | null>(null)
 

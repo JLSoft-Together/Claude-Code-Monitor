@@ -284,6 +284,9 @@ async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
     case 'strings':
       ui.stringsTable = { dir: root, focus: row.path }
       break
+    case 'lib-updates':
+      ui.libUpdates = { path: row.path, root }
+      break
   }
 }
 
