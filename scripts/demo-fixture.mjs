@@ -173,6 +173,39 @@ for (let i = 0; i < SESSIONS; i++) {
   sessions.push(s)
 }
 
+// --history=N: ended sessions with owner prompts for the History prompt search (v75); only the typed prompts may match "paywall".
+const HISTORY = Number(args.history ?? 0)
+const HISTORY_PROMPTS = ['Build the paywall screen with restore purchase', 'Fix the paywall crash on Android 14', 'Add Vietnamese strings to the paywall', 'Refactor the settings page']
+for (let i = 0; i < HISTORY; i++) {
+  const name = `history-${i}`
+  const cwd = path.join(ROOT, 'work', name)
+  if (i !== 1) mkdirSync(cwd, { recursive: true })
+  const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+  const sessionId = randomUUID()
+  mkdirSync(path.join(ROOT, 'projects', slug), { recursive: true })
+  const at = (m) => new Date(Date.now() - (i + 1) * 86_400_000 + m * 60_000).toISOString()
+  const base = { parentUuid: null, isSidechain: false, userType: 'external', entrypoint: 'cli', cwd, sessionId, version: '2.1.294', gitBranch: i % 2 ? 'main' : `feature/paywall-${i}` }
+  const rec = (m, extra) => line({ ...base, uuid: randomUUID(), timestamp: at(m), ...extra })
+  const file = path.join(ROOT, 'projects', slug, `${sessionId}.jsonl`)
+  writeFileSync(
+    file,
+    [
+      rec(0, { type: 'user', promptSource: 'typed', origin: { kind: 'human' }, message: { role: 'user', content: `${HISTORY_PROMPTS[i % HISTORY_PROMPTS.length]} (key sk-ant-demo1234567890abcdef)` } }),
+      rec(1, { type: 'user', toolUseResult: {}, message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_x', content: 'paywall tool output' }] } }),
+      rec(2, { type: 'user', isMeta: true, message: { role: 'user', content: 'paywall meta' } }),
+      rec(3, { type: 'user', message: { role: 'user', content: '<command-name>/compact</command-name>\n<command-args>paywall</command-args>' } }),
+      rec(4, { type: 'user', isCompactSummary: true, isVisibleInTranscriptOnly: true, message: { role: 'user', content: 'This session is being continued from a previous conversation. paywall' } }),
+      rec(5, { type: 'user', promptSource: 'system', origin: { kind: 'task-notification' }, message: { role: 'user', content: '<task-notification>paywall</task-notification>' } }),
+      rec(6, { type: 'assistant', message: { id: nextId('msg'), role: 'assistant', content: [{ type: 'text', text: 'paywall answer' }] } }),
+      line({ type: 'ai-title', aiTitle: `Demo history ${i}`, sessionId }),
+    ].join(''),
+  )
+  const sub = path.join(ROOT, 'projects', slug, sessionId, 'subagents')
+  mkdirSync(sub, { recursive: true })
+  writeFileSync(path.join(sub, 'agent-ahistory.jsonl'), rec(7, { type: 'user', isSidechain: true, message: { role: 'user', content: 'subagent paywall prompt' } }))
+}
+if (HISTORY) console.log(`[demo] ${HISTORY} past sessions under ${path.join(ROOT, 'work')} (search "paywall": 3 of the first 4 match, history-1 has no folder)`)
+
 const canMessage = PEERS > 0 && sessions.length >= 2
 if (canMessage) for (let k = 0; k < PEERS; k++) sendPeer(...peerPair())
 

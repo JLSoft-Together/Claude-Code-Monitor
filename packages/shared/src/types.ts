@@ -1,4 +1,5 @@
 import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
+import type { PromptSearchDays, PromptSearchDone, PromptSearchProgress } from './promptSearch'
 
 export type TerminalStatus = 'working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
 
@@ -493,6 +494,10 @@ export type MonitorEvent =
   | { type: 'timeline.data'; payload: DayTimeline }
   | { type: 'heatmap.data'; payload: UsageHeatmap }
   | { type: 'toolstats.data'; payload: ToolStats }
+  /** Direct replies to `promptSearch.*` (v75): progress carries new hits, done ends the search. */
+  | { type: 'promptSearch.progress'; payload: PromptSearchProgress }
+  | { type: 'promptSearch.done'; payload: PromptSearchDone }
+  | { type: 'promptSearch.openResult'; payload: { searchId: string; sessionId: string; result: OpenResult } }
   | { type: 'terminal.openResult'; payload: { terminalId: string; app: OpenApp; result: OpenResult } }
   | { type: 'diagnostics.data'; payload: Diagnostics }
   | { type: 'notify.settings'; payload: NotifySettings }
@@ -531,6 +536,11 @@ export type ClientMessage =
   | { type: 'heatmap.get' }
   /** Tool / skill / subagent / MCP call counts for the last `days` days, one project folder or all (null). */
   | { type: 'toolstats.get'; days: ToolStatDays; project: string | null }
+  /** Scan past transcripts for user prompts containing every word of `query`; a new start cancels this client's previous one. */
+  | { type: 'promptSearch.start'; searchId: string; query: string; days: PromptSearchDays; project: string | null }
+  | { type: 'promptSearch.cancel'; searchId: string }
+  /** Open the folder of a session found by that search (path comes from the collector's results, never the client). */
+  | { type: 'promptSearch.open'; searchId: string; sessionId: string }
   /** Open the session's working folder in Explorer or VS Code (path comes from the collector, never the client). */
   | { type: 'terminal.open'; terminalId: string; app: OpenApp }
   | { type: 'diagnostics.get' }

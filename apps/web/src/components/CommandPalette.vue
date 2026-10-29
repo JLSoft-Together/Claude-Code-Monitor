@@ -155,6 +155,16 @@ const items = computed<Item[]>(() => {
     { id: 'c:monitor', group: 'nav', label: t('palette.goMonitor'), icon: Activity, run: () => ui.setView('monitor') },
     { id: 'c:usage', group: 'nav', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
     { id: 'c:history', group: 'nav', label: t('palette.goHistory'), icon: History, run: () => ui.setView('history') },
+    {
+      id: 'c:prompt-search',
+      group: 'nav',
+      label: t('promptSearch.palette'),
+      icon: History,
+      run: () => {
+        ui.setView('history')
+        ui.promptSearchFocus = true
+      },
+    },
     ...(hasExtensions ? [{ id: 'c:extensions', group: 'nav' as const, label: t('palette.goExtensions'), icon: Puzzle, run: () => ui.setView('extensions') }] : []),
     ...(hasDevices ? [{ id: 'c:devices', group: 'nav' as const, label: t('palette.goDevices'), icon: Smartphone, run: () => ui.setView('devices') }] : []),
     ...(hasTerminals && hasLog

@@ -8,6 +8,7 @@ import { useExtrasStore } from './extras'
 import { useFavoritesStore } from './favorites'
 import { useHistoryStore } from './history'
 import { usePeersStore } from './peers'
+import { usePromptSearchStore } from './promptSearch'
 import { useSettingsStore } from './settings'
 import { useSnoozeStore } from './snooze'
 import { useTerminalsStore } from './terminals'
@@ -68,6 +69,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const snooze = useSnoozeStore()
   const toolSpans = useToolSpansStore()
   const peers = usePeersStore()
+  const promptSearch = usePromptSearchStore()
   let pendingFocus = takeFocusParam()
 
   function url(): string {
@@ -202,6 +204,15 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'toolstats.data':
           history.setToolStats(event.payload)
           break
+        case 'promptSearch.progress':
+          promptSearch.applyProgress(event.payload)
+          break
+        case 'promptSearch.done':
+          promptSearch.applyDone(event.payload)
+          break
+        case 'promptSearch.openResult':
+          promptSearch.applyOpen(event.payload)
+          break
         case 'terminal.openResult':
           ui.reportOpenResult(event.payload.terminalId, event.payload.app, event.payload.result)
           break
@@ -298,6 +309,8 @@ export const useConnectionStore = defineStore('connection', () => {
       if (socket === ws) socket = null
       for (const done of folderPicks.values()) done({ result: 'failed' })
       folderPicks.clear()
+      if (promptSearch.running && promptSearch.searchId)
+        promptSearch.applyDone({ searchId: promptSearch.searchId, state: 'failed', filesDone: promptSearch.filesDone, filesTotal: promptSearch.filesTotal, sessions: promptSearch.hits.length })
       scheduleReconnect()
     }
     ws.onerror = () => ws.close()
@@ -360,6 +373,22 @@ export const useConnectionStore = defineStore('connection', () => {
   const loadHeatmap = (): boolean => request({ type: 'heatmap.get' })
   const loadToolStats = (days: ToolStatDays, project: string | null): boolean => request({ type: 'toolstats.get', days, project })
   const loadToolSpans = (terminalId: string | undefined, since: string): boolean => request({ type: 'toolSpans.get', terminalId, since })
+
+  function searchPrompts(): boolean {
+    const q = promptSearch.query.trim()
+    if (!q) return false
+    const searchId = Math.random().toString(36).slice(2) + Date.now().toString(36)
+    if (!request({ type: 'promptSearch.start', searchId, query: q, days: promptSearch.days, project: promptSearch.project })) return false
+    promptSearch.begin(searchId)
+    return true
+  }
+  function cancelPromptSearch(): void {
+    const id = promptSearch.searchId
+    if (id && promptSearch.running) request({ type: 'promptSearch.cancel', searchId: id })
+    promptSearch.clear()
+  }
+  const openPromptSearchFolder = (sessionId: string): boolean =>
+    !!promptSearch.searchId && request({ type: 'promptSearch.open', searchId: promptSearch.searchId, sessionId })
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
     const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
     if (!request({ type: 'folder.pick', requestId })) return Promise.resolve({ result: 'offline' })
@@ -432,6 +461,9 @@ export const useConnectionStore = defineStore('connection', () => {
     loadHeatmap,
     loadToolStats,
     loadToolSpans,
+    searchPrompts,
+    cancelPromptSearch,
+    openPromptSearchFolder,
     subscribeOffice,
   }
 })

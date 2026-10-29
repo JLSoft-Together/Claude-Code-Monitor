@@ -57,6 +57,7 @@ import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
 import devicesV75 from './devices-v75'
 import devtoolsV75 from './devtools-v75'
+import promptSearchV75 from './promptsearch-v75'
 
 export default {
   ...v25.en,
@@ -98,6 +99,7 @@ export default {
   ...releaseV75.en,
   ...devicesV75.en,
   ...devtoolsV75.en,
+  ...promptSearchV75.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

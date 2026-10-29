@@ -22,6 +22,8 @@ import { ResponseTracker } from './response'
 import { isPortInUse, PORT_IN_USE_EXIT, startServer } from './server'
 import { MonitorStore } from './store'
 import { UsageIndex } from './usage'
+import { openFolder } from './opener'
+import { PromptSearcher } from './prompt-search'
 import { CodexMonitor } from './codex/monitor'
 import { listCodexProcesses } from './codex/processes'
 import { isPidAlive } from './process'
@@ -65,6 +67,7 @@ async function main(): Promise<void> {
   }
   const usage = new UsageIndex(path.join(config.claudeRoot, 'projects'), path.join(config.dataDir, 'usage-index.json'), store)
   monitor.onProjectFile = (file) => usage.notify(file)
+  const promptSearch = new PromptSearcher(path.join(config.claudeRoot, 'projects'), { openFolder })
   const repoRoots = new RepoRoots()
   store.onNewProjects = (dirs) => {
     void Promise.all(dirs.map(async (d) => [d, await repoRoots.resolve(d)] as const)).then((pairs) =>
@@ -110,6 +113,7 @@ async function main(): Promise<void> {
     store,
     onClientClose: (clientId) => {
       toaster.dropClient(clientId)
+      promptSearch.dropClient(clientId)
       officeReplies.delete(String(clientId))
       officeHub?.dropClient(String(clientId))
     },
@@ -168,6 +172,15 @@ async function main(): Promise<void> {
           break
         case 'toolstats.get':
           ctx.reply({ type: 'toolstats.data', payload: usage.toolStats(message.days, message.project) })
+          break
+        case 'promptSearch.start':
+          void promptSearch.start(ctx.clientId, message, ctx.reply)
+          break
+        case 'promptSearch.cancel':
+          promptSearch.cancel(ctx.clientId, message.searchId)
+          break
+        case 'promptSearch.open':
+          void promptSearch.open(ctx.clientId, message.searchId, message.sessionId, ctx.reply)
           break
         case 'terminal.focusWindow':
           void monitor.focusWindow(message.terminalId, ctx.reply)

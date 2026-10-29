@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { FileDown, Search } from 'lucide-vue-next'
 import { compactNumber, duration, formatCost, relativeTime, shortPath, now } from '../../lib/format'
@@ -13,6 +13,7 @@ import Pager from '../Pager.vue'
 import TimelineChart from './TimelineChart.vue'
 import HeatmapChart from './HeatmapChart.vue'
 import ToolStatsCard from './ToolStatsCard.vue'
+import PromptSearchCard from './PromptSearchCard.vue'
 
 const { t, locale } = useI18n()
 const history = useHistoryStore()
@@ -35,6 +36,19 @@ onMounted(() => {
   timer = window.setInterval(() => connection.loadTimeline(), 30_000)
 })
 onBeforeUnmount(() => window.clearInterval(timer))
+
+const promptSearchCard = ref<InstanceType<typeof PromptSearchCard> | null>(null)
+// The palette can fire before this view mounts (view switch) or while it is already open.
+watch(
+  () => ui.promptSearchFocus,
+  (want) =>
+    want &&
+    nextTick(() => {
+      promptSearchCard.value?.focus()
+      ui.promptSearchFocus = false
+    }),
+  { immediate: true },
+)
 watch(
   () => connection.state,
   (s) => s === 'connected' && refresh(),
@@ -92,6 +106,12 @@ const rangeLabel = computed(() => {
         <FileDown :size="14" aria-hidden="true" />{{ t('recap.open') }}
       </button>
     </div>
+
+    <section id="prompt-search" aria-labelledby="prompt-search-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
+      <h3 id="prompt-search-title" class="font-semibold">{{ t('promptSearch.title') }}</h3>
+      <p class="mb-4 text-xs text-ink-muted">{{ t('promptSearch.hint') }}</p>
+      <PromptSearchCard ref="promptSearchCard" />
+    </section>
 
     <section aria-labelledby="timeline-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
       <h3 id="timeline-title" class="font-semibold">{{ t('history.timeline') }}</h3>

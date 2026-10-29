@@ -4,7 +4,19 @@ import { readFile, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import path from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { sanitizeKinds, sanitizeQuiet, sanitizeStuck, type ClientMessage, type FocusWindowResult, type MonitorEvent, type ServerMessage } from '@ccm/shared'
+import {
+  isAgentSessionId,
+  PROMPT_SEARCH_DAYS,
+  PROMPT_SEARCH_QUERY_MAX,
+  sanitizeKinds,
+  sanitizeQuiet,
+  sanitizeStuck,
+  type ClientMessage,
+  type FocusWindowResult,
+  type MonitorEvent,
+  type PromptSearchDays,
+  type ServerMessage,
+} from '@ccm/shared'
 import { createTimelineHandler } from '@ccm/habblaud/server/http/timeline'
 import type { MonitorStore } from './store'
 
@@ -26,6 +38,8 @@ export const PORT_IN_USE_EXIT = 3
 export function isPortInUse(err: unknown): boolean {
   return err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
 }
+
+const isSearchId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v)
 
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
@@ -306,7 +320,7 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown; days?: unknown; project?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown; days?: unknown; project?: unknown; searchId?: unknown; query?: unknown; sessionId?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'office.subscribe' && typeof m.on === 'boolean') {
@@ -335,6 +349,20 @@ export function startServer(options: {
           (m.project === null || (typeof m.project === 'string' && m.project.length > 0 && m.project.length <= 1024))
         ) {
           options.onClientMessage?.({ type: 'toolstats.get', days: m.days, project: m.project }, ctx())
+        } else if (
+          m.type === 'promptSearch.start' &&
+          isSearchId(m.searchId) &&
+          typeof m.query === 'string' &&
+          m.query.trim().length > 0 &&
+          m.query.length <= PROMPT_SEARCH_QUERY_MAX &&
+          (PROMPT_SEARCH_DAYS as readonly unknown[]).includes(m.days) &&
+          (m.project === null || (typeof m.project === 'string' && path.isAbsolute(m.project) && m.project.length <= 1024 && !/[\u0000-\u001f]/.test(m.project)))
+        ) {
+          options.onClientMessage?.({ type: 'promptSearch.start', searchId: m.searchId, query: m.query, days: m.days as PromptSearchDays, project: m.project }, ctx())
+        } else if (m.type === 'promptSearch.cancel' && isSearchId(m.searchId)) {
+          options.onClientMessage?.({ type: 'promptSearch.cancel', searchId: m.searchId }, ctx())
+        } else if (m.type === 'promptSearch.open' && isSearchId(m.searchId) && isAgentSessionId(m.sessionId)) {
+          options.onClientMessage?.({ type: 'promptSearch.open', searchId: m.searchId, sessionId: m.sessionId }, ctx())
         } else if (
           m.type === 'toolSpans.get' &&
           (m.terminalId === undefined || typeof m.terminalId === 'string') &&

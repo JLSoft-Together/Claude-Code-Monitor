@@ -58,6 +58,7 @@ import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
 import devicesV75 from './devices-v75'
 import devtoolsV75 from './devtools-v75'
+import promptSearchV75 from './promptsearch-v75'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -99,6 +100,7 @@ const vi: typeof en = {
   ...releaseV75.vi,
   ...devicesV75.vi,
   ...devtoolsV75.vi,
+  ...promptSearchV75.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
