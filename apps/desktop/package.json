@@ -18,6 +18,7 @@
     "@types/node": "^24.9.1",
     "electron": "44.4.5",
     "electron-builder": "26.15.3",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "sql.js": "1.14.2"
   }
 }

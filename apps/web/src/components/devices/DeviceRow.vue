@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Camera, LoaderCircle, Pencil, RefreshCw, SlidersHorizontal, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
+import { Camera, Database, LoaderCircle, Pencil, RefreshCw, SlidersHorizontal, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
 import { useInlineEdit } from '../../composables/useInlineEdit'
-import { hasDeviceCapture, hasDeviceUiTest } from '../../lib/devices'
+import { hasAppData, hasDeviceCapture, hasDeviceUiTest } from '../../lib/devices'
 import { useDevicesStore } from '../../stores/devices'
 import { OTHER_STATE, ROW_GRID, rowActions, STATE_META, stateOf, type RowAction } from './meta'
 
 const props = defineProps<{ device: AdbDevice }>()
-const emit = defineEmits<{ capture: [device: AdbDevice]; uiTest: [device: AdbDevice] }>()
+const emit = defineEmits<{ capture: [device: AdbDevice]; uiTest: [device: AdbDevice]; appData: [device: AdbDevice] }>()
 
 const { t } = useI18n()
 const store = useDevicesStore()
@@ -22,6 +22,7 @@ const actions = computed(() => rowActions(props.device))
 const ready = computed(() => props.device.online && props.device.state === 'ready')
 const canCapture = computed(() => hasDeviceCapture && ready.value)
 const canTest = computed(() => hasDeviceUiTest && ready.value)
+const canData = computed(() => hasAppData && ready.value)
 const TRANSPORT_ICON = { usb: Usb, wifi: Wifi, emulator: TabletSmartphone }
 const ACTION_ICON = { toWifi: Wifi, disconnect: Unplug, reconnect: RefreshCw, forget: Trash2 }
 
@@ -145,6 +146,18 @@ async function finish(save_: boolean): Promise<void> {
       >
         <SlidersHorizontal :size="13" aria-hidden="true" />
         <span class="sr-only lg:not-sr-only">{{ t('deviceTools.uiTest.button') }}</span>
+      </button>
+      <button
+        v-if="canData"
+        type="button"
+        class="ccm-btn-plain text-xs"
+        :disabled="busy"
+        :title="t('appData.button')"
+        data-dev-action="appData"
+        @click="emit('appData', device)"
+      >
+        <Database :size="13" aria-hidden="true" />
+        <span class="sr-only lg:not-sr-only">{{ t('appData.button') }}</span>
       </button>
       <button
         v-for="a in actions"

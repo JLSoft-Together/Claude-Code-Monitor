@@ -1,5 +1,7 @@
 export type RunKind = 'amend' | 'ff' | 'squash' | 'restore' | 'abort' | 'take'
 
+const clip = (s: string): string => (s.length > 300 ? `${s.slice(0, 300)}…` : s)
+
 const en = {
   appName: 'Orrery',
   loading: 'Starting the monitor…',
@@ -137,6 +139,16 @@ ${diff}
 
 Claude Code will run these without asking in this project.`,
   permConfirm: 'Add rules',
+  prefsWriteTitle: (pkg: string) => `Change a SharedPreferences value of ${pkg}?`,
+  prefsWriteDetail: (file: string, key: string, before: string, after: string) =>
+    `${file}
+${key}: ${clip(before)} → ${clip(after)}
+
+The app is force-stopped first, then the file is written on the device. The first original of this file is kept in Orrery for Restore original.`,
+  prefsWriteConfirm: 'Write and stop app',
+  prefsRestoreTitle: (pkg: string) => `Restore the original SharedPreferences file of ${pkg}?`,
+  prefsRestoreDetail: (file: string) => `${file} goes back to the copy kept before the first change from Orrery. The app is force-stopped first.`,
+  prefsRestoreConfirm: 'Restore and stop app',
 }
 
 const vi: typeof en = {
@@ -274,6 +286,16 @@ ${diff}
 
 Claude Code sẽ chạy các lệnh này không hỏi lại trong dự án này.`,
   permConfirm: 'Thêm luật',
+  prefsWriteTitle: (pkg) => `Đổi một giá trị SharedPreferences của ${pkg}?`,
+  prefsWriteDetail: (file, key, before, after) =>
+    `${file}
+${key}: ${clip(before)} → ${clip(after)}
+
+Ứng dụng sẽ bị dừng (force-stop) trước, rồi file được ghi lên thiết bị. Bản gốc đầu tiên của file được giữ trong Orrery để Khôi phục bản gốc.`,
+  prefsWriteConfirm: 'Ghi và dừng ứng dụng',
+  prefsRestoreTitle: (pkg) => `Khôi phục file SharedPreferences gốc của ${pkg}?`,
+  prefsRestoreDetail: (file) => `${file} sẽ trở về bản đã giữ trước lần đổi đầu tiên từ Orrery. Ứng dụng sẽ bị dừng (force-stop) trước.`,
+  prefsRestoreConfirm: 'Khôi phục và dừng ứng dụng',
 }
 
 export type Strings = typeof en

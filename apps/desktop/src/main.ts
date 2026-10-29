@@ -30,6 +30,9 @@ import { registerRunIpc } from './run/ipc'
 import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
 import { registerApkIpc } from './apk/ipc'
+import { AppDataInspector } from './devices/appData'
+import { registerAppDataIpc } from './devices/appDataIpc'
+import type { SqlJsStatic } from 'sql.js'
 import { registerHttpIpc } from './preview/httpSend'
 import { DeviceManager } from './devices/manager'
 import { UI_ORIGINALS_FILE } from './devices/uiTester'
@@ -69,6 +72,19 @@ const REPO = path.resolve(__dirname, '..', '..', '..')
 const resource = (packaged: string, dev: string): string =>
   app.isPackaged ? path.join(process.resourcesPath, packaged) : path.join(REPO, dev)
 const DATA_DIR = process.env.CCM_DATA_DIR || defaultDataDir(process.env, process.platform, os.homedir())
+
+/** sql.js (WASM) for the device app data inspector, loaded on first use; the .wasm ships as an extraResource. */
+function loadSqlJs(): Promise<SqlJsStatic> {
+  sqlJs ??= (async () => {
+    const { default: initSqlJs } = await import('sql.js')
+    const wasmBinary = readFileSync(resource('sqljs/sql-wasm.wasm', 'node_modules/sql.js/dist/sql-wasm.wasm'))
+    return initSqlJs({ wasmBinary })
+  })().catch((err: unknown) => {
+    sqlJs = null
+    throw err
+  })
+  return sqlJs
+}
 // Native process table (collector/src/win-procs.ts); collector and pty host inherit it through their env.
 if (process.platform === 'win32') process.env.CCM_KOFFI ||= resource('koffi/node_modules/koffi', 'node_modules/koffi')
 
@@ -97,6 +113,9 @@ let disposeRun: (() => void) | null = null
 let deviceManager: DeviceManager | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
+let appData: AppDataInspector | null = null
+let disposeAppData: (() => void) | null = null
+let sqlJs: Promise<SqlJsStatic> | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
 let editors: EditorTracker | null = null
@@ -189,6 +208,10 @@ function stopPreview(): Promise<void> {
   disposeDevices = null
   disposeApk?.()
   disposeApk = null
+  disposeAppData?.()
+  disposeAppData = null
+  appData?.closeAll()
+  appData = null
   deviceManager?.stop(true)
   deviceManager = null
   previewWatch.closeAll()
@@ -1034,6 +1057,32 @@ async function ready(): Promise<void> {
   deviceManager = devices
   disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices, resolveDir: (dir) => previewGate.resolveDir(dir) })
   void devices.autoConnectOnce()
+  appData = new AppDataInspector({
+    withDevice: (id, fn) => devices.withReady(id, fn),
+    sql: loadSqlJs,
+    dataDir: DATA_DIR,
+    confirmWrite: (req) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.prefsWriteTitle(req.pkg),
+        detail: t.prefsWriteDetail(req.file, req.key, req.before, req.after),
+        buttons: [t.prefsWriteConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+    confirmRestore: (req) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.prefsRestoreTitle(req.pkg),
+        detail: t.prefsRestoreDetail(req.file),
+        buttons: [t.prefsRestoreConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+  })
+  disposeAppData = registerAppDataIpc({ ipcMain, isAppFrame, inspector: appData })
   disposeApk = registerApkIpc({
     ipcMain,
     isAppFrame,

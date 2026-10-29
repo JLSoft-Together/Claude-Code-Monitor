@@ -18,12 +18,16 @@ const api = vi.hoisted(() => ({
   devUiRestore: vi.fn(),
   devManifest: vi.fn(),
   devLaunch: vi.fn(),
+  appDataList: vi.fn(),
+  appDataPrefsRead: vi.fn(),
+  appDataPrefsWrite: vi.fn(),
 }))
 
 vi.mock('../../lib/devices', () => ({
   hasDevices: true,
   hasDeviceCapture: true,
   hasDeviceUiTest: true,
+  hasAppData: true,
   onDevEvent: () => () => {},
   devHold: (on: boolean) => api.devHold(on),
   devSnapshot: () => api.devSnapshot(),
@@ -38,6 +42,10 @@ vi.mock('../../lib/devices', () => ({
   devUiRestore: (id: string, pkg: string | null) => api.devUiRestore(id, pkg),
   devManifest: (dir: string) => api.devManifest(dir),
   devLaunch: (id: string, target: unknown) => api.devLaunch(id, target),
+  appDataList: (id: string, pkg: string) => api.appDataList(id, pkg),
+  appDataPrefsRead: (id: string, pkg: string, name: string) => api.appDataPrefsRead(id, pkg, name),
+  appDataPrefsWrite: (id: string, pkg: string, name: string, edit: unknown) => api.appDataPrefsWrite(id, pkg, name, edit),
+  appDataDbClose: async () => true,
 }))
 
 import { useDevicesStore } from '../../stores/devices'
@@ -140,7 +148,7 @@ describe('Devices view', () => {
     })
     expect(actions('R58M')).toContain('toWifi')
     expect(actions('R58M')).not.toContain('disconnect')
-    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'uiTest', 'disconnect'])
+    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'uiTest', 'appData', 'disconnect'])
     expect(actions('192.168.1.9:5555')).toEqual(expect.arrayContaining(['reconnect', 'forget']))
     expect(actions('192.168.1.9:5555')).not.toContain('disconnect')
     expect(actions('192.168.1.9:5555')).not.toContain('capture')
@@ -200,6 +208,40 @@ describe('Devices view', () => {
     expect(api.devLaunch).toHaveBeenCalledWith('R58M', { kind: 'uri', uri: 'myapp://item/7', pkg: null })
     expect(dialog.querySelector('[data-uitest-message]')?.textContent).toContain(t('deviceTools.open.launched'))
     dialog.querySelector<HTMLButtonElement>('[data-uitest-close]')!.click()
+    await flushPromises()
+  })
+
+  it('App data lists a debug app and saves a pref through the desktop (which confirms natively)', async () => {
+    const prefs = (value: string, hasOriginal: boolean) => ({ ok: true, name: 'settings.xml', entries: [{ key: 'launches', type: 'int', value }], hasOriginal })
+    api.appDataList.mockResolvedValue({ ok: true, pkg: 'com.app', databases: [{ name: 'app.db', size: 4096, wal: true }], prefs: [{ name: 'settings.xml', size: 90 }], skipped: 0 })
+    api.appDataPrefsRead.mockResolvedValue(prefs('3', false))
+    api.appDataPrefsWrite.mockResolvedValue(prefs('9', true))
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="appData"]').trigger('click')
+    await flushPromises()
+    const dialog = document.querySelector<HTMLElement>('[data-device-appdata]')!
+    const pkg = dialog.querySelector<HTMLInputElement>('[data-appdata-pkg]')!
+    pkg.value = 'com.app'
+    pkg.dispatchEvent(new Event('input'))
+    await flushPromises()
+    dialog.querySelector<HTMLButtonElement>('[data-appdata-load]')!.click()
+    await flushPromises()
+    expect(api.appDataList).toHaveBeenCalledWith('R58M', 'com.app')
+    dialog.querySelector<HTMLButtonElement>('[data-appdata-file="settings.xml"]')!.click()
+    await flushPromises()
+    expect(dialog.querySelector('[data-appdata-restore]')!.hasAttribute('disabled')).toBe(true)
+    dialog.querySelector<HTMLButtonElement>('[data-appdata-edit="launches"]')!.click()
+    await flushPromises()
+    const draft = dialog.querySelector<HTMLInputElement>('[data-appdata-draft]')!
+    draft.value = '9'
+    draft.dispatchEvent(new Event('input'))
+    await flushPromises()
+    dialog.querySelector<HTMLButtonElement>('[data-appdata-save]')!.click()
+    await flushPromises()
+    expect(api.appDataPrefsWrite).toHaveBeenCalledWith('R58M', 'com.app', 'settings.xml', { key: 'launches', type: 'int', before: '3', after: '9' })
+    expect(dialog.querySelector('[data-appdata-message]')?.textContent).toContain(t('appData.pref.saved'))
+    expect(dialog.querySelector('[data-appdata-restore]')!.hasAttribute('disabled')).toBe(false)
+    dialog.querySelector<HTMLButtonElement>('[data-appdata-close]')!.click()
     await flushPromises()
   })
 

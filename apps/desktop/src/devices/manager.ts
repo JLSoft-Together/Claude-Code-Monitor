@@ -1,4 +1,4 @@
-import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevLaunch, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
+import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { createAdbWatch, type AdbWatch } from '../run/android/adbWatch'
 import { findAdbTools } from '../run/android/devices'
 import type { EnvDeps } from '../run/android/env'
@@ -306,6 +306,12 @@ export class DeviceManager {
     if (!adb) return MISSING
     const live = await this.liveRows(adb)
     return live?.some((r) => r.id === id && r.state === 'ready') ? { ok: true } : { ok: false, error: 'not-connected' }
+  }
+
+  /** Device tools that run their own adb commands (app data inspector), behind the same ready check. */
+  async withReady<T>(id: string, fn: (cmds: AdbCommands) => Promise<T>): Promise<T | DevFailure> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? fn(this.commands) : { ok: false, error: ready.error, ...(ready.detail ? { detail: ready.detail } : {}) }
   }
 
   async screencap(id: string): Promise<DevCapture> {

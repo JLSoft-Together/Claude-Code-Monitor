@@ -1,4 +1,4 @@
-import type { DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
+import type { AppDataList, AppDbOpen, AppDbRows, AppPrefs, PrefEdit, DevBatchResult, DevCapture, DevEvent, DevFailure, DevLaunch, DevManifest, DevResult, DevSnapshot, DevUiChange, DevUiDump, DevUiResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 /** v61 ADB devices bridge (main owns adb; the page only sends ids and validated inputs). */
@@ -24,6 +24,14 @@ interface DevicesBridge {
   devManifest?: (dir: string) => Promise<DevManifest>
   devLaunch?: (id: string, target: DevLaunch) => Promise<DevResult>
   onDevEvent?: (handler: (e: DevEvent) => void) => () => void
+  appDataList?: (id: string, pkg: string) => Promise<AppDataList>
+  appDataDbOpen?: (id: string, pkg: string, name: string) => Promise<AppDbOpen>
+  appDataDbRows?: (handle: string, table: string, page: number) => Promise<AppDbRows>
+  appDataDbQuery?: (handle: string, sql: string) => Promise<AppDbRows>
+  appDataDbClose?: (handle: string) => Promise<boolean>
+  appDataPrefsRead?: (id: string, pkg: string, name: string) => Promise<AppPrefs>
+  appDataPrefsWrite?: (id: string, pkg: string, name: string, edit: PrefEdit) => Promise<AppPrefs>
+  appDataPrefsRestore?: (id: string, pkg: string, name: string) => Promise<AppPrefs>
 }
 
 const bridge = desktop as unknown as DevicesBridge | undefined
@@ -53,3 +61,14 @@ export const devUiSet = (id: string, change: DevUiChange, pkg: string | null): P
 export const devUiRestore = (id: string, pkg: string | null): Promise<DevUiResult> => bridge?.devUiRestore?.(id, pkg) ?? Promise.resolve(unavailable)
 export const devManifest = (dir: string): Promise<DevManifest> => bridge?.devManifest?.(dir) ?? Promise.resolve(unavailable)
 export const devLaunch = (id: string, target: DevLaunch): Promise<DevResult> => bridge?.devLaunch?.(id, target) ?? Promise.resolve(unavailable)
+export const hasAppData = typeof bridge?.appDataList === 'function'
+export const appDataList = (id: string, pkg: string): Promise<AppDataList> => bridge?.appDataList?.(id, pkg) ?? Promise.resolve(unavailable)
+export const appDataDbOpen = (id: string, pkg: string, name: string): Promise<AppDbOpen> => bridge?.appDataDbOpen?.(id, pkg, name) ?? Promise.resolve(unavailable)
+export const appDataDbRows = (handle: string, table: string, page: number): Promise<AppDbRows> => bridge?.appDataDbRows?.(handle, table, page) ?? Promise.resolve(unavailable)
+export const appDataDbQuery = (handle: string, sql: string): Promise<AppDbRows> => bridge?.appDataDbQuery?.(handle, sql) ?? Promise.resolve(unavailable)
+export const appDataDbClose = (handle: string): Promise<boolean> => bridge?.appDataDbClose?.(handle) ?? Promise.resolve(false)
+export const appDataPrefsRead = (id: string, pkg: string, name: string): Promise<AppPrefs> => bridge?.appDataPrefsRead?.(id, pkg, name) ?? Promise.resolve(unavailable)
+/** Desktop shows the change in a native confirm, force-stops the app and keeps the first original for restore. */
+export const appDataPrefsWrite = (id: string, pkg: string, name: string, edit: PrefEdit): Promise<AppPrefs> =>
+  bridge?.appDataPrefsWrite?.(id, pkg, name, { ...edit, before: Array.isArray(edit.before) ? [...edit.before] : edit.before, after: Array.isArray(edit.after) ? [...edit.after] : edit.after }) ?? Promise.resolve(unavailable)
+export const appDataPrefsRestore = (id: string, pkg: string, name: string): Promise<AppPrefs> => bridge?.appDataPrefsRestore?.(id, pkg, name) ?? Promise.resolve(unavailable)

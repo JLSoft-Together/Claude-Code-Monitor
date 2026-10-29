@@ -27,6 +27,10 @@ export interface AdbCommands {
   uiDump(id: string): Promise<DevUiDump>
   /** `adb -s id shell …`: the caller quotes anything that is not a fixed word (remote sh joins argv). */
   shell(id: string, args: string[], timeoutMs?: number): Promise<Collected | null>
+  /** `adb -s id exec-out …` with stdout kept as bytes, stopped past `max` (`overflow`); null when adb is missing. */
+  execOut(id: string, args: string[], timeoutMs: number, max: number): Promise<Bytes | null>
+  /** `adb -s id shell …` fed `input` on stdin (shell protocol v2 forwards it). */
+  shellInput(id: string, args: string[], input: Buffer, timeoutMs: number): Promise<Bytes | null>
 }
 
 const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000, captureMs: 15_000, dumpMs: 20_000 }
@@ -44,19 +48,20 @@ const fail = (error: DevErrorCode, text = ''): { ok: false; error: DevErrorCode;
   return detail ? { ok: false, error, detail } : { ok: false, error }
 }
 
-interface Bytes {
+export interface Bytes {
   code: number | null
   out: Buffer
   err: string
   timedOut?: boolean
+  overflow?: boolean
 }
 
-/** Like `collect`, but keeps stdout as bytes (screencap PNG) and stops past `max`. */
-function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string, timeoutMs: number, max: number): Promise<Bytes> {
+/** Like `collect`, but keeps stdout as bytes (screencap PNG) and stops past `max`; `input` goes to stdin. */
+function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string, timeoutMs: number, max: number, input?: Buffer): Promise<Bytes> {
   return new Promise((resolve) => {
     let child: ChildProcess
     try {
-      child = spawn({ file, args, cwd })
+      child = spawn(input ? { file, args, cwd, stdin: 'pipe' } : { file, args, cwd })
     } catch {
       resolve({ code: null, out: Buffer.alloc(0), err: '' })
       return
@@ -65,12 +70,12 @@ function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string,
     let size = 0
     let err = ''
     let settled = false
-    const finish = (code: number | null, timedOut = false): void => {
+    const finish = (code: number | null, timedOut = false, overflow = false): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       const out = Buffer.concat(chunks)
-      resolve(timedOut ? { code, out, err, timedOut } : { code, out, err })
+      resolve(timedOut ? { code, out, err, timedOut } : overflow ? { code, out, err, overflow } : { code, out, err })
     }
     const timer = setTimeout(() => {
       killAdbClient(child)
@@ -81,7 +86,7 @@ function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string,
       size += b.length
       if (size > max) {
         killAdbClient(child)
-        finish(null)
+        finish(null, false, true)
         return
       }
       chunks.push(b)
@@ -89,6 +94,10 @@ function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string,
     child.stderr?.on('data', (d: Buffer | string) => (err = (err + d.toString()).slice(-4096)))
     child.once('error', () => finish(null))
     child.once('close', (code: number | null) => finish(code))
+    if (input && child.stdin) {
+      child.stdin.on('error', () => undefined)
+      child.stdin.end(input)
+    }
   })
 }
 
@@ -149,6 +158,14 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
       return { ok: true, png: `data:image/png;base64,${png.toString('base64')}`, ...size }
     },
     shell: (id, args, timeoutMs) => run(['-s', id, 'shell', ...args], timeoutMs ?? t.cmdMs),
+    async execOut(id, args, timeoutMs, max) {
+      const adb = await opts.adb()
+      return adb ? collectBytes(opts.spawn, adb, ['-s', id, 'exec-out', ...args], opts.cwd, timeoutMs, max) : null
+    },
+    async shellInput(id, args, input, timeoutMs) {
+      const adb = await opts.adb()
+      return adb ? collectBytes(opts.spawn, adb, ['-s', id, 'shell', ...args], opts.cwd, timeoutMs, 64 * 1024, input) : null
+    },
     async uiDump(id) {
       const dumped = await run(['-s', id, 'shell', 'uiautomator', 'dump', UI_DUMP_PATH], t.dumpMs)
       if (!dumped) return fail('adb-missing')

@@ -95,3 +95,4 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 
 - `toolstats.get {days: 7|30, project: string|null}` (client → server) → `toolstats.data {payload: ToolStats}` (direct reply). `ToolStats` / `ToolStatEntry` / `ToolStatDays` in `types.ts`; names only.
 - `TerminalSession.limitHit?: LimitHit {at, resetsAt?, window?, autoResume?}` (collector `tracker.ts`, web `TermPane` → `LimitResumeChip`).
+- Desktop IPC types (v73): `apk.ts` (`ApkReport`, `ApkGroup`, `ApkDiff`, `ApkResult`, `ApkCompareResult`), `appData.ts` (`AppDataList`, `AppDbOpen`, `AppDbRows`, `AppDbCell`, `AppPrefs`, `PrefEntry`, `PrefEdit`, `AppDataErrorCode` = `DevErrorCode` + inspector codes).

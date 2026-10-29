@@ -8,6 +8,7 @@ import { useUiStore } from '../../stores/ui'
 import DeviceCaptureDialog from './DeviceCaptureDialog.vue'
 import DeviceConnectBar from './DeviceConnectBar.vue'
 import DeviceUiTestDialog from './DeviceUiTestDialog.vue'
+import DeviceAppDataDialog from './DeviceAppDataDialog.vue'
 import DeviceRow from './DeviceRow.vue'
 import { ROW_GRID } from './meta'
 
@@ -26,6 +27,7 @@ const someSelected = computed(() => store.selected.size > 0 && !allSelected.valu
 const ids = (list: AdbDevice[]): string[] => list.map((d) => d.id)
 const captureFor = ref<AdbDevice | null>(null)
 const testFor = ref<AdbDevice | null>(null)
+const dataFor = ref<AdbDevice | null>(null)
 
 function batch(fn: () => Promise<void>): void {
   store.lastError = null
@@ -138,12 +140,13 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
             <span class="hidden md:block">{{ t('devices.col.transport') }}</span>
           </div>
           <div role="list" class="ccm-group overflow-hidden">
-            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" @capture="(dev) => (captureFor = dev)" @ui-test="(dev) => (testFor = dev)" />
+            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" @capture="(dev) => (captureFor = dev)" @ui-test="(dev) => (testFor = dev)" @app-data="(dev) => (dataFor = dev)" />
           </div>
         </section>
       </template>
     </template>
     <DeviceCaptureDialog :open="!!captureFor" :device-id="captureFor?.id ?? null" :device-name="captureFor?.name ?? ''" @close="captureFor = null" />
     <DeviceUiTestDialog :open="!!testFor" :device-id="testFor?.id ?? null" :device-name="testFor?.name ?? ''" @close="testFor = null" />
+    <DeviceAppDataDialog :open="!!dataFor" :device-id="dataFor?.id ?? null" :device-name="dataFor?.name ?? ''" @close="dataFor = null" />
   </main>
 </template>

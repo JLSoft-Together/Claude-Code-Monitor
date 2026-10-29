@@ -34,6 +34,9 @@ extraResources:
     to: layout-daemon/loose-kit
   - from: ../layout-daemon/init/ccm-project-model.gradle
     to: layout-daemon/ccm-project-model.gradle
+  # sql.js JS is bundled into main.cjs; its WASM is read from here (device app data inspector).
+  - from: ../../node_modules/sql.js/dist/sql-wasm.wasm
+    to: sqljs/sql-wasm.wasm
   - from: ../../scripts/statusline-bridge.mjs
     to: bridge/statusline-bridge.mjs
   - from: ../../scripts/hook-bridge.mjs

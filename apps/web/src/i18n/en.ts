@@ -44,6 +44,7 @@ import contextV72 from './context-v72'
 import toolStatsV73 from './toolstats-v73'
 import resumeV73 from './resume-v73'
 import apkV73 from './apk-v73'
+import appDataV73 from './appdata-v73'
 
 export default {
   ...v25.en,
@@ -72,6 +73,7 @@ export default {
   ...toolStatsV73.en,
   ...resumeV73.en,
   ...apkV73.en,
+  ...appDataV73.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
