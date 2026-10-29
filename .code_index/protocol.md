@@ -94,3 +94,4 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 ## v73 (2026-10-29)
 
 - `toolstats.get {days: 7|30, project: string|null}` (client → server) → `toolstats.data {payload: ToolStats}` (direct reply). `ToolStats` / `ToolStatEntry` / `ToolStatDays` in `types.ts`; names only.
+- `TerminalSession.limitHit?: LimitHit {at, resetsAt?, window?, autoResume?}` (collector `tracker.ts`, web `TermPane` → `LimitResumeChip`).

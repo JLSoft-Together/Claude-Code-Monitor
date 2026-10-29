@@ -1,4 +1,4 @@
-import type { CacheTtl } from '@ccm/shared'
+import type { CacheTtl, LimitHit } from '@ccm/shared'
 import { socketKey } from './registry'
 
 export type Signal =
@@ -18,10 +18,13 @@ export type Signal =
   | { k: 'send_main'; key: string; at?: string }
   | { k: 'peer_in'; fromKey: string; msgId?: string; dedupeKey: string; at?: string }
   | { k: 'peer_sent'; msgId: string; at?: string }
+  | { k: 'limit_hit'; resetsAt?: string; window?: string; at?: string }
+  | { k: 'limit_resume'; state: 'armed' | 'cancelled' | 'reset' }
 
 type Obj = Record<string, unknown>
 
 const EFFORT_RE = /^[a-z]{2,12}$/
+const WINDOW_RE = /^[a-z0-9_]{1,40}$/
 const AGENT_ID_RE = /^a[0-9a-f]{16}$/
 const RECORD_ID_RE = /^[A-Za-z0-9_-]{1,128}$/
 const MSG_ID_RE = /^[A-Za-z0-9_-]{8,64}$/
@@ -90,6 +93,23 @@ function peerSent(result: unknown, at: string | undefined): Signal[] {
   return msgId ? [{ k: 'peer_sent', msgId, at }] : []
 }
 
+/** Usage-limit error record of Claude Code 2.1.294 (docs §11ac): `quotaLimits.resetsAt` is epoch seconds. */
+function limitHitOf(rec: Obj, at: string | undefined): Signal | null {
+  if (rec.isApiErrorMessage !== true || rec.apiError !== 'usage_limit_reached') return null
+  const q = isObj(rec.quotaLimits) ? rec.quotaLimits : {}
+  const secs = typeof q.resetsAt === 'number' && Number.isFinite(q.resetsAt) && q.resetsAt > 0 ? q.resetsAt : undefined
+  const window = typeof q.rateLimitType === 'string' && WINDOW_RE.test(q.rateLimitType) ? q.rateLimitType : undefined
+  return { k: 'limit_hit', resetsAt: secs ? new Date(secs * 1000).toISOString() : undefined, window, at }
+}
+
+// Notices Claude Code 2.1.294 writes around its own auto-continue; only the fixed prefix is compared, nothing is kept.
+const RESUME_NOTICES: [string, 'armed' | 'cancelled' | 'reset'][] = [
+  ['Usage limit reached · continuing automatically', 'armed'],
+  ['Usage limit reached again · continuing automatically', 'armed'],
+  ['Automatic continue cancelled', 'cancelled'],
+  ['Usage limit reset · continuing automatically', 'reset'],
+]
+
 function textsOf(content: unknown): string[] {
   if (typeof content === 'string') return [content]
   if (!Array.isArray(content)) return []
@@ -141,6 +161,8 @@ export function extractSignals(rec: unknown): Signal[] {
         }
       }
     }
+    const limit = limitHitOf(rec, at)
+    if (limit) out.push(limit)
     if (msg.stop_reason === 'end_turn') out.push({ k: 'assistant_end', at })
     return out
   }
@@ -174,6 +196,12 @@ export function extractSignals(rec: unknown): Signal[] {
 
   if (type === 'system' && rec.subtype === 'turn_duration') {
     out.push({ k: 'turn_end', at })
+    return out
+  }
+
+  if (type === 'system' && rec.subtype === 'informational' && typeof rec.content === 'string') {
+    const hit = RESUME_NOTICES.find(([prefix]) => (rec.content as string).startsWith(prefix))
+    if (hit) out.push({ k: 'limit_resume', state: hit[1] })
     return out
   }
 
@@ -217,6 +245,7 @@ export class TranscriptState {
   gitBranch?: string
   ended = false
   lastEndAt?: string
+  limitHit?: LimitHit
 
   apply(signals: Signal[]): void {
     for (const s of signals) {
@@ -227,6 +256,14 @@ export class TranscriptState {
         case 'model':
           this.model = s.model
           this.effort = s.effort
+          this.limitHit = undefined
+          break
+        case 'limit_hit':
+          if (s.at) this.limitHit = { at: s.at, resetsAt: s.resetsAt, window: s.window, autoResume: this.limitHit?.autoResume }
+          break
+        case 'limit_resume':
+          if (s.state === 'reset') this.limitHit = undefined
+          else if (this.limitHit) this.limitHit = { ...this.limitHit, autoResume: s.state === 'armed' }
           break
         case 'usage':
           this.usage.set(s.messageId, { input: s.input, output: s.output, cacheRead: s.cacheRead })

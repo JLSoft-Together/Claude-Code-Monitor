@@ -55,8 +55,10 @@ import SplitMenu from './SplitMenu.vue'
 import WorktreeMenu from './WorktreeMenu.vue'
 import OverlapChip from './OverlapChip.vue'
 import PromptQueueButton from './PromptQueueButton.vue'
+import LimitResumeChip from './LimitResumeChip.vue'
 import { shouldAutoFill } from '../../lib/promptQueue'
 import { usePromptQueueStore } from '../../stores/promptQueue'
+import { useResumeScheduleStore } from '../../stores/resumeSchedule'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean; zoomed: boolean; hiddenCount: number; dim: boolean }>()
 const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>]; scripts: []; zoom: [] }>()
@@ -377,6 +379,19 @@ watch(
     if (isShell.value || props.pane.state !== 'running') return
     if (shouldAutoFill(queues.get(props.pane.key), prev, now)) void fillQueued()
   },
+)
+
+const resume = useResumeScheduleStore()
+const limitHit = computed(() => (isShell.value ? undefined : session.value?.limitHit))
+// A real reply clears the hit (Claude Code continued by itself, or the owner typed): the prefill would only get in the way.
+watch(limitHit, (hit) => {
+  if (hit || !session.value || !resume.get(props.pane.key)) return
+  resume.cancel(props.pane.key)
+  showNotice(t('limitResume.cancelledResumed'))
+})
+watch(
+  () => resume.fired,
+  (f) => f?.keys.includes(props.pane.key) && showNotice(t('limitResume.filled')),
 )
 
 /** The host validates (real, existing folder) and answers with `cwd`; each prompt repeats it, so send changes only. */
@@ -1153,6 +1168,7 @@ onBeforeUnmount(() => {
             </span>
           </Transition>
         </span>
+        <LimitResumeChip v-if="!isShell && pane.state === 'running'" :pane-key="pane.key" :hit="limitHit" data-pane-chip />
         <PromptQueueButton v-if="!isShell" ref="queueButton" :pane-key="pane.key" :can-fill="canFillQueue" @fill="fillQueued" />
         <button
           v-if="canAttach"

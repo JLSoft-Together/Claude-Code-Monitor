@@ -56,10 +56,22 @@ export interface TerminalSession {
   deniedTools?: string[]
   /** Uncommitted changes in the session's git checkout (read-only `git diff --shortstat`, refreshed when a turn ends). */
   diff?: GitDiffStat
+  /** The latest reply is Claude Code's usage-limit error; cleared by the next real reply (docs §11ac). */
+  limitHit?: LimitHit
 
   startedAt?: string
   lastActivityAt?: string
   endedAt?: string
+}
+
+export interface LimitHit {
+  at: string
+  /** From the error record's `quotaLimits.resetsAt` (epoch seconds), as ISO. */
+  resetsAt?: string
+  /** `five_hour`, `seven_day`… as Claude Code names the window. */
+  window?: string
+  /** Claude Code armed its own "continuing automatically at …" for this hit (and it was not cancelled). */
+  autoResume?: boolean
 }
 
 export interface Agent {

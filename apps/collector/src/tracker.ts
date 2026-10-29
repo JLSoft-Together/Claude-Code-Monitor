@@ -581,6 +581,7 @@ export class SessionTracker {
       permissionMode: this.main.permissionMode,
       gitBranch: this.main.gitBranch,
       compactions: this.main.compactions || undefined,
+      ...(!ended && this.main.limitHit && { limitHit: this.main.limitHit }),
       startedAt: toIso(r.startedAt),
       lastActivityAt: laterOf(toIso(r.statusUpdatedAt), this.main.lastAt, lastSub),
       endedAt: this.endedAt,
