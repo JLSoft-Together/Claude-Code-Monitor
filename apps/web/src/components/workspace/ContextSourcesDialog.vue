@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Layers, RefreshCw, X } from 'lucide-vue-next'
-import type { CtxSource, CtxSources } from '@ccm/shared'
+import { CircleCheck, Layers, Lock, RefreshCw, Send, Stethoscope, TriangleAlert, X } from 'lucide-vue-next'
+import type { CtxSource, CtxSources, MemDoctorResult, MemFinding } from '@ccm/shared'
 import { ctxSources, displayPath, groupSources, kb, startBytes } from '../../lib/ctxSources'
+import { doctorPrompt, groupFindings, hasMemoryDoctor, memoryDoctor } from '../../lib/memoryDoctor'
 import { fullNumber } from '../../lib/format'
 import { baseName } from '../../lib/preview'
+import { handoffPaneFor } from '../../lib/runUi'
 import { useAgentsStore } from '../../stores/agents'
+import { useUiStore } from '../../stores/ui'
 import { useWorkspaceStore } from '../../stores/workspace'
 
 const props = defineProps<{ cwd: string | null; terminalId: string | null }>()
@@ -45,6 +48,41 @@ function openFile(f: CtxSource): void {
   workspace.openFile(f.path, undefined, { cwd: props.cwd ?? undefined })
 }
 
+const ui = useUiStore()
+const doctor = shallowRef<MemDoctorResult | null>(null)
+const doctoring = ref(false)
+const doctorNotice = ref<{ text: string; warn: boolean } | null>(null)
+const doctorOk = computed(() => (doctor.value?.ok ? doctor.value : null))
+const findingGroups = computed(() => (doctorOk.value ? groupFindings(doctorOk.value.findings, doctorOk.value.cwd, doctorOk.value.home) : []))
+
+async function runDoctor(): Promise<void> {
+  if (!props.cwd) return
+  doctoring.value = true
+  doctorNotice.value = null
+  doctor.value = await memoryDoctor(props.cwd).catch(() => ({ ok: false, error: 'unavailable' }) as const)
+  doctoring.value = false
+}
+
+function openFinding(f: MemFinding): void {
+  if (!f.openable) return
+  emit('close')
+  workspace.openFile(f.file, f.line, { cwd: props.cwd ?? undefined })
+}
+
+function fillDoctor(): void {
+  const d = doctorOk.value
+  const text = d ? doctorPrompt(d.findings, d.cwd, d.home) : null
+  if (!d || !text) return
+  const pane = handoffPaneFor(workspace.panes, d.cwd)
+  if (!pane) {
+    doctorNotice.value = { text: t('memDoctor.noAgent'), warn: true }
+    return
+  }
+  workspace.insertInto(pane.key, text)
+  if (ui.view !== 'workspace') ui.setView('workspace')
+  doctorNotice.value = { text: t('memDoctor.filled', { name: pane.title ?? baseName(pane.cwd ?? '') }), warn: false }
+}
+
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape' && !e.defaultPrevented) {
     e.preventDefault()
@@ -71,6 +109,9 @@ function onKey(e: KeyboardEvent): void {
           <h2 class="min-w-0 flex-1 truncate text-sm font-semibold text-ink" :title="cwd ?? undefined">
             {{ cwd ? t('ctxSources.titleOf', { name: baseName(cwd) }) : t('ctxSources.title') }}
           </h2>
+          <button v-if="cwd && hasMemoryDoctor" type="button" class="ccm-btn shrink-0" :title="t('memDoctor.checkHint')" :disabled="doctoring" data-mem-doctor-run @click="runDoctor">
+            <Stethoscope :size="13" aria-hidden="true" />{{ t('memDoctor.check') }}
+          </button>
           <button v-if="cwd" type="button" class="ccm-btn-plain shrink-0" :title="t('ctxSources.refresh')" :aria-label="t('ctxSources.refresh')" :disabled="loading" @click="load()">
             <RefreshCw :size="14" :class="loading ? 'ccm-spin' : ''" aria-hidden="true" />
           </button>
@@ -81,6 +122,49 @@ function onKey(e: KeyboardEvent): void {
 
         <p v-if="!cwd" class="p-4 text-xs text-ink-muted">{{ t('ctxSources.noFolder') }}</p>
         <div v-else class="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-xs">
+          <section v-if="doctoring || doctor" class="mb-3 rounded-inner border border-line p-2" :aria-label="t('memDoctor.title')" data-mem-doctor>
+            <div class="flex min-w-0 items-center gap-2">
+              <h3 class="text-2xs font-semibold text-ink-muted">{{ t('memDoctor.title') }}</h3>
+              <span v-if="doctoring" class="text-2xs text-ink-muted" role="status">{{ t('memDoctor.checking') }}</span>
+              <span v-else-if="doctor && !doctor.ok" class="text-2xs text-warning" role="status" data-mem-doctor-error>{{ t(`memDoctor.error.${doctor.error}`) }}</span>
+              <span v-else-if="doctorOk && !doctorOk.findings.length" class="inline-flex items-center gap-1 text-2xs text-success" role="status" data-mem-doctor-clean>
+                <CircleCheck :size="12" aria-hidden="true" />{{ t('memDoctor.clean', { n: doctorOk.files }, doctorOk.files) }}
+              </span>
+              <span v-else-if="doctorOk" class="inline-flex items-center gap-1 text-2xs text-warning" role="status" data-mem-doctor-summary>
+                <TriangleAlert :size="12" aria-hidden="true" />{{ t('memDoctor.summary', { n: doctorOk.findings.length, files: findingGroups.length }, doctorOk.findings.length) }}
+              </span>
+              <span class="flex-1" />
+              <button v-if="doctorOk?.findings.length" type="button" class="ccm-btn shrink-0" :title="t('memDoctor.fillHint')" data-mem-doctor-fill @click="fillDoctor">
+                <Send :size="13" aria-hidden="true" />{{ t('memDoctor.fill') }}
+              </button>
+            </div>
+            <p v-if="doctorNotice" class="mt-1 text-2xs" :class="doctorNotice.warn ? 'text-warning' : 'text-ink-muted'" role="status" data-mem-doctor-notice>{{ doctorNotice.text }}</p>
+            <div v-for="g in findingGroups" :key="g.file" class="mt-2" data-mem-doctor-file>
+              <p class="flex min-w-0 items-center gap-1 font-mono text-2xs text-ink" :title="g.file">
+                <Lock v-if="!g.openable" :size="11" class="shrink-0 text-ink-faint" :aria-label="t('memDoctor.notOpenable')" />
+                <span class="truncate">{{ g.shown }}</span>
+              </p>
+              <ul class="mt-0.5 divide-y divide-line rounded-inner border border-line">
+                <li v-for="(f, i) in g.findings" :key="`${f.line}:${f.kind}:${i}`" :data-mem-finding="f.kind">
+                  <component
+                    :is="f.openable ? 'button' : 'div'"
+                    :type="f.openable ? 'button' : undefined"
+                    class="flex w-full min-w-0 items-baseline gap-2 px-2 py-1 text-left"
+                    :class="f.openable ? 'cursor-pointer hover:bg-fill' : ''"
+                    :title="f.openable ? t('memDoctor.open', { n: f.line }) : t('memDoctor.notOpenable')"
+                    @click="openFinding(f)"
+                  >
+                    <span class="w-14 shrink-0 text-2xs tabular text-ink-faint">{{ t('memDoctor.line', { n: f.line }) }}</span>
+                    <span class="inline-flex shrink-0 items-center gap-1 text-2xs text-warning"><TriangleAlert :size="11" aria-hidden="true" />{{ t(`memDoctor.kind.${f.kind}`) }}</span>
+                    <span class="min-w-0 flex-1 truncate text-2xs text-ink-muted">{{ t(`memDoctor.detail.${f.kind}`, { text: f.text, limit: f.limit ?? '' }) }}</span>
+                  </component>
+                </li>
+              </ul>
+            </div>
+            <p v-if="doctorOk?.truncated" class="mt-1 text-2xs text-warning">{{ t('memDoctor.truncated') }}</p>
+            <p v-if="doctorOk" class="mt-1 text-2xs text-ink-faint">{{ t('memDoctor.note') }}</p>
+          </section>
+
           <section :aria-label="t('ctxSources.measured')" data-ctx-measured>
             <h3 class="text-2xs font-semibold text-ink-muted">{{ t('ctxSources.measured') }}</h3>
             <dl v-if="agent?.firstContextTokens !== undefined || agent?.contextTokens !== undefined" class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">

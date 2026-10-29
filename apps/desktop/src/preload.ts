@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   envCheck: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:env-check', root),
   permRead: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:perm-read', root),
   ctxSources: (cwd: string): Promise<unknown> => ipcRenderer.invoke('ccm:ctx-sources', cwd),
+  memoryDoctor: (cwd: string): Promise<unknown> => ipcRenderer.invoke('ccm:memory-doctor', cwd),
   permAllow: (root: string, rules: string[]): Promise<unknown> => ipcRenderer.invoke('ccm:perm-allow', { root, rules }),
   i18nScan: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:i18n-scan', root),
   envReveal: (root: string, file: string, key: string): Promise<unknown> => ipcRenderer.invoke('ccm:env-reveal', { root, file, key }),

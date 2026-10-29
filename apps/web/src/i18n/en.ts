@@ -53,6 +53,7 @@ import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
 import libsV75 from './libs-v75'
+import memdocV75 from './memdoc-v75'
 
 export default {
   ...v25.en,
@@ -90,6 +91,7 @@ export default {
   ...libsV74.en,
   ...hooksV74.en,
   ...libsV75.en,
+  ...memdocV75.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

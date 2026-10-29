@@ -57,7 +57,7 @@ export function importsOf(text: string, dir: string, home: string): string[] {
 }
 
 /** `<config>/projects/<slug>`; on Windows the folder Claude made may differ in drive-letter case from the real path. */
-async function projectDir(config: string, cwd: string, platform: NodeJS.Platform): Promise<string> {
+export async function projectDir(config: string, cwd: string, platform: NodeJS.Platform): Promise<string> {
   const slug = cwdSlug(path.resolve(cwd))
   const base = path.join(config, 'projects')
   if (platform !== 'win32') return path.join(base, slug)
