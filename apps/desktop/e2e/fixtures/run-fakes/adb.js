@@ -1,4 +1,4 @@
-// Fake `adb` for e2e/run-pane.cjs, devices.cjs, v72.cjs and v73.cjs: one emulator, install/launch succeed, logcat streams until killed.
+// Fake `adb` for e2e/run-pane.cjs, devices.cjs, v72.cjs, v73.cjs and v74.cjs (`emu avd name` / `emu kill`): one emulator, install/launch succeed, logcat streams until killed.
 // v61 Devices: connect / disconnect / pair / tcpip / mdns / shell ip. Wi-Fi ids connected so far persist in STATE/wifi.json
 // (one process per adb call), and track-devices re-emits its frame when that file changes.
 const fs = require('node:fs')
@@ -7,6 +7,7 @@ const path = require('node:path')
 const STATE = path.join(__dirname, '..', 'state')
 let args = process.argv.slice(2)
 fs.appendFileSync(path.join(STATE, 'calls.log'), JSON.stringify({ tool: 'adb', argv: args }) + '\n')
+const serial = args[0] === '-s' ? args[1] : null
 if (args[0] === '-s') args = args.slice(2)
 
 const BASE = 'emulator-5554          device product:sdk_gphone64_x86_64 model:Pixel_7 device:emu64x transport_id:1\n'
@@ -18,7 +19,16 @@ const wifi = () => {
     return []
   }
 }
-const list = () => BASE + wifi().map((id, i) => `${id.padEnd(22)} device product:sunfish model:Pixel_4a device:sunfish transport_id:${i + 4}\n`).join('')
+// v74 AVDs: e2e emulator.js writes STATE/emu.json { serial: avdName } while a fake emulator runs.
+const EMU = path.join(STATE, 'emu.json')
+const emus = () => {
+  try {
+    return JSON.parse(fs.readFileSync(EMU, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+const list = () => BASE + Object.keys(emus()).map((id) => `${id.padEnd(22)} device product:sdk_gphone64_x86_64 model:sdk_gphone64 device:emu64x transport_id:9\n`).join('') + wifi().map((id, i) => `${id.padEnd(22)} device product:sunfish model:Pixel_4a device:sunfish transport_id:${i + 4}\n`).join('')
 const PKG = 'com.example.demo'
 const out = (s) => process.stdout.write(s)
 const has = (...words) => words.every((w) => args.includes(w))
@@ -70,7 +80,18 @@ function runAs() {
   }
 }
 
-if (args[1] === 'run-as' && (args[0] === 'shell' || args[0] === 'exec-out')) {
+if (args[0] === 'emu' && args[1] === 'avd' && args[2] === 'name') {
+  const name = emus()[serial]
+  if (name) out(`${name}\r\nOK\r\n`)
+  else {
+    out('KO: unknown command\r\n')
+    process.exitCode = 1
+  }
+} else if (args[0] === 'emu' && args[1] === 'kill') {
+  const { [serial]: _, ...rest } = emus()
+  fs.writeFileSync(EMU, JSON.stringify(rest))
+  out('OK: killing emulator, bye bye\r\n')
+} else if (args[1] === 'run-as' && (args[0] === 'shell' || args[0] === 'exec-out')) {
   runAs()
 } else if (args[0] === 'exec-out' && args[1] === 'screencap') {
   process.stdout.write(Buffer.from(PNG_4X8, 'base64'))
