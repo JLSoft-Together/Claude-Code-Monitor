@@ -14,7 +14,7 @@ async function boot(app) {
   let app = await launch()
   try {
     await boot(app)
-    await app.evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1')`)
+    await app.evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1')`)
     await app.cmd('Page.reload')
     await app.sleep(1500)
     await boot(app)

@@ -11,7 +11,7 @@ async function main() {
   const { evaluate, waitFor, shot, sleep, cmd } = app
   try {
     await waitFor(`!!window.ccmDesktop && !!${UI}`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.setupDone','1')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.setupDone','1')`)
     await cmd('Page.reload')
     await waitFor(`!!${UI}`, 15000, 'reloaded')
     await sleep(1000)

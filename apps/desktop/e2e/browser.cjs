@@ -52,7 +52,7 @@ function fixture() {
   }
   try {
     await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.workspace.explorerOpen','0'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.workspace.explorerOpen','0'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark')`)
     await cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

@@ -1,11 +1,14 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
+const desktopPkg = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8')) as { version: string }
 const collector = `http://127.0.0.1:${process.env.CCM_PORT ?? '4317'}`
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(desktopPkg.version) },
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (tag) => tag === 'webview' } } }), tailwindcss()],
   server: {
     host: '127.0.0.1',

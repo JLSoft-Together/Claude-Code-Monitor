@@ -41,7 +41,7 @@ const confirmDanger = `[...document.querySelectorAll('.ccm-btn-danger')].at(-1).
 async function run(app) {
   const { evaluate, waitFor, shot, sleep, key, cmd } = app
   await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.removeItem('ccm.workspace.diffOpts'); localStorage.removeItem('ccm.workspace.changesTree')`)
+  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.removeItem('ccm.workspace.diffOpts'); localStorage.removeItem('ccm.workspace.changesTree')`)
   await cmd('Page.reload')
   await sleep(1500)
   await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

@@ -19,7 +19,7 @@ export function useShortcuts(): void {
       ui.pressKey('?')
       return
     }
-    if (ui.paletteOpen || ui.settingsOpen || ui.tourOpen || ui.recapOpen || ui.diagnosticsOpen || ui.shortcutsOpen) return
+    if (ui.paletteOpen || ui.settingsOpen || ui.tourOpen || ui.recapOpen || ui.diagnosticsOpen || ui.shortcutsOpen || ui.whatsNewOpen) return
 
     if (e.key === 'Escape') {
       if (ui.selectedAgentId) ui.selectAgent(null)

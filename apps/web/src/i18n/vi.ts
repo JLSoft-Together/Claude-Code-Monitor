@@ -37,6 +37,7 @@ import officeV60 from './office-v60'
 import officeV62 from './office-v62'
 import officeV63 from './office-v63'
 import devicesV61 from './devices-v61'
+import whatsNewV71 from './whats-new-v71'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -57,6 +58,7 @@ const vi: typeof en = {
   ...officeV62.vi,
   ...officeV63.vi,
   ...devicesV61.vi,
+  ...whatsNewV71.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

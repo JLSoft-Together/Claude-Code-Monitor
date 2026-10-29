@@ -10,7 +10,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
   const { evaluate, waitFor, shot, sleep, cmd, key } = app
   try {
     await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell')`)
     await cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

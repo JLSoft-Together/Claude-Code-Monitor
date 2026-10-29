@@ -32,7 +32,7 @@ const row = (name) => `[...document.querySelectorAll('[data-explorer-tree] [role
 async function run(app) {
   const { evaluate, waitFor, shot, sleep, cmd, key, type } = app
   await waitFor(`!!window.ccmDesktop && !!${S}.get('ui')`, 30000, 'app ready')
-  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.setItem('ccm.workspace.explorerOpen','0')`)
+  await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.workspace.preset','shell'); localStorage.setItem('ccm.theme','dark'); localStorage.setItem('ccm.workspace.explorerOpen','0')`)
   await cmd('Page.reload')
   await sleep(1500)
   await waitFor(`!!${S}.get('ui')`, 30000, 'reloaded')

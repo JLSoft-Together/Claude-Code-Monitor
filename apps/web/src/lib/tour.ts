@@ -39,6 +39,11 @@ export const TOURS: Record<TourId, { steps: TourStep[]; view: 'monitor' | 'works
   workspace: { steps: WORKSPACE_TOUR_STEPS, view: 'workspace', key: 'ccm.tourWorkspaceDone', i18n: 'wsTour' },
 }
 
+/** The guide that opens by itself on this view (the workspace one only in the app). */
+export function tourFor(view: string, terminals: boolean): TourId | null {
+  return view === 'monitor' ? 'monitor' : view === 'workspace' && terminals ? 'workspace' : null
+}
+
 export function tourDone(id: TourId = 'monitor'): boolean {
   try {
     return localStorage.getItem(TOURS[id].key) === '1'

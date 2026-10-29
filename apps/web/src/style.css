@@ -560,6 +560,10 @@ body {
     & > * + * {
       border-top: 0.5px solid var(--ccm-line);
     }
+    /* Groups clip their rows (rounded corners), so the focus ring goes inside the row. */
+    & :focus-visible {
+      outline-offset: -2px;
+    }
   }
 }
 

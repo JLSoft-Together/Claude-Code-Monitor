@@ -233,6 +233,8 @@ export const useUiStore = defineStore('ui', () => {
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
   const setupOpen = ref(false)
+  /** What's new (WhatsNewDialog.vue): opens once per app version, after quick setup and the view's guide. */
+  const whatsNewOpen = ref(false)
   const settingsOpen = ref(false)
   const breakDue = ref<{ at: number; minutes: number } | null>(null)
   const focusingWindow = ref<string | null>(null)
@@ -503,6 +505,7 @@ export const useUiStore = defineStore('ui', () => {
     i18nScan,
     tourOpen,
     setupOpen,
+    whatsNewOpen,
     settingsOpen,
     breakDue,
     openRecap,

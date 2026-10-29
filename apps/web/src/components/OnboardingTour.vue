@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Check, X } from 'lucide-vue-next'
 import { hasTerminals } from '../lib/desktop'
 import { isMac } from '../lib/platform'
 import { keyCombo, shortcutText } from '../lib/shortcuts'
-import { TOURS, markTourDone, tourDone, type TourId } from '../lib/tour'
+import { TOURS, markTourDone, tourDone, tourFor, type TourId } from '../lib/tour'
 import { useUiStore } from '../stores/ui'
 import ArtImage from './ArtImage.vue'
 
@@ -168,11 +168,11 @@ onMounted(() => {
 let mounted = false
 let offerTimer = 0
 function offerTour(view: string): void {
-  const id: TourId | null = view === 'monitor' ? 'monitor' : view === 'workspace' && hasTerminals ? 'workspace' : null
+  const id = tourFor(view, hasTerminals)
   window.clearTimeout(offerTimer)
   if (!id || tourDone(id)) return
   offerTimer = window.setTimeout(() => {
-    if (!ui.tourOpen && !ui.setupOpen && !ui.compact && ui.view === view && !tourDone(id)) ui.tourOpen = id
+    if (!ui.tourOpen && !ui.setupOpen && !ui.whatsNewOpen && !ui.compact && ui.view === view && !tourDone(id)) ui.tourOpen = id
   }, id === 'monitor' ? 800 : 600)
 }
 watch(
@@ -181,7 +181,7 @@ watch(
 )
 // Quick setup goes first on a fresh install; the guide follows once it is closed.
 watch(
-  () => ui.setupOpen,
+  () => ui.setupOpen || ui.whatsNewOpen,
   (open) => mounted && !open && offerTour(ui.view),
 )
 onBeforeUnmount(() => {

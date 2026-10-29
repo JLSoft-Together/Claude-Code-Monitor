@@ -48,7 +48,7 @@ async function main() {
   })()`
   try {
     await waitFor(`!!window.ccmDesktop && !!${UI}`, 30000, 'app ready')
-    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.locale','en'); localStorage.setItem('ccm.mapView','map'); localStorage.removeItem('ccm.mapLayout.v53')`)
+    await evaluate(`localStorage.setItem('ccm.tourDone','1'); localStorage.setItem('ccm.whatsNew.seen','${require('../package.json').version}'); localStorage.setItem('ccm.setupDone','1'); localStorage.setItem('ccm.tourWorkspaceDone','1'); localStorage.setItem('ccm.locale','en'); localStorage.setItem('ccm.mapView','map'); localStorage.removeItem('ccm.mapLayout.v53')`)
     await cmd('Page.reload')
     await sleep(1500)
     await waitFor(`!!${UI}`, 30000, 'reloaded')

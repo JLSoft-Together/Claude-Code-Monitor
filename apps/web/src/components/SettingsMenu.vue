@@ -2,8 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Stethoscope, X } from 'lucide-vue-next'
+import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Sparkles, Stethoscope, X } from 'lucide-vue-next'
 import { AUTO_SAVE_DELAYS, AUTO_SAVE_MODES } from '../lib/autoSave'
+import { APP_VERSION } from '../lib/changelog'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { retireOverlay } from '../lib/motion'
@@ -86,6 +87,7 @@ const openFontLicenses = (): void => void window.open('/fonts-LICENSES.txt', '_b
 const openIconLicense = (): void => void window.open('/file-icons-LICENSE.txt', '_blank')
 const openHabblaudLicense = (): void => void window.open('/habblaud-LICENSE.txt', '_blank')
 const helpItems = computed<{ key: string; icon: Component; label: string; hint: string; run: () => void }[]>(() => [
+  { key: 'whatsNew', icon: Sparkles, label: t('whatsNew.open'), hint: t('whatsNew.openHint', { version: APP_VERSION }), run: () => (ui.whatsNewOpen = true) },
   { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
   ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace') }] : []),
   { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },

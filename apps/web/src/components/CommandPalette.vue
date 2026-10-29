@@ -37,6 +37,7 @@ import {
   Inbox,
   Wrench,
   KeyRound,
+  Sparkles,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
@@ -50,6 +51,7 @@ import { shortPath } from '../lib/format'
 import { isMac } from '../lib/platform'
 import { keyCombo } from '../lib/shortcuts'
 import { statusMeta } from '../lib/status'
+import { APP_VERSION } from '../lib/changelog'
 import { isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
@@ -263,6 +265,7 @@ const items = computed<Item[]>(() => {
     { id: 'c:tools', group: 'prefs', label: t('palette.toolsPref'), icon: ListFilter, on: !settings.hideTools, run: () => (settings.hideTools = !settings.hideTools) },
     { id: 'c:lang', group: 'prefs', label: t('palette.language'), sub: settings.locale === 'vi' ? 'Tiếng Việt → English' : 'English → Tiếng Việt', icon: Languages, run: () => settings.toggleLocale() },
     { id: 'c:settings', group: 'help', label: t('palette.openSettings'), icon: Settings2, run: () => (ui.settingsOpen = true) },
+    { id: 'c:whatsNew', group: 'help', label: t('whatsNew.open'), sub: APP_VERSION, icon: Sparkles, run: () => (ui.whatsNewOpen = true) },
     { id: 'c:keys', group: 'help', label: t('keys.title'), sub: '?', icon: Keyboard, run: () => (ui.shortcutsOpen = true) },
     { id: 'c:tour', group: 'help', label: t('tour.open'), icon: GraduationCap, run: () => (ui.tourOpen = 'monitor') },
     ...(hasTerminals
