@@ -170,6 +170,7 @@ The app is force-stopped first, then the file is written on the device. The firs
   fsReplaceConfirm: 'Replace',
   fsPullTitle: 'Pull to folder',
   fsPushTitle: 'Push files to the device',
+  releasePickTitle: 'Choose the APK or AAB to verify',
   hookToggleTitle: (on: boolean, event: string) => (on ? `Turn the ${event} hook back on?` : `Turn off this ${event} hook?`),
   hookToggleDetail: (on: boolean, file: string, diff: string) =>
     `Orrery will write ${file}. Other keys stay; the old file is kept as ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' The hook is kept in Orrery so it can be turned back on.'}
@@ -365,6 +366,7 @@ ${key}: ${clip(before)} → ${clip(after)}
   fsReplaceConfirm: 'Thay',
   fsPullTitle: 'Kéo về thư mục',
   fsPushTitle: 'Đẩy file vào thiết bị',
+  releasePickTitle: 'Chọn APK hoặc AAB để kiểm chữ ký',
   hookToggleTitle: (on, event) => (on ? `Bật lại hook ${event} này?` : `Tắt hook ${event} này?`),
   hookToggleDetail: (on, file, diff) =>
     `Orrery sẽ ghi ${file}. Các khoá khác giữ nguyên; file cũ được giữ thành ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' Hook được cất trong Orrery để bật lại sau.'}

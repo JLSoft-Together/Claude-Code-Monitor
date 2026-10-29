@@ -58,6 +58,7 @@ const EnvCheckDialog = defineAsyncComponent(() => import('./EnvCheckDialog.vue')
 const I18nScanDialog = defineAsyncComponent(() => import('./I18nScanDialog.vue'))
 const PermAdvisorDialog = defineAsyncComponent(() => import('./PermAdvisorDialog.vue'))
 const ApkSizeDialog = defineAsyncComponent(() => import('./ApkSizeDialog.vue'))
+const ReleaseCheckDialog = defineAsyncComponent(() => import('./ReleaseCheckDialog.vue'))
 const StringsDialog = defineAsyncComponent(() => import('./StringsDialog.vue'))
 const LibUpdatesDialog = defineAsyncComponent(() => import('./LibUpdatesDialog.vue'))
 const ContextSourcesDialog = defineAsyncComponent(() => import('./ContextSourcesDialog.vue'))
@@ -916,6 +917,16 @@ watch(
     const pane = workspace.active
     const own = !open.cwd && pane && isTerm(pane) ? pane : null
     ctxTarget.value = open.cwd ? { cwd: open.cwd, terminalId: open.terminalId } : { cwd: (own && workCwd(own)) ?? null, terminalId: own?.terminalId ?? null }
+  },
+  { immediate: true },
+)
+const releaseRoot = ref<string | null>(null)
+watch(
+  () => ui.releaseCheck,
+  (open) => {
+    if (!open) return
+    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
+    releaseRoot.value = dir ? (rootOf(dir) ?? dir) : null
   },
   { immediate: true },
 )
@@ -2484,6 +2495,7 @@ onBeforeUnmount(() => {
     <PermAdvisorDialog v-if="ui.permAdvisor && visible" :root="permRoot" @close="ui.permAdvisor = null" />
     <ApkSizeDialog v-if="ui.apkSize && visible" :path="ui.apkSize.path" :root="ui.apkSize.root" @close="ui.apkSize = null" />
     <StringsDialog v-if="ui.stringsTable && visible" :root="stringsRoot" :focus="ui.stringsTable.focus" @close="ui.stringsTable = null" />
+    <ReleaseCheckDialog v-if="ui.releaseCheck && visible" :root="releaseRoot" @close="ui.releaseCheck = null" />
     <LibUpdatesDialog v-if="ui.libUpdates && visible" :path="ui.libUpdates.path" :root="ui.libUpdates.root" @close="ui.libUpdates = null" />
     <ContextSourcesDialog v-if="ui.contextSources && visible" :cwd="ctxTarget.cwd" :terminal-id="ctxTarget.terminalId" @close="ui.contextSources = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />

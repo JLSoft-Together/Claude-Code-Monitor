@@ -31,6 +31,8 @@ import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
 import { ScreenRecorder } from './devices/recorder'
 import { registerApkIpc } from './apk/ipc'
+import { registerReleaseIpc } from './releaseCheck/ipc'
+import { findSignTools } from './releaseCheck/sign'
 import { LibChecker } from './libs/checker'
 import { registerLibsIpc } from './libs/ipc'
 import { HooksManager } from './claudeHooks/manager'
@@ -131,6 +133,7 @@ let deviceManager: DeviceManager | null = null
 let recorder: ScreenRecorder | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
+let disposeRelease: (() => void) | null = null
 let disposeLibs: (() => void) | null = null
 let disposeHooks: (() => void) | null = null
 let appData: AppDataInspector | null = null
@@ -238,6 +241,8 @@ function stopPreview(): Promise<void> {
   disposeDevices = null
   disposeApk?.()
   disposeApk = null
+  disposeRelease?.()
+  disposeRelease = null
   disposeLibs?.()
   disposeLibs = null
   disposeHooks?.()
@@ -1384,6 +1389,25 @@ async function ready(): Promise<void> {
     dialog,
     getWindow: () => mainWindow,
     dataDir: DATA_DIR,
+  })
+  // E2E: the native file picker cannot be driven over CDP.
+  const e2eReleaseArtifact = process.env.CCM_E2E_RELEASE_ARTIFACT || null
+  disposeRelease = registerReleaseIpc({
+    ipcMain,
+    isAppFrame,
+    resolveDir: (dir) => previewGate.resolveDir(dir),
+    dataDir: DATA_DIR,
+    pickArtifact: async (event, near) => {
+      if (e2eReleaseArtifact) return e2eReleaseArtifact
+      const opts: Electron.OpenDialogOptions = { title: t.releasePickTitle, defaultPath: near, properties: ['openFile'], filters: [{ name: 'Android', extensions: ['apk', 'aab'] }] }
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+    findTools: () => {
+      const s = runManager?.getSettings() ?? { androidSdk: null, jdk: null }
+      return findSignTools({ jdkSetting: s.jdk, sdkSetting: s.androidSdk, env: process.env, platform: process.platform, home: os.homedir() })
+    },
   })
   layoutIpc = wireLayout({
     ipcMain,

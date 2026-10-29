@@ -41,6 +41,7 @@ import {
   ShieldCheck,
   Package,
   Layers,
+  ClipboardCheck,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
@@ -49,6 +50,7 @@ import { hasDevices } from '../lib/devices'
 import { hasEnvCheck, hasExplorer, hasI18nScan, hasLog } from '../lib/preview'
 import { hasPermAdvisor } from '../lib/permAdvisor'
 import { hasApkSize } from '../lib/apkSize'
+import { hasReleaseCheck } from '../lib/releaseCheck'
 import { hasCtxSources } from '../lib/ctxSources'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
@@ -254,6 +256,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.apkSize = { path: null, root: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasReleaseCheck
+      ? [
+          {
+            id: 'c:release-check',
+            group: 'actions' as const,
+            label: t('releaseCheck.palette'),
+            sub: t('releaseCheck.paletteSub'),
+            icon: ClipboardCheck,
+            run: () => {
+              ui.setView('workspace')
+              ui.releaseCheck = { dir: null }
             },
           },
         ]

@@ -237,6 +237,10 @@ export const useUiStore = defineStore('ui', () => {
   const stringsTable = ref<{ dir: string | null; focus: string | null } | null>(null)
   /** Library updates (LibUpdatesDialog.vue): a dependency file + its project. */
   const libUpdates = ref<{ path: string; root: string } | null>(null)
+  /** Pre-release check (ReleaseCheckDialog.vue): a folder, or null = the focused pane's project. */
+  const releaseCheck = ref<{ dir: string | null } | null>(null)
+  /** Set by Ctrl+K "Find a past session"; History focuses its prompt search and clears it. */
+  const promptSearchFocus = ref(false)
   /** Background context of a session (ContextSourcesDialog.vue): its folder + monitor terminal, or nulls = the focused pane. */
   const contextSources = ref<{ cwd: string | null; terminalId: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
@@ -517,6 +521,8 @@ export const useUiStore = defineStore('ui', () => {
     apkSize,
     stringsTable,
     libUpdates,
+    releaseCheck,
+    promptSearchFocus,
     contextSources,
     tourOpen,
     setupOpen,

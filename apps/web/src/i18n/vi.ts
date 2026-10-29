@@ -55,6 +55,7 @@ import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
+import releaseV75 from './release-v75'
 import devicesV75 from './devices-v75'
 import devtoolsV75 from './devtools-v75'
 
@@ -95,6 +96,7 @@ const vi: typeof en = {
   ...hooksV74.vi,
   ...libsV75.vi,
   ...memdocV75.vi,
+  ...releaseV75.vi,
   ...devicesV75.vi,
   ...devtoolsV75.vi,
   app: {

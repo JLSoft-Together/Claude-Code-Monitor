@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   Check,
   ChevronDown,
+  ClipboardCheck,
   CirclePlay,
   Gauge,
   LoaderCircle,
@@ -19,11 +20,12 @@ import {
 } from 'lucide-vue-next'
 import { isRunLive, type RunConfig, type RunDevice, type RunEmulator, type RunKind, type RunState } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
+import { hasReleaseCheck } from '../../lib/releaseCheck'
 import { projectMark } from '../../lib/runUi'
 import { RUN_BUSY_STATES, useRunStore } from '../../stores/run'
 
 const props = defineProps<{ root: string; blocked: boolean }>()
-const emit = defineEmits<{ editConfigs: []; toolchain: [] }>()
+const emit = defineEmits<{ editConfigs: []; toolchain: []; releaseCheck: [] }>()
 
 const { t } = useI18n()
 const run = useRunStore()
@@ -208,6 +210,10 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
           <button type="button" role="menuitem" :class="MENU_ROW" data-run-toolchain-open @click="(close(true), emit('toolchain'))">
             <Stethoscope :size="14" class="shrink-0 text-ink-muted group-focus-visible:text-on-accent" aria-hidden="true" />
             <span class="truncate">{{ t('run.config.toolchain') }}</span>
+          </button>
+          <button v-if="hasReleaseCheck" type="button" role="menuitem" :class="MENU_ROW" data-run-release-check-open @click="(close(true), emit('releaseCheck'))">
+            <ClipboardCheck :size="14" class="shrink-0 text-ink-muted group-focus-visible:text-on-accent" aria-hidden="true" />
+            <span class="truncate">{{ t('releaseCheck.menu') }}</span>
           </button>
         </div>
       </Transition>

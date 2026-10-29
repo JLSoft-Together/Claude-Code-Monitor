@@ -1,0 +1,11 @@
+[versions]
+agp = "8.7.0"
+ads = "23.6.0"
+billing = "7.1.1"
+
+[libraries]
+play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "ads" }
+billing = { module = "com.android.billingclient:billing-ktx", version.ref = "billing" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
