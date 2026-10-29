@@ -272,6 +272,7 @@ Note: the internal tool `SubagentHandback` appears briefly as a subagent's curre
 | `system/compact_boundary` `compactMetadata.{trigger, preTokens, postTokens}` | `terminal.compacted` activity, `compactions` count, context reset to `postTokens` | `content`, `preservedSegment`, `preservedMessages`, `logicalParentUuid` |
 | `gitBranch` on message records | Latest → `TerminalSession.gitBranch` (`HEAD` = detached) | — |
 | `message.usage` of the latest assistant record | `Agent.contextTokens` = input + cache write + cache read | — |
+| `message.usage` of the first assistant record in the main transcript (v72) | `Agent.firstContextTokens`, same sum: the session's starting context | — |
 | `cost-state` `{totalCostUSD, modelUsage[model]{inputTokens, outputTokens, thinkingTokens, cacheRead/CreationInputTokens, webSearchRequests, costUSD}, totalLinesAdded/Removed, total*Duration}` | Not yet (F4/F6) | — |
 
 Context window: `message.model` never carries `[1m]` (only `cost-state.modelUsage` keys do), and Claude Code 2.1.289 runs Opus/Sonnet 4.6+ and 5.x with a 1M window even when settings say plain `opus` (verified 2026-10-08: terminal showed ~9 % while the old 200k guess showed 44 % for the same ~88k tokens). `contextWindowOf` (`packages/shared/src/context.ts`) resolves, in order:
@@ -671,6 +672,10 @@ Since v72 the hook bridge also registers `PermissionRequest` (`async: true`, so 
 Desktop `preview/permRules.ts` reads it only when the Permission prompts dialog opens (`ccm:perm-read`): last 7 days, `cwd` inside the project, re-validated. It also reads the rule strings of `<project>/.claude/settings.json` and `settings.local.json`. Ticked rules go through `ccm:perm-allow`: validated (`parsePermRule`, never `isRiskyPermRule`: bare / `*` shell rules, metacharacters, `rm`, `curl`, interpreters, `git push` …), merged into `permissions.allow` of `settings.local.json` only (other keys and indent kept, `.ccm-backup` first) after a native confirm showing the exact line diff; refused when the file changed meanwhile. `settings.json` is never written.
 
 Deviation: the hook gives the moment a dialog opens but not when it is answered, so the advisor shows counts and last time, no total waiting time. Auto-mode denials come from the existing `deniedTools` of open sessions.
+
+### Background context sources (v72, verified 2026-10-29 in the installed Claude Code 2.1.294 binary)
+
+The bundle's memory types are `User` (`<config>/CLAUDE.md`), `Project` (`CLAUDE.md`), `Local` (`CLAUDE.local.md`), `Managed` (policy folder `CLAUDE.md`) and `AutoMem`; rules folders are `<project>/.claude/rules` and `<config>/rules`; its own config-audit text lists `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md` in the project root and ancestors, `.claude/CLAUDE.md`, `.claude/AGENTS.md`, `~/.claude/CLAUDE.md` and the files they import. Desktop `preview/contextSources.ts` (`ccm:ctx-sources`, run when the dialog opens, never polled) lists exactly those that exist for the session folder and its ancestors (nested sub-folder files load on demand and are left out), `@imports` up to 5 hops (text outside code), `<config>/projects/<slug>/memory/MEMORY.md` (start) and the other memory files (on demand), `SKILL.md` of user / project skills (name + description until used), `.mcp.json`, MCP server names per scope and enabled plugin names. Only paths, sizes and line counts reach the page. The dialog shows sizes in KB and labels them as file size, not tokens; the only token numbers are `firstContextTokens` / `contextTokens` from transcript usage. The policy folder path (`C:\Program Files\ClaudeCode`, `/Library/Application Support/ClaudeCode`, `/etc/claude-code`) follows the public docs; it was not seen in the bundle as a literal.
 
 ## 12. Open items
 

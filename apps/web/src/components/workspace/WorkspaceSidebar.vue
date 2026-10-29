@@ -15,6 +15,7 @@ import { motionMs, pinLeaving, retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { hasChanges, hasEnvCheck, hasExplorer, hasI18nScan, hasLog, hasPreview, hasReveal, pickFile, revealPath } from '../../lib/preview'
 import { hasPermAdvisor } from '../../lib/permAdvisor'
+import { hasCtxSources } from '../../lib/ctxSources'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import type { RailDragSource } from '../../lib/rail/railDrag'
 import { rowLines, tabStopOf, type RailCheckout, type RailCluster, type RailGroup, type RailRow } from '../../lib/rail/railModel'
@@ -22,7 +23,7 @@ import { emptyMenu, groupMenu, isMenuKey, projectMenu as buildProjectMenu, rowMe
 import { leaves, type SplitDir } from '../../lib/splitLayout'
 import { useRunStore } from '../../stores/run'
 import { useUiStore } from '../../stores/ui'
-import { isTerm, useWorkspaceStore, workCwd, type SplitChoice } from '../../stores/workspace'
+import { isTerm, presetOf, useWorkspaceStore, workCwd, type SplitChoice } from '../../stores/workspace'
 import ContextMenu from '../ui/ContextMenu.vue'
 import ProjectMenu from './ProjectMenu.vue'
 import RailClusterView from './rail/RailClusterView.vue'
@@ -374,6 +375,7 @@ function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): vo
       explorer: hasExplorer,
       agent: isTerm(row.pane) && (row.kind === 'agent' || !!row.pane.terminalId),
       linked: !!row.pane.terminalId,
+      context: hasCtxSources && isTerm(row.pane) && presetOf(row.pane) === 'claude',
       others: tab ? leaves(tab.root).length - 1 : 0,
       targets: rail.projectTabs(row.tabKey),
       compact: compactFlow.stateOf(row.pane),
@@ -418,6 +420,9 @@ function pickRow(id: string, row: RailRow, cwd: string | null): void {
       break
     case 'explorer':
       emit('explorer', row.paneKey)
+      break
+    case 'context':
+      if (cwd) ui.contextSources = { cwd, terminalId: row.pane.terminalId ?? null }
       break
     case 'monitor':
       if (row.pane.terminalId) {

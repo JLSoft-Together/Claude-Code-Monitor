@@ -57,6 +57,7 @@ const PlanBoard = defineAsyncComponent(() => import('./PlanBoard.vue'))
 const EnvCheckDialog = defineAsyncComponent(() => import('./EnvCheckDialog.vue'))
 const I18nScanDialog = defineAsyncComponent(() => import('./I18nScanDialog.vue'))
 const PermAdvisorDialog = defineAsyncComponent(() => import('./PermAdvisorDialog.vue'))
+const ContextSourcesDialog = defineAsyncComponent(() => import('./ContextSourcesDialog.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -891,6 +892,17 @@ watch(
     if (!open) return
     const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
     i18nRoot.value = dir ? (rootOf(dir) ?? dir) : null
+  },
+  { immediate: true },
+)
+const ctxTarget = ref<{ cwd: string | null; terminalId: string | null }>({ cwd: null, terminalId: null })
+watch(
+  () => ui.contextSources,
+  (open) => {
+    if (!open) return
+    const pane = workspace.active
+    const own = !open.cwd && pane && isTerm(pane) ? pane : null
+    ctxTarget.value = open.cwd ? { cwd: open.cwd, terminalId: open.terminalId } : { cwd: (own && workCwd(own)) ?? null, terminalId: own?.terminalId ?? null }
   },
   { immediate: true },
 )
@@ -2457,6 +2469,7 @@ onBeforeUnmount(() => {
     <EnvCheckDialog v-if="ui.envCheck && visible" :root="envRoot" @close="ui.envCheck = null" />
     <I18nScanDialog v-if="ui.i18nScan && visible" :root="i18nRoot" @close="ui.i18nScan = null" />
     <PermAdvisorDialog v-if="ui.permAdvisor && visible" :root="permRoot" @close="ui.permAdvisor = null" />
+    <ContextSourcesDialog v-if="ui.contextSources && visible" :cwd="ctxTarget.cwd" :terminal-id="ctxTarget.terminalId" @close="ui.contextSources = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

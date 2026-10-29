@@ -27,6 +27,7 @@ import { NotesStore } from './notes'
 import { checkEnv, revealEnv } from './envCheck'
 import { scanI18n } from './i18nScan'
 import { readPermissions, writeAllow, type ConfirmAllow } from './permRules'
+import { contextSources, defaultCtxEnv } from './contextSources'
 import { LocalHistory } from './localHistory'
 import { Formatter } from './format'
 import { MAX_WRITE_BYTES, writeTextFile } from './fileWrite'
@@ -118,7 +119,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan', 'ccm:perm-read', 'ccm:perm-allow',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan', 'ccm:perm-read', 'ccm:perm-allow', 'ccm:ctx-sources',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -764,6 +765,11 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   ipcMain.handle('ccm:perm-read', async (event, root: unknown) => {
     const real = isAppFrame(event) ? await checkDir(root) : null
     return real ? readPermissions(real, deps.dataDir ?? null) : { ok: false, error: 'denied' }
+  })
+  // Paths, sizes and line counts only; CLAUDE.md / memory text stays in main.
+  ipcMain.handle('ccm:ctx-sources', async (event, cwd: unknown) => {
+    const real = isAppFrame(event) ? await checkDir(cwd) : null
+    return real ? contextSources(real, defaultCtxEnv()) : { ok: false, error: 'denied' }
   })
   let permWriting = false
   ipcMain.handle('ccm:perm-allow', async (event, req: unknown) => {

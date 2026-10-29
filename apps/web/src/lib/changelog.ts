@@ -39,6 +39,7 @@ export const CHANGELOG: Release[] = [
       { en: 'Fill a crash into the agent: exception, project frames, log before, secrets masked', vi: 'Điền crash vào agent: exception, frame của dự án, log trước đó, đã che bí mật' },
       { en: 'Permission prompts per project: repeated asks and allow rules to tick', vi: 'Hỏi quyền theo dự án: các lần hỏi lặp lại và luật allow để tích chọn' },
       { en: 'Ticked rules go to settings.local.json after a confirm with the exact diff', vi: 'Luật đã tích được ghi vào settings.local.json sau khi xác nhận đúng phần thay đổi' },
+      { en: 'Background context of a session: first-reply tokens and CLAUDE.md, memory, skills sizes', vi: 'Ngữ cảnh nền của session: token lượt đầu và kích thước CLAUDE.md, memory, skill' },
     ],
   },
   {

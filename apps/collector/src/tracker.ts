@@ -400,7 +400,7 @@ export class SessionTracker {
     state: TranscriptState,
     model: string | undefined,
     main = false,
-  ): { contextTokens?: number; contextWindow?: number; contextPct?: number } {
+  ): { contextTokens?: number; contextWindow?: number; contextPct?: number; firstContextTokens?: number } {
     if (state.contextTokens === undefined) return {}
     const sessionId = this.record.sessionId
     const contextWindow = contextWindowOf(model, {
@@ -418,6 +418,7 @@ export class SessionTracker {
       contextTokens: state.contextTokens,
       contextWindow,
       contextPct: raw === undefined ? undefined : Math.round(usablePct(raw, buffer) * 10) / 10,
+      ...(main && state.firstContext !== undefined ? { firstContextTokens: state.firstContext } : {}),
     }
   }
 

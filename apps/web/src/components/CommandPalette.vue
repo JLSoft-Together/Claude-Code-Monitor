@@ -39,6 +39,7 @@ import {
   KeyRound,
   Sparkles,
   ShieldCheck,
+  Layers,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
@@ -46,6 +47,7 @@ import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
 import { hasEnvCheck, hasExplorer, hasI18nScan, hasLog } from '../lib/preview'
 import { hasPermAdvisor } from '../lib/permAdvisor'
+import { hasCtxSources } from '../lib/ctxSources'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -239,6 +241,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.permAdvisor = { dir: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasCtxSources
+      ? [
+          {
+            id: 'c:context',
+            group: 'actions' as const,
+            label: t('ctxSources.palette'),
+            sub: t('ctxSources.paletteSub'),
+            icon: Layers,
+            run: () => {
+              ui.setView('workspace')
+              ui.contextSources = { cwd: null, terminalId: null }
             },
           },
         ]

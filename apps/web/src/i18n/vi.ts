@@ -41,6 +41,7 @@ import whatsNewV71 from './whats-new-v71'
 import devicesV72 from './devices-v72'
 import runV72 from './run-v72'
 import permV72 from './perm-v72'
+import contextV72 from './context-v72'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -65,6 +66,7 @@ const vi: typeof en = {
   ...devicesV72.vi,
   ...runV72.vi,
   ...permV72.vi,
+  ...contextV72.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

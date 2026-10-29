@@ -92,6 +92,8 @@ export interface Agent {
   totalTokens?: number
   /** Prompt size of the latest API call (input + cache write + cache read). */
   contextTokens?: number
+  /** Main agent: prompt size of the first reply in its transcript (same sum as `contextTokens`), the session's starting context. */
+  firstContextTokens?: number
   contextWindow?: number
   /** Percent of the room before auto-compact, as the status line shows it (Claude Code's own % when the bridge reported it). */
   contextPct?: number

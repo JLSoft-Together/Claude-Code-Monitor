@@ -87,5 +87,6 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 ## v66 / v67 (2026-10-29)
 
 - `heatmap.get` (client → server) → `heatmap.data {payload: UsageHeatmap}` (direct reply, not batched).
+- `Agent.firstContextTokens` (v72, main only): prompt size of the first reply in the transcript.
 - `TerminalSession` optional `compactingSince`, `compactTrigger` (`manual` | `auto`), `deniedCount`, `deniedTools` (≤ 5 tool names) — from the hook bridge, absent when it is off.
 - `pty.ts`: `wt.add.copy?: string[]` (glob list), `wt.added.copied?: string[]` (paths copied).

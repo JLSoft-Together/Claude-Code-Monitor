@@ -217,7 +217,7 @@ describe('Monitor with fixture claude root', () => {
     )
     await monitor.reconcile()
     main = store.getAgent(main.id)!
-    expect(main).toMatchObject({ contextTokens: 250_030, contextWindow: 1_000_000 })
+    expect(main).toMatchObject({ contextTokens: 250_030, contextWindow: 1_000_000, firstContextTokens: 100 })
     expect(store.snapshot().terminals[0]).toMatchObject({ permissionMode: 'default', gitBranch: 'feat/x' })
 
     await appendFile(
@@ -227,6 +227,7 @@ describe('Monitor with fixture claude root', () => {
     )
     await monitor.reconcile()
     expect(store.getAgent(main.id)!.contextTokens).toBe(12_000)
+    expect(store.getAgent(main.id)!.firstContextTokens).toBe(100)
     expect(store.snapshot().terminals[0]).toMatchObject({ permissionMode: 'bypassPermissions', compactions: 1 })
     const kinds = store.snapshot().activity.map((a) => a.kind)
     expect(kinds).toContain('terminal.mode')

@@ -84,6 +84,8 @@ export interface RowMenuCtx {
   agent: boolean
   /** Linked monitor terminal (agent process seen by the collector). */
   linked: boolean
+  /** Claude pane with desktop `ccm:ctx-sources`: offers "Background context…". */
+  context?: boolean
   /** Other panes in the same tab. */
   others: number
   targets: Array<{ key: string; title: string }>
@@ -115,6 +117,7 @@ export function rowMenu(ctx: RowMenuCtx, t: T): MenuEntry[] {
   ]
   if (ctx.explorer) entries.push({ id: 'explorer', label: t(`${M}showExplorer`), disabled: !ctx.cwd })
   if (ctx.agent) entries.push({ id: 'monitor', label: t(`${M}showInMonitor`), disabled: !ctx.linked, hint: ctx.linked ? undefined : t(`${M}notLinked`) })
+  if (ctx.context && ctx.cwd) entries.push({ id: 'context', label: t('ctxSources.open') })
   const compact = compactEntry(ctx.compact, t)
   if (compact.length) entries.push({ separator: true }, ...compact)
   entries.push(

@@ -209,6 +209,8 @@ export class TranscriptState {
   cacheAt?: string
   lastAt?: string
   contextTokens?: number
+  /** Prompt size of the first reply in this transcript: system prompt, tools, CLAUDE.md / memory and the first message. */
+  firstContext?: number
   peakContext = 0
   compactions = 0
   permissionMode?: string
@@ -229,6 +231,7 @@ export class TranscriptState {
         case 'usage':
           this.usage.set(s.messageId, { input: s.input, output: s.output, cacheRead: s.cacheRead })
           this.contextTokens = s.input + s.cacheRead
+          this.firstContext ??= this.contextTokens
           this.peakContext = Math.max(this.peakContext, this.contextTokens)
           // A read-only reply carries no tier; it still refreshes the cache, so keep the last written tier.
           if (s.ttl) this.cacheTtl = s.ttl
