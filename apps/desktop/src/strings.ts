@@ -1,3 +1,5 @@
+import type { BackupSectionId } from '@ccm/shared'
+
 export type RunKind = 'amend' | 'ff' | 'squash' | 'restore' | 'abort' | 'take'
 
 const clip = (s: string): string => (s.length > 300 ? `${s.slice(0, 300)}…` : s)
@@ -155,6 +157,21 @@ The app is force-stopped first, then the file is written on the device. The firs
   avdWipeTitle: (name: string) => `Wipe all data of the emulator ${name}?`,
   avdWipeDetail: 'Apps, accounts, files and snapshots inside this virtual device are erased, then it starts like new. This cannot be undone.',
   avdWipeConfirm: 'Wipe and start',
+  backupApplyTitle: (n: number) => (n === 1 ? 'Import 1 section and restart Orrery?' : `Import ${n} sections and restart Orrery?`),
+  backupApplyDetail: (names: string[]) =>
+    `${names.map((n) => `• ${n}`).join('\n')}\n\nThese values replace the ones on this machine. The current setup is saved first in the backups folder of the Orrery data folder. Orrery restarts to finish.`,
+  backupApplyConfirm: 'Import and restart',
+  backupSections: {
+    appearance: 'Appearance and fonts',
+    settings: 'Settings and notifications',
+    workspace: 'Workspace tabs and layouts',
+    notes: 'Notes, prompts and bookmarks',
+    names: 'Names, aliases and favourites',
+    devices: 'Remembered Android devices',
+    run: 'Run settings and templates',
+    updates: 'Update preferences',
+    github: 'GitHub account names (tokens are added again)',
+  } as Record<BackupSectionId, string>,
 }
 
 const vi: typeof en = {
@@ -308,6 +325,21 @@ ${key}: ${clip(before)} → ${clip(after)}
   avdWipeTitle: (name) => `Xoá toàn bộ dữ liệu của emulator ${name}?`,
   avdWipeDetail: 'Ứng dụng, tài khoản, file và snapshot trong thiết bị ảo này sẽ bị xoá, rồi nó khởi động như mới. Không hoàn tác được.',
   avdWipeConfirm: 'Xoá và khởi động',
+  backupApplyTitle: (n) => `Nhập ${n} mục và khởi động lại Orrery?`,
+  backupApplyDetail: (names) =>
+    `${names.map((n) => `• ${n}`).join('\n')}\n\nCác giá trị này sẽ thay giá trị trên máy này. Cấu hình hiện tại được lưu trước vào thư mục backups trong thư mục dữ liệu Orrery. Orrery sẽ khởi động lại để hoàn tất.`,
+  backupApplyConfirm: 'Nhập và khởi động lại',
+  backupSections: {
+    appearance: 'Giao diện và font',
+    settings: 'Cài đặt và thông báo',
+    workspace: 'Tab và bố cục Workspace',
+    notes: 'Ghi chú, prompt và bookmark',
+    names: 'Tên gọi, alias và yêu thích',
+    devices: 'Thiết bị Android đã nhớ',
+    run: 'Cài đặt Run và mẫu cấu hình',
+    updates: 'Tuỳ chọn cập nhật',
+    github: 'Tên tài khoản GitHub (cần thêm lại token)',
+  },
 }
 
 export type Strings = typeof en

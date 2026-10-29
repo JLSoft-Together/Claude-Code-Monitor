@@ -101,3 +101,4 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 ## v74 (2026-10-29)
 
 - `emulators.ts` — `AvdInfo` (name, displayName, api, abi, device, tag, serial when running), `AvdErrorCode` = `DevErrorCode` + emulator-missing / emulator-failed / avd-running / avd-not-running, `AvdList`, `AvdResult`, `AvdStartMode` normal / cold / wipe. Desktop `devices/emulators.ts` answers `ccm:avd-*`, web `stores/emulators.ts`.
+- `backup.ts` — `BACKUP_SECTIONS` / `BackupSectionId`, `BackupSectionInfo` (count, missingPaths), `BackupErrorCode`, `BackupExportResult`, `BackupPreview` (token), `BackupApplyResult` (local entries + GitHub logins). Desktop `backup/*` over `ccm:backup-*`, web `BackupSettings.vue`.

@@ -26,6 +26,8 @@ import { hasGitHub } from '../lib/github'
 import { hasUpdater } from '../lib/update'
 import { useUpdateStore } from '../stores/update'
 import UpdateSettings from './UpdateSettings.vue'
+import BackupSettings from './BackupSettings.vue'
+import { hasBackup } from '../lib/backup'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ThemePicker from './ui/ThemePicker.vue'
@@ -614,6 +616,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           </section>
 
           <UpdateSettings v-if="hasUpdater && ui.settingsOpen" />
+      <BackupSettings v-if="hasBackup && ui.settingsOpen" />
+
           <section aria-labelledby="set-help" class="mt-6">
             <h3 id="set-help" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
             <div class="ccm-group overflow-hidden">

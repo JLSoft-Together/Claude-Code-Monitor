@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
     reveal: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-reveal'),
     onState: (handler: (state: unknown) => void): (() => void) => subscribe('ccm:update-event', handler),
   },
+  backup: {
+    export: (): Promise<unknown> => ipcRenderer.invoke('ccm:backup-export'),
+    pick: (): Promise<unknown> => ipcRenderer.invoke('ccm:backup-pick'),
+    apply: (token: string, sections: string[]): Promise<unknown> => ipcRenderer.invoke('ccm:backup-apply', token, sections),
+    relaunch: (): Promise<unknown> => ipcRenderer.invoke('ccm:backup-relaunch'),
+  },
   /** Toast click: the page answers whether a workspace pane holds that session. */
   onFocus: (handler: (terminalId: string) => boolean): void => {
     ipcRenderer.on('ccm:focus', (_event, terminalId: unknown) => {

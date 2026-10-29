@@ -54,6 +54,8 @@ import { prepareMac, prepareNsis, preparePortable, type Prepared } from './updat
 import { registerUpdateIpc } from './update/ipc'
 import { UpdateManager } from './update/manager'
 import { installKind, platformKind } from './update/pick'
+import { BackupService } from './backup/service'
+import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
 const APP_ID = 'dev.ccm.monitor'
@@ -124,6 +126,9 @@ let updates: UpdateManager | null = null
 let disposeUpdate: (() => void) | null = null
 // Set once the owner confirmed "Restart to update": the quit skips its own confirm and starts the installer on the way out.
 let updateLaunch: (() => void) | null = null
+let backups: BackupService | null = null
+let disposeBackup: (() => void) | null = null
+let ghStore: GitHubAccounts | null = null
 let sqlJs: Promise<SqlJsStatic> | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
@@ -221,6 +226,8 @@ function stopPreview(): Promise<void> {
   disposeAppData = null
   disposeUpdate?.()
   disposeUpdate = null
+  disposeBackup?.()
+  disposeBackup = null
   updates?.dispose()
   appData?.closeAll()
   appData = null
@@ -749,6 +756,57 @@ function launchUpdate(): void {
   launch?.()
 }
 
+/** The page's `ccm.*` localStorage; a page that does not answer in 3 s gives an empty snapshot. */
+function readPageLocal(contents: Electron.WebContents): Promise<Record<string, unknown>> {
+  return Promise.race([
+    contents.executeJavaScript(LOCAL_SNAPSHOT_JS, false).then((v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {})),
+    new Promise<Record<string, unknown>>((resolve) => setTimeout(() => resolve({}), 3_000)),
+  ])
+}
+
+function wireBackup(): void {
+  const service = backups
+  if (!service) return
+  const winOf = (event: Electron.IpcMainInvokeEvent): BrowserWindow | null => BrowserWindow.fromWebContents(event.sender)
+  // E2E: native file dialogs cannot be driven over CDP, so a fixed path stands in for both.
+  const e2eFile = process.env.CCM_E2E_BACKUP_FILE || null
+  disposeBackup = registerBackupIpc({
+    ipcMain,
+    isAppFrame,
+    service,
+    readLocal: readPageLocal,
+    documentsDir: app.getPath('documents'),
+    saveDialog: async (event, defaultPath) => {
+      if (e2eFile) return e2eFile
+      const opts: Electron.SaveDialogOptions = { defaultPath, filters: [{ name: 'Orrery backup', extensions: ['json'] }] }
+      const win = winOf(event)
+      const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      return res.canceled ? null : (res.filePath ?? null)
+    },
+    openDialog: async (event) => {
+      if (e2eFile) return e2eFile
+      const opts: Electron.OpenDialogOptions = { properties: ['openFile'], filters: [{ name: 'Orrery backup', extensions: ['json'] }] }
+      const win = winOf(event)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+    confirmApply: (event, sections) =>
+      confirmBox(winOf(event), {
+        type: 'warning',
+        message: t.backupApplyTitle(sections.length),
+        detail: t.backupApplyDetail(sections.map((s) => t.backupSections[s])),
+        buttons: [t.backupApplyConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+    relaunch: () => {
+      app.relaunch(PORTABLE_EXE ? { execPath: PORTABLE_EXE } : undefined)
+      app.quit()
+    },
+  })
+}
+
 /** v74 in-app update from GitHub Releases; dev builds only check and open the page unless CCM_UPDATE_FEED points at a test feed. */
 function createUpdates(): UpdateManager {
   const testFeed = process.env.CCM_UPDATE_FEED
@@ -776,6 +834,7 @@ function createUpdates(): UpdateManager {
     restart: async (launch, version) => {
       if (!(await confirmQuit(true))) return false
       const page = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
+      backups?.writeAuto('pre-update', version, page ? await readPageLocal(page).catch(() => ({})) : {})
       updateLaunch = launch
       app.quit()
       return true
@@ -800,6 +859,9 @@ async function ready(): Promise<void> {
   sendAppKey()
   registerLinks()
   for (const dir of [DATA_DIR, app.getPath('logs')]) if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  backups = new BackupService({ dataDir: DATA_DIR, app: app.getVersion(), platform: process.platform, github: () => ghStore?.list() ?? [] })
+  // An import staged before the restart lands before the collector and the main stores read their files.
+  backups.applyPending()
   host = new CollectorHost({
     script: path.join(__dirname, 'collector.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
     port: PORT,
@@ -938,6 +1000,8 @@ async function ready(): Promise<void> {
     crypt: { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) },
     fetch: (url, init) => net.fetch(url, init),
   })
+  ghStore = github
+  wireBackup()
   disposeGitHub = registerGitHubIpc({
     ipcMain,
     isAppFrame,

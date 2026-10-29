@@ -49,6 +49,7 @@ import appDataV73 from './appdata-v73'
 import shellMarksV73 from './shellmarks-v73'
 import updateV74 from './update-v74'
 import emulatorsV74 from './emulators-v74'
+import backupV74 from './backup-v74'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -81,6 +82,7 @@ const vi: typeof en = {
   ...shellMarksV73.vi,
   ...updateV74.vi,
   ...emulatorsV74.vi,
+  ...backupV74.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
