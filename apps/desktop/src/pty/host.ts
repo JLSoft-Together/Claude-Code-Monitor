@@ -23,7 +23,7 @@ import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, 
 import { copySetupFiles } from './wtCopy'
 import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome } from './mcp'
 import { ownersOf, readPidTable } from './owners'
-import { childEnv, clampDim, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
+import { childEnv, clampDim, earlyExitNote, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
 import { writeShellInit } from './shellInit'
 
 // Native module ships outside the bundle (resources/pty in a packaged app), so it is required by path.
@@ -45,6 +45,7 @@ const MCP_READY = writeMcpConfig(MCP_FILE)
 const APP_VERSION = process.env.CCM_APP_VERSION ?? '0'
 const BODY_MAX = 64 * 1024
 const TICKET_TTL_MS = 60_000
+const EARLY_EXIT_MS = 15_000
 const OPEN_REPLY_MS = 8_000
 const OPEN_RATE_MAX = 20
 const OPEN_RATE_MS = 60_000
@@ -154,6 +155,7 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
   const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY, shellNonce })
   const env = { ...childEnv(process.env), ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
+  const startedAt = Date.now()
   const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [], siNonce: spec.integrated && shellNonce ? shellNonce : null }
   proc.onData((d) => {
     s.ring += d
@@ -164,7 +166,9 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
     s.timer ??= setTimeout(() => flush(s), FLUSH_MS)
   })
   // Flush before announcing exit so the last lines are not lost behind the exit banner.
-  proc.onExit(({ exitCode }) => {
+  proc.onExit(({ exitCode, signal }) => {
+    const ms = Date.now() - startedAt
+    if (ms < EARLY_EXIT_MS) console.error(earlyExitNote(preset, exitCode, signal, ms, !sessions.has(s.id)))
     flush(s)
     s.exitCode = exitCode
     s.exitedAt = Date.now()

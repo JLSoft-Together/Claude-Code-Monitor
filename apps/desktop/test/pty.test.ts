@@ -4,7 +4,7 @@ import { branchOfHead, isBranchName, isInside, parseWorktrees, worktreeDest } fr
 import { ownersOf, parsePidTable } from '../src/pty/owners'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
-import { BASH_PROMPT_COMMAND, childEnv, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, PS_SHELL_INTEGRATION, presetCommand, safeShell } from '../src/pty/presets'
+import { BASH_PROMPT_COMMAND, childEnv, earlyExitNote, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, PS_SHELL_INTEGRATION, presetCommand, safeShell } from '../src/pty/presets'
 import { BASH_INIT, BASH_INIT_FILE, writeShellInit, ZSH_FILES, ZSH_INTEGRATION } from '../src/pty/shellInit'
 import { GrantStore, MAX_GRANTS } from '../src/preview/grants'
 
@@ -247,5 +247,13 @@ describe('preview grants', () => {
     } finally {
       rmSync(base, { recursive: true, force: true })
     }
+  })
+})
+
+describe('earlyExitNote', () => {
+  it('prints Windows crash statuses as NTSTATUS hex and flags app kills', () => {
+    expect(earlyExitNote('shell', -1073741502, undefined, 120, false)).toBe('pty early exit: preset=shell code=-1073741502 (0xC0000142) after=120ms')
+    expect(earlyExitNote('claude', 0, 0, 900, true)).toBe('pty early exit: preset=claude code=0 after=900ms killed-by-app')
+    expect(earlyExitNote('codex', 1, 9, 5, false)).toBe('pty early exit: preset=codex code=1 signal=9 after=5ms')
   })
 })

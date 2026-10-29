@@ -152,6 +152,12 @@ function posixHook(shell: string, env: NodeJS.ProcessEnv, initDir?: string): { e
   }
 }
 
+/** pty.log line for a pane whose process ended soon after spawn; Windows crash statuses print as NTSTATUS hex (0xC0000142). */
+export function earlyExitNote(preset: PtyPreset, code: number, signal: number | undefined, ms: number, killed: boolean): string {
+  const hex = code < 0 || code > 0x7fffffff ? ` (0x${(code >>> 0).toString(16).toUpperCase()})` : ''
+  return `pty early exit: preset=${preset} code=${code}${hex}${signal ? ` signal=${signal}` : ''} after=${ms}ms${killed ? ' killed-by-app' : ''}`
+}
+
 export function taskkillPath(env: NodeJS.ProcessEnv): string {
   return path.win32.join(env.SystemRoot ?? env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'taskkill.exe')
 }
