@@ -945,6 +945,18 @@ async function ready(): Promise<void> {
       }
       return confirmBox(mainWindow, opts)
     },
+    confirmPermRules: async (req) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: t.permTitle(req.added.length),
+        detail: t.permDetail(req.file, req.diff),
+        buttons: [t.permConfirm, t.gitDeleteCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(mainWindow, opts)
+    },
     dataDir: DATA_DIR,
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })

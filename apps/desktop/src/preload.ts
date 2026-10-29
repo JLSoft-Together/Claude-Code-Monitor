@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   notesWrite: (root: string, text: string): Promise<unknown> => ipcRenderer.invoke('ccm:notes-write', { root, text }),
   lhList: (file: string): Promise<unknown> => ipcRenderer.invoke('ccm:lh-list', file),
   envCheck: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:env-check', root),
+  permRead: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:perm-read', root),
+  permAllow: (root: string, rules: string[]): Promise<unknown> => ipcRenderer.invoke('ccm:perm-allow', { root, rules }),
   i18nScan: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:i18n-scan', root),
   envReveal: (root: string, file: string, key: string): Promise<unknown> => ipcRenderer.invoke('ccm:env-reveal', { root, file, key }),
   lhRead: (file: string, id: string): Promise<unknown> => ipcRenderer.invoke('ccm:lh-read', { path: file, id }),

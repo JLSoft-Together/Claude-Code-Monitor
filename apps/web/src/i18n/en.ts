@@ -39,6 +39,7 @@ import devicesV61 from './devices-v61'
 import whatsNewV71 from './whats-new-v71'
 import devicesV72 from './devices-v72'
 import runV72 from './run-v72'
+import permV72 from './perm-v72'
 
 export default {
   ...v25.en,
@@ -62,6 +63,7 @@ export default {
   ...whatsNewV71.en,
   ...devicesV72.en,
   ...runV72.en,
+  ...permV72.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

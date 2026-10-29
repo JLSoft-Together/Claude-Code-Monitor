@@ -229,6 +229,8 @@ export const useUiStore = defineStore('ui', () => {
   const envCheck = ref<{ dir: string | null } | null>(null)
   /** Missing translation keys (I18nScanDialog.vue): a folder, or null = the focused pane's project. */
   const i18nScan = ref<{ dir: string | null } | null>(null)
+  /** Repeated permission prompts → allow rules (PermAdvisorDialog.vue): a folder, or null = the focused pane's project. */
+  const permAdvisor = ref<{ dir: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
@@ -503,6 +505,7 @@ export const useUiStore = defineStore('ui', () => {
     devTools,
     envCheck,
     i18nScan,
+    permAdvisor,
     tourOpen,
     setupOpen,
     whatsNewOpen,

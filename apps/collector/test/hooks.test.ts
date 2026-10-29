@@ -39,4 +39,23 @@ describe('hook-bridge.mjs → HookReader', () => {
     run({ session_id: 'not-a-uuid', hook_event_name: 'PreCompact' })
     expect(await new HookReader(path.join(data, 'hooks')).read(Date.now())).toHaveLength(1)
   })
+
+  it('logs permission dialogs with the suggested rule and a safe command prefix only', async () => {
+    const cwd = path.join(data, 'proj')
+    const suggest = (rules: object[]) => [{ type: 'addRules', behavior: 'allow', destination: 'localSettings', rules }]
+    run({ session_id: SID, hook_event_name: 'PermissionRequest', cwd, tool_name: 'Bash', tool_input: { command: 'npm run test -- --token=s3cret' }, permission_suggestions: suggest([{ toolName: 'Bash', ruleContent: 'npm run test:*' }]) })
+    run({ session_id: SID, hook_event_name: 'PermissionRequest', cwd, tool_name: 'Bash', tool_input: { command: 'cat /etc/secret.txt' }, permission_suggestions: suggest([{ toolName: 'Bash', ruleContent: 'cat "/etc/secret.txt"' }]) })
+    run({ session_id: SID, hook_event_name: 'PermissionRequest', cwd, tool_name: 'WebFetch', tool_input: { url: 'https://pub.dev/x?key=secret' }, permission_suggestions: suggest([{ toolName: 'WebFetch', ruleContent: 'domain:pub.dev' }]) })
+    run({ session_id: 'nope', hook_event_name: 'PermissionRequest', cwd, tool_name: 'Edit' })
+    const text = await readFile(path.join(data, 'hooks', 'permission-asks.jsonl'), 'utf8')
+    const rows = text.trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+    expect(JSON.stringify(rows.map(({ cwd: _, ...r }) => r))).not.toMatch(/secret|s3cret|\/etc/)
+    expect(rows.map((r) => [r.tool, r.rules, r.prefix])).toEqual([
+      ['Bash', ['Bash(npm run test:*)'], 'npm run'],
+      ['Bash', [], 'cat'],
+      ['WebFetch', ['WebFetch(domain:pub.dev)'], undefined],
+    ])
+    expect(rows[0]!.cwd).toBe(cwd)
+    expect(await new HookReader(path.join(data, 'hooks')).read(Date.now())).toHaveLength(1)
+  })
 })

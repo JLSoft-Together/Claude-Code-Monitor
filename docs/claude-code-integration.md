@@ -650,7 +650,7 @@ Opt-in: Quick setup → Hook bridge (off by default). After a native confirm tha
 { "hooks": { "PreCompact": [{ "hooks": [{ "type": "command", "command": "<node> \"<app>/bridge/hook-bridge.mjs\"", "async": true }] }] } }
 ```
 
-Same for `PostCompact` and `PermissionDenied`. `async: true` (present in 2.1.294: "runs in background without blocking") keeps Claude Code from waiting on the script.
+Same for `PostCompact`, `PermissionDenied` and (since v72) `PermissionRequest`. `async: true` (present in 2.1.294: "runs in background without blocking") keeps Claude Code from waiting on the script.
 
 Payload keys read (stdin JSON; anything else is dropped unread):
 
@@ -661,6 +661,16 @@ Payload keys read (stdin JSON; anything else is dropped unread):
 | `PermissionDenied` | `session_id`, `hook_event_name`, `tool_name` | `tool_input`, `tool_use_id`, `reason`, `mcp_server` |
 
 `scripts/hook-bridge.mjs` writes `<CCM_DATA_DIR>/hooks/<session uuid>.json` = `{v, sessionId, at, compactingSince?, compactTrigger?, deniedCount, deniedTools (≤ 5 names matching `^[\w.:-]{1,80}$`)}`; it never prints, always exits 0, and ignores a `session_id` that is not a UUID. The collector (`hooks.ts` `HookReader`) reads that folder on the existing extras poll (no new watcher) and copies the fields onto `TerminalSession`; a `compactingSince` older than 15 min (`COMPACT_STALE_MS`) is dropped as a lost `PostCompact`. The UI shows "Compacting · 1m" on the session card / map node and "Auto mode denied N×" with the tool names in the tooltip.
+
+### `PermissionRequest` and the allow-rule advisor (v72, verified 2026-10-29 in the installed Claude Code 2.1.294 binary, keys only)
+
+2.1.289 is no longer installed on this machine; the check ran on the `claude.exe` of `@anthropic-ai/claude-code` 2.1.294 (npm global). `PermissionRequest` is in the hook event list ("When a permission dialog is displayed") with input schema `{ hook_event_name: "PermissionRequest", tool_name, tool_input, permission_suggestions?: PermissionUpdate[], mcp_server? }` plus the common fields (`session_id`, `cwd`, …). `PermissionUpdate` `addRules` = `{ type: "addRules", rules: [{ toolName, ruleContent? }], behavior: "allow" | "deny" | "ask", destination: "userSettings" | "projectSettings" | "localSettings" | "session" | "cliArg" }`: the rules Claude Code itself would add on "Yes, don't ask again". Rule text is `toolName` or `toolName(ruleContent)` (e.g. `Bash(npm run test:*)`, `WebFetch(domain:platform.claude.com)` appears in the bundle); a shell prefix rule ends in `:*` (the bundle also accepts ` *`).
+
+Since v72 the hook bridge also registers `PermissionRequest` (`async: true`, so no decision is returned and the dialog is unchanged; an install from before v72 reads as `partial` until turned on again). Per dialog it appends one line to `<CCM_DATA_DIR>/hooks/permission-asks.jsonl` (rotated to `permission-asks.1.jsonl` past 512 KB): `{ at, cwd, tool, rules, prefix? }`. Kept: `addRules` + `allow` suggestions whose content matches `^[\w .:*@+,~-]{1,120}$` with no word over 40 chars (no paths, quotes, `=`, long tokens), at most 3; for `Bash` / `PowerShell` up to two leading words of `tool_input.command` (`^(?:\./)?[\w.:@+-]{1,30}$`, stops at a flag or path). Dropped unread: the rest of `tool_input`, `mcp_server`, other suggestion types. The collector ignores the file (not a session UUID name).
+
+Desktop `preview/permRules.ts` reads it only when the Permission prompts dialog opens (`ccm:perm-read`): last 7 days, `cwd` inside the project, re-validated. It also reads the rule strings of `<project>/.claude/settings.json` and `settings.local.json`. Ticked rules go through `ccm:perm-allow`: validated (`parsePermRule`, never `isRiskyPermRule`: bare / `*` shell rules, metacharacters, `rm`, `curl`, interpreters, `git push` …), merged into `permissions.allow` of `settings.local.json` only (other keys and indent kept, `.ccm-backup` first) after a native confirm showing the exact line diff; refused when the file changed meanwhile. `settings.json` is never written.
+
+Deviation: the hook gives the moment a dialog opens but not when it is answered, so the advisor shows counts and last time, no total waiting time. Auto-mode denials come from the existing `deniedTools` of open sessions.
 
 ## 12. Open items
 

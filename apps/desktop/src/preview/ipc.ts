@@ -26,6 +26,7 @@ import { CheckpointStore } from './checkpoints'
 import { NotesStore } from './notes'
 import { checkEnv, revealEnv } from './envCheck'
 import { scanI18n } from './i18nScan'
+import { readPermissions, writeAllow, type ConfirmAllow } from './permRules'
 import { LocalHistory } from './localHistory'
 import { Formatter } from './format'
 import { MAX_WRITE_BYTES, writeTextFile } from './fileWrite'
@@ -86,6 +87,8 @@ export interface PreviewIpcDeps {
   confirmRun?: (req: { kind: RunKind; a: string; b: string; lines: string[] }) => Promise<boolean>
   /** Native yes/no before Replace in files writes anything: counts, find / replace text and the first file paths. */
   confirmReplace?: (req: { find: string; replacement: string; lines: number; files: number; paths: string[] }) => Promise<boolean>
+  /** Native yes/no showing the exact settings.local.json diff before allow rules are added. */
+  confirmPermRules?: ConfirmAllow
   /** App data folder: checkpoint stores (`checkpoints/`), project notes (`notes/`) and Local History (`history/`). All off without it. */
   dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
@@ -115,7 +118,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan', 'ccm:perm-read', 'ccm:perm-allow',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -756,6 +759,24 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
   ipcMain.handle('ccm:i18n-scan', async (event, root: unknown) => {
     const real = isAppFrame(event) ? await checkDir(root) : null
     return real ? scanI18n(real) : { ok: false, error: 'denied' }
+  })
+  // Rule strings, tool names and command prefixes only; the bridge log never holds tool input.
+  ipcMain.handle('ccm:perm-read', async (event, root: unknown) => {
+    const real = isAppFrame(event) ? await checkDir(root) : null
+    return real ? readPermissions(real, deps.dataDir ?? null) : { ok: false, error: 'denied' }
+  })
+  let permWriting = false
+  ipcMain.handle('ccm:perm-allow', async (event, req: unknown) => {
+    const { root, rules } = (req ?? {}) as { root?: unknown; rules?: unknown }
+    const real = isAppFrame(event) ? await checkDir(root) : null
+    if (!real || !deps.confirmPermRules) return { ok: false, error: 'denied' }
+    if (permWriting) return { ok: false, error: 'failed' }
+    permWriting = true
+    try {
+      return await writeAllow(real, rules, deps.confirmPermRules)
+    } finally {
+      permWriting = false
+    }
   })
   ipcMain.handle('ccm:env-reveal', async (event, req: unknown) => {
     const { root, file, key } = (req ?? {}) as { root?: unknown; file?: unknown; key?: unknown }

@@ -98,11 +98,11 @@ The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up
   hooksOnTitle: 'Turn on the hook bridge?',
   hooksOffTitle: 'Turn off the hook bridge?',
   hooksDetail: (file: string, json: string, on: boolean) =>
-    `Orrery will ${on ? 'add async hooks (PreCompact, PostCompact, PermissionDenied) to' : 'remove its hooks from'} ${file}; your other hooks stay:
+    `Orrery will ${on ? 'add async hooks (PreCompact, PostCompact, PermissionDenied, PermissionRequest) to' : 'remove its hooks from'} ${file}; your other hooks stay:
 
 ${json}
 
-They run in the background and keep only the event name, trigger and tool name. The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up.`,
+They run in the background and keep only the event name, trigger, tool name, the session folder and, for permission dialogs, the suggested rule or the first words of the command. The old file is kept as settings.json.ccm-backup. New Claude sessions pick it up.`,
   grantTitle: 'Choose your projects folder',
   extTitle: (kind: 'install' | 'remove' | 'source'): string =>
     kind === 'install' ? 'Install into Claude Code?' : kind === 'remove' ? 'Remove from Claude Code?' : 'Add to Claude Code?',
@@ -129,6 +129,14 @@ New Claude sessions pick up the change.`,
   replaceDetail: (find: string, replacement: string, paths: string[]) =>
     `"${find}" → "${replacement}"\n\n${paths.join('\n')}\n\nFiles changed since the search are skipped. The text before is kept in Local History.`,
   replaceConfirm: 'Replace',
+  permTitle: (n: number) => `Add ${n === 1 ? '1 allow rule' : `${n} allow rules`} to settings.local.json?`,
+  permDetail: (file: string, diff: string) =>
+    `Orrery will write ${file} (only on this machine, not shared). Other keys stay; the old file is kept as settings.local.json.ccm-backup:
+
+${diff}
+
+Claude Code will run these without asking in this project.`,
+  permConfirm: 'Add rules',
 }
 
 const vi: typeof en = {
@@ -229,11 +237,11 @@ Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Cla
   hooksOnTitle: 'Bật hook bridge?',
   hooksOffTitle: 'Tắt hook bridge?',
   hooksDetail: (file, json, on) =>
-    `Orrery sẽ ${on ? 'thêm hook chạy nền (PreCompact, PostCompact, PermissionDenied) vào' : 'gỡ hook của mình khỏi'} ${file}; các hook khác của bạn giữ nguyên:
+    `Orrery sẽ ${on ? 'thêm hook chạy nền (PreCompact, PostCompact, PermissionDenied, PermissionRequest) vào' : 'gỡ hook của mình khỏi'} ${file}; các hook khác của bạn giữ nguyên:
 
 ${json}
 
-Hook chạy nền và chỉ giữ tên sự kiện, trigger và tên tool. Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Claude mới sẽ dùng cấu hình này.`,
+Hook chạy nền và chỉ giữ tên sự kiện, trigger, tên tool, thư mục của session và, với hộp hỏi quyền, luật được gợi ý hoặc vài chữ đầu của lệnh. Tệp cũ được giữ lại thành settings.json.ccm-backup. Các session Claude mới sẽ dùng cấu hình này.`,
   grantTitle: 'Chọn thư mục chứa các project',
   extTitle: (kind) => (kind === 'install' ? 'Cài vào Claude Code?' : kind === 'remove' ? 'Gỡ khỏi Claude Code?' : 'Thêm vào Claude Code?'),
   extDetail: (where, commands) => `Orrery sẽ chạy, cho ${where}:
@@ -258,6 +266,14 @@ Các phiên Claude mới sẽ nhận thay đổi.`,
   replaceDetail: (find, replacement, paths) =>
     `"${find}" → "${replacement}"\n\n${paths.join('\n')}\n\nFile đã đổi kể từ lúc tìm sẽ được bỏ qua. Nội dung cũ được giữ trong Local History.`,
   replaceConfirm: 'Thay thế',
+  permTitle: (n) => `Thêm ${n} luật allow vào settings.local.json?`,
+  permDetail: (file, diff) =>
+    `Orrery sẽ ghi ${file} (chỉ trên máy này, không chia sẻ). Các khoá khác giữ nguyên; tệp cũ được giữ lại thành settings.local.json.ccm-backup:
+
+${diff}
+
+Claude Code sẽ chạy các lệnh này không hỏi lại trong dự án này.`,
+  permConfirm: 'Thêm luật',
 }
 
 export type Strings = typeof en

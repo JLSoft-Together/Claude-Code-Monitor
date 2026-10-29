@@ -38,12 +38,14 @@ import {
   Wrench,
   KeyRound,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
 import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
 import { hasEnvCheck, hasExplorer, hasI18nScan, hasLog } from '../lib/preview'
+import { hasPermAdvisor } from '../lib/permAdvisor'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
@@ -222,6 +224,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.i18nScan = { dir: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasPermAdvisor
+      ? [
+          {
+            id: 'c:perms',
+            group: 'actions' as const,
+            label: t('permAdvisor.palette'),
+            sub: t('permAdvisor.paletteSub'),
+            icon: ShieldCheck,
+            run: () => {
+              ui.setView('workspace')
+              ui.permAdvisor = { dir: null }
             },
           },
         ]

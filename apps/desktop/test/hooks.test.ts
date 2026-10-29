@@ -20,6 +20,7 @@ describe('hook bridge settings', () => {
     expect(on.model).toBe('opus')
     expect(on.hooks.PreCompact).toEqual([mine, { hooks: [{ type: 'command', command: CMD, async: true }] }])
     expect(on.hooks.PermissionDenied).toHaveLength(1)
+    expect(on.hooks.PermissionRequest).toEqual([{ hooks: [{ type: 'command', command: CMD, async: true }] }])
     expect(readHooks(file).state).toBe('ours')
 
     expect(writeHooks(file, readHooks(file), null)).toBe('ok')

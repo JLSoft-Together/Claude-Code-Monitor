@@ -56,6 +56,7 @@ const DropTerminal = defineAsyncComponent(() => import('./DropTerminal.vue'))
 const PlanBoard = defineAsyncComponent(() => import('./PlanBoard.vue'))
 const EnvCheckDialog = defineAsyncComponent(() => import('./EnvCheckDialog.vue'))
 const I18nScanDialog = defineAsyncComponent(() => import('./I18nScanDialog.vue'))
+const PermAdvisorDialog = defineAsyncComponent(() => import('./PermAdvisorDialog.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -890,6 +891,16 @@ watch(
     if (!open) return
     const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
     i18nRoot.value = dir ? (rootOf(dir) ?? dir) : null
+  },
+  { immediate: true },
+)
+const permRoot = ref<string | null>(null)
+watch(
+  () => ui.permAdvisor,
+  (open) => {
+    if (!open) return
+    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
+    permRoot.value = dir ? (rootOf(dir) ?? dir) : null
   },
   { immediate: true },
 )
@@ -2445,6 +2456,7 @@ onBeforeUnmount(() => {
     <PlanBoard v-if="ui.planBoard && visible" :root="planRoot" @close="ui.planBoard = null" />
     <EnvCheckDialog v-if="ui.envCheck && visible" :root="envRoot" @close="ui.envCheck = null" />
     <I18nScanDialog v-if="ui.i18nScan && visible" :root="i18nRoot" @close="ui.i18nScan = null" />
+    <PermAdvisorDialog v-if="ui.permAdvisor && visible" :root="permRoot" @close="ui.permAdvisor = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

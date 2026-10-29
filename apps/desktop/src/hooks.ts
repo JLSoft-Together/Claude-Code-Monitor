@@ -3,8 +3,8 @@ import path from 'node:path'
 import { BACKUP_SUFFIX } from './statusline'
 
 export const HOOK_MARK = 'hook-bridge'
-/** PreCompact → "compacting", PostCompact clears it, PermissionDenied counts auto-mode denials (docs §11y). */
-export const HOOK_EVENTS = ['PreCompact', 'PostCompact', 'PermissionDenied'] as const
+/** PreCompact → "compacting", PostCompact clears it, PermissionDenied counts auto-mode denials, PermissionRequest logs dialogs (docs §11y). */
+export const HOOK_EVENTS = ['PreCompact', 'PostCompact', 'PermissionDenied', 'PermissionRequest'] as const
 
 export type HooksState = 'ours' | 'partial' | 'none' | 'unreadable'
 

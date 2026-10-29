@@ -37,6 +37,8 @@ export const CHANGELOG: Release[] = [
       { en: "Open the project's deep links and exported activities on a device, or type a URI", vi: 'Mở deep link và activity exported của dự án trên máy, hoặc tự nhập URI' },
       { en: 'Run pane catches Android and Flutter crashes and ANRs; project frames open the file', vi: 'Run pane bắt crash và ANR của Android, Flutter; frame trong dự án bấm là mở file' },
       { en: 'Fill a crash into the agent: exception, project frames, log before, secrets masked', vi: 'Điền crash vào agent: exception, frame của dự án, log trước đó, đã che bí mật' },
+      { en: 'Permission prompts per project: repeated asks and allow rules to tick', vi: 'Hỏi quyền theo dự án: các lần hỏi lặp lại và luật allow để tích chọn' },
+      { en: 'Ticked rules go to settings.local.json after a confirm with the exact diff', vi: 'Luật đã tích được ghi vào settings.local.json sau khi xác nhận đúng phần thay đổi' },
     ],
   },
   {
