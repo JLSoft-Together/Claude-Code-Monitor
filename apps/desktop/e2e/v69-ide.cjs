@@ -145,7 +145,7 @@ async function main() {
     await sleep(300)
 
     // 6. Inbox: a waiting agent shows in the badge, Enter jumps to its card.
-    await evaluate(`${S}.get('terminals').upsert({ id: '${FAKE}', title: 'E2E waiting', status: 'waiting', statusSince: new Date(Date.now() - 240000).toISOString(), lastActivityAt: new Date().toISOString() })`)
+    await evaluate(`${S}.get('terminals').upsert({ id: '${FAKE}', title: 'E2E waiting', status: 'waiting', statusSince: new Date(Date.now() - 250000).toISOString(), lastActivityAt: new Date().toISOString() })`)
     const badge = await waitFor(`document.querySelector('[data-inbox-badge]')?.textContent.trim()`, 8000, 'badge').catch(() => '')
     check('inbox badge counts the waiting agent', Number(badge) >= 1, badge)
     await evaluate(`document.querySelector('[data-inbox-button]').click()`)

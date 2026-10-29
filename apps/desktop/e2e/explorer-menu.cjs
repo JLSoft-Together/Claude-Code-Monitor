@@ -54,7 +54,7 @@ async function run(app) {
   await waitFor(`!!document.querySelector('[data-context-menu]')`, 3000, 'menu').catch(() => {})
   await shot('explorer-menu-01')
   const items = await menuIds()
-  check('menu lists the minimal set', JSON.stringify(items) === JSON.stringify(['new', 'copy-ref', 'rename', 'trash', 'open-split', 'open-in', 'git', 'reload']), JSON.stringify(items))
+  check('menu lists the minimal set', JSON.stringify(items) === JSON.stringify(['new', 'copy-ref', 'rename', 'trash', 'open-split', 'open-in', 'compare-select', 'compare-clipboard', 'git', 'reload']), JSON.stringify(items))
   // Keyboard into a submenu: ↓ to Copy Path/Reference, → opens it, Enter copies the absolute path.
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`)
   await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`)
