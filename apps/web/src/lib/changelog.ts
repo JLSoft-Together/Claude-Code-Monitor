@@ -18,6 +18,24 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '2.5.0',
+    date: '2026-10-29',
+    items: [
+      { en: 'In-app updates: notice of a new release, download, verify and restart to install', vi: 'Cập nhật trong app: báo bản mới, tải, kiểm tra file rồi khởi động lại để cài' },
+      { en: 'Devices › Emulators: list AVDs, start, cold boot, stop and wipe them', vi: 'Thiết bị › Emulator: liệt kê AVD, chạy, cold boot, tắt và xoá dữ liệu' },
+      { en: 'Settings › Backup: export your setup to a file and import it on another machine', vi: 'Cài đặt › Sao lưu: xuất cấu hình ra file và nhập lại trên máy khác' },
+      { en: 'Strings table for strings.xml and ARB: missing keys, placeholder checks, safe edits', vi: 'Bảng chuỗi cho strings.xml và ARB: key thiếu, kiểm placeholder, sửa an toàn' },
+      { en: 'Check libs.versions.toml, pubspec.yaml or package.json for newer library versions', vi: 'Kiểm bản mới của thư viện trong libs.versions.toml, pubspec.yaml, package.json' },
+      { en: 'Extensions › Hooks: Claude Code hooks by event, turn them off and on, test run', vi: 'Tiện ích › Hook: hook Claude Code theo sự kiện, tắt / bật, chạy thử' },
+      { en: 'Shell panes: command marks with exit code and time, Ctrl/⌘+↑↓ jumps, fill output to agent', vi: 'Pane shell: đánh dấu lệnh kèm mã thoát, thời gian, Ctrl/⌘+↑↓ nhảy lệnh, điền output cho agent' },
+      { en: 'Agent stopped at the usage limit: schedule a continue text filled in at the reset', vi: 'Agent dừng vì hạn mức: hẹn điền sẵn chữ tiếp tục lúc reset' },
+      { en: 'History: top tools, skills, subagent types and MCP servers per project, with unused ones', vi: 'History: tool, skill, loại subagent, MCP dùng nhiều nhất theo dự án, kèm mục không dùng' },
+      { en: 'APK / AAB size: groups, largest files, manifest, compare with the previous build', vi: 'Kích thước APK / AAB: nhóm, file lớn nhất, manifest, so với bản build trước' },
+      { en: "Devices: browse a debug app's SQLite and SharedPreferences, edit prefs with restore", vi: 'Thiết bị: xem SQLite và SharedPreferences của app debug, sửa prefs có nút khôi phục' },
+      { en: 'Vietnamese is now the default language for new installs', vi: 'Tiếng Việt là ngôn ngữ mặc định khi cài mới' },
+    ],
+  },
+  {
     version: '2.4.0',
     date: '2026-10-29',
     items: [

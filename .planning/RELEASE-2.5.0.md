@@ -3,6 +3,7 @@
 ## App
 - In-app update: Orrery tells you when a new version is on GitHub; Download and install checks the file against GitHub's SHA-256, then Restart to update installs it (installer, portable or macOS) and opens the app again. Turn off the check or skip a version in Settings › Updates.
 - Settings › Backup: export your setup (theme, fonts, settings, Workspace tabs, notes, prompt queue, names, remembered devices) to one file and import it on another machine, choosing sections in a preview; paths missing on the new machine are flagged. Tokens are never exported: add GitHub tokens again after the import. A copy is also kept before every update (last 3).
+- Vietnamese is the default language for new installs (existing installs keep their language; switch in Settings). The update dialog shows the release date and time.
 
 ## Workspace & terminal
 - Shell panes mark each command with its exit code and run time; Ctrl/⌘+↑↓ jumps between commands; copy a command or its output, fill the output into an agent, run it again. Turn it off in Settings.
@@ -35,6 +36,7 @@
 ## Ứng dụng
 - Cập nhật trong app: Orrery báo khi có bản mới trên GitHub; Tải và cài kiểm file theo SHA-256 của GitHub, rồi Khởi động lại để cập nhật sẽ cài (bản cài đặt, portable hoặc macOS) và mở lại app. Tắt kiểm tra hoặc bỏ qua một bản trong Cài đặt › Cập nhật.
 - Cài đặt › Sao lưu: xuất cấu hình (theme, font, cài đặt, tab Workspace, ghi chú, hàng đợi prompt, tên gọi, thiết bị đã nhớ) ra một file rồi nhập trên máy khác, chọn từng mục trong bản xem trước; đường dẫn không có trên máy mới được đánh dấu. Không bao giờ xuất token: thêm lại token GitHub sau khi nhập. App cũng giữ một bản trước mỗi lần cập nhật (3 bản gần nhất).
+- Tiếng Việt là ngôn ngữ mặc định khi cài mới (bản đã cài giữ ngôn ngữ đang chọn; đổi trong Cài đặt). Hộp cập nhật ghi ngày giờ phát hành.
 
 ## Workspace & terminal
 - Pane shell đánh dấu từng lệnh kèm mã thoát và thời gian chạy; Ctrl/⌘+↑↓ nhảy giữa các lệnh; chép lệnh hoặc output, điền output cho agent, chạy lại. Tắt được trong Settings.

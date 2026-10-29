@@ -140,10 +140,10 @@ async function main() {
     await step("what's new", async () => {
       check("What's new is in Ctrl+K", await palette("What's new"))
       await waitFor(`!!document.querySelector('[data-whats-new]')`, 5000, 'whats new dialog')
-      const items = await evaluate(`document.getElementById('whats-new-h-${VERSION}')?.nextElementSibling?.textContent ?? ''`)
+      const items = await evaluate(`document.getElementById('whats-new-h-2.4.0')?.nextElementSibling?.textContent ?? ''`)
       const want = ['Device screenshot', 'Inspect views', 'Test UI on a device', 'deep links', 'catches Android and Flutter crashes', 'Fill a crash into the agent', 'Permission prompts per project', 'settings.local.json', 'Background context']
       const missing = want.filter((w) => !items.includes(w))
-      check(`${VERSION} lists the v72 bullets`, VERSION === '2.4.0' && !missing.length, missing.join(', ') || VERSION)
+      check('2.4.0 lists the v72 bullets', !missing.length, missing.join(', '))
       await shot('v72-01-whats-new')
       await esc()
       await waitFor(`!document.querySelector('[data-whats-new]')`, 5000, 'closed').catch(() => {})
