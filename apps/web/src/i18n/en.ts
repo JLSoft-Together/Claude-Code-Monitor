@@ -51,6 +51,7 @@ import emulatorsV74 from './emulators-v74'
 import backupV74 from './backup-v74'
 import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
+import hooksV74 from './hooks-v74'
 
 export default {
   ...v25.en,
@@ -86,6 +87,7 @@ export default {
   ...backupV74.en,
   ...stringsV74.en,
   ...libsV74.en,
+  ...hooksV74.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

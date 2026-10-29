@@ -32,6 +32,8 @@ import { registerDevicesIpc } from './devices/ipc'
 import { registerApkIpc } from './apk/ipc'
 import { LibChecker } from './libs/checker'
 import { registerLibsIpc } from './libs/ipc'
+import { HooksManager } from './claudeHooks/manager'
+import { registerHooksIpc } from './claudeHooks/ipc'
 import { isAllowedOverride } from './libs/registry'
 import { AppDataInspector } from './devices/appData'
 import { registerAppDataIpc } from './devices/appDataIpc'
@@ -124,6 +126,7 @@ let deviceManager: DeviceManager | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
 let disposeLibs: (() => void) | null = null
+let disposeHooks: (() => void) | null = null
 let appData: AppDataInspector | null = null
 let disposeAppData: (() => void) | null = null
 let updates: UpdateManager | null = null
@@ -228,6 +231,8 @@ function stopPreview(): Promise<void> {
   disposeApk = null
   disposeLibs?.()
   disposeLibs = null
+  disposeHooks?.()
+  disposeHooks = null
   disposeAppData?.()
   disposeAppData = null
   disposeUpdate?.()
@@ -1223,6 +1228,36 @@ async function ready(): Promise<void> {
     ipcMain,
     isAppFrame,
     checker: new LibChecker({ fetch: (url, init) => net.fetch(url, init), dataDir: DATA_DIR, override: isAllowedOverride(libsOverride) ? libsOverride : undefined }),
+  })
+  disposeHooks = registerHooksIpc({
+    ipcMain,
+    isAppFrame,
+    manager: new HooksManager({
+      env: process.env,
+      home: os.homedir(),
+      platform: process.platform,
+      dataDir: DATA_DIR,
+      confirmWrite: (req) =>
+        confirmBox(mainWindow, {
+          type: 'warning',
+          message: t.hookToggleTitle(req.action === 'enable', req.event),
+          detail: t.hookToggleDetail(req.action === 'enable', req.file, req.diff),
+          buttons: [t.hookToggleConfirm(req.action === 'enable'), t.quitCancel],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        }),
+      confirmTest: (req) =>
+        confirmBox(mainWindow, {
+          type: 'warning',
+          message: t.hookTestTitle(req.event),
+          detail: t.hookTestDetail(req.text, req.cwd),
+          buttons: [t.hookTestConfirm, t.quitCancel],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        }),
+    }),
   })
   disposeApk = registerApkIpc({
     ipcMain,

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, CircleAlert, Copy, Folder, FolderOpen, Globe, LoaderCircle, LogIn, Plus, Puzzle, RefreshCw, Server, Sparkles, Trash2 } from 'lucide-vue-next'
+import { Check, CircleAlert, Copy, Folder, FolderOpen, Globe, LoaderCircle, LogIn, Plus, Puzzle, RefreshCw, Server, Sparkles, Trash2, Webhook } from 'lucide-vue-next'
 import { CATALOG, type CatalogEntry, type ExtScope, type McpServerRow } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
 import { entryState, others, removeScope } from '../../lib/extensions'
 import { now, relativeTime, shortPath } from '../../lib/format'
 import { openExternal } from '../../lib/preview'
+import { hasHooks } from '../../lib/claudeHooks'
 import { useExtensionsStore, type ExtMode } from '../../stores/extensions'
 import { dirKey, useFavoritesStore } from '../../stores/favorites'
 import { useTerminalsStore } from '../../stores/terminals'
@@ -15,6 +16,7 @@ import AppSelect from '../AppSelect.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import AddSourceSheet from './AddSourceSheet.vue'
 import ExtensionCard from './ExtensionCard.vue'
+import HooksPanel from './HooksPanel.vue'
 import InstallSheet from './InstallSheet.vue'
 import { brandIcon, STATE_META } from './meta'
 
@@ -27,6 +29,13 @@ const terminals = useTerminalsStore()
 const sheet = ref<CatalogEntry | null>(null)
 const sourceOpen = ref(false)
 const browsing = ref(false)
+
+type Section = 'catalog' | 'hooks'
+const section = ref<Section>('catalog')
+const sections = computed(() => [
+  { value: 'catalog' as Section, label: t('hooksMgr.tab.catalog'), icon: Puzzle },
+  { value: 'hooks' as Section, label: t('hooksMgr.tab.hooks'), icon: Webhook },
+])
 
 const modes = computed(() => [
   { value: 'global' as ExtMode, label: t('ext.scope.global'), icon: Globe },
@@ -118,7 +127,8 @@ watch(() => ext.mode, () => void ext.refresh())
         <h2 class="text-2xl font-semibold tracking-tight">{{ t('ext.title') }}</h2>
         <p class="mt-1 max-w-[80ch] text-sm text-ink-muted">{{ t('ext.subtitle') }}</p>
       </div>
-      <button type="button" class="ccm-btn" :disabled="!ext.status?.cli" data-ext-add-source @click="sourceOpen = true">
+      <SegmentedControl v-if="hasHooks" v-model="section" :options="sections" :label="t('hooksMgr.tab.label')" data-ext-section />
+      <button v-if="section === 'catalog'" type="button" class="ccm-btn" :disabled="!ext.status?.cli" data-ext-add-source @click="sourceOpen = true">
         <Plus :size="14" aria-hidden="true" />{{ t('ext.addSource') }}
       </button>
     </div>
@@ -140,7 +150,7 @@ watch(() => ext.mode, () => void ext.refresh())
         </button>
         <span v-if="ext.project" class="hidden min-w-0 truncate font-mono text-2xs text-ink-faint md:inline" :title="ext.project">{{ shortPath(ext.project) }}</span>
       </template>
-      <div class="ml-auto flex items-center gap-2">
+      <div v-if="section === 'catalog'" class="ml-auto flex items-center gap-2">
         <span class="text-2xs text-ink-faint" role="status">
           <template v-if="ext.mcpLoading">{{ t('ext.refreshing') }}</template>
           <template v-else-if="checked">{{ t('ext.checked', { ago: checked }) }}</template>
@@ -153,6 +163,8 @@ watch(() => ext.mode, () => void ext.refresh())
     </div>
 
     <p v-if="noProject" class="mt-6 rounded-card bg-surface px-4 py-6 text-center text-sm text-ink-muted shadow-card">{{ t('ext.project.hint') }}</p>
+
+    <HooksPanel v-else-if="section === 'hooks'" :dir="ext.dir" />
 
     <template v-else>
       <div v-if="ext.status && !ext.status.cli" class="mt-5 flex items-start gap-2 rounded-card bg-warning-soft px-4 py-3" role="alert">

@@ -157,6 +157,20 @@ The app is force-stopped first, then the file is written on the device. The firs
   avdWipeTitle: (name: string) => `Wipe all data of the emulator ${name}?`,
   avdWipeDetail: 'Apps, accounts, files and snapshots inside this virtual device are erased, then it starts like new. This cannot be undone.',
   avdWipeConfirm: 'Wipe and start',
+  hookToggleTitle: (on: boolean, event: string) => (on ? `Turn the ${event} hook back on?` : `Turn off this ${event} hook?`),
+  hookToggleDetail: (on: boolean, file: string, diff: string) =>
+    `Orrery will write ${file}. Other keys stay; the old file is kept as ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' The hook is kept in Orrery so it can be turned back on.'}
+
+${diff}
+
+Running Claude sessions pick this up on their next start.`,
+  hookToggleConfirm: (on: boolean): string => (on ? 'Turn on' : 'Turn off'),
+  hookTestTitle: (event: string) => `Run this ${event} hook once as a test?`,
+  hookTestDetail: (text: string, cwd: string) =>
+    `${text}
+
+It runs in ${cwd} with a made-up JSON input on stdin and a minimal environment, stopped after 10 seconds. A hook that changes files or calls a service really does so.`,
+  hookTestConfirm: 'Run test',
   backupApplyTitle: (n: number) => (n === 1 ? 'Import 1 section and restart Orrery?' : `Import ${n} sections and restart Orrery?`),
   backupApplyDetail: (names: string[]) =>
     `${names.map((n) => `• ${n}`).join('\n')}\n\nThese values replace the ones on this machine. The current setup is saved first in the backups folder of the Orrery data folder. Orrery restarts to finish.`,
@@ -325,6 +339,20 @@ ${key}: ${clip(before)} → ${clip(after)}
   avdWipeTitle: (name) => `Xoá toàn bộ dữ liệu của emulator ${name}?`,
   avdWipeDetail: 'Ứng dụng, tài khoản, file và snapshot trong thiết bị ảo này sẽ bị xoá, rồi nó khởi động như mới. Không hoàn tác được.',
   avdWipeConfirm: 'Xoá và khởi động',
+  hookToggleTitle: (on, event) => (on ? `Bật lại hook ${event} này?` : `Tắt hook ${event} này?`),
+  hookToggleDetail: (on, file, diff) =>
+    `Orrery sẽ ghi ${file}. Các khoá khác giữ nguyên; file cũ được giữ thành ${file.split(/[\\/]/).pop()}.ccm-backup.${on ? '' : ' Hook được cất trong Orrery để bật lại sau.'}
+
+${diff}
+
+Các phiên Claude đang chạy sẽ nhận thay đổi ở lần khởi động sau.`,
+  hookToggleConfirm: (on) => (on ? 'Bật' : 'Tắt'),
+  hookTestTitle: (event) => `Chạy thử hook ${event} này một lần?`,
+  hookTestDetail: (text, cwd) =>
+    `${text}
+
+Lệnh chạy trong ${cwd} với input JSON giả trên stdin và môi trường tối thiểu, dừng sau 10 giây. Hook nào sửa file hay gọi dịch vụ thì vẫn làm thật.`,
+  hookTestConfirm: 'Chạy thử',
   backupApplyTitle: (n) => `Nhập ${n} mục và khởi động lại Orrery?`,
   backupApplyDetail: (names) =>
     `${names.map((n) => `• ${n}`).join('\n')}\n\nCác giá trị này sẽ thay giá trị trên máy này. Cấu hình hiện tại được lưu trước vào thư mục backups trong thư mục dữ liệu Orrery. Orrery sẽ khởi động lại để hoàn tất.`,

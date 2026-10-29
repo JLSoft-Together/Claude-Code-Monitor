@@ -52,6 +52,7 @@ import emulatorsV74 from './emulators-v74'
 import backupV74 from './backup-v74'
 import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
+import hooksV74 from './hooks-v74'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -87,6 +88,7 @@ const vi: typeof en = {
   ...backupV74.vi,
   ...stringsV74.vi,
   ...libsV74.vi,
+  ...hooksV74.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
