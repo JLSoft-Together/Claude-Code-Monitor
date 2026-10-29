@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
-import type { DayTimeline, SessionRecord, UsageHeatmap } from '@ccm/shared'
+import type { DayTimeline, SessionRecord, ToolStats, UsageHeatmap } from '@ccm/shared'
 
 export const useHistoryStore = defineStore('history', () => {
   const sessions = shallowRef<SessionRecord[]>([])
   const loaded = ref(false)
   const timeline = shallowRef<DayTimeline | null>(null)
   const heatmap = shallowRef<UsageHeatmap | null>(null)
+  const toolStats = shallowRef<ToolStats | null>(null)
 
   function setSessions(list: SessionRecord[]): void {
     sessions.value = list
@@ -31,5 +32,9 @@ export const useHistoryStore = defineStore('history', () => {
     heatmap.value = value
   }
 
-  return { sessions, loaded, timeline, heatmap, setSessions, add, invalidate, setTimeline, setHeatmap }
+  const setToolStats = (value: ToolStats): void => {
+    toolStats.value = value
+  }
+
+  return { sessions, loaded, timeline, heatmap, toolStats, setSessions, add, invalidate, setTimeline, setHeatmap, setToolStats }
 })

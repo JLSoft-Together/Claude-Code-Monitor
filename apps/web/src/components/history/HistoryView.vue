@@ -12,6 +12,7 @@ import ArtImage from '../ArtImage.vue'
 import Pager from '../Pager.vue'
 import TimelineChart from './TimelineChart.vue'
 import HeatmapChart from './HeatmapChart.vue'
+import ToolStatsCard from './ToolStatsCard.vue'
 
 const { t, locale } = useI18n()
 const history = useHistoryStore()
@@ -102,6 +103,12 @@ const rangeLabel = computed(() => {
       <h3 id="heatmap-title" class="font-semibold">{{ t('history.heatmap.title') }}</h3>
       <p class="mb-4 text-xs text-ink-muted">{{ t('history.heatmap.hint') }}</p>
       <HeatmapChart />
+    </section>
+
+    <section aria-labelledby="toolstats-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
+      <h3 id="toolstats-title" class="font-semibold">{{ t('toolStats.title') }}</h3>
+      <p class="mb-4 text-xs text-ink-muted">{{ t('toolStats.hint') }}</p>
+      <ToolStatsCard />
     </section>
 
     <section aria-labelledby="ended-title" class="mt-5 rounded-card bg-surface shadow-card">

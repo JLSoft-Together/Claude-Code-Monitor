@@ -90,3 +90,7 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 - `Agent.firstContextTokens` (v72, main only): prompt size of the first reply in the transcript.
 - `TerminalSession` optional `compactingSince`, `compactTrigger` (`manual` | `auto`), `deniedCount`, `deniedTools` (≤ 5 tool names) — from the hook bridge, absent when it is off.
 - `pty.ts`: `wt.add.copy?: string[]` (glob list), `wt.added.copied?: string[]` (paths copied).
+
+## v73 (2026-10-29)
+
+- `toolstats.get {days: 7|30, project: string|null}` (client → server) → `toolstats.data {payload: ToolStats}` (direct reply). `ToolStats` / `ToolStatEntry` / `ToolStatDays` in `types.ts`; names only.

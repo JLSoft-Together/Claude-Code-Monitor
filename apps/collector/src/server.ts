@@ -306,7 +306,7 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown }
+        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown; days?: unknown; project?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'office.subscribe' && typeof m.on === 'boolean') {
@@ -329,6 +329,12 @@ export function startServer(options: {
           options.onClientMessage?.({ type: 'terminal.open', terminalId: m.terminalId, app: m.app }, ctx())
         } else if (m.type === 'history.get' || m.type === 'timeline.get' || m.type === 'heatmap.get' || m.type === 'diagnostics.get') {
           options.onClientMessage?.({ type: m.type }, ctx())
+        } else if (
+          m.type === 'toolstats.get' &&
+          (m.days === 7 || m.days === 30) &&
+          (m.project === null || (typeof m.project === 'string' && m.project.length > 0 && m.project.length <= 1024))
+        ) {
+          options.onClientMessage?.({ type: 'toolstats.get', days: m.days, project: m.project }, ctx())
         } else if (
           m.type === 'toolSpans.get' &&
           (m.terminalId === undefined || typeof m.terminalId === 'string') &&

@@ -98,6 +98,42 @@ describe('toolSpans.get validation', () => {
   })
 })
 
+describe('toolstats.get validation', () => {
+  it('accepts 7 / 30 days with a project folder or null only', async () => {
+    const dist = await mkdtemp(path.join(os.tmpdir(), 'ccm-dist-'))
+    await writeFile(path.join(dist, 'index.html'), '<!doctype html>ok')
+    const got: unknown[] = []
+    const server = await startServer({
+      host: '127.0.0.1',
+      port: 0,
+      webDist: dist,
+      store: new MonitorStore({ activityLimit: 10, batchMs: 10 }),
+      onClientMessage: (m) => void got.push(m),
+    })
+    const port = (server.address() as AddressInfo).port
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', () => resolve())
+        ws.once('error', reject)
+      })
+      const bad = [{ days: 14, project: null }, { days: 7 }, { days: 30, project: '' }, { days: 30, project: 'x'.repeat(1025) }, { days: '7', project: null }]
+      for (const extra of bad) ws.send(JSON.stringify({ type: 'toolstats.get', ...extra }))
+      ws.send(JSON.stringify({ type: 'toolstats.get', days: 7, project: null }))
+      ws.send(JSON.stringify({ type: 'toolstats.get', days: 30, project: 'D:\\work\\demo', extra: 1 }))
+      for (let i = 0; i < 100 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 20))
+      await new Promise((r) => setTimeout(r, 50))
+      expect(got).toEqual([
+        { type: 'toolstats.get', days: 7, project: null },
+        { type: 'toolstats.get', days: 30, project: 'D:\\work\\demo' },
+      ])
+    } finally {
+      ws.close()
+      server.close()
+    }
+  })
+})
+
 describe('favorite.open validation', () => {
   it('keeps terminal and iterm, drops any other terminalApp', async () => {
     const dist = await mkdtemp(path.join(os.tmpdir(), 'ccm-dist-'))

@@ -41,6 +41,7 @@ import devicesV72 from './devices-v72'
 import runV72 from './run-v72'
 import permV72 from './perm-v72'
 import contextV72 from './context-v72'
+import toolStatsV73 from './toolstats-v73'
 
 export default {
   ...v25.en,
@@ -66,6 +67,7 @@ export default {
   ...runV72.en,
   ...permV72.en,
   ...contextV72.en,
+  ...toolStatsV73.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

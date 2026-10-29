@@ -1,7 +1,7 @@
 import { createReadStream, type Stats } from 'node:fs'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { UsageBucket, UsageHeatmap, UsageScan, UsageSnapshot, UsageTotals } from '@ccm/shared'
+import type { ToolStatEntry, ToolStats, UsageBucket, UsageHeatmap, UsageScan, UsageSnapshot, UsageTotals } from '@ccm/shared'
 
 export interface UsageSink {
   resetUsage(snapshot: UsageSnapshot): void
@@ -17,7 +17,17 @@ interface FileEntry {
   buckets: Record<string, UsageTotals>
   /** Assistant messages per `day|hour` (local), for the History heatmap. */
   hours?: Record<string, number>
+  /** Calls per `day|kind|name|project` (see `ToolKind`), names only. */
+  tools?: Record<string, number>
   gone?: boolean
+}
+
+/** t tool, m MCP server, s skill, a subagent type, e tool error, f MCP server error. */
+export type ToolKind = 't' | 'm' | 's' | 'a' | 'e' | 'f'
+
+export interface ToolCall {
+  kind: 't' | 'm' | 's' | 'a'
+  name: string
 }
 
 interface CacheFile {
@@ -37,8 +47,14 @@ export interface UsageRecord {
   totals: UsageTotals
 }
 
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 const NEWLINE = 0x0a
+const IS_ERROR = Buffer.from('"is_error":true')
+const NAME_MAX = 100
+/** Open tool_use ids kept per transcript to pair an error result; results land within a few lines of their call. */
+const OPEN_TOOLS_MAX = 500
+const TOOL_KEY_RE = /^\d{4}-\d{2}-\d{2}\|[tmsaef]\|[^|]+\|.*$/
+const AGENT_TOOLS = new Set(['Agent', 'Task'])
 const STAT_BATCH = 32
 const DAY_MS = 86_400_000
 /** Resume/fork of a transcript older than this is rare; dropping its ids keeps the cache from growing forever. */
@@ -141,6 +157,47 @@ export function usageRecordOf(rec: unknown, fallbackProject: string): UsageRecor
   }
 }
 
+const cleanName = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null
+  const s = v.replace(/[|\u0000-\u001f]/g, '').trim().slice(0, NAME_MAX)
+  return s || null
+}
+
+/** `mcp__<server>__<tool>` → server. */
+export function mcpServerOf(tool: string): string | null {
+  if (!tool.startsWith('mcp__')) return null
+  const end = tool.indexOf('__', 5)
+  return end > 5 ? tool.slice(5, end) : null
+}
+
+/** What one tool_use block counts as. Reads `name`, `input.skill` and `input.subagent_type` only, never other input. */
+export function toolCallsOf(block: unknown): ToolCall[] {
+  if (!isObj(block) || block.type !== 'tool_use') return []
+  const name = cleanName(block.name)
+  if (!name) return []
+  const server = mcpServerOf(name)
+  if (server) return [{ kind: 'm', name: server }]
+  const out: ToolCall[] = [{ kind: 't', name }]
+  const input = isObj(block.input) ? block.input : {}
+  if (name === 'Skill') {
+    const skill = cleanName(input.skill)
+    if (skill) out.push({ kind: 's', name: skill })
+  } else if (AGENT_TOOLS.has(name)) {
+    // Claude Code runs `general-purpose` when the call names no type.
+    out.push({ kind: 'a', name: cleanName(input.subagent_type) ?? 'general-purpose' })
+  }
+  return out
+}
+
+export const toolKey = (day: string, kind: ToolKind, name: string, project: string): string => `${day}|${kind}|${name}|${project}`
+
+function lastDays(days: number, today: string): string[] {
+  const [y, m, d] = today.split('-').map(Number) as [number, number, number]
+  const out: string[] = []
+  for (let i = days - 1; i >= 0; i--) out.push(localDay(new Date(y, m - 1, d - i, 12).toISOString())!)
+  return out
+}
+
 async function listJsonl(dir: string, base = dir, out: string[] = []): Promise<string[]> {
   let entries
   try {
@@ -162,6 +219,9 @@ export class UsageIndex {
   private readonly owners = new Map<string, string>()
   private readonly totals = new Map<string, UsageBucket>()
   private readonly hourTotals = new Map<string, number>()
+  private readonly toolTotals = new Map<string, number>()
+  /** Per transcript: tool_use id → error key, so an `is_error` result counts against its tool. Memory only. */
+  private readonly openTools = new Map<string, Map<string, string>>()
   private readonly dirty = new Set<string>()
   private readonly pendingFiles = new Set<string>()
   private readonly fileTimers = new Map<string, NodeJS.Timeout>()
@@ -364,30 +424,76 @@ export class UsageIndex {
   }
 
   private ingestLine(line: Buffer, rel: string, fallbackProject: string, entry: FileEntry): void {
-    if (line.indexOf('"usage"') === -1) return
+    const hasUsage = line.indexOf('"usage"') !== -1
+    const hasError = line.indexOf(IS_ERROR) !== -1
+    if (!hasUsage && !hasError) return
     let rec: unknown
     try {
       rec = JSON.parse(line.toString('utf8'))
     } catch {
       return
     }
+    if (hasError && isObj(rec) && rec.type === 'user') return this.ingestErrors(rec, rel, entry)
     const r = usageRecordOf(rec, fallbackProject)
-    if (!r || this.owners.has(r.messageId)) return
-    this.owners.set(r.messageId, rel)
-    entry.ids.push(r.messageId)
-    addInto((entry.buckets[r.key] ??= emptyTotals()), r.totals)
-    this.addTotal(r.key, r.totals, 1)
-    const hk = `${r.day}|${r.hour}`
-    ;(entry.hours ??= {})[hk] = (entry.hours[hk] ?? 0) + 1
-    this.addHour(hk, 1)
+    if (!r) return
+    const owner = this.owners.get(r.messageId)
+    if (owner === undefined) {
+      this.owners.set(r.messageId, rel)
+      entry.ids.push(r.messageId)
+      addInto((entry.buckets[r.key] ??= emptyTotals()), r.totals)
+      this.addTotal(r.key, r.totals, 1)
+      const hk = `${r.day}|${r.hour}`
+      ;(entry.hours ??= {})[hk] = (entry.hours[hk] ?? 0) + 1
+      this.addHour(hk, 1)
+    } else if (owner !== rel) return
+    // Claude Code writes one line per content block with the same message id: later blocks still carry tool calls.
+    this.ingestTools(rec as Obj, r, rel, entry)
+  }
+
+  private ingestTools(rec: Obj, r: UsageRecord, rel: string, entry: FileEntry): void {
+    const content = isObj(rec.message) ? rec.message.content : undefined
+    if (!Array.isArray(content)) return
+    for (const block of content) {
+      const calls = toolCallsOf(block)
+      if (!calls.length) continue
+      for (const c of calls) this.countTool(entry, toolKey(r.day, c.kind, c.name, r.project), 1)
+      const id = (block as Obj).id
+      const head = calls[0]!
+      if (typeof id !== 'string' || id.length > 200) continue
+      let open = this.openTools.get(rel)
+      if (!open) this.openTools.set(rel, (open = new Map()))
+      open.set(id, toolKey(r.day, head.kind === 'm' ? 'f' : 'e', head.name, r.project))
+      if (open.size > OPEN_TOOLS_MAX) open.delete(open.keys().next().value!)
+    }
+  }
+
+  private ingestErrors(rec: Obj, rel: string, entry: FileEntry): void {
+    const open = this.openTools.get(rel)
+    const content = isObj(rec.message) ? rec.message.content : undefined
+    if (!open || !Array.isArray(content)) return
+    for (const b of content) {
+      if (!isObj(b) || b.type !== 'tool_result' || b.is_error !== true || typeof b.tool_use_id !== 'string') continue
+      const key = open.get(b.tool_use_id)
+      if (!key) continue
+      open.delete(b.tool_use_id)
+      this.countTool(entry, key, 1)
+    }
+  }
+
+  private countTool(entry: FileEntry, key: string, n: number): void {
+    ;(entry.tools ??= {})[key] = (entry.tools[key] ?? 0) + n
+    this.addTool(key, n)
   }
 
   private resetFile(rel: string, entry: FileEntry): void {
     for (const [key, totals] of Object.entries(entry.buckets)) this.addTotal(key, totals, -1)
     for (const [key, n] of Object.entries(entry.hours ?? {})) this.addHour(key, -n)
+    for (const [key, n] of Object.entries(entry.tools ?? {})) this.addTool(key, -n)
     this.releaseIds(rel, entry)
+    this.openTools.delete(rel)
     entry.buckets = {}
     delete entry.hours
+    delete entry.tools
     entry.offset = 0
   }
 
@@ -408,15 +514,54 @@ export class UsageIndex {
     else this.hourTotals.delete(key)
   }
 
+  private addTool(key: string, n: number): void {
+    const v = (this.toolTotals.get(key) ?? 0) + n
+    if (v > 0) this.toolTotals.set(key, v)
+    else this.toolTotals.delete(key)
+  }
+
+  private today(): string {
+    return localDay(new Date(this.options.now?.() ?? Date.now()).toISOString())!
+  }
+
   /** Messages per local hour for the last `days` days (oldest first), computed on request only. */
-  heatmap(days: number, today = localDay(new Date(this.options.now?.() ?? Date.now()).toISOString())!): UsageHeatmap {
-    const [y, m, d] = today.split('-').map(Number) as [number, number, number]
-    const out: UsageHeatmap = { days: [] }
-    for (let i = days - 1; i >= 0; i--) {
-      const day = localDay(new Date(y, m - 1, d - i, 12).toISOString())!
-      out.days.push({ day, hours: Array.from({ length: 24 }, (_, h) => this.hourTotals.get(`${day}|${h}`) ?? 0) })
+  heatmap(days: number, today = this.today()): UsageHeatmap {
+    return { days: lastDays(days, today).map((day) => ({ day, hours: Array.from({ length: 24 }, (_, h) => this.hourTotals.get(`${day}|${h}`) ?? 0) })) }
+  }
+
+  /** Call counts for the last `days` days, one project folder or all; computed on request only. */
+  toolStats(days: number, project: string | null, today = this.today()): ToolStats {
+    const month = new Set(lastDays(30, today))
+    const window = new Set(lastDays(days, today))
+    const perProject = new Map<string, number>()
+    const sums: Record<ToolKind, Map<string, number>> = { t: new Map(), m: new Map(), s: new Map(), a: new Map(), e: new Map(), f: new Map() }
+    const used = { s: new Set<string>(), m: new Set<string>() }
+    for (const [key, n] of this.toolTotals) {
+      const [day = '', kind = '', name = '', ...rest] = key.split('|')
+      if (!month.has(day) || !(kind in sums)) continue
+      const proj = rest.join('|')
+      if (kind === 't' || kind === 'm') perProject.set(proj, (perProject.get(proj) ?? 0) + n)
+      if (project !== null && proj !== project) continue
+      if (kind === 's' || kind === 'm') used[kind].add(name)
+      if (!window.has(day)) continue
+      const sum = sums[kind as ToolKind]
+      sum.set(name, (sum.get(name) ?? 0) + n)
     }
-    return out
+    const list = (kind: ToolKind, errorKind?: ToolKind): ToolStatEntry[] =>
+      [...sums[kind]]
+        .map(([name, n]) => (errorKind ? { name, n, errors: sums[errorKind].get(name) ?? 0 } : { name, n }))
+        .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
+        .slice(0, 50)
+    return {
+      days,
+      project,
+      projects: [...perProject].sort((a, b) => b[1] - a[1]).slice(0, 100).map(([p]) => p),
+      tools: list('t', 'e'),
+      skills: list('s'),
+      agents: list('a'),
+      mcp: list('m', 'f'),
+      used30: { skills: [...used.s].sort(), mcp: [...used.m].sort() },
+    }
   }
 
   private async loadCache(): Promise<void> {
@@ -461,6 +606,15 @@ export class UsageIndex {
           if (!v || !/^\d{4}-\d{2}-\d{2}\|\d{1,2}$/.test(key)) continue
           entry.hours[key] = v
           this.addHour(key, v)
+        }
+      }
+      if (isObj(raw.tools)) {
+        entry.tools = {}
+        for (const [key, n] of Object.entries(raw.tools)) {
+          const v = int(n)
+          if (!v || !TOOL_KEY_RE.test(key)) continue
+          entry.tools[key] = v
+          this.addTool(key, v)
         }
       }
       this.files.set(rel, entry)

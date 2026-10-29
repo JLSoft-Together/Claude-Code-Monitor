@@ -166,6 +166,9 @@ async function main(): Promise<void> {
         case 'heatmap.get':
           ctx.reply({ type: 'heatmap.data', payload: usage.heatmap(28) })
           break
+        case 'toolstats.get':
+          ctx.reply({ type: 'toolstats.data', payload: usage.toolStats(message.days, message.project) })
+          break
         case 'terminal.focusWindow':
           void monitor.focusWindow(message.terminalId, ctx.reply)
           break

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { estimateCost, priceOf, type UsageBucket, type UsageScan, type UsageSnapshot } from '@ccm/shared'
-import { localDay, parseBucketKey, UsageIndex, usageRecordOf, type UsageSink } from '../src/usage'
+import { localDay, mcpServerOf, parseBucketKey, toolCallsOf, UsageIndex, usageRecordOf, type UsageSink } from '../src/usage'
 
 const line = (o: unknown) => `${JSON.stringify(o)}\n`
 const TS = '2026-10-07T09:00:00.000Z'
@@ -182,5 +182,83 @@ describe('UsageIndex', () => {
     index.notify(path.relative(projects, file))
     await settle(index)
     expect(opusOf(sink)).toMatchObject({ messages: 1, output: 4 })
+  })
+})
+
+describe('tool stats', () => {
+  const use = (mid: string, id: string, name: string, input: Record<string, unknown> = {}, cwd = CWD) =>
+    line({ type: 'assistant', timestamp: TS, cwd, message: { id: mid, model: 'claude-opus-5-5', content: [{ type: 'tool_use', id, name, input }], usage: { output_tokens: 1 } } })
+  const result = (id: string, isError: boolean) =>
+    line({ type: 'user', timestamp: TS, cwd: CWD, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: isError, content: 'boom' }] } })
+
+  it('reads only the name, skill and subagent type of a tool_use', () => {
+    expect(toolCallsOf({ type: 'tool_use', name: 'Skill', input: { skill: 'pdf', args: 'secret' } })).toEqual([
+      { kind: 't', name: 'Skill' },
+      { kind: 's', name: 'pdf' },
+    ])
+    expect(toolCallsOf({ type: 'tool_use', name: 'Agent', input: { prompt: 'secret' } })).toEqual([
+      { kind: 't', name: 'Agent' },
+      { kind: 'a', name: 'general-purpose' },
+    ])
+    expect(toolCallsOf({ type: 'tool_use', name: 'Task', input: { subagent_type: 'Explore' } })[1]).toEqual({ kind: 'a', name: 'Explore' })
+    expect(toolCallsOf({ type: 'tool_use', name: 'mcp__github__get_me', input: {} })).toEqual([{ kind: 'm', name: 'github' }])
+    expect(toolCallsOf({ type: 'tool_use', name: 'a|b' })).toEqual([{ kind: 't', name: 'ab' }])
+    expect(toolCallsOf({ type: 'text', name: 'Bash' })).toEqual([])
+    expect(mcpServerOf('mcp__claude_ai_Gmail__send')).toBe('claude_ai_Gmail')
+    expect(mcpServerOf('mcp__x')).toBeNull()
+  })
+
+  it('counts calls per project, split message lines, errors, and survives the cache', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ccm-tools-'))
+    const projects = path.join(root, 'projects')
+    const cache = path.join(root, 'usage-index.json')
+    await mkdir(path.join(projects, 'p'), { recursive: true })
+    const file = path.join(projects, 'p', 's.jsonl')
+    await writeFile(
+      file,
+      use('m1', 'tu1', 'Bash', { command: 'rm -rf secret' }) +
+        use('m1', 'tu2', 'Skill', { skill: 'pdf' }) +
+        result('tu1', true) +
+        result('tu2', false) +
+        use('m2', 'tu3', 'mcp__github__get_me') +
+        result('tu3', true) +
+        use('m3', 'tu4', 'Agent', { subagent_type: 'Explore', prompt: 'secret' }) +
+        use('m4', 'tu5', 'Read', {}, 'E:\other'),
+    )
+    // A resumed copy of m1 in another transcript is not counted twice.
+    await writeFile(path.join(projects, 'p', 'z-copy.jsonl'), use('m1', 'tu1', 'Bash'))
+    const make = () => new UsageIndex(projects, cache, new Sink(), { sweepMs: 0, saveDebounceMs: 1 })
+    const index = make()
+    await index.start()
+    await index.whenIdle()
+    const all = index.toolStats(30, null, DAY)
+    expect(all.tools).toEqual(
+      expect.arrayContaining([
+        { name: 'Bash', n: 1, errors: 1 },
+        { name: 'Skill', n: 1, errors: 0 },
+        { name: 'Agent', n: 1, errors: 0 },
+        { name: 'Read', n: 1, errors: 0 },
+      ]),
+    )
+    expect(all.tools).toHaveLength(4)
+    expect(all.skills).toEqual([{ name: 'pdf', n: 1 }])
+    expect(all.agents).toEqual([{ name: 'Explore', n: 1 }])
+    expect(all.mcp).toEqual([{ name: 'github', n: 1, errors: 1 }])
+    expect(all.projects).toEqual([CWD, 'E:\other'])
+    expect(all.used30).toEqual({ skills: ['pdf'], mcp: ['github'] })
+    expect(JSON.stringify(all)).not.toContain('secret')
+
+    const other = index.toolStats(7, 'E:\other', DAY)
+    expect(other.tools).toEqual([{ name: 'Read', n: 1, errors: 0 }])
+    expect(other.used30).toEqual({ skills: [], mcp: [] })
+    const tomorrow = localDay(new Date(Date.parse(TS) + 8 * 86_400_000).toISOString())!
+    expect(index.toolStats(7, null, tomorrow).tools).toEqual([])
+    expect(index.toolStats(30, null, tomorrow).used30.skills).toEqual(['pdf'])
+
+    await index.stop()
+    const again = make()
+    await again.start()
+    await again.whenIdle()
+    expect(again.toolStats(30, null, DAY)).toEqual(all)
   })
 })

@@ -76,3 +76,7 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 
 - `hooks.ts` `HookReader` reads `<dataDir>/hooks/<uuid>.json` (written by `scripts/hook-bridge.mjs`) on the existing extras poll (`monitor.pollHooks` in `pollExtras`, no watcher); `parseHookRecord` keeps only known keys, `COMPACT_STALE_MS` 15 min drops a lost PostCompact; `monitor.hookFields(sessionId)` spreads `compactingSince` / `compactTrigger` / `deniedCount` / `deniedTools` into `publish` (docs §11y). Test `hooks.test.ts` runs the real script.
 - `usage.ts`: per-file `hours` (`day|hour` counts), `hourTotals`, `heatmap(days, today)`; `CACHE_VERSION` 3 (one full rescan after update). `index.ts` `heatmap.get` → `heatmap.data` (28 days).
+
+## v73 (2026-10-29)
+
+- Tool stats (docs §11ab): `usage.ts` `toolCallsOf(block)` (name; `Skill` → `input.skill`, `Agent`/`Task` → `input.subagent_type` or `general-purpose`; `mcp__<server>__*` → server via `mcpServerOf`), per-file `tools` `day|kind|name|cwd` (kinds t / m / s / a, errors e / f) + `toolTotals`; split lines of one `message.id` count when the owner is the same file; `is_error` user lines matched through in-memory `openTools` (≤ 500 ids per transcript); `toolStats(days, project, today)` (lists ≤ 50, `projects` busiest first, `used30`). `CACHE_VERSION` 4. `index.ts` `toolstats.get` → `toolstats.data`; `server.ts` accepts days 7 | 30 and project null | 1..1024 chars. Tests `usage.test.ts` (tool stats), `hardening.test.ts`.

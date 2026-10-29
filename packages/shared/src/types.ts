@@ -309,6 +309,29 @@ export interface UsageHeatmap {
   days: { day: string; hours: number[] }[]
 }
 
+export interface ToolStatEntry {
+  name: string
+  n: number
+  /** tool_result `is_error` answers (tools and MCP servers only). */
+  errors?: number
+}
+
+/** Calls counted by name only (tool, `Skill` skill, `Agent` subagent type, MCP server); never tool inputs. */
+export interface ToolStats {
+  days: number
+  project: string | null
+  /** Project folders (cwd) with calls in the last 30 days, busiest first. */
+  projects: string[]
+  tools: ToolStatEntry[]
+  skills: ToolStatEntry[]
+  agents: ToolStatEntry[]
+  mcp: ToolStatEntry[]
+  /** Skill and MCP server names called in the last 30 days for the same project filter (the "unused" list). */
+  used30: { skills: string[]; mcp: string[] }
+}
+
+export type ToolStatDays = 7 | 30
+
 export type UsageScanState = 'idle' | 'scanning' | 'ready'
 
 export interface UsageScan {
@@ -457,6 +480,7 @@ export type MonitorEvent =
   | { type: 'history.added'; payload: SessionRecord }
   | { type: 'timeline.data'; payload: DayTimeline }
   | { type: 'heatmap.data'; payload: UsageHeatmap }
+  | { type: 'toolstats.data'; payload: ToolStats }
   | { type: 'terminal.openResult'; payload: { terminalId: string; app: OpenApp; result: OpenResult } }
   | { type: 'diagnostics.data'; payload: Diagnostics }
   | { type: 'notify.settings'; payload: NotifySettings }
@@ -493,6 +517,8 @@ export type ClientMessage =
   | { type: 'history.get' }
   | { type: 'timeline.get' }
   | { type: 'heatmap.get' }
+  /** Tool / skill / subagent / MCP call counts for the last `days` days, one project folder or all (null). */
+  | { type: 'toolstats.get'; days: ToolStatDays; project: string | null }
   /** Open the session's working folder in Explorer or VS Code (path comes from the collector, never the client). */
   | { type: 'terminal.open'; terminalId: string; app: OpenApp }
   | { type: 'diagnostics.get' }

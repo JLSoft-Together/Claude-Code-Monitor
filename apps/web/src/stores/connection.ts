@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, ServerMessage, ToastKind } from '@ccm/shared'
+import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, ServerMessage, ToastKind, ToolStatDays } from '@ccm/shared'
 import { officeFeed } from '../office/feed'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
@@ -199,6 +199,9 @@ export const useConnectionStore = defineStore('connection', () => {
         case 'heatmap.data':
           history.setHeatmap(event.payload)
           break
+        case 'toolstats.data':
+          history.setToolStats(event.payload)
+          break
         case 'terminal.openResult':
           ui.reportOpenResult(event.payload.terminalId, event.payload.app, event.payload.result)
           break
@@ -355,6 +358,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const loadHistory = (): boolean => request({ type: 'history.get' })
   const loadTimeline = (): boolean => request({ type: 'timeline.get' })
   const loadHeatmap = (): boolean => request({ type: 'heatmap.get' })
+  const loadToolStats = (days: ToolStatDays, project: string | null): boolean => request({ type: 'toolstats.get', days, project })
   const loadToolSpans = (terminalId: string | undefined, since: string): boolean => request({ type: 'toolSpans.get', terminalId, since })
   function pickFolder(): Promise<{ result: FolderPickResult | 'offline'; dir?: string }> {
     const requestId = Math.random().toString(36).slice(2) + Date.now().toString(36)
@@ -426,6 +430,7 @@ export const useConnectionStore = defineStore('connection', () => {
     loadHistory,
     loadTimeline,
     loadHeatmap,
+    loadToolStats,
     loadToolSpans,
     subscribeOffice,
   }
