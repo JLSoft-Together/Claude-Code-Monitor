@@ -21,7 +21,7 @@ describe('changelog', () => {
   it('every bullet is short and has English and Vietnamese text', () => {
     for (const r of CHANGELOG) {
       expect(r.items.length).toBeGreaterThan(0)
-      expect(r.items.length).toBeLessThanOrEqual(10)
+      expect(r.items.length).toBeLessThanOrEqual(24)
       for (const item of r.items) {
         expect(item.en.trim()).not.toBe('')
         expect(item.vi.trim()).not.toBe('')

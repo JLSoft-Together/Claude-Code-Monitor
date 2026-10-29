@@ -171,6 +171,18 @@ describe('run store', () => {
     expect(ws.insertRequest).toMatchObject({ paneKey: codex.key, text: '@mobile/lib/main.dart:12:5 Undefined name foo' })
   })
 
+  it('fills built text into the project agent with its cwd, false without one', () => {
+    const run = useRunStore()
+    const ws = useWorkspaceStore()
+    const build = vi.fn((cwd: string | undefined) => `crash in ${cwd}`)
+    expect(run.fillAgent(ROOT, build)).toBe(false)
+    expect(build).not.toHaveBeenCalled()
+    const pane = ws.open('claude', ROOT)
+    ws.update(pane.key, { state: 'running' })
+    expect(run.fillAgent(ROOT, build)).toBe(true)
+    expect(ws.insertRequest).toMatchObject({ paneKey: pane.key, text: `crash in ${ROOT}` })
+  })
+
   it('shows refused stop / reload / emulator results as the project notice', async () => {
     const run = useRunStore()
     await run.reload('s1', false, ROOT)

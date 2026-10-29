@@ -456,6 +456,15 @@ export const useRunStore = defineStore('run', () => {
     return true
   }
 
+  /** Prefills text built for the project's agent pane (its cwd for relative mentions); false = no such pane. */
+  function fillAgent(root: string, build: (cwd: string | undefined, win: boolean) => string): boolean {
+    const workspace = useWorkspaceStore()
+    const pane = agentPaneFor(workspace.panes, root)
+    if (!pane) return false
+    workspace.insertInto(pane.key, build(pane.cwd, desktop?.platform === 'win32'))
+    return true
+  }
+
   return {
     projects,
     configs,
@@ -511,6 +520,7 @@ export const useRunStore = defineStore('run', () => {
     noticeFor,
     dismissNotice,
     sendErrorToAgent,
+    fillAgent,
     settings,
     loadSettings,
     updateSettings,

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDownToLine, CircleX, Search, Send, Trash2, TriangleAlert } from 'lucide-vue-next'
+import { ArrowDownToLine, Bug, CircleX, LoaderCircle, Search, Send, Trash2, TriangleAlert, X } from 'lucide-vue-next'
 import type { BuildError, LogLevel, RunKind, RunLogLine, RunSession, RunStream } from '@ccm/shared'
-import { baseName } from '../../lib/preview'
+import { baseName, listFiles } from '../../lib/preview'
+import { fileMention } from '../../lib/promptAttachments'
+import { crashBlocks, crashClock, crashPrompt, fileIndex, frameFile, groupCrashes, type CrashFrame, type CrashGroup, type FileIndex, type OwnFrame } from '../../lib/runCrash'
 import { isErrorLine } from '../../lib/runUi'
 import { inRoot, useRunStore } from '../../stores/run'
 
@@ -62,6 +64,60 @@ const errorCount = computed(() => {
   void run.logVersion
   return props.session ? run.errorsFor(props.session.id).length : 0
 })
+
+// Parsed from the whole run buffer (not the filtered view): a crash stays visible while searching for something else.
+const crashes = computed<CrashGroup[]>(() => {
+  void run.logVersion
+  return props.session ? groupCrashes(crashBlocks(run.linesFor(props.session.id, runStreams.value))) : []
+})
+const crashTotal = computed(() => crashes.value.reduce((n, g) => n + g.count, 0))
+const crashOpen = ref(false)
+const crashPick = ref<string | null>(null)
+const crashSel = computed(() => crashes.value.find((g) => g.key === crashPick.value) ?? crashes.value[0] ?? null)
+const FRAMES_SHOWN = 40
+
+watch(
+  () => props.session?.id,
+  () => {
+    crashOpen.value = false
+    crashPick.value = null
+  },
+)
+
+const index = shallowRef<FileIndex | null>(null)
+let indexRoot: string | null = null
+watch(
+  () => [crashOpen.value, props.root] as const,
+  async ([open, root]) => {
+    if (!open || indexRoot === root) return
+    indexRoot = root
+    index.value = null
+    const list = await listFiles(root).catch(() => null)
+    if (indexRoot === root) index.value = fileIndex(list?.files ?? [])
+  },
+)
+
+function absPath(rel: string): string {
+  const sep = props.root.includes('\\') ? '\\' : '/'
+  return `${props.root.replace(/[\\/]+$/, '')}${sep}${sep === '/' ? rel : rel.replace(/\//g, sep)}`
+}
+
+function ownPath(f: CrashFrame): string | null {
+  const rel = index.value ? frameFile(f, index.value, props.root) : null
+  return rel ? absPath(rel) : null
+}
+
+function ownFrames(g: CrashGroup): OwnFrame[] {
+  return g.block.frames.flatMap((frame) => {
+    const path = ownPath(frame)
+    return path ? [{ frame, path }] : []
+  })
+}
+
+function fillCrash(g: CrashGroup): void {
+  const own = ownFrames(g)
+  if (!run.fillAgent(props.root, (cwd, win) => crashPrompt(g, own, (p) => fileMention(p, cwd, win)))) emit('noAgent')
+}
 
 function shortFile(file: string): string {
   if (!inRoot(file, props.root)) return baseName(file)
@@ -130,6 +186,20 @@ function lineClass(l: RunLogLine): string {
           <span v-if="v === 'build' && errorCount" class="ml-0.5 tabular text-st-error">{{ errorCount }}</span>
         </button>
       </div>
+      <button
+        v-if="crashes.length"
+        type="button"
+        class="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-st-error-soft px-2 text-2xs font-medium text-st-error"
+        :aria-expanded="crashOpen"
+        :aria-label="t('runCrash.chipLabel', { n: crashTotal })"
+        :title="t('runCrash.chipLabel', { n: crashTotal })"
+        data-run-crash
+        @click="crashOpen = !crashOpen"
+      >
+        <Bug :size="12" aria-hidden="true" />
+        {{ t('runCrash.chip', { time: crashClock(crashes[0]!.block.at) }) }}
+        <span v-if="crashTotal > 1" class="tabular">{{ t('runCrash.times', { n: crashTotal }) }}</span>
+      </button>
       <select v-if="hasLevels" v-model="minLevel" class="ccm-field h-7 shrink-0 cursor-pointer pr-1 text-2xs" :aria-label="t('run.log.level')" :title="t('run.log.level')">
         <option v-for="l in LEVELS" :key="l" :value="l">{{ l }} · {{ t(`run.log.levels.${l}`) }}</option>
       </select>
@@ -144,6 +214,63 @@ function lineClass(l: RunLogLine): string {
         <Trash2 :size="14" aria-hidden="true" />
       </button>
     </div>
+
+    <section v-if="crashOpen && crashSel" class="flex max-h-80 shrink-0 flex-col border-b border-line" :aria-label="t('runCrash.title')" data-run-crash-panel>
+      <div class="flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto px-2 py-1">
+        <button
+          v-for="g in crashes"
+          :key="g.key"
+          type="button"
+          class="flex h-6 max-w-64 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-inner px-2 text-2xs"
+          :class="g.key === crashSel.key ? 'bg-st-error-soft text-ink' : 'text-ink-muted hover:bg-fill hover:text-ink'"
+          :aria-pressed="g.key === crashSel.key"
+          :title="g.block.exception"
+          data-run-crash-group
+          @click="crashPick = g.key"
+        >
+          <CircleX :size="12" class="shrink-0 text-st-error" aria-hidden="true" />
+          <span class="shrink-0 tabular">{{ crashClock(g.block.at) }}</span>
+          <span class="min-w-0 truncate">{{ g.block.exception }}</span>
+          <span v-if="g.count > 1" class="shrink-0 tabular text-st-error">{{ t('runCrash.times', { n: g.count }) }}</span>
+        </button>
+        <span class="min-w-0 flex-1" />
+        <button type="button" class="ccm-btn shrink-0" :title="t('runCrash.fillHint')" data-run-crash-fill @click="fillCrash(crashSel)">
+          <Send :size="13" aria-hidden="true" />{{ t('runCrash.fill') }}
+        </button>
+        <button type="button" class="ccm-btn-plain shrink-0" :title="t('runCrash.close')" :aria-label="t('runCrash.close')" @click="crashOpen = false">
+          <X :size="13" aria-hidden="true" />
+        </button>
+      </div>
+      <div class="min-h-0 overflow-y-auto px-3 pb-2 text-xs" data-run-crash-detail>
+        <p class="text-2xs font-semibold text-st-error">{{ t(`runCrash.kind.${crashSel.block.kind}`) }}</p>
+        <p class="break-words font-mono text-2xs font-semibold text-ink">{{ crashSel.block.exception }}<template v-if="crashSel.block.message">: {{ crashSel.block.message }}</template></p>
+        <p v-for="(c, i) in crashSel.block.causes" :key="i" class="break-words font-mono text-2xs text-ink">
+          <span class="text-ink-muted">{{ t('runCrash.causedBy') }}:</span> {{ c.exception }}<template v-if="c.message">: {{ c.message }}</template>
+        </p>
+        <p v-if="!crashSel.block.frames.length" class="mt-1 text-2xs text-ink-faint">{{ t('runCrash.noFrames') }}</p>
+        <template v-else>
+          <p class="mt-1.5 flex items-center gap-1 text-2xs text-ink-faint">
+            <LoaderCircle v-if="!index" :size="11" class="ccm-spin" aria-hidden="true" />{{ index ? t('runCrash.ownHint') : t('runCrash.resolving') }}
+          </p>
+          <ol class="mt-0.5 font-mono text-2xs leading-relaxed" :aria-label="t('runCrash.frames')">
+            <li v-for="(f, i) in crashSel.block.frames.slice(0, FRAMES_SHOWN)" :key="i" class="min-w-0 break-all">
+              <button
+                v-if="ownPath(f)"
+                type="button"
+                class="cursor-pointer text-left font-semibold text-link hover:underline"
+                :title="t('runCrash.open', { file: ownPath(f)!, line: f.line })"
+                data-run-crash-frame
+                @click="emit('open', ownPath(f)!, Math.max(1, f.line))"
+              >
+                {{ f.raw }}
+              </button>
+              <span v-else class="text-ink-faint">{{ f.raw }}</span>
+            </li>
+          </ol>
+          <p v-if="crashSel.block.frames.length > FRAMES_SHOWN" class="text-2xs text-ink-faint">{{ t('runCrash.more', { n: crashSel.block.frames.length - FRAMES_SHOWN }) }}</p>
+        </template>
+      </div>
+    </section>
 
     <ul v-if="errors.length" class="max-h-40 shrink-0 overflow-y-auto border-b border-line py-1" :aria-label="t('run.errors.title')" data-run-errors>
       <li v-for="(e, i) in errors" :key="i" class="group flex min-w-0 items-start gap-2 px-3 py-1 text-xs hover:bg-fill">
