@@ -9,6 +9,8 @@ import DeviceCaptureDialog from './DeviceCaptureDialog.vue'
 import DeviceConnectBar from './DeviceConnectBar.vue'
 import DeviceUiTestDialog from './DeviceUiTestDialog.vue'
 import DeviceAppDataDialog from './DeviceAppDataDialog.vue'
+import DevicePerfDialog from './DevicePerfDialog.vue'
+import DeviceFilesDialog from './DeviceFilesDialog.vue'
 import DeviceRow from './DeviceRow.vue'
 import DeviceEmulators from './DeviceEmulators.vue'
 import { hasEmulators } from '../../lib/devices'
@@ -30,6 +32,8 @@ const ids = (list: AdbDevice[]): string[] => list.map((d) => d.id)
 const captureFor = ref<AdbDevice | null>(null)
 const testFor = ref<AdbDevice | null>(null)
 const dataFor = ref<AdbDevice | null>(null)
+const perfFor = ref<AdbDevice | null>(null)
+const filesFor = ref<AdbDevice | null>(null)
 
 function batch(fn: () => Promise<void>): void {
   store.lastError = null
@@ -142,7 +146,7 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
             <span class="hidden md:block">{{ t('devices.col.transport') }}</span>
           </div>
           <div role="list" class="ccm-group overflow-hidden">
-            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" @capture="(dev) => (captureFor = dev)" @ui-test="(dev) => (testFor = dev)" @app-data="(dev) => (dataFor = dev)" />
+            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" @capture="(dev) => (captureFor = dev)" @ui-test="(dev) => (testFor = dev)" @app-data="(dev) => (dataFor = dev)" @perf="(dev) => (perfFor = dev)" @files="(dev) => (filesFor = dev)" />
           </div>
         </section>
       </template>
@@ -151,5 +155,7 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
     <DeviceCaptureDialog :open="!!captureFor" :device-id="captureFor?.id ?? null" :device-name="captureFor?.name ?? ''" @close="captureFor = null" />
     <DeviceUiTestDialog :open="!!testFor" :device-id="testFor?.id ?? null" :device-name="testFor?.name ?? ''" @close="testFor = null" />
     <DeviceAppDataDialog :open="!!dataFor" :device-id="dataFor?.id ?? null" :device-name="dataFor?.name ?? ''" @close="dataFor = null" />
+    <DevicePerfDialog :open="!!perfFor" :device-id="perfFor?.id ?? null" :device-name="perfFor?.name ?? ''" @close="perfFor = null" />
+    <DeviceFilesDialog :open="!!filesFor" :device-id="filesFor?.id ?? null" :device-name="filesFor?.name ?? ''" @close="filesFor = null" />
   </main>
 </template>

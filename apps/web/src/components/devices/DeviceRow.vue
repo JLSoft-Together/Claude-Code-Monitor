@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Camera, Database, LoaderCircle, Pencil, RefreshCw, SlidersHorizontal, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
+import { Camera, Database, FolderOpen, Gauge, LoaderCircle, Pencil, RefreshCw, SlidersHorizontal, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
 import { useInlineEdit } from '../../composables/useInlineEdit'
 import { hasAppData, hasDeviceCapture, hasDeviceUiTest } from '../../lib/devices'
+import { hasDevPerf } from '../../lib/devPerf'
+import { hasDevFiles } from '../../lib/devFiles'
 import { useDevicesStore } from '../../stores/devices'
 import { OTHER_STATE, ROW_GRID, rowActions, STATE_META, stateOf, type RowAction } from './meta'
 
 const props = defineProps<{ device: AdbDevice }>()
-const emit = defineEmits<{ capture: [device: AdbDevice]; uiTest: [device: AdbDevice]; appData: [device: AdbDevice] }>()
+const emit = defineEmits<{ capture: [device: AdbDevice]; uiTest: [device: AdbDevice]; appData: [device: AdbDevice]; perf: [device: AdbDevice]; files: [device: AdbDevice] }>()
 
 const { t } = useI18n()
 const store = useDevicesStore()
@@ -23,6 +25,8 @@ const ready = computed(() => props.device.online && props.device.state === 'read
 const canCapture = computed(() => hasDeviceCapture && ready.value)
 const canTest = computed(() => hasDeviceUiTest && ready.value)
 const canData = computed(() => hasAppData && ready.value)
+const canPerf = computed(() => hasDevPerf && ready.value)
+const canFiles = computed(() => hasDevFiles && ready.value)
 const TRANSPORT_ICON = { usb: Usb, wifi: Wifi, emulator: TabletSmartphone }
 const ACTION_ICON = { toWifi: Wifi, disconnect: Unplug, reconnect: RefreshCw, forget: Trash2 }
 
@@ -158,6 +162,30 @@ async function finish(save_: boolean): Promise<void> {
       >
         <Database :size="13" aria-hidden="true" />
         <span class="sr-only lg:not-sr-only">{{ t('appData.button') }}</span>
+      </button>
+      <button
+        v-if="canPerf"
+        type="button"
+        class="ccm-btn-plain text-xs"
+        :disabled="busy"
+        :title="t('devPerf.button')"
+        data-dev-action="perf"
+        @click="emit('perf', device)"
+      >
+        <Gauge :size="13" aria-hidden="true" />
+        <span class="sr-only lg:not-sr-only">{{ t('devPerf.button') }}</span>
+      </button>
+      <button
+        v-if="canFiles"
+        type="button"
+        class="ccm-btn-plain text-xs"
+        :disabled="busy"
+        :title="t('devFiles.button')"
+        data-dev-action="files"
+        @click="emit('files', device)"
+      >
+        <FolderOpen :size="13" aria-hidden="true" />
+        <span class="sr-only lg:not-sr-only">{{ t('devFiles.button') }}</span>
       </button>
       <button
         v-for="a in actions"

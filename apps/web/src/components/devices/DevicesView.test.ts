@@ -223,7 +223,7 @@ describe('Devices view', () => {
     })
     expect(actions('R58M')).toContain('toWifi')
     expect(actions('R58M')).not.toContain('disconnect')
-    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'uiTest', 'appData', 'disconnect'])
+    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'uiTest', 'appData', 'perf', 'files', 'disconnect'])
     expect(actions('192.168.1.9:5555')).toEqual(expect.arrayContaining(['reconnect', 'forget']))
     expect(actions('192.168.1.9:5555')).not.toContain('disconnect')
     expect(actions('192.168.1.9:5555')).not.toContain('capture')
@@ -357,6 +357,73 @@ describe('Devices view', () => {
     expect(dialog.querySelector('[data-appdata-message]')?.textContent).toContain(t('appData.pref.saved'))
     expect(dialog.querySelector('[data-appdata-restore]')!.hasAttribute('disabled')).toBe(false)
     dialog.querySelector<HTMLButtonElement>('[data-appdata-close]')!.click()
+    await flushPromises()
+  })
+
+  it('Performance measures, compares with the previous sample and keeps the history', async () => {
+    const sample = (id: string, at: number, janky: number, pss: number) => ({
+      id, at, pkg: 'com.app', device: 'R58M', kind: 'measure',
+      frames: { total: 1000, janky: janky * 10, jankyPct: janky, p50: 8, p90: 14, p95: 18, p99: 32 },
+      memory: { totalPss: pss, javaHeap: 7000, nativeHeap: 12000, graphics: 15000, totalRss: null }, coldStart: null,
+    })
+    const old = sample('a', 1000, 5, 80000)
+    const fresh = { ...sample('b', 2000, 2, 90000), sinceResetMs: 4000 }
+    localStorage.setItem('ccm.devices.appDataPkg', 'com.app')
+    api.perfHistory.mockResolvedValue({ ok: true, pkg: 'com.app', samples: [old] })
+    api.perfReset.mockResolvedValue({ ok: true, at: 1500 })
+    api.perfMeasure.mockResolvedValue({ ok: true, sample: fresh, samples: [fresh, old] })
+    api.perfCold.mockResolvedValue({ ok: false, error: 'cancelled' })
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="perf"]').trigger('click')
+    await flushPromises()
+    const dialog = document.querySelector<HTMLElement>('[data-device-perf]')!
+    expect(api.perfHistory).toHaveBeenCalledWith('com.app')
+    dialog.querySelector<HTMLButtonElement>('[data-perf-reset]')!.click()
+    await flushPromises()
+    expect(dialog.querySelector('[data-perf-message]')?.textContent).toContain(t('devPerf.resetDone'))
+    dialog.querySelector<HTMLButtonElement>('[data-perf-measure]')!.click()
+    await flushPromises()
+    expect(api.perfMeasure).toHaveBeenCalledWith('R58M', 'com.app', 'R58M')
+    expect(dialog.querySelector('[data-perf-metric="jankyPct"] [data-perf-trend]')?.getAttribute('data-perf-trend')).toBe('better')
+    expect(dialog.querySelector('[data-perf-metric="totalPss"] [data-perf-trend]')?.textContent).toContain(t('devPerf.trend.worse'))
+    expect(dialog.querySelector('[data-perf-since="reset"]')).not.toBeNull()
+    expect(dialog.querySelectorAll('[data-perf-sample]')).toHaveLength(2)
+    dialog.querySelector<HTMLButtonElement>('[data-perf-cold]')!.click()
+    await flushPromises()
+    expect(dialog.querySelector('[data-perf-message]')?.textContent).toContain(t('devPerf.error.cancelled'))
+    dialog.querySelector<HTMLButtonElement>('[data-perf-close]')!.click()
+    await flushPromises()
+  })
+
+  it('Files lists /sdcard, opens a folder, pulls and deletes through the desktop', async () => {
+    const entry = (name: string, kind: string, size: number | null) => ({ name, kind, size, modified: '2024-01-02 10:11' })
+    api.devFsList.mockImplementation(async (_id: string, _s: unknown, dir: string) =>
+      dir === '/sdcard' ? { ok: true, path: dir, entries: [entry('Download', 'dir', null)], skipped: 0 } : { ok: true, path: dir, entries: [entry('a b.txt', 'file', 5)], skipped: 1 },
+    )
+    api.devFsPull.mockResolvedValue({ ok: true, local: 'C:/Users/me/Downloads/a b.txt', name: 'a b.txt', inDir: 'C:/Users/me/Downloads' })
+    api.devFsDelete.mockResolvedValue({ ok: false, error: 'cancelled' })
+    api.devFsOpen.mockResolvedValue(true)
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="files"]').trigger('click')
+    await flushPromises()
+    const dialog = document.querySelector<HTMLElement>('[data-device-files]')!
+    expect(api.devFsList).toHaveBeenCalledWith('R58M', { kind: 'sdcard' }, '/sdcard')
+    dialog.querySelector<HTMLButtonElement>('[data-files-row="Download"] [data-files-enter]')!.click()
+    await flushPromises()
+    expect(dialog.querySelector('[data-files-crumb="/sdcard/Download"]')).not.toBeNull()
+    dialog.querySelector<HTMLButtonElement>('[data-files-row="a b.txt"] [data-files-pull]')!.click()
+    await flushPromises()
+    expect(api.devFsPull).toHaveBeenCalledWith('R58M', expect.objectContaining({ scope: { kind: 'sdcard' }, path: '/sdcard/Download/a b.txt', kind: 'file', size: 5, dest: { kind: 'pick' } }))
+    expect(dialog.querySelector('[data-files-message]')?.textContent).toContain('a b.txt')
+    dialog.querySelector<HTMLButtonElement>('[data-files-open-pulled]')!.click()
+    expect(api.devFsOpen).toHaveBeenCalledWith('C:/Users/me/Downloads/a b.txt', 'open')
+    dialog.querySelector<HTMLButtonElement>('[data-files-row="a b.txt"] [data-files-delete]')!.click()
+    await flushPromises()
+    expect(api.devFsDelete).toHaveBeenCalledWith('R58M', { kind: 'sdcard' }, '/sdcard/Download/a b.txt', false)
+    dialog.querySelector<HTMLButtonElement>('[data-files-up]')!.click()
+    await flushPromises()
+    expect(api.devFsList).toHaveBeenLastCalledWith('R58M', { kind: 'sdcard' }, '/sdcard')
+    dialog.querySelector<HTMLButtonElement>('[data-files-close]')!.click()
     await flushPromises()
   })
 

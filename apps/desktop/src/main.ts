@@ -38,6 +38,10 @@ import { registerHooksIpc } from './claudeHooks/ipc'
 import { isAllowedOverride } from './libs/registry'
 import { AppDataInspector } from './devices/appData'
 import { registerAppDataIpc } from './devices/appDataIpc'
+import { PerfService } from './devices/perf'
+import { registerPerfIpc } from './devices/perfIpc'
+import { DeviceFiles } from './devices/fileBrowser'
+import { registerFilesIpc } from './devices/filesIpc'
 import type { SqlJsStatic } from 'sql.js'
 import { registerHttpIpc } from './preview/httpSend'
 import { DeviceManager } from './devices/manager'
@@ -131,6 +135,9 @@ let disposeLibs: (() => void) | null = null
 let disposeHooks: (() => void) | null = null
 let appData: AppDataInspector | null = null
 let disposeAppData: (() => void) | null = null
+let disposePerf: (() => void) | null = null
+let deviceFiles: DeviceFiles | null = null
+let disposeFiles: (() => void) | null = null
 let updates: UpdateManager | null = null
 let disposeUpdate: (() => void) | null = null
 // Set once the owner confirmed "Restart to update": the quit skips its own confirm and starts the installer on the way out.
@@ -237,6 +244,12 @@ function stopPreview(): Promise<void> {
   disposeHooks = null
   disposeAppData?.()
   disposeAppData = null
+  disposePerf?.()
+  disposePerf = null
+  disposeFiles?.()
+  disposeFiles = null
+  deviceFiles?.dispose()
+  deviceFiles = null
   disposeUpdate?.()
   disposeUpdate = null
   disposeBackup?.()
@@ -1249,6 +1262,78 @@ async function ready(): Promise<void> {
       }),
   })
   disposeAppData = registerAppDataIpc({ ipcMain, isAppFrame, inspector: appData })
+  disposePerf = registerPerfIpc({
+    ipcMain,
+    isAppFrame,
+    perf: new PerfService({
+      withDevice: (id, fn) => devices.withReady(id, fn),
+      dataDir: DATA_DIR,
+      confirmCold: (pkg) =>
+        confirmBox(mainWindow, {
+          type: 'warning',
+          message: t.perfColdTitle(pkg),
+          detail: t.perfColdDetail,
+          buttons: [t.perfColdConfirm, t.quitCancel],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        }),
+    }),
+  })
+  deviceFiles = new DeviceFiles({
+    withDevice: (id, fn) => devices.withReady(id, fn),
+    kill: killAdbClient,
+    confirmDelete: (req) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.fsDeleteTitle(req.name, req.dir),
+        detail: t.fsDeleteDetail(req.where),
+        buttons: [t.fsDeleteConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+    confirmReplace: (req) =>
+      confirmBox(mainWindow, {
+        type: 'warning',
+        message: t.fsReplaceTitle(req.name),
+        detail: t.fsReplaceDetail(req.where),
+        buttons: [t.fsReplaceConfirm, t.quitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }),
+  })
+  // E2E: native folder / file pickers cannot be driven over CDP.
+  const e2ePullDir = process.env.CCM_E2E_PULL_DIR || null
+  const e2ePushFile = process.env.CCM_E2E_PUSH_FILE || null
+  disposeFiles = registerFilesIpc({
+    ipcMain,
+    isAppFrame,
+    files: deviceFiles,
+    resolveDir: (dir) => previewGate.resolveDir(dir),
+    pickFolder: async (event) => {
+      if (e2ePullDir) return e2ePullDir
+      const opts: Electron.OpenDialogOptions = { title: t.fsPullTitle, defaultPath: app.getPath('downloads'), properties: ['openDirectory', 'createDirectory'] }
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+    pickFiles: async (event) => {
+      if (e2ePushFile) return [e2ePushFile]
+      const opts: Electron.OpenDialogOptions = { title: t.fsPushTitle, properties: ['openFile', 'multiSelections'] }
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : res.filePaths
+    },
+    openLocal: async (local, mode) => {
+      if (mode === 'reveal') {
+        shell.showItemInFolder(local)
+        return true
+      }
+      return (await shell.openPath(local)) === ''
+    },
+  })
   const libsOverride = process.env.CCM_LIBS_REGISTRY
   const osvOverride = process.env.CCM_OSV_URL
   disposeLibs = registerLibsIpc({

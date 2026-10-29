@@ -56,6 +56,7 @@ import hooksV74 from './hooks-v74'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import devicesV75 from './devices-v75'
+import devtoolsV75 from './devtools-v75'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -95,6 +96,7 @@ const vi: typeof en = {
   ...libsV75.vi,
   ...memdocV75.vi,
   ...devicesV75.vi,
+  ...devtoolsV75.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

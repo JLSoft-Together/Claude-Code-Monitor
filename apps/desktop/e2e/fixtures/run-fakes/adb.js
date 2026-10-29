@@ -179,9 +179,51 @@ if (args[0] === 'emu' && args[1] === 'avd' && args[2] === 'name') {
 } else if (shellIs('uiautomator', 'dump')) {
   out(`UI hierchary dumped to: ${args[3]}\n`)
 } else if (args[0] === 'exec-out' && args[1] === 'cat') {
-  out(DUMP)
+  const target = sh()[1]
+  const file = target === '/sdcard/orrery-ui.xml' ? null : local(target)
+  if (!file) out(DUMP)
+  else if (fs.existsSync(file) && fs.statSync(file).isFile()) process.stdout.write(fs.readFileSync(file))
+  else out(`cat: ${target}: No such file or directory\n`)
+} else if (shellIs('ls')) {
+  fsLs(sh())
+} else if (shellIs('sh', '-c')) {
+  fsWrite(sh()[2])
+} else if (shellIs('mkdir')) {
+  const target = sh()[1]
+  const file = local(target)
+  if (!file) out(`mkdir: '${target}': Permission denied\n`)
+  else if (fs.existsSync(file)) out(`mkdir: '${target}': File exists\n`)
+  else fs.mkdirSync(file)
+  if (!file || !fs.statSync(file).isDirectory()) process.exitCode = 1
+} else if (shellIs('screenrecord')) {
+  screenrecord()
+} else if (shellIs('pkill')) {
+  const name = unquote(args.at(-1))
+  try {
+    process.kill(Number(fs.readFileSync(path.join(SDCARD, `${name}.pid`), 'utf8')))
+  } catch {
+    process.exitCode = 1
+  }
+} else if (args[0] === 'pull') {
+  const src = local(args[1]) ?? path.join(SDCARD, path.posix.basename(args[1]))
+  if (fs.existsSync(src)) {
+    fs.cpSync(src, args[2], { recursive: true })
+    out(`${args[1]}: 1 file pulled.
+`)
+  } else {
+    out(`adb: error: failed to stat remote object '${args[1]}': No such file or directory
+`)
+    process.exitCode = 1
+  }
 } else if (shellIs('rm')) {
-  // nothing printed by the real tool either
+  // v75: recordings live in STATE/sdcard so e2e can check they were removed; nothing printed by the real tool either
+  const remote = unquote(args.at(-1))
+  if (remote.startsWith('/sdcard/orrery-rec-')) {
+    for (const ext of ['.mp4', '.pid']) fs.rmSync(path.join(SDCARD, path.posix.basename(remote, '.mp4') + ext), { force: true })
+  } else {
+    const file = local(sh().at(-1))
+    if (file && file !== SDCARD) fs.rmSync(file, { recursive: sh().includes('-r'), force: true })
+  }
 } else if (shellIs('getprop', 'ro.build.version.sdk')) {
   out('34\n')
 } else if (shellIs('cmd', 'uimode', 'night')) {
@@ -252,8 +294,18 @@ if (args[0] === 'emu' && args[1] === 'avd' && args[2] === 'name') {
   exitWithParent()
 } else if (args[0] === 'shell' && has('resolve-activity')) {
   out(`priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n${PKG}/.MainActivity\n`)
+} else if (shellIs('dumpsys', 'gfxinfo')) {
+  // v75 performance: com.example.demo runs, any other package is "not running"
+  const pkg = unquote(args[3])
+  if (pkg !== PKG) out(`No process found for: ${pkg}\n`)
+  else if (args[4] !== 'reset') out(`** Graphics info for pid 4242 [${PKG}] **\n\nStats since: 1ns\nTotal frames rendered: 1200\nJanky frames: 30 (2.50%)\n50th percentile: 7ms\n90th percentile: 12ms\n95th percentile: 16ms\n99th percentile: 28ms\n`)
+} else if (shellIs('dumpsys', 'meminfo')) {
+  const pkg = unquote(args[3])
+  if (pkg !== PKG) out(`No process found for: ${pkg}\n`)
+  else out(`** MEMINFO in pid 4242 [${PKG}] **\n App Summary\n           Java Heap:     7000\n         Native Heap:    12300\n            Graphics:    15000\n\n           TOTAL PSS:    80000            TOTAL RSS:   120000\n`)
 } else if (args[0] === 'shell' && has('am', 'start')) {
   out(`Starting: Intent { cmp=${PKG}/.MainActivity }\n`)
+  if (has('-W', '-S')) out(`Status: ok\nLaunchState: COLD\nActivity: ${PKG}/.MainActivity\nTotalTime: 812\nWaitTime: 820\nComplete\n`)
 } else if (args[0] === 'shell' && has('pidof')) {
   out('4242\n')
 } else if (args[0] === 'shell' && has('force-stop')) {
