@@ -231,6 +231,8 @@ export const useUiStore = defineStore('ui', () => {
   const i18nScan = ref<{ dir: string | null } | null>(null)
   /** Repeated permission prompts → allow rules (PermAdvisorDialog.vue): a folder, or null = the focused pane's project. */
   const permAdvisor = ref<{ dir: string | null } | null>(null)
+  /** APK / AAB size dialog (ApkSizeDialog.vue): a file + its project, or path null = pick one. */
+  const apkSize = ref<{ path: string | null; root: string | null } | null>(null)
   /** Background context of a session (ContextSourcesDialog.vue): its folder + monitor terminal, or nulls = the focused pane. */
   const contextSources = ref<{ cwd: string | null; terminalId: string | null } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
@@ -508,6 +510,7 @@ export const useUiStore = defineStore('ui', () => {
     envCheck,
     i18nScan,
     permAdvisor,
+    apkSize,
     contextSources,
     tourOpen,
     setupOpen,

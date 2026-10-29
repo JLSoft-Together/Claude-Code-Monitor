@@ -39,6 +39,7 @@ import {
   KeyRound,
   Sparkles,
   ShieldCheck,
+  Package,
   Layers,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
@@ -47,6 +48,7 @@ import { desktop, hasExtensions, hasTerminals } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
 import { hasEnvCheck, hasExplorer, hasI18nScan, hasLog } from '../lib/preview'
 import { hasPermAdvisor } from '../lib/permAdvisor'
+import { hasApkSize } from '../lib/apkSize'
 import { hasCtxSources } from '../lib/ctxSources'
 import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
@@ -226,6 +228,21 @@ const items = computed<Item[]>(() => {
             run: () => {
               ui.setView('workspace')
               ui.i18nScan = { dir: null }
+            },
+          },
+        ]
+      : []),
+    ...(hasTerminals && hasApkSize
+      ? [
+          {
+            id: 'c:apk-size',
+            group: 'actions' as const,
+            label: t('apkSize.palette'),
+            sub: t('apkSize.paletteSub'),
+            icon: Package,
+            run: () => {
+              ui.setView('workspace')
+              ui.apkSize = { path: null, root: null }
             },
           },
         ]

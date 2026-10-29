@@ -43,6 +43,7 @@ import permV72 from './perm-v72'
 import contextV72 from './context-v72'
 import toolStatsV73 from './toolstats-v73'
 import resumeV73 from './resume-v73'
+import apkV73 from './apk-v73'
 
 export default {
   ...v25.en,
@@ -70,6 +71,7 @@ export default {
   ...contextV72.en,
   ...toolStatsV73.en,
   ...resumeV73.en,
+  ...apkV73.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

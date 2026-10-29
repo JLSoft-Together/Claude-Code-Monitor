@@ -44,6 +44,7 @@ import permV72 from './perm-v72'
 import contextV72 from './context-v72'
 import toolStatsV73 from './toolstats-v73'
 import resumeV73 from './resume-v73'
+import apkV73 from './apk-v73'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -71,6 +72,7 @@ const vi: typeof en = {
   ...contextV72.vi,
   ...toolStatsV73.vi,
   ...resumeV73.vi,
+  ...apkV73.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

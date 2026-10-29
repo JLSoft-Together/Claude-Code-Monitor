@@ -10,6 +10,7 @@ import { baseName, hasChecks, hasExplorer, hasSearch, readFile, revealPath, type
 import { grammarFor } from '../../lib/codeView'
 import { useExplorerChanges } from '../../composables/useExplorerChanges'
 import { useExplorerStore, type ExplorerView } from '../../stores/explorer'
+import { useUiStore } from '../../stores/ui'
 import CreateEntryDialog from './CreateEntryDialog.vue'
 import DiscardConfirm from './DiscardConfirm.vue'
 import ExplorerChanges from './ExplorerChanges.vue'
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const explorer = useExplorerStore()
+const ui = useUiStore()
 
 watch(
   () => props.root,
@@ -275,6 +277,9 @@ async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
     }
     case 'compare-clipboard':
       await compareClipboard(row.path)
+      break
+    case 'apk-size':
+      ui.apkSize = { path: row.path, root }
       break
   }
 }

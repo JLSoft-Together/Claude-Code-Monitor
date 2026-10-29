@@ -57,6 +57,7 @@ const PlanBoard = defineAsyncComponent(() => import('./PlanBoard.vue'))
 const EnvCheckDialog = defineAsyncComponent(() => import('./EnvCheckDialog.vue'))
 const I18nScanDialog = defineAsyncComponent(() => import('./I18nScanDialog.vue'))
 const PermAdvisorDialog = defineAsyncComponent(() => import('./PermAdvisorDialog.vue'))
+const ApkSizeDialog = defineAsyncComponent(() => import('./ApkSizeDialog.vue'))
 const ContextSourcesDialog = defineAsyncComponent(() => import('./ContextSourcesDialog.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
@@ -2469,6 +2470,7 @@ onBeforeUnmount(() => {
     <EnvCheckDialog v-if="ui.envCheck && visible" :root="envRoot" @close="ui.envCheck = null" />
     <I18nScanDialog v-if="ui.i18nScan && visible" :root="i18nRoot" @close="ui.i18nScan = null" />
     <PermAdvisorDialog v-if="ui.permAdvisor && visible" :root="permRoot" @close="ui.permAdvisor = null" />
+    <ApkSizeDialog v-if="ui.apkSize && visible" :path="ui.apkSize.path" :root="ui.apkSize.root" @close="ui.apkSize = null" />
     <ContextSourcesDialog v-if="ui.contextSources && visible" :cwd="ctxTarget.cwd" :terminal-id="ctxTarget.terminalId" @close="ui.contextSources = null" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog

@@ -19,6 +19,7 @@ export type ExplorerAction =
   | 'compare-clear'
   | 'compare-with'
   | 'compare-clipboard'
+  | 'apk-size'
 
 export interface ExplorerMenuCtx {
   mac: boolean
@@ -30,6 +31,8 @@ export interface ExplorerMenuCtx {
   run?: boolean
   /** Files can be read for a compare: the Compare group shows on file rows, `selected` = file picked first. */
   compare?: { selected: { path: string; name: string } | null; self: boolean }
+  /** The APK / AAB size analyzer exists (desktop `apkAnalyze`): "Analyze size" shows on .apk / .aab rows. */
+  apk?: boolean
 }
 
 const M = 'workspace.explorer.menu.'
@@ -73,6 +76,7 @@ export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string
     { id: 'open-in', label: t(`${M}openIn`), children: [{ id: 'reveal', label: t(`${M}${ctx.mac ? 'finder' : 'explorer'}`) }, { id: 'terminal', label: t(`${M}terminal`) }] },
   ]
   if (ctx.run && isRunnableRow(row)) entries.push({ id: 'run', label: t(`${M}run`) })
+  if (ctx.apk && !row.directory && /\.(apk|aab)$/i.test(row.name)) entries.push({ id: 'apk-size', label: t('apkSize.menu') })
   if (ctx.compare && !row.directory) {
     const { selected, self } = ctx.compare
     entries.push({ separator: true }, self ? { id: 'compare-clear', label: t(`${M}compareClear`) } : { id: 'compare-select', label: t(`${M}compareSelect`) })

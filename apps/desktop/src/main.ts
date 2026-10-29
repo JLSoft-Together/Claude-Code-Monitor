@@ -29,6 +29,7 @@ import { createFlutterRunner } from './run/flutter/runner'
 import { registerRunIpc } from './run/ipc'
 import { DeviceHistory, DEVICES_FILE } from './devices/history'
 import { registerDevicesIpc } from './devices/ipc'
+import { registerApkIpc } from './apk/ipc'
 import { registerHttpIpc } from './preview/httpSend'
 import { DeviceManager } from './devices/manager'
 import { UI_ORIGINALS_FILE } from './devices/uiTester'
@@ -95,6 +96,7 @@ let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let deviceManager: DeviceManager | null = null
 let disposeDevices: (() => void) | null = null
+let disposeApk: (() => void) | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
 let editors: EditorTracker | null = null
@@ -185,6 +187,8 @@ function stopPreview(): Promise<void> {
   disposeRun = null
   disposeDevices?.()
   disposeDevices = null
+  disposeApk?.()
+  disposeApk = null
   deviceManager?.stop(true)
   deviceManager = null
   previewWatch.closeAll()
@@ -1030,6 +1034,15 @@ async function ready(): Promise<void> {
   deviceManager = devices
   disposeDevices = registerDevicesIpc({ ipcMain, isAppFrame, manager: devices, resolveDir: (dir) => previewGate.resolveDir(dir) })
   void devices.autoConnectOnce()
+  disposeApk = registerApkIpc({
+    ipcMain,
+    isAppFrame,
+    resolveFile: (p) => previewGate.resolveFile(p),
+    resolveDir: (dir) => previewGate.resolveDir(dir),
+    dialog,
+    getWindow: () => mainWindow,
+    dataDir: DATA_DIR,
+  })
   layoutIpc = wireLayout({
     ipcMain,
     isAppFrame,
