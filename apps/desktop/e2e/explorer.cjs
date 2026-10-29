@@ -135,6 +135,23 @@ async function run(app) {
   const changed = await evaluate(`[...document.querySelectorAll('[data-change]')].map((e) => e.dataset.change)`)
   check('Changes view lists modified + untracked files', changed.includes('README.md') && changed.includes('src/outside.ts'), JSON.stringify(changed))
   await shot('explorer-03-changes')
+
+  // View tabs fit the switcher at the default width (icons only) and at a wide one (labels + counts).
+  const tabFit = `(() => { const bar = document.querySelector('[data-explorer-tabs]').getBoundingClientRect(); const rs = [...document.querySelectorAll('[data-explorer-tabs] [role=tab]')].map((b) => { const l = b.querySelector('[data-tab-label]'); return { r: b.getBoundingClientRect(), over: b.scrollWidth > b.clientWidth + 1 || (!!l?.offsetWidth && l.clientWidth > 1 && l.scrollWidth > l.clientWidth + 1) } })
+    const overlap = rs.some((a, i) => rs.some((b, j) => j > i && a.r.right > b.r.left + 0.5 && b.r.right > a.r.left + 0.5))
+    const outside = rs.some(({ r }) => r.left < bar.left - 0.5 || r.right > bar.right + 0.5)
+    return { n: rs.length, overlap, outside, clipped: rs.some((x) => x.over), counts: !!document.querySelector('[data-change-totals]')?.offsetWidth, dot: !!document.querySelector('[data-change-dot]')?.offsetWidth } })()`
+  for (const width of [280, 400, 200, 520]) {
+    await evaluate(`document.querySelector('[data-explorer-panel]').style.width = '${width}px'`)
+    await sleep(250)
+    const fit = await evaluate(tabFit)
+    check(`Explorer view tabs fit at ${width} px`, fit.n >= 2 && !fit.overlap && !fit.outside && !fit.clipped && fit.counts !== fit.dot, JSON.stringify(fit))
+    const clip = await evaluate(`(() => { const r = document.querySelector('[data-explorer-panel]').getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: 120, scale: 2 } })()`)
+    const img = await cmd('Page.captureScreenshot', { format: 'png', clip })
+    fs.writeFileSync(path.join(OUT, `explorer-03b-tabs-${width}.png`), Buffer.from(img.result.data, 'base64'))
+  }
+  check('narrow tabs keep an accessible name and tooltip', await evaluate(`[...document.querySelectorAll('[data-explorer-tabs] [role=tab]')].every((b) => b.getAttribute('aria-label') && b.title)`))
+  await evaluate(`document.querySelector('[data-explorer-panel]').style.width = '280px'`)
   await evaluate(`document.querySelector('[data-change="src/outside.ts"]').click()`)
   await sleep(400)
   check('clicking a change opens it', await evaluate(`${W}.panes.some((p) => p.kind === 'file' && p.path.endsWith('outside.ts'))`))

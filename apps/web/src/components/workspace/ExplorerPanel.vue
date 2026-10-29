@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BranchOpResult } from '@ccm/shared'
-import { X } from 'lucide-vue-next'
+import { FolderTree, GitCompare, ListChecks, ListTodo, Search, X, type LucideIcon } from 'lucide-vue-next'
 import { riskHintKey, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { createTargetDirectory, parentDirectory, relativeTo, rootName, type TreeRow } from '../../lib/explorer/tree'
 import { isMac } from '../../lib/platform'
@@ -72,6 +72,16 @@ watch(changes.isRepo, (repo) => {
 
 const VIEWS: ExplorerView[] = ['files', 'changes', ...(hasSearch ? (['search', 'todo'] as const) : []), ...(hasChecks ? (['checks'] as const) : [])]
 const tabs = ref<HTMLElement | null>(null)
+const VIEW_ICONS: Record<ExplorerView, LucideIcon> = { files: FolderTree, changes: GitCompare, search: Search, todo: ListTodo, checks: ListChecks }
+const changeTotals = computed(() => {
+  const n = changes.totals.value
+  return n && (n.added || n.removed) ? n : null
+})
+function tabName(v: ExplorerView): string {
+  if (needsRepo(v) && !changes.isRepo.value) return `${t(`workspace.explorer.${v}`)} (${t('workspace.explorer.notRepo')})`
+  const name = t(`workspace.explorer.${v}`)
+  return v === 'changes' && changeTotals.value ? `${name}, ${t('workspace.explorer.changesView.totals', changeTotals.value)}` : name
+}
 const searchView = ref<{ focus: () => void; seed: (q: SearchQuery) => void } | null>(null)
 const flutterRoot = computed(() => !!explorer.root && !!explorer.state.listings.get(explorer.root)?.some((e) => e.name === 'pubspec.yaml'))
 
@@ -295,7 +305,7 @@ const statusText = computed(() => {
     <p v-if="!hasExplorer" class="px-2 py-3 text-xs text-ink-muted">{{ t('workspace.explorer.unavailable') }}</p>
     <p v-else-if="!explorer.root" class="px-2 py-3 text-xs text-ink-muted">{{ t('workspace.explorer.noRoot') }}</p>
     <template v-else>
-      <div ref="tabs" class="flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.views')" @keydown="onTabKey">
+      <div ref="tabs" class="@container flex shrink-0 rounded-inner bg-fill p-0.5" role="tablist" :aria-label="t('workspace.explorer.views')" data-explorer-tabs @keydown="onTabKey">
         <button
           v-for="v in VIEWS"
           :key="v"
@@ -305,20 +315,26 @@ const statusText = computed(() => {
           :aria-selected="explorer.view === v"
           :tabindex="explorer.view === v ? 0 : -1"
           :disabled="needsRepo(v) && !changes.isRepo.value"
-          :title="needsRepo(v) && !changes.isRepo.value ? t('workspace.explorer.notRepo') : undefined"
-          class="flex h-6 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1 rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast) disabled:cursor-default disabled:opacity-50"
+          :title="tabName(v)"
+          :aria-label="tabName(v)"
+          class="relative flex h-6 min-w-0 flex-auto cursor-pointer items-center justify-center gap-1 rounded-[5px] px-2 text-2xs font-medium transition-colors duration-(--ccm-dur-fast) disabled:cursor-default disabled:opacity-50 @max-[360px]:flex-1 @max-[360px]:px-1"
           :class="explorer.view === v ? 'bg-control text-ink shadow-control' : 'text-ink-muted hover:text-ink'"
           @click="explorer.setView(v)"
         >
-          {{ t(`workspace.explorer.${v}`) }}
-          <span
-            v-if="v === 'changes' && changes.totals.value && (changes.totals.value.added || changes.totals.value.removed)"
-            class="tabular"
-            :aria-label="t('workspace.explorer.changesView.totals', changes.totals.value)"
-          >
-            <span v-if="changes.totals.value.added" class="text-diff-add">+{{ changes.totals.value.added }}</span>
-            <span v-if="changes.totals.value.removed" class="ml-0.5 text-diff-del">−{{ changes.totals.value.removed }}</span>
-          </span>
+          <component :is="VIEW_ICONS[v]" :size="12" class="shrink-0" aria-hidden="true" />
+          <span class="min-w-0 truncate @max-[360px]:sr-only" data-tab-label>{{ t(`workspace.explorer.${v}`) }}</span>
+          <template v-if="v === 'changes' && changeTotals">
+            <span class="tabular shrink-0 @max-[440px]:hidden" aria-hidden="true" data-change-totals>
+              <span v-if="changeTotals.added" class="text-diff-add">+{{ changeTotals.added }}</span>
+              <span v-if="changeTotals.removed" class="ml-0.5 text-diff-del">−{{ changeTotals.removed }}</span>
+            </span>
+            <span
+              class="absolute top-0.5 right-0.5 size-1.5 rounded-full @min-[440px]:hidden"
+              :class="changeTotals.added ? 'bg-diff-add' : 'bg-diff-del'"
+              aria-hidden="true"
+              data-change-dot
+            />
+          </template>
         </button>
       </div>
 
