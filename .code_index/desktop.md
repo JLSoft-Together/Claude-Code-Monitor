@@ -120,7 +120,7 @@ Flow: `main.ts` `ready()` → `CollectorHost.start()` (fork collector; port alre
 
 ## E2E harness
 
-- `npm run e2e -w @ccm/desktop [packaged exe]` → `e2e/run.cjs`; driver `e2e/cdp.cjs` (port 4399, temp profile + data dir, `launch({env})`, retrying temp cleanup); output in `%TEMP%/ccm-e2e`. Scripts are named per feature / version (`desktop-only.cjs`, `rail.cjs`, `pane-drag.cjs`, `v50-groups.cjs`, `v52-polish.cjs`, …); they pre-set `ccm.tourDone` / `ccm.tourWorkspaceDone` / `ccm.setupDone` in localStorage.
+- `npm run e2e -w @ccm/desktop [packaged exe]` → `e2e/run.cjs`; driver `e2e/cdp.cjs` (port 4399, temp profile + data dir, `launch({env})`, retrying temp cleanup); output in `%TEMP%/ccm-e2e`. Scripts are named per feature / version (`desktop-only.cjs`, `rail.cjs`, `pane-drag.cjs`, `v50-groups.cjs`, `v52-polish.cjs`, …); they pre-set `ccm.tourDone` / `ccm.tourWorkspaceDone` / `ccm.setupDone` in localStorage. `v70-tools.cjs` drives the v70 batch on a temp git fixture + its own loopback HTTP server (native-confirm steps such as Replace all are left to unit tests).
 
 ## Devices (v61, docs §11aa)
 
