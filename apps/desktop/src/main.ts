@@ -1230,10 +1230,16 @@ async function ready(): Promise<void> {
   })
   disposeAppData = registerAppDataIpc({ ipcMain, isAppFrame, inspector: appData })
   const libsOverride = process.env.CCM_LIBS_REGISTRY
+  const osvOverride = process.env.CCM_OSV_URL
   disposeLibs = registerLibsIpc({
     ipcMain,
     isAppFrame,
-    checker: new LibChecker({ fetch: (url, init) => net.fetch(url, init), dataDir: DATA_DIR, override: isAllowedOverride(libsOverride) ? libsOverride : undefined }),
+    checker: new LibChecker({
+      fetch: (url, init) => net.fetch(url, init),
+      dataDir: DATA_DIR,
+      override: isAllowedOverride(libsOverride) ? libsOverride : undefined,
+      osvOverride: isAllowedOverride(osvOverride) ? osvOverride : undefined,
+    }),
   })
   disposeHooks = registerHooksIpc({
     ipcMain,

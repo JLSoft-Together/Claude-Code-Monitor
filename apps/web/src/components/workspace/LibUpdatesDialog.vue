@@ -1,10 +1,29 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowUpCircle, CircleAlert, CircleCheck, CircleHelp, ExternalLink, PackageSearch, RefreshCw, Send, TriangleAlert, X } from 'lucide-vue-next'
-import type { LibCheckResult } from '@ccm/shared'
+import { ArrowUpCircle, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleHelp, ExternalLink, PackageSearch, RefreshCw, Send, ShieldAlert, ShieldCheck, TriangleAlert, X } from 'lucide-vue-next'
+import { VULN_RANK, worstSeverity, type LibCheckResult, type LibVuln, type LibVulnResult, type VulnSeverity } from '@ccm/shared'
 import { baseName, openExternal, readFile } from '../../lib/preview'
-import { depFileKind, libKey, libPage, libRows, libsCheck, parseDepFile, queriesOf, upgradePrompt, type Dep, type LibRow } from '../../lib/libVersions'
+import {
+  depFileKind,
+  fixedAll,
+  hasLibsVulns,
+  libKey,
+  libPage,
+  libRows,
+  libsCheck,
+  libsVulns,
+  osvPage,
+  parseDepFile,
+  queriesOf,
+  rowVulns,
+  sortVulns,
+  upgradePrompt,
+  vulnMap,
+  vulnQueriesOf,
+  type Dep,
+  type LibRow,
+} from '../../lib/libVersions'
 import { handoffPaneFor } from '../../lib/runUi'
 import { useUiStore } from '../../stores/ui'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -23,7 +42,12 @@ const outdatedOnly = ref(false)
 const picked = ref(new Set<string>())
 const notice = ref<{ text: string; warn: boolean } | null>(null)
 const card = ref<HTMLElement | null>(null)
+const vulnRes = shallowRef<LibVulnResult | null>(null)
+const vulnChecking = ref(false)
+const vulnOnly = ref(false)
+const opened = ref(new Set<string>())
 let gen = 0
+let vulnGen = 0
 
 const rel = computed(() => {
   const a = props.path.replace(/\\/g, '/')
@@ -31,9 +55,45 @@ const rel = computed(() => {
   return a.toLowerCase().startsWith(`${b.toLowerCase()}/`) ? a.slice(b.length + 1) : baseName(props.path)
 })
 const rows = computed<LibRow[]>(() => libRows(deps.value ?? [], result.value?.ok ? result.value.results : null))
-const shown = computed(() => (outdatedOnly.value ? rows.value.filter((r) => r.status === 'outdated') : rows.value))
+const vmap = computed(() => vulnMap(vulnRes.value?.ok ? vulnRes.value.results : null))
+const vulnsOf = (r: LibRow): LibVuln[] => {
+  const l = rowVulns(r, vmap.value)
+  return l?.ok ? l.vulns : []
+}
+const shown = computed(() => rows.value.filter((r) => (!outdatedOnly.value || r.status === 'outdated') && (!vulnOnly.value || vulnsOf(r).length > 0)))
 const outdated = computed(() => rows.value.filter((r) => r.status === 'outdated').length)
+const vulnerable = computed(() => rows.value.filter((r) => vulnsOf(r).length > 0).length)
+const vulnAsked = computed(() => vulnChecking.value || vulnRes.value !== null)
 const rowId = (r: LibRow): string => `${libKey(r)}@${r.line}`
+
+async function checkVulns(fresh: boolean): Promise<void> {
+  const list = deps.value
+  if (!list?.length) return
+  const my = ++vulnGen
+  vulnChecking.value = true
+  const res = await libsVulns(vulnQueriesOf(list), fresh)
+  if (my !== vulnGen) return
+  vulnRes.value = res
+  vulnChecking.value = false
+}
+
+function recheck(): void {
+  void check(true)
+  if (vulnAsked.value) void checkVulns(true)
+}
+
+function toggleOpen(r: LibRow): void {
+  const next = new Set(opened.value)
+  if (!next.delete(rowId(r))) next.add(rowId(r))
+  opened.value = next
+}
+
+function openAdvisory(id: string): void {
+  const url = osvPage(id)
+  if (url) void openExternal(url)
+}
+
+const sevClass = (s: VulnSeverity | null): string => (s && VULN_RANK[s] >= VULN_RANK.high ? 'text-warning' : 'text-ink-muted')
 
 async function check(fresh: boolean): Promise<void> {
   const list = deps.value
@@ -76,7 +136,11 @@ function openLine(r: LibRow): void {
 }
 
 function fill(): void {
-  const text = upgradePrompt(rel.value, rows.value.filter((r) => picked.value.has(rowId(r))))
+  const text = upgradePrompt(
+    rel.value,
+    rows.value.filter((r) => picked.value.has(rowId(r))),
+    vmap.value,
+  )
   if (!text) {
     notice.value = { text: t('libUpdates.nothingPicked'), warn: true }
     return
@@ -120,15 +184,33 @@ function onKey(e: KeyboardEvent): void {
           <span v-if="result?.ok" class="tabular inline-flex shrink-0 items-center gap-1 text-2xs" :class="outdated ? 'text-accent-ink' : 'text-ink-faint'" data-libs-summary>
             <ArrowUpCircle v-if="outdated" :size="12" aria-hidden="true" />{{ t('libUpdates.summary', { n: outdated }, outdated) }}
           </span>
+          <span v-if="vulnRes?.ok" class="tabular inline-flex shrink-0 items-center gap-1 text-2xs" :class="vulnerable ? 'text-warning' : 'text-success'" data-libs-vulns-summary>
+            <ShieldAlert v-if="vulnerable" :size="12" aria-hidden="true" /><ShieldCheck v-else :size="12" aria-hidden="true" />{{ t('libVulns.summary', { n: vulnerable }, vulnerable) }}
+          </span>
           <span class="flex-1" />
           <label v-if="rows.length" class="flex shrink-0 cursor-pointer items-center gap-1.5 text-2xs text-ink-muted">
             <input v-model="outdatedOnly" type="checkbox" class="accent-(--ccm-accent)" data-libs-outdated-only />
             {{ t('libUpdates.outdatedOnly') }}
           </label>
+          <label v-if="vulnRes?.ok" class="flex shrink-0 cursor-pointer items-center gap-1.5 text-2xs text-ink-muted">
+            <input v-model="vulnOnly" type="checkbox" class="accent-(--ccm-accent)" data-libs-vulnerable-only />
+            {{ t('libVulns.vulnerableOnly') }}
+          </label>
+          <button
+            v-if="hasLibsVulns && rows.length"
+            type="button"
+            class="ccm-btn shrink-0"
+            :title="vulnAsked ? t('libVulns.recheck') : t('libVulns.checkHint')"
+            :disabled="vulnChecking"
+            data-libs-vulns
+            @click="checkVulns(vulnAsked)"
+          >
+            <ShieldAlert :size="13" aria-hidden="true" />{{ t('libVulns.check') }}
+          </button>
           <button v-if="rows.length" type="button" class="ccm-btn shrink-0" :title="t('libUpdates.fillHint')" :disabled="!picked.size" data-libs-fill @click="fill">
             <Send :size="13" aria-hidden="true" />{{ t('libUpdates.fill') }}
           </button>
-          <button type="button" class="ccm-btn-plain shrink-0" :title="t('libUpdates.recheck')" :aria-label="t('libUpdates.recheck')" :disabled="checking || !rows.length" data-libs-recheck @click="check(true)">
+          <button type="button" class="ccm-btn-plain shrink-0" :title="t('libUpdates.recheck')" :aria-label="t('libUpdates.recheck')" :disabled="checking || !rows.length" data-libs-recheck @click="recheck">
             <RefreshCw :size="14" :class="checking ? 'ccm-spin' : ''" aria-hidden="true" />
           </button>
           <button type="button" class="ccm-btn-plain shrink-0" :title="t('libUpdates.close')" :aria-label="t('libUpdates.close')" @click="emit('close')">
@@ -140,7 +222,10 @@ function onKey(e: KeyboardEvent): void {
         <p v-else-if="readFailed" class="p-4 text-xs text-warning" role="status">{{ t('libUpdates.readError') }}</p>
         <p v-else-if="!deps.length" class="p-4 text-xs text-ink-muted" data-libs-empty>{{ t('libUpdates.none') }}</p>
         <p v-else-if="result && !result.ok" class="p-4 text-xs text-warning" role="status" data-libs-error>{{ t(`libUpdates.error.${result.error}`) }}</p>
-        <div v-else class="ccm-scroll min-h-0 flex-1 overflow-auto overscroll-contain">
+        <p v-if="vulnRes && !vulnRes.ok" class="flex shrink-0 items-center gap-1.5 border-b border-line bg-warning-soft px-3 py-1.5 text-2xs text-warning" role="status" data-libs-vulns-error>
+          <CircleAlert :size="12" class="shrink-0" aria-hidden="true" />{{ t(`libVulns.error.${vulnRes.error}`) }}
+        </p>
+        <div v-if="deps?.length && !readFailed && !(result && !result.ok)" class="ccm-scroll min-h-0 flex-1 overflow-auto overscroll-contain">
           <table class="w-full border-separate border-spacing-0 text-xs">
             <thead class="sticky top-0 z-10 bg-surface text-left text-2xs text-ink-muted">
               <tr>
@@ -149,11 +234,13 @@ function onKey(e: KeyboardEvent): void {
                 <th class="border-b border-line px-2 py-1.5 font-medium">{{ t('libUpdates.current') }}</th>
                 <th class="border-b border-line px-2 py-1.5 font-medium">{{ t('libUpdates.latest') }}</th>
                 <th class="border-b border-line px-2 py-1.5 font-medium">{{ t('libUpdates.bump') }}</th>
+                <th v-if="vulnAsked" class="border-b border-line px-2 py-1.5 font-medium">{{ t('libVulns.column') }}</th>
                 <th class="w-9 border-b border-line" />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in shown" :key="rowId(r)" class="hover:bg-fill" :data-lib-row="r.name" :data-lib-status="r.status" :data-lib-bump="r.bump">
+              <template v-for="r in shown" :key="rowId(r)">
+              <tr class="hover:bg-fill" :data-lib-row="r.name" :data-lib-status="r.status" :data-lib-bump="r.bump">
                 <td class="border-b border-line py-1 pl-3 align-middle">
                   <input
                     v-if="r.status === 'outdated'"
@@ -190,20 +277,58 @@ function onKey(e: KeyboardEvent): void {
                   </span>
                   <span v-else-if="!checking" class="inline-flex items-center gap-1 text-ink-faint"><CircleHelp :size="12" aria-hidden="true" />{{ t('libUpdates.status.unknown') }}</span>
                 </td>
+                <td v-if="vulnAsked" class="border-b border-line px-2 py-1 whitespace-nowrap" :data-lib-vulns="vulnsOf(r).length">
+                  <button
+                    v-if="vulnsOf(r).length"
+                    type="button"
+                    class="inline-flex cursor-pointer items-center gap-1 text-left"
+                    :class="sevClass(worstSeverity(vulnsOf(r)))"
+                    :aria-expanded="opened.has(rowId(r))"
+                    :title="t('libVulns.show', { name: label(r) })"
+                    data-lib-vulns-toggle
+                    @click="toggleOpen(r)"
+                  >
+                    <component :is="opened.has(rowId(r)) ? ChevronDown : ChevronRight" :size="12" aria-hidden="true" />
+                    <ShieldAlert :size="12" aria-hidden="true" />
+                    <span class="tabular">{{ t('libVulns.count', { n: vulnsOf(r).length }, vulnsOf(r).length) }}</span>
+                    <span>· {{ t(`libVulns.severity.${worstSeverity(vulnsOf(r)) ?? 'unknown'}`) }}</span>
+                  </button>
+                  <div v-if="vulnsOf(r).length" class="pl-4 font-mono text-2xs text-ink-faint" data-lib-vulns-fixed>
+                    {{ fixedAll(vulnsOf(r)) ? t('libVulns.fixedIn', { v: fixedAll(vulnsOf(r)) }) : t('libVulns.noFix') }}
+                  </div>
+                  <span v-else-if="rowVulns(r, vmap)?.ok" class="inline-flex items-center gap-1 text-success"><ShieldCheck :size="12" aria-hidden="true" />{{ t('libVulns.clean') }}</span>
+                  <span v-else-if="vulnChecking" class="text-ink-faint">…</span>
+                  <span v-else class="text-ink-faint">—</span>
+                </td>
                 <td class="border-b border-line pr-2 text-right">
                   <button type="button" class="ccm-btn-plain" :title="t('libUpdates.open', { name: label(r) })" :aria-label="t('libUpdates.open', { name: label(r) })" data-lib-open @click="openPage(r)">
                     <ExternalLink :size="13" aria-hidden="true" />
                   </button>
                 </td>
               </tr>
+              <tr v-if="vulnAsked && opened.has(rowId(r)) && vulnsOf(r).length" :data-lib-advisories="r.name">
+                <td class="border-b border-line" />
+                <td :colspan="6" class="border-b border-line bg-raised px-2 py-1.5">
+                  <ul class="flex flex-col gap-1">
+                    <li v-for="v in sortVulns(vulnsOf(r))" :key="v.id" class="flex min-w-0 items-baseline gap-2" :data-lib-advisory="v.id">
+                      <span class="w-24 shrink-0 text-2xs" :class="sevClass(v.severity)">{{ t(`libVulns.severity.${v.severity}`) }}</span>
+                      <button type="button" class="shrink-0 cursor-pointer font-mono text-link hover:underline" :title="t('libVulns.openAdvisory', { id: v.id })" @click="openAdvisory(v.id)">{{ v.id }}</button>
+                      <span class="min-w-0 flex-1 truncate" :class="v.summary ? 'text-ink' : 'text-ink-faint'" :title="[v.summary, ...v.aliases].filter(Boolean).join(' · ')">{{ v.summary || t('libVulns.noSummary') }}</span>
+                      <span class="shrink-0 font-mono text-2xs text-ink-faint">{{ v.fixed ? t('libVulns.fixedIn', { v: v.fixed }) : t('libVulns.noFix') }}</span>
+                    </li>
+                  </ul>
+                </td>
+              </tr>
+              </template>
             </tbody>
           </table>
         </div>
 
         <footer class="flex h-9 shrink-0 items-center gap-2 border-t border-line px-3 text-2xs">
           <span v-if="checking" class="min-w-0 flex-1 truncate text-ink-muted" role="status">{{ t('libUpdates.loading') }}</span>
+          <span v-else-if="vulnChecking" class="min-w-0 flex-1 truncate text-ink-muted" role="status">{{ t('libVulns.loading') }}</span>
           <span v-else-if="notice" class="min-w-0 flex-1 truncate" :class="notice.warn ? 'text-warning' : 'text-ink-muted'" role="status" data-libs-notice>{{ notice.text }}</span>
-          <span v-else class="min-w-0 flex-1 truncate text-ink-faint" :title="t('libUpdates.note')">{{ t('libUpdates.note') }}</span>
+          <span v-else class="min-w-0 flex-1 truncate text-ink-faint" :title="`${t('libUpdates.note')} ${t('libVulns.note')}`">{{ t('libUpdates.note') }}</span>
         </footer>
       </div>
     </div>

@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
+import type { LibVuln } from '@ccm/shared'
 import type { TreeRow } from './explorer/tree'
 import { explorerMenu } from './explorer/contextMenu'
-import { depFileKind, libPage, libRows, parseGradleDeps, parsePackageJson, parsePubspec, parseVersionsToml, queriesOf, rangeBase, upgradePrompt } from './libVersions'
+import {
+  depFileKind,
+  fixedAll,
+  libPage,
+  libRows,
+  osvPage,
+  parseGradleDeps,
+  parsePackageJson,
+  parsePubspec,
+  parseVersionsToml,
+  queriesOf,
+  rangeBase,
+  rowVulns,
+  sortVulns,
+  upgradePrompt,
+  vulnMap,
+  vulnQueriesOf,
+} from './libVersions'
 
 const TOML = `[versions]
 agp = "8.5.0"
@@ -107,6 +125,38 @@ describe('rows, links and prompt', () => {
     expect(text).toContain('then build the project')
     expect(text).not.toContain('- c:')
     expect(upgradePrompt('x', rows.filter((r) => r.status !== 'outdated'))).toBeNull()
+  })
+
+  it('puts vulnerable libraries first in the upgrade prompt', () => {
+    const deps = [
+      { eco: 'npm', name: 'a', current: '1.0.0', spec: '^1.0.0', line: 1, section: 'dependencies' },
+      { eco: 'npm', name: 'b', current: '1.0.0', spec: '1.0.0', line: 2, section: 'dependencies' },
+      { eco: 'npm', name: 'c', current: 'x y', spec: 'x y', line: 3, section: 'dependencies' },
+    ] as const
+    expect(vulnQueriesOf([...deps, ...deps])).toEqual([
+      { eco: 'npm', name: 'a', version: '1.0.0' },
+      { eco: 'npm', name: 'b', version: '1.0.0' },
+    ])
+    const rows = libRows(deps, [
+      { eco: 'npm', name: 'a', ok: true, registry: 'npm', stable: '1.5.0', pre: null, checkedAt: 1 },
+      { eco: 'npm', name: 'b', ok: true, registry: 'npm', stable: '2.0.0', pre: null, checkedAt: 1 },
+    ])
+    const vulns: LibVuln[] = [
+      { id: 'GHSA-low', aliases: [], summary: '', severity: 'low', fixed: '1.0.2' },
+      { id: 'GHSA-crit', aliases: [], summary: '', severity: 'critical', fixed: '1.1.0' },
+    ]
+    const map = vulnMap([{ eco: 'npm', name: 'b', version: '1.0.0', ok: true, vulns, checkedAt: 1 }])
+    expect(rowVulns(rows[1]!, map)?.ok).toBe(true)
+    expect(rowVulns(rows[0]!, map)).toBeNull()
+    expect(sortVulns(vulns).map((v) => v.id)).toEqual(['GHSA-crit', 'GHSA-low'])
+    expect(fixedAll(vulns)).toBe('1.1.0')
+    expect(fixedAll([{ ...vulns[0]!, fixed: null }])).toBeNull()
+    const lines = upgradePrompt('package.json', rows, map)!.split('\n')
+    expect(lines[0]).toContain('known vulnerabilities come first')
+    expect(lines[1]).toBe('- b: 1.0.0 → 2.0.0 (major) — SECURITY: 2 known vulnerabilities (worst critical: GHSA-crit, GHSA-low), fixed in 1.1.0')
+    expect(lines[2]).toBe('- a: ^1.0.0 → 1.5.0 (minor)')
+    expect(osvPage('GHSA-1')).toBe('https://osv.dev/vulnerability/GHSA-1')
+    expect(osvPage('../x')).toBeNull()
   })
 
   it('offers Check for updates on dependency files only', () => {

@@ -1,6 +1,22 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { isLibName, LIBS_MAX, pickLatest, type LibCheckResult, type LibEco, type LibLookup, type LibLookupError, type LibQuery, type LibRegistry } from '@ccm/shared'
+import {
+  isLibName,
+  isLibVersion,
+  LIBS_MAX,
+  pickLatest,
+  type LibCheckResult,
+  type LibEco,
+  type LibLookup,
+  type LibLookupError,
+  type LibQuery,
+  type LibRegistry,
+  type LibVuln,
+  type LibVulnLookup,
+  type LibVulnQuery,
+  type LibVulnResult,
+} from '@ccm/shared'
+import { bareVuln, osvBatchUrl, osvEcosystem, osvVulnUrl, parseOsvBatch, parseOsvVuln } from './osv'
 import { lookupUrl, parseMavenMetadata, parseNpmVersions, parsePubVersions, registriesFor } from './registry'
 
 export const LIBS_CACHE_FILE = 'lib-versions-cache.json'
@@ -10,7 +26,12 @@ export const LIBS_CONCURRENCY = 6
 const CACHE_MAX = 3000
 const BODY_MAX = 32 * 1024 * 1024
 
-type FetchFn = (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>
+export const OSV_DETAILS_MAX = 300
+
+type FetchFn = (
+  url: string,
+  init: { signal: AbortSignal; headers: Record<string, string>; method?: 'POST'; body?: string },
+) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>
 
 export interface LibCheckerDeps {
   fetch: FetchFn
@@ -18,6 +39,8 @@ export interface LibCheckerDeps {
   now?: () => number
   /** Loopback base replacing every registry (E2E), already validated. */
   override?: string
+  /** Loopback base replacing api.osv.dev (E2E, `CCM_OSV_URL`), already validated. */
+  osvOverride?: string
   timeoutMs?: number
 }
 
@@ -28,11 +51,18 @@ interface CacheEntry {
   pre: string | null
 }
 
+interface VulnEntry {
+  at: number
+  vulns: LibVuln[]
+}
+
 const keyOf = (q: LibQuery): string => `${q.eco}:${q.name}`
+const vulnKeyOf = (q: LibVulnQuery): string => `${q.eco}:${q.name}@${q.version}`
 
 /** Registry lookups on demand only (owner: network on click), cached for an hour in the data dir. */
 export class LibChecker {
   private cache: Map<string, CacheEntry> | null = null
+  private vulnCache = new Map<string, VulnEntry>()
   private saving: Promise<void> = Promise.resolve()
 
   constructor(private readonly deps: LibCheckerDeps) {}
@@ -49,8 +79,9 @@ export class LibChecker {
     if (this.cache) return this.cache
     const map = new Map<string, CacheEntry>()
     try {
-      const doc = JSON.parse(await fs.readFile(this.file, 'utf8')) as { entries?: Record<string, CacheEntry> }
+      const doc = JSON.parse(await fs.readFile(this.file, 'utf8')) as { entries?: Record<string, CacheEntry>; vulns?: Record<string, VulnEntry> }
       for (const [k, v] of Object.entries(doc.entries ?? {})) if (v && typeof v.at === 'number') map.set(k, v)
+      for (const [k, v] of Object.entries(doc.vulns ?? {})) if (v && typeof v.at === 'number' && Array.isArray(v.vulns)) this.vulnCache.set(k, v)
     } catch {
       /* missing or broken cache: start empty */
     }
@@ -62,9 +93,11 @@ export class LibChecker {
     const map = this.cache
     if (!map) return this.saving
     const cutoff = this.now() - LIBS_TTL_MS
-    for (const [k, v] of map) if (v.at < cutoff) map.delete(k)
-    while (map.size > CACHE_MAX) map.delete(map.keys().next().value!)
-    const body = JSON.stringify({ entries: Object.fromEntries(map) })
+    for (const m of [map, this.vulnCache] as Map<string, { at: number }>[]) {
+      for (const [k, v] of m) if (v.at < cutoff) m.delete(k)
+      while (m.size > CACHE_MAX) m.delete(m.keys().next().value!)
+    }
+    const body = JSON.stringify({ entries: Object.fromEntries(map), vulns: Object.fromEntries(this.vulnCache) })
     this.saving = this.saving.then(async () => {
       try {
         await fs.mkdir(this.deps.dataDir, { recursive: true })
@@ -78,12 +111,13 @@ export class LibChecker {
     return this.saving
   }
 
-  private async fetchText(url: string, eco: LibEco): Promise<{ text: string } | { status: number } | { error: 'network' | 'timeout' }> {
+  private async fetchText(url: string, eco: LibEco | 'osv', body?: string): Promise<{ text: string } | { status: number } | { error: 'network' | 'timeout' }> {
     const ctl = new AbortController()
     const timer = setTimeout(() => ctl.abort(), this.deps.timeoutMs ?? LIBS_TIMEOUT_MS)
     try {
-      const headers: Record<string, string> = eco === 'npm' ? { accept: 'application/vnd.npm.install-v1+json' } : { accept: eco === 'pub' ? 'application/vnd.pub.v2+json' : 'application/xml' }
-      const res = await this.deps.fetch(url, { signal: ctl.signal, headers })
+      const accept = eco === 'npm' ? 'application/vnd.npm.install-v1+json' : eco === 'pub' ? 'application/vnd.pub.v2+json' : eco === 'osv' ? 'application/json' : 'application/xml'
+      const headers: Record<string, string> = body === undefined ? { accept } : { accept, 'content-type': 'application/json' }
+      const res = await this.deps.fetch(url, body === undefined ? { signal: ctl.signal, headers } : { signal: ctl.signal, headers, method: 'POST', body })
       if (!res.ok) return { status: res.status }
       const text = await res.text()
       return text.length > BODY_MAX ? { status: 413 } : { text }
@@ -146,5 +180,73 @@ export class LibChecker {
     await Promise.all(Array.from({ length: Math.min(LIBS_CONCURRENCY, todo.length) }, worker))
     if (todo.length) await this.save()
     return { ok: true, results: queries.map((q) => out.get(keyOf(q))!) }
+  }
+
+  /** OSV advisories for exact versions: one querybatch, then each distinct record (the batch answers ids only). */
+  async vulns(input: unknown, fresh = false): Promise<LibVulnResult> {
+    if (!Array.isArray(input)) return { ok: false, error: 'invalid' }
+    if (input.length > LIBS_MAX) return { ok: false, error: 'too-many' }
+    const queries: LibVulnQuery[] = []
+    const seen = new Set<string>()
+    for (const raw of input) {
+      const q = raw as Partial<LibVulnQuery> | null
+      if (!q || !isLibName(q.eco, q.name) || !isLibVersion(q.version)) return { ok: false, error: 'invalid' }
+      const clean = { eco: q.eco as LibEco, name: q.name as string, version: q.version }
+      if (seen.has(vulnKeyOf(clean))) continue
+      seen.add(vulnKeyOf(clean))
+      queries.push(clean)
+    }
+    await this.loadCache()
+    const out = new Map<string, LibVulnLookup>()
+    const todo: LibVulnQuery[] = []
+    for (const q of queries) {
+      const hit = this.vulnCache.get(vulnKeyOf(q))
+      if (!fresh && hit && this.now() - hit.at < LIBS_TTL_MS) out.set(vulnKeyOf(q), { ...q, ok: true, vulns: hit.vulns, checkedAt: hit.at })
+      else todo.push(q)
+    }
+    if (todo.length) {
+      const base = this.deps.osvOverride
+      const body = JSON.stringify({ queries: todo.map((q) => ({ package: { ecosystem: osvEcosystem(q.eco), name: q.name }, version: q.version })) })
+      const res = await this.fetchText(osvBatchUrl(base), 'osv', body)
+      if ('error' in res) return { ok: false, error: res.error }
+      const ids = 'text' in res ? parseOsvBatch(res.text, todo.length) : null
+      if (!ids) return { ok: false, error: 'bad-response' }
+      const owners = new Map<string, LibVulnQuery[]>()
+      todo.forEach((q, i) => {
+        for (const id of ids[i]!) owners.set(id, [...(owners.get(id) ?? []), q])
+      })
+      const details = new Map<string, Map<string, LibVuln>>()
+      const failed = new Set<string>()
+      const list = [...owners.keys()].slice(0, OSV_DETAILS_MAX)
+      let next = 0
+      const worker = async (): Promise<void> => {
+        while (next < list.length) {
+          const id = list[next++]!
+          const r = await this.fetchText(osvVulnUrl(id, base), 'osv')
+          const per = new Map<string, LibVuln>()
+          for (const q of owners.get(id)!) {
+            const v = 'text' in r ? parseOsvVuln(r.text, q.eco, q.name, q.version) : null
+            if (v) per.set(vulnKeyOf(q), v)
+            else if (!('text' in r)) failed.add(vulnKeyOf(q))
+          }
+          details.set(id, per)
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(LIBS_CONCURRENCY, list.length) }, worker))
+      const at = this.now()
+      todo.forEach((q, i) => {
+        const k = vulnKeyOf(q)
+        const vulns = ids[i]!.flatMap((id) => {
+          const d = details.get(id)
+          if (!d) return [bareVuln(id)]
+          const v = d.get(k)
+          return v ? [v] : failed.has(k) ? [bareVuln(id)] : []
+        })
+        out.set(k, { ...q, ok: true, vulns, checkedAt: at })
+        if (!failed.has(k) && ids[i]!.every((id) => details.has(id))) this.vulnCache.set(k, { at, vulns })
+      })
+      await this.save()
+    }
+    return { ok: true, results: queries.map((q) => out.get(vulnKeyOf(q))!) }
   }
 }

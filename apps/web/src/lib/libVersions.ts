@@ -1,13 +1,34 @@
-import { bumpKind, compareLibVersions, isLibName, isPrereleaseVersion, type BumpKind, type LibCheckResult, type LibEco, type LibLookup, type LibQuery, type LibRegistry } from '@ccm/shared'
+import {
+  bumpKind,
+  compareLibVersions,
+  isLibName,
+  isLibVersion,
+  isPrereleaseVersion,
+  VULN_RANK,
+  worstSeverity,
+  type BumpKind,
+  type LibCheckResult,
+  type LibEco,
+  type LibLookup,
+  type LibQuery,
+  type LibRegistry,
+  type LibVuln,
+  type LibVulnLookup,
+  type LibVulnQuery,
+  type LibVulnResult,
+} from '@ccm/shared'
 import { desktop } from './desktop'
 
 interface LibsBridge {
   libsCheck?: (req: { queries: LibQuery[]; fresh: boolean }) => Promise<LibCheckResult>
+  libsVulns?: (req: { queries: LibVulnQuery[]; fresh: boolean }) => Promise<LibVulnResult>
 }
 const bridge = desktop as unknown as LibsBridge | undefined
 
 export const hasLibsCheck = typeof bridge?.libsCheck === 'function'
 export const libsCheck = (queries: LibQuery[], fresh = false): Promise<LibCheckResult> => bridge?.libsCheck?.({ queries, fresh }) ?? Promise.resolve({ ok: false, error: 'unavailable' })
+export const hasLibsVulns = typeof bridge?.libsVulns === 'function'
+export const libsVulns = (queries: LibVulnQuery[], fresh = false): Promise<LibVulnResult> => bridge?.libsVulns?.({ queries, fresh }) ?? Promise.resolve({ ok: false, error: 'unavailable' })
 
 export type DepFileKind = 'toml' | 'gradle' | 'pubspec' | 'npm'
 
@@ -246,10 +267,52 @@ export function libPage(eco: LibEco, name: string, registry: LibRegistry | null)
   return `https://central.sonatype.com/artifact/${group}/${artifact}/versions`
 }
 
-/** Prefill (never submitted) asking the agent to upgrade the picked rows and build. */
-export function upgradePrompt(file: string, rows: readonly LibRow[]): string | null {
+/** OSV asks about the exact version in use: the pinned one, or a range's lower bound. */
+export const vulnQueriesOf = (deps: readonly Dep[]): LibVulnQuery[] => [
+  ...new Map(deps.filter((d) => isLibVersion(d.current)).map((d) => [`${libKey(d)}@${d.current}`, { eco: d.eco, name: d.name, version: d.current }])).values(),
+]
+
+export type VulnMap = ReadonlyMap<string, LibVulnLookup>
+
+export const vulnMap = (results: readonly LibVulnLookup[] | null): VulnMap => new Map((results ?? []).map((r) => [`${libKey(r)}@${r.version}`, r]))
+
+export const rowVulns = (r: Pick<Dep, 'eco' | 'name' | 'current'>, map: VulnMap): LibVulnLookup | null => map.get(`${libKey(r)}@${r.current}`) ?? null
+
+/** Worst first, then by id. */
+export const sortVulns = (list: readonly LibVuln[]): LibVuln[] => [...list].sort((a, b) => VULN_RANK[b.severity] - VULN_RANK[a.severity] || a.id.localeCompare(b.id))
+
+/** Version that clears every listed advisory (highest of the fixes), null when one has no fix. */
+export function fixedAll(list: readonly LibVuln[]): string | null {
+  let out: string | null = null
+  for (const v of list) {
+    if (!v.fixed) return null
+    if (!out || compareLibVersions(v.fixed, out) > 0) out = v.fixed
+  }
+  return out
+}
+
+export const osvPage = (id: string): string | null => (/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/.test(id) ? `https://osv.dev/vulnerability/${encodeURIComponent(id)}` : null)
+
+/** Prefill (never submitted) asking the agent to upgrade the picked rows and build; vulnerable libraries first. */
+export function upgradePrompt(file: string, rows: readonly LibRow[], vulns: VulnMap = new Map()): string | null {
   const picked = rows.filter((r) => r.status === 'outdated' && r.latest)
   if (!picked.length) return null
-  const lines = picked.map((r) => `- ${r.plugin ? `plugin ${r.plugin}` : r.name}: ${r.spec} → ${r.latest} (${r.bump})${r.ref ? ` [version.ref "${r.ref}"]` : ''}`)
-  return `Upgrade these libraries in ${file}, keeping the file's style (version catalogs: change the [versions] entry). Check each changelog for breaking changes (major bumps first), then build the project and fix any errors:\n${lines.join('\n')}`
+  const found = (r: LibRow): LibVuln[] => {
+    const l = rowVulns(r, vulns)
+    return l?.ok ? l.vulns : []
+  }
+  const ordered = picked
+    .map((r, i) => ({ r, i, v: found(r) }))
+    .sort((a, b) => VULN_RANK[worstSeverity(b.v) ?? 'unknown'] - VULN_RANK[worstSeverity(a.v) ?? 'unknown'] || b.v.length - a.v.length || a.i - b.i)
+  const lines = ordered.map(({ r, v }) => {
+    const base = `- ${r.plugin ? `plugin ${r.plugin}` : r.name}: ${r.spec} → ${r.latest} (${r.bump})${r.ref ? ` [version.ref "${r.ref}"]` : ''}`
+    if (!v.length) return base
+    const fix = fixedAll(v)
+    return `${base} — SECURITY: ${v.length} known ${v.length === 1 ? 'vulnerability' : 'vulnerabilities'} (worst ${worstSeverity(v)}: ${sortVulns(v)
+      .slice(0, 5)
+      .map((x) => x.id)
+      .join(', ')})${fix ? `, fixed in ${fix}` : ''}`
+  })
+  const lead = ordered.some((o) => o.v.length) ? ' Libraries with known vulnerabilities come first: upgrade them at least to the fixed version.' : ''
+  return `Upgrade these libraries in ${file}, keeping the file's style (version catalogs: change the [versions] entry).${lead} Check each changelog for breaking changes (major bumps first), then build the project and fix any errors:\n${lines.join('\n')}`
 }

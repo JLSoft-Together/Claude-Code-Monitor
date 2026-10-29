@@ -250,6 +250,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   apkAnalyze: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:apk-analyze', req),
   apkCompare: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:apk-compare', req),
   libsCheck: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:libs-check', req),
+  libsVulns: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:libs-vulns', req),
   hooksList: (dir: string | null): Promise<unknown> => ipcRenderer.invoke('ccm:hooks-list', dir),
   hooksToggle: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:hooks-toggle', req),
   hooksTest: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:hooks-test', req),

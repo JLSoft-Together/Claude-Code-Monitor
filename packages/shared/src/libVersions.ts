@@ -106,6 +106,37 @@ export function pickLatest(versions: readonly string[]): { stable: string | null
   return { stable, pre }
 }
 
+/** v75 OSV advisories (`ccm:libs-vulns`): only eco + name + version leave the machine. */
+export type VulnSeverity = 'critical' | 'high' | 'moderate' | 'low' | 'unknown'
+
+export interface LibVuln {
+  /** OSV id (GHSA-…, CVE-…, PYSEC-…); the advisory page is `https://osv.dev/vulnerability/<id>`. */
+  id: string
+  aliases: string[]
+  summary: string
+  severity: VulnSeverity
+  /** Lowest fixed version above the queried one, null when OSV lists none. */
+  fixed: string | null
+}
+
+export interface LibVulnQuery extends LibQuery {
+  version: string
+}
+
+export type LibVulnLookup = (LibVulnQuery & { ok: true; vulns: LibVuln[]; checkedAt: number }) | (LibVulnQuery & { ok: false; error: LibLookupError })
+
+export type LibVulnResult = { ok: true; results: LibVulnLookup[] } | { ok: false; error: 'invalid' | 'too-many' | 'unavailable' | 'network' | 'timeout' | 'bad-response' }
+
+export const isLibVersion = (v: unknown): v is string => typeof v === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/.test(v)
+
+export const VULN_RANK: Record<VulnSeverity, number> = { unknown: 0, low: 1, moderate: 2, high: 3, critical: 4 }
+
+export function worstSeverity(vulns: readonly Pick<LibVuln, 'severity'>[]): VulnSeverity | null {
+  let worst: VulnSeverity | null = null
+  for (const v of vulns) if (!worst || VULN_RANK[v.severity] > VULN_RANK[worst]) worst = v.severity
+  return worst
+}
+
 export type BumpKind = 'major' | 'minor' | 'patch' | 'none'
 
 /** How far `latest` is from `current` ('none' = not newer). */

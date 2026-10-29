@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bumpKind, compareLibVersions, isLibName, isPrereleaseVersion, pickLatest } from '@ccm/shared'
 import { LIBS_CACHE_FILE, LIBS_TTL_MS, LibChecker } from '../src/libs/checker'
 import { registerLibsIpc } from '../src/libs/ipc'
+import { osvBatchUrl, parseOsvBatch, parseOsvVuln } from '../src/libs/osv'
 import { isAllowedOverride, lookupUrl, parseMavenMetadata, parseNpmVersions, parsePubVersions, registriesFor } from '../src/libs/registry'
 
 describe('library versions (shared)', () => {
@@ -132,6 +133,70 @@ describe('LibChecker', () => {
     expect(await checker.check([{ eco: 'npm', name: '../x' }])).toEqual({ ok: false, error: 'invalid' })
     expect(await checker.check('x')).toEqual({ ok: false, error: 'invalid' })
     expect(await checker.check(Array.from({ length: 400 }, (_, i) => ({ eco: 'npm', name: `p${i}` })))).toEqual({ ok: false, error: 'too-many' })
+  })
+
+  it('asks OSV with name + version only, fetches each record once, caches an hour', async () => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'ccm-libs-'))
+    const bodies: string[] = []
+    const record = {
+      id: 'GHSA-aaaa-bbbb-cccc',
+      summary: 'Deserialization  of untrusted\n data',
+      aliases: ['CVE-2020-1234', 'bad id!'],
+      database_specific: { severity: 'HIGH' },
+      affected: [
+        { package: { ecosystem: 'Maven', name: 'com.fasterxml.jackson.core:jackson-databind' }, ranges: [{ type: 'ECOSYSTEM', events: [{ introduced: '2.9.0' }, { fixed: '2.9.10.8' }, { introduced: '2.10.0' }, { fixed: '2.10.5.1' }] }] },
+        { package: { ecosystem: 'npm', name: 'other' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '0' }, { fixed: '9.0.0' }] }] },
+      ],
+    }
+    const fetch = vi.fn(async (url: string, init: { body?: string; method?: string }) => {
+      if (url === 'http://127.0.0.1:9/v1/querybatch') {
+        bodies.push(init.body ?? '')
+        return res(200, JSON.stringify({ results: [{ vulns: [{ id: 'GHSA-aaaa-bbbb-cccc' }, { id: 'GHSA-gone' }] }, {}] }))
+      }
+      if (url.endsWith('/v1/vulns/GHSA-aaaa-bbbb-cccc')) return res(200, JSON.stringify(record))
+      if (url.endsWith('/v1/vulns/GHSA-gone')) return res(200, JSON.stringify({ id: 'GHSA-gone', withdrawn: '2024-01-01T00:00:00Z' }))
+      throw new Error(`unexpected ${url}`)
+    })
+    const checker = new LibChecker({ fetch, dataDir: dir, osvOverride: 'http://127.0.0.1:9', now: () => 5000 })
+    const q = [
+      { eco: 'maven', name: 'com.fasterxml.jackson.core:jackson-databind', version: '2.10.1' },
+      { eco: 'pub', name: 'http', version: '1.1.0' },
+    ]
+    const r = await checker.vulns(q)
+    expect(JSON.parse(bodies[0]!)).toEqual({
+      queries: [
+        { package: { ecosystem: 'Maven', name: 'com.fasterxml.jackson.core:jackson-databind' }, version: '2.10.1' },
+        { package: { ecosystem: 'Pub', name: 'http' }, version: '1.1.0' },
+      ],
+    })
+    expect(r.ok && r.results).toEqual([
+      { ...q[0], ok: true, checkedAt: 5000, vulns: [{ id: 'GHSA-aaaa-bbbb-cccc', aliases: ['CVE-2020-1234'], summary: 'Deserialization of untrusted data', severity: 'high', fixed: '2.10.5.1' }] },
+      { ...q[1], ok: true, checkedAt: 5000, vulns: [] },
+    ])
+    expect(fetch).toHaveBeenCalledTimes(3)
+    await checker.vulns(q)
+    expect(fetch).toHaveBeenCalledTimes(3)
+    await checker.vulns(q, true)
+    expect(fetch).toHaveBeenCalledTimes(6)
+    expect(JSON.parse(readFileSync(path.join(dir, LIBS_CACHE_FILE), 'utf8')).vulns['pub:http@1.1.0'].vulns).toEqual([])
+  })
+
+  it('reports an OSV outage as one error and rejects unsafe versions', async () => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'ccm-libs-'))
+    const checker = new LibChecker({ fetch: async () => { throw new Error('offline') }, dataDir: dir })
+    expect(await checker.vulns([{ eco: 'npm', name: 'vue', version: '3.0.0' }])).toEqual({ ok: false, error: 'network' })
+    expect(await checker.vulns([{ eco: 'npm', name: 'vue', version: '../x' }])).toEqual({ ok: false, error: 'invalid' })
+    const bad = new LibChecker({ fetch: async () => res(200, '{"results":[]}'), dataDir: dir })
+    expect(await bad.vulns([{ eco: 'npm', name: 'vue', version: '3.0.0' }])).toEqual({ ok: false, error: 'bad-response' })
+  })
+
+  it('reads OSV records', () => {
+    expect(osvBatchUrl()).toBe('https://api.osv.dev/v1/querybatch')
+    expect(parseOsvBatch('{"results":[{"vulns":[{"id":"GHSA-1"},{"id":"../x"}]}]}', 1)).toEqual([['GHSA-1']])
+    expect(parseOsvBatch('nope', 1)).toBeNull()
+    const doc = { id: 'PYSEC-1', details: 'x', affected: [{ package: { ecosystem: 'npm', name: 'a' }, ecosystem_specific: { severity: 'MODERATE' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '0' }, { fixed: '1.2.0' }] }] }] }
+    expect(parseOsvVuln(JSON.stringify(doc), 'npm', 'a', '1.0.0')).toEqual({ id: 'PYSEC-1', aliases: [], summary: 'x', severity: 'moderate', fixed: '1.2.0' })
+    expect(parseOsvVuln(JSON.stringify(doc), 'npm', 'a', '1.3.0')?.fixed).toBeNull()
   })
 
   it('answers only the app frame over IPC', async () => {
