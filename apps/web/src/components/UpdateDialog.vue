@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CircleAlert, CircleArrowDown, CircleCheck, ExternalLink, FolderOpen, LoaderCircle, X } from 'lucide-vue-next'
+import { relativeTime } from '../lib/format'
 import { renderMarkdown } from '../lib/markdown'
 import { retireOverlay } from '../lib/motion'
 import { openExternal } from '../lib/preview'
@@ -23,7 +24,10 @@ const date = computed(() => {
   const iso = release.value?.date
   if (!iso) return ''
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(locale.value, { year: 'numeric', month: 'short', day: 'numeric' })
+  if (Number.isNaN(d.getTime())) return ''
+  const abs = d.toLocaleString(locale.value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const rel = relativeTime(d.getTime(), locale.value, Date.now())
+  return rel ? `${abs} (${rel})` : abs
 })
 const progressText = computed(() => {
   const p = s.value?.progress
@@ -111,6 +115,7 @@ watch(
             <div class="mr-auto min-w-0">
               <h2 id="update-title" class="truncate text-base font-semibold">{{ t('update.dialogTitle') }}</h2>
               <p class="truncate text-2xs text-ink-muted tabular-nums">{{ t('update.dialogSubtitle', { version: release.version, current: s?.current ?? '' }) }}</p>
+              <p v-if="date" class="truncate text-2xs text-ink-muted tabular-nums" :title="release.date ?? undefined" data-update-date>{{ t('update.published', { date }) }}</p>
             </div>
             <button type="button" class="ccm-btn-plain shrink-0" :title="t('update.close')" :aria-label="t('update.close')" data-update-close @click="close">
               <X :size="16" aria-hidden="true" />
@@ -118,8 +123,7 @@ watch(
           </div>
 
           <div class="ccm-scroll min-h-0 flex-1 overflow-y-auto bg-canvas px-5 py-4">
-            <p class="mb-2 flex flex-wrap gap-x-3 text-2xs text-ink-faint">
-              <span v-if="date">{{ t('update.published', { date }) }}</span>
+            <p v-if="release.asset" class="mb-2 flex flex-wrap gap-x-3 text-2xs text-ink-faint">
               <span v-if="release.asset" class="tabular-nums">{{ t('update.size', { mb: megabytes(release.asset.size) }) }}</span>
             </p>
             <h3 class="sr-only">{{ t('update.notes') }}</h3>

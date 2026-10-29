@@ -264,6 +264,8 @@ async function main() {
       const sub = await evaluate(`document.querySelector('[data-update-dialog]').textContent.replace(/\\s+/g, ' ')`)
       check('manual check → dialog with version + current', sub.includes(NEW_VERSION) && sub.includes(VERSION), sub.slice(0, 200))
       check('release notes rendered (markdown)', await evaluate(`!!document.querySelector('[data-update-notes] strong') && document.querySelector('[data-update-notes]').textContent.includes('Faster v74 e2e things')`))
+      const when = await evaluate(`document.querySelector('[data-update-date]')?.textContent ?? ''`)
+      check('publish date + time + relative under the title', /2026/.test(when) && /\d{1,2}:\d{2}/.test(when) && /\(.+\)/.test(when), when)
       check('header chip + Settings dot', await evaluate(`!!document.querySelector('[data-update-pill]') && !!document.querySelector('[data-update-dot]')`))
       const primary = `document.querySelector('[data-update-primary]')`
       check('primary = Download and install', (await evaluate(`${primary}.textContent.trim()`)).length > 0 && (await evaluate(`${UPD}.state.canDownload && !${UPD}.state.error`)))
