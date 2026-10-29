@@ -1,11 +1,14 @@
 import path from 'node:path'
 import { isAgentSessionId, type PtyPreset } from '../../../../packages/shared/src/pty'
+import { BASH_INIT_FILE } from './shellInit'
 
 export interface LaunchSpec {
   file: string
   args: string[]
   /** Added to the child env (shell hooks that report the current folder). */
   env?: Record<string, string>
+  /** The shell was started with command marks (OSC 633) keyed to `AgentOptions.shellNonce`. */
+  integrated?: boolean
 }
 
 // Absolute paths: a bare name would resolve through PATH/cwd, which a project folder could shadow.
@@ -34,7 +37,11 @@ export interface AgentOptions {
   sessionId?: string
   name?: string
   mcp?: boolean
+  /** Shell panes only: per-session secret that turns on command marks; an E mark without it is not trusted. */
+  shellNonce?: string
 }
+
+const isNonce = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{16,64}$/.test(v)
 
 export const isPaneName = (v: unknown): v is string => typeof v === 'string' && v.trim() === v && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(v)
 
@@ -49,13 +56,23 @@ export const MCP_CONFIG_JSON = JSON.stringify({
 export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string, initDir?: string, opts?: AgentOptions): LaunchSpec {
   if (platform === 'win32') {
     const file = windowsPowerShell(env.SystemRoot ?? env.SYSTEMROOT)
+    const nonce = preset === 'shell' && isNonce(opts?.shellNonce) ? opts.shellNonce : undefined
+    if (nonce)
+      return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(`${PS_CWD_HOOK}\n${PS_SHELL_INTEGRATION}`)], env: { ORRERY_SI_NONCE: nonce }, integrated: true }
     const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, true, resume, opts)}`
     // Encoded: no quoting rules between node-pty's command line and PowerShell's parser to get wrong.
     return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)] }
   }
   const shell = safeShell(env.SHELL, platform)
   const hook = posixHook(shell, env, initDir)
-  if (preset === 'shell') return { file: shell, args: ['-l'], env: hook.env }
+  if (preset === 'shell') {
+    const nonce = isNonce(opts?.shellNonce) ? opts.shellNonce : undefined
+    const name = path.posix.basename(shell)
+    if (nonce && name === 'bash' && initDir)
+      return { file: shell, args: ['--init-file', path.posix.join(initDir, BASH_INIT_FILE), '-i'], env: { ...hook.env, ORRERY_SI_NONCE: nonce }, integrated: true }
+    if (nonce && name === 'zsh' && hook.env?.ZDOTDIR) return { file: shell, args: ['-l'], env: { ...hook.env, ORRERY_SI_NONCE: nonce }, integrated: true }
+    return { file: shell, args: ['-l'], env: hook.env }
+  }
   return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, false, resume, opts)}; ${hook.reexec}${shell} -l`], env: hook.env }
 }
 
@@ -70,6 +87,52 @@ export const PS_CWD_HOOK = [
   '$out',
   '}',
   '}',
+].join('\n')
+
+// Runs after the profile and the folder hook: wraps the resulting prompt (oh-my-posh, starship keep working).
+// `$?` is read first and put back (Write-Error -ErrorAction Ignore) before the user's prompt runs, as VS Code does.
+// PSConsoleHostReadLine (PSReadLine) reports the line about to run; without PSReadLine no command is marked.
+// Any error leaves the shell as the profile made it.
+export const PS_SHELL_INTEGRATION = [
+  'try {',
+  'if ($env:ORRERY_SI_NONCE -and -not $global:__OrrerySI) {',
+  '$global:__OrrerySI = @{ Nonce = $env:ORRERY_SI_NONCE; Prompt = $function:prompt; ReadLine = $null; LastId = -1; Running = $false }',
+  'Remove-Item Env:ORRERY_SI_NONCE -ErrorAction SilentlyContinue',
+  "function global:__Orrery-Escape([string]$value) { [regex]::Replace($value, '[\\x00-\\x1f\\x7f\\\\;]', { param($m) '\\x{0:x2}' -f [int][char]$m.Value }) }",
+  'if (Get-Command PSConsoleHostReadLine -CommandType Function -ErrorAction SilentlyContinue) {',
+  '$global:__OrrerySI.ReadLine = $function:PSConsoleHostReadLine',
+  'function global:PSConsoleHostReadLine {',
+  '$si = $global:__OrrerySI',
+  '$line = & $si.ReadLine',
+  '$si.Running = $true',
+  '$cmd = __Orrery-Escape $line',
+  '[Console]::Write("$([char]27)]633;E;$cmd;$($si.Nonce)$([char]7)$([char]27)]633;C$([char]7)")',
+  '$line',
+  '}',
+  '}',
+  'function global:prompt {',
+  '$failed = -not $global:?',
+  '$code = $global:LASTEXITCODE',
+  '$si = $global:__OrrerySI',
+  '$h = Get-History -Count 1',
+  '$id = if ($h) { $h.Id } else { 0 }',
+  "$out = ''",
+  'if ($si.Running) {',
+  '$si.Running = $false',
+  'if ($id -eq $si.LastId) { $out += "$([char]27)]633;D$([char]7)" }',
+  'else {',
+  '$n = if (-not $failed) { 0 } elseif ($code -is [int] -and $code -ne 0) { $code } else { 1 }',
+  '$out += "$([char]27)]633;D;$n$([char]7)"',
+  '}',
+  '}',
+  '$si.LastId = $id',
+  '$out += "$([char]27)]633;A$([char]7)"',
+  "if ($failed) { Write-Error 'failure' -ErrorAction Ignore }",
+  "$out += (& $si.Prompt) -join ''",
+  '$out + "$([char]27)]633;B$([char]7)"',
+  '}',
+  '}',
+  '} catch { }',
 ].join('\n')
 
 export const encodePowerShell = (script: string): string => Buffer.from(script, 'utf16le').toString('base64')

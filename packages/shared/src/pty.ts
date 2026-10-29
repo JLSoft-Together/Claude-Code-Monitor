@@ -14,7 +14,8 @@ export const PTY_PROTOCOL_PREFIX = 'ccm.pty.'
 /** Text frames client → host. Keystrokes go as binary frames. */
 export type PtyClientMessage =
   /** `resume`: an agent session id (UUID) to continue, claude / codex only. */
-  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string; open?: string }
+  /** `integrate`: shell panes only, start the shell with command marks (OSC 633). */
+  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string; open?: string; integrate?: boolean }
   | { t: 'attach'; id: string }
   | { t: 'resize'; cols: number; rows: number }
   /** Folder the attached shell reported (OSC 7 / 9;9) after a `cd`; answered with `cwd` once validated. */
@@ -33,7 +34,8 @@ export type PtyClientMessage =
 
 /** Text frames host → client. Terminal output goes as binary frames. */
 export type PtyServerMessage =
-  | { t: 'ready'; id: string; preset: PtyPreset; pid: number; cwd: string; replay: boolean }
+  /** `si`: nonce of the shell's command marks; an OSC 633;E without it was printed by a program, not the shell. */
+  | { t: 'ready'; id: string; preset: PtyPreset; pid: number; cwd: string; replay: boolean; si?: string }
   | { t: 'pid'; pid: number }
   | { t: 'exit'; code: number }
   | { t: 'gone' }

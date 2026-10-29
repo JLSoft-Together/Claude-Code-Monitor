@@ -46,6 +46,7 @@ import toolStatsV73 from './toolstats-v73'
 import resumeV73 from './resume-v73'
 import apkV73 from './apk-v73'
 import appDataV73 from './appdata-v73'
+import shellMarksV73 from './shellmarks-v73'
 
 const vi: typeof en = {
   ...v25.vi,
@@ -75,6 +76,7 @@ const vi: typeof en = {
   ...resumeV73.vi,
   ...apkV73.vi,
   ...appDataV73.vi,
+  ...shellMarksV73.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',

@@ -26,3 +26,4 @@ Thêm:
 - (Agent A, ý 5) en: `Agent stopped at the usage limit: schedule a continue text filled in at the reset` · vi: `Agent dừng vì hạn mức: hẹn điền sẵn chữ tiếp tục lúc reset`
 - (Agent B, ý 4) en: `APK / AAB size: groups, largest files, manifest, compare with the previous build` · vi: `Kích thước APK / AAB: nhóm, file lớn nhất, manifest, so với bản build trước`
 - (Agent B, ý 3) en: `Devices: browse a debug app's SQLite and SharedPreferences, edit prefs with restore` · vi: `Thiết bị: xem SQLite và SharedPreferences của app debug, sửa prefs có nút khôi phục`
+- (Agent C, ý 1) en: `Shell panes: command marks with exit code and time, ⌘/Ctrl+↑↓ jumps, copy / fill output to agent` · vi: `Pane shell: đánh dấu lệnh kèm mã thoát, thời gian, ⌘/Ctrl+↑↓ nhảy lệnh, điền output cho agent`

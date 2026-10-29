@@ -4,8 +4,8 @@ import { branchOfHead, isBranchName, isInside, parseWorktrees, worktreeDest } fr
 import { ownersOf, parsePidTable } from '../src/pty/owners'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
-import { BASH_PROMPT_COMMAND, childEnv, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, presetCommand, safeShell } from '../src/pty/presets'
-import { writeShellInit, ZSH_FILES } from '../src/pty/shellInit'
+import { BASH_PROMPT_COMMAND, childEnv, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, PS_SHELL_INTEGRATION, presetCommand, safeShell } from '../src/pty/presets'
+import { BASH_INIT, BASH_INIT_FILE, writeShellInit, ZSH_FILES, ZSH_INTEGRATION } from '../src/pty/shellInit'
 import { GrantStore, MAX_GRANTS } from '../src/preview/grants'
 
 const decodePs = (b64: string): string => Buffer.from(b64, 'base64').toString('utf16le')
@@ -154,9 +154,53 @@ describe('shell folder reports', () => {
       expect(writeShellInit(dir)).toBe(true)
       for (const [name, body] of Object.entries(ZSH_FILES)) expect(readFileSync(path.join(dir, name), 'utf8')).toBe(body)
       expect(ZSH_FILES['.zshrc']).toContain('add-zsh-hook precmd __agent_monitor_cwd')
+      expect(readFileSync(path.join(dir, BASH_INIT_FILE), 'utf8')).toBe(BASH_INIT)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('shell integration (command marks)', () => {
+  const nonce = '0123456789abcdef0123456789abcdef'
+  const dir = '/home/me/.local/share/ccm/shell-init'
+  const marks = ['633;A', '633;B', '633;C', '633;D', '633;E']
+
+  it('PowerShell runs the marks after the folder hook, with the nonce in the env only', () => {
+    const spec = presetCommand('shell', 'win32', { SystemRoot: 'C:\\Windows' }, undefined, undefined, { shellNonce: nonce })
+    expect(decodePs(spec.args[3]!)).toBe(`${PS_CWD_HOOK}\n${PS_SHELL_INTEGRATION}`)
+    expect(spec.env).toEqual({ ORRERY_SI_NONCE: nonce })
+    expect(spec.integrated).toBe(true)
+    expect(decodePs(spec.args[3]!)).not.toContain(nonce)
+  })
+
+  it('bash starts from the init file, zsh keeps its wrappers plus the nonce', () => {
+    const bash = presetCommand('shell', 'linux', { SHELL: '/bin/bash' }, undefined, dir, { shellNonce: nonce })
+    expect(bash).toEqual({ file: '/bin/bash', args: ['--init-file', `${dir}/${BASH_INIT_FILE}`, '-i'], env: { PROMPT_COMMAND: BASH_PROMPT_COMMAND, ORRERY_SI_NONCE: nonce }, integrated: true })
+    const zsh = presetCommand('shell', 'darwin', { SHELL: '/bin/zsh' }, undefined, dir, { shellNonce: nonce })
+    expect(zsh).toEqual({ file: '/bin/zsh', args: ['-l'], env: { ZDOTDIR: dir, AGENT_MONITOR_ZDOTDIR: '', ORRERY_SI_NONCE: nonce }, integrated: true })
+  })
+
+  it('stays off without a usable nonce, init folder, known shell, or for agents', () => {
+    expect(presetCommand('shell', 'linux', { SHELL: '/bin/bash' }, undefined, undefined, { shellNonce: nonce }).integrated).toBeUndefined()
+    expect(presetCommand('shell', 'linux', { SHELL: '/bin/bash' }, undefined, dir, { shellNonce: 'x; rm -rf /' }).args).toEqual(['-l'])
+    expect(presetCommand('shell', 'linux', { SHELL: '/usr/bin/fish' }, undefined, dir, { shellNonce: nonce }).integrated).toBeUndefined()
+    const agent = presetCommand('claude', 'win32', {}, undefined, undefined, { shellNonce: nonce })
+    expect(agent.integrated).toBeUndefined()
+    expect(decodePs(agent.args[3]!)).toBe(`${PS_CWD_HOOK}; claude`)
+  })
+
+  it('each script emits every mark and runs the user profile first', () => {
+    for (const script of [BASH_INIT, ZSH_INTEGRATION, PS_SHELL_INTEGRATION]) for (const m of marks) expect(script).toContain(m)
+    expect(BASH_INIT.indexOf('$HOME/.bash_profile')).toBeLessThan(BASH_INIT.indexOf('633;'))
+    expect(BASH_INIT).toContain('. /etc/profile')
+    expect(BASH_INIT).toContain('(exit "$s"); eval "$c"')
+    const zshrc = ZSH_FILES['.zshrc']!
+    expect(zshrc.indexOf('builtin source "$ZDOTDIR/.zshrc"')).toBeLessThan(zshrc.indexOf(ZSH_INTEGRATION))
+    expect(PS_SHELL_INTEGRATION).toContain('Prompt = $function:prompt')
+    expect(PS_SHELL_INTEGRATION).toContain("Write-Error 'failure' -ErrorAction Ignore")
+    expect(PS_SHELL_INTEGRATION.startsWith('try {')).toBe(true)
+    for (const script of [BASH_INIT, ZSH_INTEGRATION, PS_SHELL_INTEGRATION]) expect(script).toMatch(/Remove-Item Env:ORRERY_SI_NONCE|unset ORRERY_SI_NONCE/)
   })
 })
 

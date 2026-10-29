@@ -71,6 +71,7 @@ interface Session {
   branchGen: number
   token: string
   opens: number[]
+  siNonce: string | null
 }
 
 interface Ticket {
@@ -147,12 +148,13 @@ function flush(s: Session): void {
   }
 }
 
-function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket): Session {
+function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket, integrate = false): Session {
   const token = randomBytes(32).toString('hex')
-  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY })
+  const shellNonce = preset === 'shell' && integrate ? randomBytes(16).toString('hex') : undefined
+  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY, shellNonce })
   const env = { ...childEnv(process.env), ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
-  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [] }
+  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [], siNonce: spec.integrated && shellNonce ? shellNonce : null }
   proc.onData((d) => {
     s.ring += d
     // Amortised trim; a replay may start mid escape sequence, which xterm shrugs off.
@@ -247,7 +249,7 @@ function attachTo(ws: WebSocket, s: Session, replay: boolean): void {
   if (s.ws && s.ws !== ws) s.ws.close(4000, 'replaced')
   s.ws = ws
   s.pending = []
-  send(ws, { t: 'ready', id: s.id, preset: s.preset, pid: s.pid, cwd: s.cwd, replay })
+  send(ws, { t: 'ready', id: s.id, preset: s.preset, pid: s.pid, cwd: s.cwd, replay, ...(s.siNonce ? { si: s.siNonce } : {}) })
   if (s.liveCwd) send(ws, { t: 'cwd', cwd: s.liveCwd })
   if (replay && s.ring) ws.send(Buffer.from(s.ring, 'utf8'), { binary: true })
   if (s.branch !== null) send(ws, { t: 'branch', branch: s.branch })
@@ -371,7 +373,7 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
     const ticket = typeof msg.open === 'string' ? takeTicket(msg.open, msg.preset) : undefined
     let s: Session
     try {
-      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume, ticket)
+      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume, ticket, msg.integrate === true)
     } catch (err) {
       console.error('spawn failed:', err)
       return send(ws, { t: 'error', message: 'spawn' }), null

@@ -1,0 +1,56 @@
+// Top-level `shellMarks` of en.ts / vi.ts (v73): shell integration marks in Workspace shell panes.
+const en = {
+  shellMarks: {
+    setting: 'Shell command marks',
+    settingHint: 'Shell panes mark each command with its exit code and run time; Ctrl+↑ / ↓ (⌘ on macOS) jumps between commands. Applies to shells opened after the change.',
+    ok: 'Succeeded in {time}',
+    okNoTime: 'Succeeded',
+    failed: 'Failed with exit {code} after {time}',
+    failedNoTime: 'Failed with exit {code}',
+    markLabel: 'Command {cmd}. {status}. Open actions.',
+    menuLabel: 'Command actions',
+    copyCommand: 'Copy command',
+    copyOutput: 'Copy output',
+    fillAgent: 'Fill output into agent',
+    fillAgentHint: 'Lands in the agent’s input; you press Enter.',
+    runAgain: 'Run again',
+    runAgainUntrusted: 'Only commands the shell reported itself can run again',
+    runAgainMultiline: 'Multi-line commands cannot run again from here',
+    runAgainBusy: 'Wait until the shell shows its prompt',
+    copied: 'Command copied',
+    copiedOutput: 'Output copied',
+    noOutput: 'This command printed nothing',
+    noAgent: 'Open a Claude or Codex pane to fill the output into',
+    toastTitle: '{cmd} finished',
+    toastBody: 'Exit {code} after {time} in {pane}',
+  },
+}
+
+const vi: typeof en = {
+  shellMarks: {
+    setting: 'Đánh dấu lệnh trong shell',
+    settingHint: 'Pane shell đánh dấu từng lệnh kèm mã thoát và thời gian chạy; Ctrl+↑ / ↓ (⌘ trên macOS) nhảy giữa các lệnh. Áp dụng cho shell mở sau khi đổi.',
+    ok: 'Thành công sau {time}',
+    okNoTime: 'Thành công',
+    failed: 'Lỗi, mã thoát {code} sau {time}',
+    failedNoTime: 'Lỗi, mã thoát {code}',
+    markLabel: 'Lệnh {cmd}. {status}. Mở thao tác.',
+    menuLabel: 'Thao tác với lệnh',
+    copyCommand: 'Sao chép lệnh',
+    copyOutput: 'Sao chép output',
+    fillAgent: 'Điền output vào agent',
+    fillAgentHint: 'Điền vào ô nhập của agent; bạn tự nhấn Enter.',
+    runAgain: 'Chạy lại',
+    runAgainUntrusted: 'Chỉ chạy lại được lệnh do chính shell báo',
+    runAgainMultiline: 'Không chạy lại lệnh nhiều dòng từ đây',
+    runAgainBusy: 'Chờ shell hiện dấu nhắc',
+    copied: 'Đã sao chép lệnh',
+    copiedOutput: 'Đã sao chép output',
+    noOutput: 'Lệnh này không in gì',
+    noAgent: 'Mở một pane Claude hoặc Codex để điền output vào',
+    toastTitle: '{cmd} đã xong',
+    toastBody: 'Mã thoát {code} sau {time} trong {pane}',
+  },
+}
+
+export default { en, vi }

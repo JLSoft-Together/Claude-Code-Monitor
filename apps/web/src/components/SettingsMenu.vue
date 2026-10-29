@@ -350,6 +350,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 />
               </div>
               <ToggleSwitch v-if="hasTerminals" v-model="settings.dimInactive" :label="t('workspace.dim.setting')" :hint="t('workspace.dim.settingHint')" class="px-3" />
+              <ToggleSwitch v-if="hasTerminals" v-model="settings.shellIntegration" :label="t('shellMarks.setting')" :hint="t('shellMarks.settingHint')" class="px-3" data-setting="shell-integration" />
               <div v-if="hasTerminals" class="flex items-center justify-between gap-3 px-3 py-2">
                 <div class="min-w-0 flex-1">
                   <p class="text-sm">{{ t('settings.fileIcons') }}</p>

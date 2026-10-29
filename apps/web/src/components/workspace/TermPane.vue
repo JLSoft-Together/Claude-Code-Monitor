@@ -59,6 +59,8 @@ import LimitResumeChip from './LimitResumeChip.vue'
 import { shouldAutoFill } from '../../lib/promptQueue'
 import { usePromptQueueStore } from '../../stores/promptQueue'
 import { useResumeScheduleStore } from '../../stores/resumeSchedule'
+import { useShellMarks } from '../../composables/useShellMarks'
+import ContextMenu from '../ui/ContextMenu.vue'
 
 const props = defineProps<{ pane: Pane; visible: boolean; focused: boolean; multi: boolean; zoomed: boolean; hiddenCount: number; dim: boolean }>()
 const emit = defineEmits<{ split: [choice: SplitChoice]; close: []; openLink: [target: LinkTarget, opts: Partial<LinkOpenOptions>]; scripts: []; zoom: [] }>()
@@ -244,6 +246,7 @@ function dropMenus(): void {
   splitAnchor.value = null
   wtAnchor.value = null
   more.value?.close()
+  marks.closeMenu()
 }
 
 const ended = computed(() => props.pane.state === 'exited' || props.pane.state === 'error' || props.pane.state === 'gone')
@@ -355,6 +358,18 @@ function showNotice(text: string): void {
   scanTimer = setTimeout(() => (scanNotice.value = null), 4000)
 }
 onBeforeUnmount(() => scanTimer && clearTimeout(scanTimer))
+
+const marks = useShellMarks({
+  paneKey: () => props.pane.key,
+  paneTitle: () => props.pane.title || shortPath(cwd.value ?? '') || t('workspace.preset.shell'),
+  cwd: () => cwd.value,
+  running: () => props.pane.state === 'running',
+  visible: () => props.visible,
+  focused: () => props.focused,
+  write: (data) => conn?.write(data),
+  notice: showNotice,
+})
+const { active: marksOn, menu: markMenu, entries: markEntries } = marks
 
 const queues = usePromptQueueStore()
 const queueButton = ref<InstanceType<typeof PromptQueueButton> | null>(null)
@@ -691,6 +706,12 @@ function onKey(e: KeyboardEvent): boolean {
     return false
   }
   if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) att.noteSubmit()
+  if (marksOn.value && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.shiftKey && (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)) {
+    if (marks.jump(e.key === 'ArrowUp' ? -1 : 1)) {
+      e.preventDefault()
+      return false
+    }
+  }
   // ⌘V is image-aware too (xterm's own paste only knows text).
   if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'v') {
     e.preventDefault()
@@ -719,6 +740,7 @@ function onMessage(msg: PtyServerMessage): void {
       // Only folders the user picked go to the recent list; the home default is always one click away.
       if (props.pane.cwd && !msg.replay) workspace.remember(msg.cwd)
       workspace.update(key, { sessionId: msg.id, pid: msg.pid || undefined, cwd: msg.cwd, state: 'running', error: undefined })
+      marks.attach(msg.si, msg.replay)
       ticket?.release()
       if (term) conn?.resize(term.cols, term.rows)
       if (props.pane.pendingCommand && !msg.replay) pendingTimer = setTimeout(sendPending, PENDING_GRACE_MS)
@@ -786,6 +808,7 @@ function killSession(): void {
 function restart(): void {
   killSession()
   restoredOnMount = false
+  marks.reset()
   term?.reset()
   resetDev()
   oscLinks.length = 0
@@ -806,7 +829,8 @@ async function spawn(): Promise<void> {
 }
 
 function spawnStart(): PtyStart {
-  return { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket } }
+  const integrate = props.pane.preset === 'shell' && settings.shellIntegration
+  return { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket, integrate } }
 }
 
 function wake(): void {
@@ -817,6 +841,7 @@ function wake(): void {
 function reconnect(): void {
   if (!props.pane.sessionId) return restart()
   restoredOnMount = false
+  marks.reset()
   term?.reset()
   workspace.update(props.pane.key, { state: 'starting', error: undefined })
   void connect({ attach: props.pane.sessionId })
@@ -869,6 +894,7 @@ onMounted(() => {
     if (dir) onShellCwd(dir)
     return !!dir
   })
+  marks.install(term)
   linkProvider = term.registerLinkProvider(
     createFileLinkProvider(term, {
       cwd: () => cwd.value,
@@ -992,6 +1018,7 @@ onBeforeUnmount(() => {
     attachments.drop(props.pane.key)
   }
   conn?.close()
+  marks.dispose()
   webgl?.dispose()
   term?.dispose()
 })
@@ -1309,7 +1336,8 @@ onBeforeUnmount(() => {
       :class="multi && focused ? 'outline-focus' : 'outline-transparent'"
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
-      <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="ended ? 'opacity-60' : ''">
+      <!-- Shell command marks sit in the left padding, outside the cell grid. -->
+      <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="[ended ? 'opacity-60' : '', marksOn ? 'pl-4' : '']">
         <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
       <Transition name="ccm-fade">
@@ -1336,6 +1364,7 @@ onBeforeUnmount(() => {
           {{ scanNotice }}
         </p>
       </Transition>
+      <ContextMenu v-if="markMenu" :at="markMenu.at" :entries="markEntries" :label="t('shellMarks.menuLabel')" :trigger="markMenu.trigger" @pick="marks.pick" @close="marks.closeMenu" />
       <TermFind v-if="findOpen" ref="find" :addon="searchAddon" class="absolute top-1 right-2 z-10" @close="closeFind" />
       <span
         v-if="pane.attention"
