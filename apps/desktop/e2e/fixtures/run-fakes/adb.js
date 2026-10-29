@@ -1,4 +1,4 @@
-// Fake `adb` for e2e/run-pane.cjs and e2e/devices.cjs: one emulator, install/launch succeed, logcat streams until killed.
+// Fake `adb` for e2e/run-pane.cjs, devices.cjs, v72.cjs and v73.cjs: one emulator, install/launch succeed, logcat streams until killed.
 // v61 Devices: connect / disconnect / pair / tcpip / mdns / shell ip. Wi-Fi ids connected so far persist in STATE/wifi.json
 // (one process per adb call), and track-devices re-emits its frame when that file changes.
 const fs = require('node:fs')
@@ -47,7 +47,32 @@ const shellIs = (...words) => args[0] === 'shell' && words.every((w, i) => args[
 const PNG_4X8 = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAICAIAAABRUclSAAAAF0lEQVR4nGPQqLgDRwxEchgW3EEg4jgAje8vgT8Jh4YAAAAASUVORK5CYII='
 const DUMP = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.example.demo" content-desc="" bounds="[0,0][4,8]"><node index="0" text="Buy now" resource-id="com.example.demo:id/buy_button" class="android.widget.Button" package="com.example.demo" content-desc="" clickable="true" bounds="[0,4][4,8]" /></node></hierarchy>`
 
-if (args[0] === 'exec-out' && args[1] === 'screencap') {
+// v73 app data: `run-as` reads STATE/appdata/<package>/ (databases/, shared_prefs/); any other package is not debuggable.
+const unquote = (s) => (s ?? '').replace(/^'(.*)'$/, '$1')
+function runAs() {
+  const pkg = unquote(args[2])
+  const dir = path.join(STATE, 'appdata', pkg)
+  const [cmd, rel] = args.slice(3)
+  if (!/^[A-Za-z0-9._]+$/.test(pkg) || !fs.existsSync(dir)) {
+    out(`run-as: package not debuggable: ${pkg}\n`)
+    process.exitCode = 1
+  } else if (cmd === 'sh') {
+    for (const sub of ['databases', 'shared_prefs']) {
+      for (const f of fs.existsSync(path.join(dir, sub)) ? fs.readdirSync(path.join(dir, sub)) : []) out(`${fs.statSync(path.join(dir, sub, f)).size} ${sub}/${f}\n`)
+    }
+  } else if (cmd === 'cat') {
+    const file = path.join(dir, unquote(rel))
+    if (file.startsWith(dir + path.sep) && fs.existsSync(file)) process.stdout.write(fs.readFileSync(file))
+    else {
+      process.stderr.write(`cat: ${unquote(rel)}: No such file or directory\n`)
+      process.exitCode = 1
+    }
+  }
+}
+
+if (args[1] === 'run-as' && (args[0] === 'shell' || args[0] === 'exec-out')) {
+  runAs()
+} else if (args[0] === 'exec-out' && args[1] === 'screencap') {
   process.stdout.write(Buffer.from(PNG_4X8, 'base64'))
 } else if (shellIs('uiautomator', 'dump')) {
   out(`UI hierchary dumped to: ${args[3]}\n`)
