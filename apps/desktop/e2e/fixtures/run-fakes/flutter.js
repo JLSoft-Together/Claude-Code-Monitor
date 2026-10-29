@@ -88,6 +88,16 @@ async function run() {
   send({ event: 'app.log', params: { appId, log: 'flutter: Hello from the fake app' } })
   // Masking: the home folder and a token-looking value must not reach the page.
   send({ event: 'app.log', params: { appId, log: `flutter: secret at ${require('node:os').homedir()} ghp_abcdefghijklmnopqrstuvwxyz123456` } })
+  // v72 crash chip: an unhandled Dart exception whose top frame is in the project's lib/main.dart.
+  if (mode() === 'crash') {
+    for (const log of [
+      'E/flutter ( 4242): [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: Bad state: e2e crash',
+      'E/flutter ( 4242): #0      main (package:flutter_demo/main.dart:5:3)',
+      'E/flutter ( 4242): #1      _runMain (dart:ui/hooks.dart:301:3)',
+      'E/flutter ( 4242): <asynchronous suspension>',
+      'flutter: after the crash',
+    ]) send({ event: 'app.log', params: { appId, log } })
+  }
 }
 
 if (args[0] === '--version') {

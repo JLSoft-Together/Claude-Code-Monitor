@@ -23,7 +23,57 @@ const PKG = 'com.example.demo'
 const out = (s) => process.stdout.write(s)
 const has = (...words) => words.every((w) => args.includes(w))
 
-if (args[0] === 'track-devices') {
+// Long-running calls: on Windows the app only kills launcher.exe, and an orphaned node keeps inherited handles (the CDP
+// port of the run) open, so the next e2e run cannot bind it.
+const exitWithParent = () => setInterval(() => {
+  try {
+    process.kill(process.ppid, 0)
+  } catch {
+    process.exit(0)
+  }
+}, 500)
+
+// v72 screenshot / view dump / UI test: a 4×8 PNG, a two-node dump and settings kept in STATE/ui.json.
+const UI = path.join(STATE, 'ui.json')
+const ui = () => {
+  try {
+    return JSON.parse(fs.readFileSync(UI, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+const setUi = (patch) => fs.writeFileSync(UI, JSON.stringify({ ...ui(), ...patch }))
+const shellIs = (...words) => args[0] === 'shell' && words.every((w, i) => args[i + 1] === w)
+const PNG_4X8 = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAICAIAAABRUclSAAAAF0lEQVR4nGPQqLgDRwxEchgW3EEg4jgAje8vgT8Jh4YAAAAASUVORK5CYII='
+const DUMP = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.example.demo" content-desc="" bounds="[0,0][4,8]"><node index="0" text="Buy now" resource-id="com.example.demo:id/buy_button" class="android.widget.Button" package="com.example.demo" content-desc="" clickable="true" bounds="[0,4][4,8]" /></node></hierarchy>`
+
+if (args[0] === 'exec-out' && args[1] === 'screencap') {
+  process.stdout.write(Buffer.from(PNG_4X8, 'base64'))
+} else if (shellIs('uiautomator', 'dump')) {
+  out(`UI hierchary dumped to: ${args[3]}\n`)
+} else if (args[0] === 'exec-out' && args[1] === 'cat') {
+  out(DUMP)
+} else if (shellIs('rm')) {
+  // nothing printed by the real tool either
+} else if (shellIs('getprop', 'ro.build.version.sdk')) {
+  out('34\n')
+} else if (shellIs('cmd', 'uimode', 'night')) {
+  if (args[4]) setUi({ night: args[4] })
+  out(`Night mode: ${ui().night ?? 'no'}\n`)
+} else if (shellIs('settings', 'get')) {
+  const v = ui()[`${args[2]}/${args[3]}`]
+  out(`${v ?? 'null'}\n`)
+} else if (shellIs('settings', 'put')) {
+  setUi({ [`${args[2]}/${args[3]}`]: args[4] })
+} else if (shellIs('settings', 'delete')) {
+  setUi({ [`${args[2]}/${args[3]}`]: null })
+} else if (shellIs('wm', 'density')) {
+  if (args[3] === 'reset') setUi({ density: null })
+  else if (args[3]) setUi({ density: args[3] })
+  out(`Physical density: 420\n${ui().density ? `Override density: ${ui().density}\n` : ''}`)
+} else if (shellIs('cmd', 'locale', 'get-app-locales')) {
+  out(`Locales for ${args[4]} for user 0 are []\n`)
+} else if (args[0] === 'track-devices') {
   let last = ''
   const emit = () => {
     const now = list()
@@ -33,6 +83,7 @@ if (args[0] === 'track-devices') {
   }
   emit()
   setInterval(emit, 300)
+  exitWithParent()
 } else if (args[0] === 'devices') {
   out(`List of devices attached\n${list()}\n`)
 } else if (args[0] === 'connect') {
@@ -71,6 +122,7 @@ if (args[0] === 'track-devices') {
   out(`${at()}  4242  4242 I DemoApp : Hello from logcat\n`)
   out(`${at()}  4242  4260 W DemoApp : Fake warning line\n`)
   setInterval(() => out(`${at()}  4242  4242 D DemoApp : tick\n`), 2000)
+  exitWithParent()
 } else if (args[0] === 'shell' && has('resolve-activity')) {
   out(`priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n${PKG}/.MainActivity\n`)
 } else if (args[0] === 'shell' && has('am', 'start')) {
