@@ -32,6 +32,20 @@ describe('parseTerminalProblems', () => {
     expect(r.files).toBe(3)
   })
 
+  it('skips the command line echoed after a shell prompt', () => {
+    const r = parseTerminalProblems(
+      [
+        'PS C:\\proj> echo "src/a.ts(3,7): error TS2322: bad"',
+        'src/a.ts(3,7): error TS2322: bad',
+        'dev@box:~/proj$ echo src/b.ts:1:1 - error TS1005: x',
+        'C:\\proj>echo src/c.ts(1,1): error TS1: y',
+        'node -e "console.log(\'src/d.ts(1,1): error TS1: z\')"',
+      ],
+      WIN,
+    )
+    expect(r.errors.map((e) => e.file)).toEqual(['C:\\proj\\src\\a.ts'])
+  })
+
   it('eslint stylish groups rows under the file header', () => {
     const r = scan(['/proj/src/a.ts', '   4:10  error    Unexpected any  @typescript-eslint/no-explicit-any', '  12:1   warning  Missing return  func-style', '', '✖ 2 problems', '  3:3 error stray'].join('\n'))
     expect(r.errors.map((e) => [e.file, e.line, e.col, e.severity, e.message])).toEqual([

@@ -7,6 +7,7 @@ export const SCAN_MAX_PROBLEMS = 1000
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
 const ABS = /^(?:[A-Za-z]:[\\/]|[\\/])/
+const PROMPT = /^(?:PS [A-Za-z]:[\\/][^>]*> |[\w.-]+@[\w.-]+[:\s].*?[$#%] |[A-Za-z]:\\[^>]*>\S)/
 type Severity = BuildError['severity']
 const sev = (s: string): Severity => (/warn/i.test(s) ? 'warning' : 'error')
 
@@ -66,6 +67,8 @@ export function parseTerminalProblems(input: readonly string[], cwd: string | nu
   let inStack = false
 
   const push = (file: string, line: number, col: number, message: string, severity: Severity): boolean => {
+    // A command line echoed after a shell prompt (`PS C:\repo> echo "a.ts(1,2): error …"`) is not a file name.
+    if (/["'<>|`]/.test(file)) return false
     const abs = resolveProblemPath(file, cwd)
     if (!abs || !(line > 0)) return false
     const msg = message.trim().slice(0, 500)
@@ -82,6 +85,7 @@ export function parseTerminalProblems(input: readonly string[], cwd: string | nu
 
   for (const raw of lines) {
     const line = raw.replace(ANSI, '').replace(/\s+$/, '')
+    if (PROMPT.test(line)) continue
     const frame = /^\s+at (?:(.+?) \()?((?:file:\/\/\/?)?(?:[A-Za-z]:)?[^():]+?):(\d+):(\d+)\)?$/.exec(line)
     if (frame) {
       if (!inStack && !/[\\/]node_modules[\\/]/.test(frame[2]!) && push(frame[2]!, +frame[3]!, +frame[4]!, lastError ?? (frame[1] ? `at ${frame[1]}` : 'Error'), 'error')) inStack = true
