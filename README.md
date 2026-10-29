@@ -16,7 +16,7 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 
 - **Chỉ quan sát**: đọc file local của Claude Code / Codex (session, transcript, hook). Không gọi API, không gửi prompt, không chạy LLM khác: **không tốn thêm token**. Ngoại lệ duy nhất do bạn bấm: **Compact…** gửi một prompt bàn giao vào pane agent bạn chọn.
 - **Chỉ local**: collector bind `127.0.0.1` và từ chối mọi request không mang khoá của app (trình duyệt mở `127.0.0.1:4317` nhận `403`).
-- Không đưa nội dung prompt, tham số tool, env hay secret ra giao diện. Token chỉ hiện khi có số liệu thật.
+- Không đưa nội dung prompt, tham số tool, env hay secret ra giao diện. Ngoại lệ do bạn bấm: **Tìm session cũ** hiện đoạn prompt khớp (đã che secret, không lưu lại). Token chỉ hiện khi có số liệu thật.
 
 ## Tính năng chính
 
@@ -24,12 +24,12 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 - Hàng chờ "Cần bạn", danh sách session (branch, % context, thay đổi chưa commit, nhảy tới đúng terminal, hoãn nhắc), Agent Map main → sub-agent, tin nhắn giữa các agent chính.
 - Codex CLI do Claude gọi hiện thành node con dưới đúng agent; chip giới hạn Codex 5h / tuần.
 - Office pixel-art (Habblaud): mỗi dự án một phòng, mỗi agent một nhân vật.
-- Usage (token, chi phí ước tính, giới hạn gói), History (heatmap theo giờ, recap Markdown); thông báo khi session chờ bạn.
+- Usage (token, chi phí ước tính, giới hạn gói), History (heatmap theo giờ, recap Markdown, thống kê tool / skill / MCP, tìm session cũ theo prompt rồi Resume); thông báo khi session chờ bạn.
 
 **Workspace và editor**
-- Terminal trong app (Claude Code / Codex / shell): tab, chia ô, nhóm tab, phóng ô, hoàn tác đóng, Mission Control, worktree, khôi phục workspace (`--resume`), terminal thả xuống (`` Ctrl+` ``).
+- Terminal trong app (Claude Code / Codex / shell): tab, chia ô, nhóm tab, phóng ô, hoàn tác đóng, Mission Control, worktree, khôi phục workspace (`--resume`), terminal thả xuống (`` Ctrl+` ``); đánh dấu từng lệnh trong shell (mã thoát, thời gian, nhảy giữa lệnh); hết hạn mức thì hẹn điền "tiếp tục" lúc reset.
 - Editor có tô màu cú pháp, tự lưu (tuỳ chọn), Outline, Go to Symbol, bookmark, Local History, Format; cây JSON / YAML, xem log, gửi request `.http`, xem trước Markdown song song.
-- Explorer kiểu IntelliJ (icon Atom Material): Tìm kiếm + Thay trong nhiều file, TODO, Checks; pane Trình duyệt cho HTML / `localhost`; ghi chú dự án, Plan board; `Ctrl K` có công cụ dev, so file / ảnh, kiểm `.env`, quét khoá i18n.
+- Explorer kiểu IntelliJ (icon Atom Material): Tìm kiếm + Thay trong nhiều file, TODO, Checks; pane Trình duyệt cho HTML / `localhost`; ghi chú dự án, Plan board; `Ctrl K` có công cụ dev, so file / ảnh, kiểm `.env`, quét khoá i18n, bảng chuỗi đa ngữ (strings.xml / ARB / JSON), kiểm bản mới + lỗ hổng (OSV) của thư viện.
 
 **Git**
 - Changes: diff kiểu Android Studio (minimap, hai cột), stage / commit, blame, bỏ từng đoạn, giải xung đột theo từng khối.
@@ -39,13 +39,16 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 **Run và thiết bị**
 - Run pane cho Android / Flutter: bắt crash và ANR, bấm frame để mở file, **Điền vào agent** (đã che bí mật).
 - XML Layout Preview và Flutter Widget Preview.
-- Tab Thiết bị: kết nối Android qua USB / Wi-Fi (mã ghép, QR, tự kết nối), chụp màn + soi view, thử UI (giao diện tối, cỡ chữ, ngôn ngữ, tắt animation), mở deep link của dự án.
+- Tab Thiết bị: kết nối Android qua USB / Wi-Fi (mã ghép, QR, tự kết nối), chụp màn + soi view, thử UI (giao diện tối, cỡ chữ, ngôn ngữ, tắt animation), mở deep link của dự án; emulator (AVD); xem dữ liệu app debug (SQLite, SharedPreferences); kiểm trợ năng trên ảnh chụp; quay màn; đo hiệu năng app (giật khung, RAM, mở nguội); duyệt / đẩy / kéo file trên máy.
+- Phân tích dung lượng APK / AAB; **Kiểm phát hành** Android / Flutter (versionCode, bản release, targetSdk, manifest, ID test AdMob, chứng chỉ ký).
 
 **Agent và an toàn**
 - Thư viện prompt, hàng chờ prompt cho từng pane agent, hộp việc cần bạn, cảnh báo khi các agent cùng sửa một file.
 - Hỏi quyền theo dự án: gom các lần hỏi lặp lại, luật allow tích chọn được ghi vào `settings.local.json` sau khi xác nhận đúng phần thay đổi.
-- Ngữ cảnh nền của session: token lượt đầu và kích thước CLAUDE.md, memory, skill.
+- Ngữ cảnh nền của session: token lượt đầu và kích thước CLAUDE.md, memory, skill; nút Kiểm tra tìm link memory gãy, đường dẫn cũ, file quá lớn.
+- Extensions › Hook: mọi hook Claude Code theo sự kiện, tắt / bật hook settings, chạy thử.
 - Agent trong Workspace mở pane mới qua MCP server `orrery` (prompt chỉ điền sẵn, không tự gửi); tab Extensions cài MCP server / plugin qua `claude` CLI sau khi xác nhận.
+- Cập nhật trong app từ GitHub Releases (bấm mới tải, kiểm SHA-256); Cài đặt › Sao lưu xuất / nhập cấu hình sang máy khác (không xuất token).
 
 ## Cài đặt
 

@@ -58,6 +58,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Usage index bền vững** — quét mọi `projects/**/*.jsonl`, lưu `usage-index.json`, chỉ đếm số, không lưu nội dung · `apps/collector/src/usage.ts`
 - **Dự báo hạn mức** — hồi quy bình phương tối thiểu, `limit-history.json` · `apps/collector/src/forecast.ts`
 - **Tab History** — bảng tổng, timeline trạng thái theo giờ · `apps/web/src/components/history/HistoryView.vue`
+- **Tìm session cũ theo prompt + Resume** (v75) — quét transcript khi bấm, che secret, Resume trong pane / mở thư mục / chép id · `apps/web/src/components/history/PromptSearchCard.vue`, `apps/collector/src/prompt-search.ts`
 - **Lịch sử session đã kết thúc** — tối đa 1000 session · `apps/collector/src/history.ts`
 - **Heatmap giờ × ngày** (2026-10-29) — 28 ngày, `heatmap.get` · `apps/web/src/components/history/HeatmapChart.vue`
 - **Thống kê tool / skill / MCP** (v73) — theo project, 7 / 30 ngày · `apps/web/src/components/history/ToolStatsCard.vue`
@@ -65,6 +66,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Ngân sách chi phí hằng ngày** — `settings.dailyBudget` · `apps/web/src/stores/settings.ts`
 - **Đo thời gian tool (Tool timeline / spans)** — ghép tool_use với kết quả · `apps/collector/src/tool-spans.ts`
 - **Ngữ cảnh nền của session** (v72) — token lượt đầu và kích thước CLAUDE.md, memory, skill · `apps/desktop/src/preview/contextSources.ts`
+- **Bác sĩ CLAUDE.md / memory** (v75) — nút Kiểm tra trong dialog ngữ cảnh nền: link `[[ ]]` gãy, index MEMORY.md trỏ file không có / thiếu mục, frontmatter thiếu, trùng tên, `@import` / đường dẫn không còn, file quá giới hạn Claude Code; mở đúng dòng, Điền vào agent; chỉ đọc · `apps/desktop/src/preview/memoryDoctor.ts`, `apps/web/src/components/workspace/ContextSourcesDialog.vue`
 
 ## Thông báo, toast, nhắc nghỉ
 
@@ -188,6 +190,10 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Chuyển USB sang Wi-Fi** — `apps/desktop/src/devices/manager.ts`
 - **Chụp màn hình thiết bị** (2.4.0, v72) — gửi vào agent đính kèm · `apps/web/src/components/devices/DeviceCaptureDialog.vue`
 - **Soi view tree** — id, chữ, khung trên ảnh chụp, tìm trong file · `apps/desktop/src/devices/uiDump.ts`
+- **Kiểm trợ năng màn thiết bị** (v75) — thiếu nhãn, vùng chạm < 48 dp, tương phản chữ ước lượng từ ảnh, trùng mô tả; điền prompt sửa kèm file · `apps/web/src/lib/deviceA11y.ts`
+- **Quay màn hình thiết bị** (v75) — tối đa 30 s, lưu MP4, đính kèm 6 khung hình cho agent · `apps/desktop/src/devices/recorder.ts`
+- **Hiệu năng app trên thiết bị** (v75) — Đặt lại / Đo: khung giật %, p50–p99, PSS, Java / native heap, đồ hoạ; mở nguội `am start -W -S` (confirm); 10 lần đo / app, so trước–sau, điền số liệu vào agent · `apps/desktop/src/devices/perf.ts`, `apps/web/src/components/devices/DevicePerfDialog.vue`
+- **Trình duyệt file thiết bị** (v75) — `/sdcard`, `/data/local/tmp`, thư mục app debug qua run-as; kéo về thư mục / dự án, đẩy (picker hoặc thả), tiến độ byte + huỷ, thư mục mới, xoá (confirm) · `apps/desktop/src/devices/fileBrowser.ts`, `apps/web/src/components/devices/DeviceFilesDialog.vue`
 - **Thử UI trên máy** (v72) — tối / sáng, cỡ chữ, cỡ hiển thị, ngôn ngữ app, tắt animation, Trả về như cũ · `apps/desktop/src/devices/uiTester.ts`
 - **Mở deep link và activity exported** (v72) — `apps/desktop/src/devices/manifest.ts`
 - **Xem dữ liệu app debug** (v73) — database, SharedPreferences, chỉ đọc có chặn SQL · `apps/desktop/src/devices/appData.ts`
@@ -209,6 +215,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 
 - **Chạy app Android / Flutter** (v31) — cấu hình, thiết bị, log, dừng · `apps/web/src/components/workspace/RunPane.vue`
 - **Đọc crash và ANR** (2.4.0, v72) — gom stack, mở frame trong dự án, gửi cho agent (đã che bí mật) · `apps/web/src/lib/runCrash.ts`
+- **Kiểm phát hành** (v75) — đọc tĩnh: versionCode / versionName so với bản đã đánh dấu phát hành, release minify / shrink / debuggable / signing, targetSdk so mức Play (`PLAY_TARGET_SDK`), manifest (cleartext, debuggable, exported, quyền nhạy cảm), ID test AdMob, UMP / acknowledge / Firebase; kiểm chứng chỉ APK / AAB bằng apksigner / keytool, nhớ SHA-256 theo app; mở đúng dòng, Điền vào agent · `apps/desktop/src/releaseCheck/`, `apps/web/src/components/workspace/ReleaseCheckDialog.vue`
 - **Chọn JDK / Flutter SDK theo dự án** — `apps/desktop/src/run/android/jdkPick.ts`
 - **Tự biên dịch layout khi cần** — `apps/desktop/src/run/sessions.ts`
 
@@ -219,6 +226,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Quét khoá i18n còn thiếu** (2026-10-29) — Android strings, ARB, JSON · `apps/web/src/components/workspace/I18nScanDialog.vue`
 - **Bảng chuỗi đa ngữ** (v74) — key × ngôn ngữ cho strings.xml / ARB / JSON, ô thiếu, placeholder lệch, sửa ô ghi file sau khi xem diff (file không chắc chắn → chỉ đọc), Điền vào agent các key thiếu · `apps/web/src/components/workspace/StringsDialog.vue`, `apps/web/src/lib/strings/`
 - **Kiểm bản mới của thư viện** (v74) — libs.versions.toml, build.gradle(.kts), pubspec.yaml, package.json: đang dùng · mới nhất ổn định · patch / minor / major, link changelog, cache 1 giờ, không sửa file, Điền vào agent · `apps/desktop/src/libs/checker.ts`, `apps/web/src/components/workspace/LibUpdatesDialog.vue`
+- **Lỗ hổng thư viện (OSV)** (v75) — nút Bảo mật trong Kiểm bản mới: hỏi osv.dev (chỉ tên + version) khi bấm, cột số lỗ hổng · mức cao nhất · bản đã vá, danh sách advisory mở osv.dev, lọc chỉ lib có lỗ hổng, prompt nâng cấp đưa lib lỗ hổng lên đầu, cache chung 1 giờ · `apps/desktop/src/libs/osv.ts`, `LibChecker.vulns`
 - **Công cụ dev (Ctrl+K)** — giải mã JWT, v.v., không kiểm chữ ký · `apps/web/src/components/DevToolsDialog.vue`
 
 ## Codex CLI

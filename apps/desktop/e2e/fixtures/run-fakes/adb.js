@@ -1,4 +1,4 @@
-// Fake `adb` for e2e/run-pane.cjs, devices.cjs, v72.cjs, v73.cjs and v74.cjs (`emu avd name` / `emu kill`): one emulator, install/launch succeed, logcat streams until killed.
+// Fake `adb` for e2e/run-pane.cjs, devices.cjs, v72.cjs, v73.cjs, v74.cjs and v75.cjs (`emu avd name` / `emu kill`, dumpsys, file browser): one emulator, install/launch succeed, logcat streams until killed.
 // v61 Devices: connect / disconnect / pair / tcpip / mdns / shell ip. Wi-Fi ids connected so far persist in STATE/wifi.json
 // (one process per adb call), and track-devices re-emits its frame when that file changes.
 const fs = require('node:fs')

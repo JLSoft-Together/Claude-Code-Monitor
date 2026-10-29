@@ -119,7 +119,7 @@ export interface DevDeepLink {
   activity: string
   exported: boolean
   launcher: boolean
-  /** Sample URIs built from each VIEW intent-filter's data (scheme × host × path). */
+  /** Sample URIs built from each VIEW intent-filter's data (scheme Ã— host Ã— path). */
   links: string[]
 }
 
