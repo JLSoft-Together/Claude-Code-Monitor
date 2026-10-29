@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { CompactFlow } from '../lib/compactHandoff'
+import type { SearchQuery } from '../lib/preview'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type PtyPreset, type TerminalSession } from '@ccm/shared'
 import {
@@ -650,6 +651,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activate(paneKey)
   }
 
+  /** Find in Files asked for from outside the workspace (device inspector); WorkspaceView runs it. */
+  const searchRequest = shallowRef<{ id: number; query: SearchQuery; root: string | null } | null>(null)
+  function requestSearch(query: SearchQuery, root: string | null = null): void {
+    searchRequest.value = { id: ++insertSeq, query, root }
+  }
+
   const isAgentPane = (p: Pane): boolean => isTerm(p) && presetOf(p) !== 'shell' && (p.state === 'running' || p.state === 'starting')
 
   /**
@@ -1293,6 +1300,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     insertRequest,
     insertInto,
     insertImage,
+    searchRequest,
+    requestSearch,
     resolveAgentPane,
     nextAttention,
     requestClose,

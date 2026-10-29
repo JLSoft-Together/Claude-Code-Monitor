@@ -206,6 +206,8 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   devDiscover: (): Promise<unknown> => ipcRenderer.invoke('ccm:dev-discover'),
   devQrStart: (): Promise<unknown> => ipcRenderer.invoke('ccm:dev-qr-start'),
   devQrCancel: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:dev-qr-cancel', id),
+  devScreencap: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:dev-screencap', id),
+  devUiDump: (id: string): Promise<unknown> => ipcRenderer.invoke('ccm:dev-uidump', id),
   onDevEvent: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:dev-event', handler),
   layoutStatus: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-status'),
   layoutDownload: (): Promise<unknown> => ipcRenderer.invoke('ccm:layout-download'),

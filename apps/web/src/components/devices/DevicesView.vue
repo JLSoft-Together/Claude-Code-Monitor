@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CircleAlert, RefreshCw, Settings2, Smartphone, Trash2, Unplug, X } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
 import { useDevicesStore } from '../../stores/devices'
 import { useUiStore } from '../../stores/ui'
+import DeviceCaptureDialog from './DeviceCaptureDialog.vue'
 import DeviceConnectBar from './DeviceConnectBar.vue'
 import DeviceRow from './DeviceRow.vue'
 import { ROW_GRID } from './meta'
@@ -22,6 +23,7 @@ const errorText = computed(() => {
 const allSelected = computed(() => store.devices.length > 0 && store.selected.size === store.devices.length)
 const someSelected = computed(() => store.selected.size > 0 && !allSelected.value)
 const ids = (list: AdbDevice[]): string[] => list.map((d) => d.id)
+const captureFor = ref<AdbDevice | null>(null)
 
 function batch(fn: () => Promise<void>): void {
   store.lastError = null
@@ -134,10 +136,11 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
             <span class="hidden md:block">{{ t('devices.col.transport') }}</span>
           </div>
           <div role="list" class="ccm-group overflow-hidden">
-            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" />
+            <DeviceRow v-for="d in store.devices" :key="d.id" :device="d" @capture="(dev) => (captureFor = dev)" />
           </div>
         </section>
       </template>
     </template>
+    <DeviceCaptureDialog :open="!!captureFor" :device-id="captureFor?.id ?? null" :device-name="captureFor?.name ?? ''" @close="captureFor = null" />
   </main>
 </template>

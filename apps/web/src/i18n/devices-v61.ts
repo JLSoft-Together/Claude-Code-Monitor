@@ -79,6 +79,9 @@ const en = {
       timeout: 'adb did not answer in time.',
       'mdns-unavailable': 'adb has no mDNS support. Update platform-tools (31 or newer) and try again.',
       'no-devices': 'No devices found on the network.',
+      'capture-failed': 'Could not capture the screen.',
+      secure: 'This screen is secure: Android does not allow capturing it.',
+      'dump-failed': 'Could not read the view tree. Wait for the screen to settle, or the app may block it.',
     },
   },
 }
@@ -163,6 +166,9 @@ const vi: typeof en = {
       timeout: 'adb không phản hồi kịp.',
       'mdns-unavailable': 'adb không bật mDNS. Cập nhật platform-tools (≥ 31) rồi thử lại.',
       'no-devices': 'Không tìm thấy thiết bị nào trong mạng.',
+      'capture-failed': 'Không chụp được màn hình.',
+      secure: 'Màn hình này được bảo mật: Android không cho chụp.',
+      'dump-failed': 'Không đọc được cây view. Đợi màn hình đứng yên rồi thử lại, hoặc app đang chặn.',
     },
   },
 }

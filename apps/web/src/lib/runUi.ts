@@ -35,6 +35,14 @@ export function agentPaneFor(panes: readonly Pane[], root: string): Pane | null 
   return list[0] ?? null
 }
 
+/** The project's agent when `root` has one, else the most recently focused running agent anywhere. */
+export function handoffPaneFor(panes: readonly Pane[], root: string | null): Pane | null {
+  const own = root ? agentPaneFor(panes, root) : null
+  if (own) return own
+  const list = panes.filter((p) => isTerm(p) && presetOf(p) !== 'shell' && p.state === 'running')
+  return list.sort((a, b) => (b.focusedAt ?? 0) - (a.focusedAt ?? 0))[0] ?? null
+}
+
 /** `@file:line:col message` on one line, the file relative to the agent's folder when inside it. */
 export function errorPrompt(error: BuildError, cwd: string | undefined, win: boolean): string {
   return `${fileMention(error.file, cwd, win)}:${error.line}:${error.col} ${error.message.replace(/\s+/g, ' ').trim()}`

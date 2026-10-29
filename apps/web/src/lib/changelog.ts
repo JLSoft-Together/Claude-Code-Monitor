@@ -31,6 +31,8 @@ export const CHANGELOG: Release[] = [
       { en: 'JSON / YAML tree, log viewer, .http requests, Markdown split preview, colour swatches', vi: 'Cây JSON / YAML, xem log, gửi request .http, xem trước Markdown song song, ô màu' },
       { en: 'Drop-down terminal (Ctrl+`), project notes, Plan board and terminal errors in Problems', vi: 'Terminal thả xuống (Ctrl+`), ghi chú dự án, Plan board và lỗi terminal vào Problems' },
       { en: 'Ctrl+K developer tools, file and image compare, .env check and i18n key scan', vi: 'Công cụ dev trong Ctrl+K, so file và ảnh, kiểm .env và quét khoá i18n' },
+      { en: 'Device screenshot from Devices or the Run pane, attached to an agent pane', vi: 'Chụp màn thiết bị từ tab Thiết bị hoặc Run pane, đính kèm vào pane agent' },
+      { en: 'Inspect views on the screenshot: id, text, bounds, Find in files or fill into an agent', vi: 'Soi view trên ảnh chụp: id, chữ, khung, tìm trong file hoặc điền vào agent' },
     ],
   },
   {

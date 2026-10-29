@@ -28,6 +28,8 @@ function setup(app = true) {
     discover: vi.fn(async () => []),
     qrStart: vi.fn(async () => ({ id: 'q', payload: 'p' })),
     qrCancel: vi.fn(() => ok),
+    screencap: vi.fn(async () => ok),
+    uiDump: vi.fn(async () => ok),
   }
   const sender = Object.assign(new EventEmitter(), { id: 7 })
   const event = { sender } as unknown as IpcMainInvokeEvent
@@ -56,6 +58,8 @@ describe('devices ipc', () => {
     expect(await call('ccm:dev-discover')).toEqual(DENIED)
     expect(await call('ccm:dev-qr-start')).toEqual(DENIED)
     expect(await call('ccm:dev-qr-cancel', 'q')).toEqual(DENIED)
+    expect(await call('ccm:dev-screencap', 'a')).toEqual(DENIED)
+    expect(await call('ccm:dev-uidump', 'a')).toEqual(DENIED)
     for (const fn of Object.values(manager)) expect(fn).not.toHaveBeenCalled()
   })
 
@@ -69,6 +73,15 @@ describe('devices ipc', () => {
     expect(manager.setAlias).toHaveBeenCalledWith('a', 'Pixel')
     await handlers.get('ccm:dev-disconnect')!(event, ids(50))
     expect(manager.disconnect).toHaveBeenCalled()
+  })
+
+  it('screencap / uidump take a plain serial only', async () => {
+    const { handlers, manager, event } = setup()
+    await handlers.get('ccm:dev-screencap')!(event, 'emulator-5554')
+    expect(manager.screencap).toHaveBeenCalledWith('emulator-5554')
+    expect(await handlers.get('ccm:dev-uidump')!(event, '-s; rm')).toEqual(DENIED)
+    expect(await handlers.get('ccm:dev-screencap')!(event, 42)).toEqual(DENIED)
+    expect(manager.uiDump).not.toHaveBeenCalled()
   })
 
   it('validates input', async () => {
@@ -111,7 +124,7 @@ describe('devices ipc', () => {
 
   it('dispose removes every handler', () => {
     const { handlers, dispose } = setup()
-    expect(handlers.size).toBe(13)
+    expect(handlers.size).toBe(15)
     dispose()
     expect(handlers.size).toBe(0)
   })

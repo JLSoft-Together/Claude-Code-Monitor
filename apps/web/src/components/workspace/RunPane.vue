@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bot, CircleAlert, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
+import { Bot, Camera, CircleAlert, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
 import { isRunLive, type EnvIssue, type RunSession, type RunState } from '@ccm/shared'
 import { desktop, type RunSdkKey } from '../../lib/desktop'
+import { hasDeviceCapture } from '../../lib/devices'
 import { baseName } from '../../lib/preview'
 import { issueKey, projectMark, runStep, tidyIssueText } from '../../lib/runUi'
 import { dirKey } from '../../stores/favorites'
 import { useRunStore } from '../../stores/run'
+import DeviceCaptureDialog from '../devices/DeviceCaptureDialog.vue'
 import RunBar from './RunBar.vue'
 import RunConfigsDialog from './RunConfigsDialog.vue'
 import RunLog from './RunLog.vue'
@@ -114,6 +116,14 @@ watch(
 )
 
 const runnable = computed(() => run.runnable(props.root) || run.configsFor(props.root).length > 0)
+
+const androidDevice = computed(() => {
+  const cfg = config.value
+  if (!hasDeviceCapture || !cfg || cfg.type === 'custom') return null
+  const d = run.selectedDevice(props.root, cfg)
+  return d && d.platform.startsWith('android') && d.state === 'ready' ? d : null
+})
+const captureOpen = ref(false)
 const notice = computed(() => run.noticeFor(props.root))
 
 function issueText(issue: EnvIssue, groups: string[]): string {
@@ -245,6 +255,17 @@ function sessionLabel(s: RunSession): string {
           <option v-for="s in switchable" :key="s.id" :value="s.id">{{ sessionLabel(s) }} · {{ t(`run.state.${s.state}`) }}</option>
         </select>
         <span v-else-if="session" class="hidden min-w-0 truncate text-2xs text-ink-faint @md:inline" :title="session.cwd">{{ sessionLabel(session) }}</span>
+        <button
+          v-if="androidDevice"
+          type="button"
+          class="ccm-btn-plain shrink-0"
+          :title="`${t('deviceTools.capture.button')} · ${androidDevice.name}`"
+          :aria-label="`${t('deviceTools.capture.button')} · ${androidDevice.name}`"
+          data-run-capture
+          @click="captureOpen = true"
+        >
+          <Camera :size="13" aria-hidden="true" />
+        </button>
       </div>
 
       <div
@@ -302,5 +323,6 @@ function sessionLabel(s: RunSession): string {
     </template>
     <RunConfigsDialog :open="configsOpen" :root="root" @close="configsOpen = false" />
     <RunToolchainDialog :open="toolchainOpen" :root="root" :config="config" @close="toolchainOpen = false" />
+    <DeviceCaptureDialog :open="captureOpen" :device-id="androidDevice?.id ?? null" :device-name="androidDevice?.name ?? ''" :root="root" @close="captureOpen = false" />
   </section>
 </template>

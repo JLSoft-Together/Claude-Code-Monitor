@@ -37,6 +37,7 @@ import officeV62 from './office-v62'
 import officeV63 from './office-v63'
 import devicesV61 from './devices-v61'
 import whatsNewV71 from './whats-new-v71'
+import devicesV72 from './devices-v72'
 
 export default {
   ...v25.en,
@@ -58,6 +59,7 @@ export default {
   ...officeV63.en,
   ...devicesV61.en,
   ...whatsNewV71.en,
+  ...devicesV72.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',

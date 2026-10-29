@@ -1,4 +1,4 @@
-import type { DevBatchResult, DevEvent, DevResult, DevSnapshot } from '@ccm/shared'
+import type { DevBatchResult, DevCapture, DevEvent, DevFailure, DevResult, DevSnapshot, DevUiDump } from '@ccm/shared'
 import { desktop } from './desktop'
 
 /** v61 ADB devices bridge (main owns adb; the page only sends ids and validated inputs). */
@@ -16,11 +16,13 @@ interface DevicesBridge {
   devDiscover?: () => Promise<DevBatchResult[] | DevResult>
   devQrStart?: () => Promise<{ id: string; payload: string } | DevResult>
   devQrCancel?: (id: string) => Promise<DevResult>
+  devScreencap?: (id: string) => Promise<DevCapture>
+  devUiDump?: (id: string) => Promise<DevUiDump>
   onDevEvent?: (handler: (e: DevEvent) => void) => () => void
 }
 
 const bridge = desktop as unknown as DevicesBridge | undefined
-const unavailable: DevResult = { ok: false, error: 'denied' }
+const unavailable: DevFailure = { ok: false, error: 'denied' }
 
 export const hasDevices = typeof bridge?.devSnapshot === 'function'
 export const devSnapshot = (): Promise<DevSnapshot | null> => bridge?.devSnapshot?.() ?? Promise.resolve(null)
@@ -37,3 +39,6 @@ export const devDiscover = (): Promise<DevBatchResult[] | DevResult> => bridge?.
 export const devQrStart = (): Promise<{ id: string; payload: string } | DevResult> => bridge?.devQrStart?.() ?? Promise.resolve(unavailable)
 export const devQrCancel = (id: string): Promise<DevResult> => bridge?.devQrCancel?.(id) ?? Promise.resolve(unavailable)
 export const onDevEvent = (handler: (e: DevEvent) => void): (() => void) => bridge?.onDevEvent?.(handler) ?? (() => {})
+export const hasDeviceCapture = typeof bridge?.devScreencap === 'function'
+export const devScreencap = (id: string): Promise<DevCapture> => bridge?.devScreencap?.(id) ?? Promise.resolve(unavailable)
+export const devUiDump = (id: string): Promise<DevUiDump> => bridge?.devUiDump?.(id) ?? Promise.resolve(unavailable)

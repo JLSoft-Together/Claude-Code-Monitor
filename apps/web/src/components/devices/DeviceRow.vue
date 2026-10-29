@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { LoaderCircle, Pencil, RefreshCw, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
+import { Camera, LoaderCircle, Pencil, RefreshCw, TabletSmartphone, Trash2, Unplug, Usb, Wifi } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
 import { useInlineEdit } from '../../composables/useInlineEdit'
+import { hasDeviceCapture } from '../../lib/devices'
 import { useDevicesStore } from '../../stores/devices'
 import { OTHER_STATE, ROW_GRID, rowActions, STATE_META, stateOf, type RowAction } from './meta'
 
 const props = defineProps<{ device: AdbDevice }>()
+const emit = defineEmits<{ capture: [device: AdbDevice] }>()
 
 const { t } = useI18n()
 const store = useDevicesStore()
@@ -17,6 +19,7 @@ const busy = computed(() => store.busy.has(props.device.id))
 const state = computed(() => stateOf(props.device))
 const meta = computed(() => STATE_META[state.value] ?? OTHER_STATE)
 const actions = computed(() => rowActions(props.device))
+const canCapture = computed(() => hasDeviceCapture && props.device.online && props.device.state === 'ready')
 const TRANSPORT_ICON = { usb: Usb, wifi: Wifi, emulator: TabletSmartphone }
 const ACTION_ICON = { toWifi: Wifi, disconnect: Unplug, reconnect: RefreshCw, forget: Trash2 }
 
@@ -117,6 +120,18 @@ async function finish(save_: boolean): Promise<void> {
     </span>
 
     <div class="ml-auto flex shrink-0 items-center justify-end gap-0.5" @click.stop>
+      <button
+        v-if="canCapture"
+        type="button"
+        class="ccm-btn-plain text-xs"
+        :disabled="busy"
+        :title="t('deviceTools.capture.button')"
+        data-dev-action="capture"
+        @click="emit('capture', device)"
+      >
+        <Camera :size="13" aria-hidden="true" />
+        <span class="sr-only lg:not-sr-only">{{ t('deviceTools.capture.button') }}</span>
+      </button>
       <button
         v-for="a in actions"
         :key="a"

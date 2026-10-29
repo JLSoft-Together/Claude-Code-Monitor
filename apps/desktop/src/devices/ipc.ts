@@ -11,6 +11,7 @@ export interface DevicesIpcDeps {
 const CHANNELS = [
   'ccm:dev-snapshot', 'ccm:dev-hold', 'ccm:dev-connect', 'ccm:dev-pair', 'ccm:dev-disconnect', 'ccm:dev-connect-many', 'ccm:dev-to-wifi',
   'ccm:dev-remove', 'ccm:dev-alias', 'ccm:dev-auto-connect', 'ccm:dev-discover', 'ccm:dev-qr-start', 'ccm:dev-qr-cancel',
+  'ccm:dev-screencap', 'ccm:dev-uidump',
 ]
 
 const DENIED: DevResult = { ok: false, error: 'denied' }
@@ -64,6 +65,8 @@ export function registerDevicesIpc(deps: DevicesIpcDeps): () => void {
   ipcMain.handle('ccm:dev-discover', (event) => (isAppFrame(event) ? manager.discover() : DENIED))
   ipcMain.handle('ccm:dev-qr-start', (event) => (isAppFrame(event) ? manager.qrStart(ownerOf(event, 'qr')) : DENIED))
   ipcMain.handle('ccm:dev-qr-cancel', (event, id: unknown) => (isAppFrame(event) && isId(id) ? manager.qrCancel(id) : DENIED))
+  ipcMain.handle('ccm:dev-screencap', (event, id: unknown) => (isAppFrame(event) && isId(id) ? manager.screencap(id) : DENIED))
+  ipcMain.handle('ccm:dev-uidump', (event, id: unknown) => (isAppFrame(event) && isId(id) ? manager.uiDump(id) : DENIED))
 
   return () => {
     for (const ch of CHANNELS) ipcMain.removeHandler(ch)

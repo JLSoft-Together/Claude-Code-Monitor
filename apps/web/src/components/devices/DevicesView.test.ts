@@ -11,10 +11,13 @@ const api = vi.hoisted(() => ({
   devPair: vi.fn(),
   devQrStart: vi.fn(),
   devQrCancel: vi.fn(),
+  devScreencap: vi.fn(),
+  devUiDump: vi.fn(),
 }))
 
 vi.mock('../../lib/devices', () => ({
   hasDevices: true,
+  hasDeviceCapture: true,
   onDevEvent: () => () => {},
   devHold: (on: boolean) => api.devHold(on),
   devSnapshot: () => api.devSnapshot(),
@@ -22,6 +25,8 @@ vi.mock('../../lib/devices', () => ({
   devPair: (a: string, c: string) => api.devPair(a, c),
   devQrStart: () => api.devQrStart(),
   devQrCancel: (id: string) => api.devQrCancel(id),
+  devScreencap: (id: string) => api.devScreencap(id),
+  devUiDump: (id: string) => api.devUiDump(id),
 }))
 
 import { useDevicesStore } from '../../stores/devices'
@@ -124,9 +129,42 @@ describe('Devices view', () => {
     })
     expect(actions('R58M')).toContain('toWifi')
     expect(actions('R58M')).not.toContain('disconnect')
-    expect(actions('192.168.1.7:5555')).toEqual(['disconnect'])
+    expect(actions('192.168.1.7:5555')).toEqual(['capture', 'disconnect'])
     expect(actions('192.168.1.9:5555')).toEqual(expect.arrayContaining(['reconnect', 'forget']))
     expect(actions('192.168.1.9:5555')).not.toContain('disconnect')
+    expect(actions('192.168.1.9:5555')).not.toContain('capture')
+  })
+
+  it('screenshot opens the capture dialog, inspect reads the view tree on demand', async () => {
+    api.devScreencap.mockResolvedValue({ ok: true, png: 'data:image/png;base64,AAAA', width: 100, height: 200 })
+    api.devUiDump.mockResolvedValue({
+      ok: true,
+      rotation: 0,
+      nodes: [{ parent: -1, depth: 0, cls: 'android.widget.Button', resId: 'com.app:id/go', text: 'Go', desc: '', pkg: 'com.app', bounds: [0, 0, 100, 200], clickable: true }],
+    })
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="capture"]').trigger('click')
+    await flushPromises()
+    expect(api.devScreencap).toHaveBeenCalledWith('R58M')
+    const dialog = document.querySelector<HTMLElement>('[data-device-capture]')!
+    expect(dialog.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,AAAA')
+    expect(api.devUiDump).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>('[data-capture-inspect]')!.click()
+    await flushPromises()
+    expect(api.devUiDump).toHaveBeenCalledWith('R58M')
+    expect(dialog.querySelector('[data-capture-panel]')?.textContent).toContain(t('deviceTools.inspect.hint'))
+    dialog.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
+    await flushPromises()
+  })
+
+  it('a secure screen shows its own message', async () => {
+    api.devScreencap.mockResolvedValue({ ok: false, error: 'secure' })
+    await mountWith({ adb: '/adb', autoConnect: true, devices: [dev('R58M')] })
+    await row('R58M').get('[data-dev-action="capture"]').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[data-capture-error]')?.textContent).toContain(t('devices.error.secure'))
+    document.querySelector<HTMLButtonElement>('[data-capture-close]')!.click()
+    await flushPromises()
   })
 
   it('status shows icon and text', async () => {

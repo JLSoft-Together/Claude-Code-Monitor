@@ -1,13 +1,15 @@
-import type { AdbMdnsService, DevErrorCode, DevResult } from '@ccm/shared'
+import type { ChildProcess } from 'node:child_process'
+import type { AdbMdnsService, DevCapture, DevErrorCode, DevResult, DevUiDump } from '@ccm/shared'
 import { collect, type Collected } from '../run/collect'
 import { killAdbClient, type Spawner } from '../run/proc'
 import { parseAdbDeviceRows, parseConnect, parseDisconnect, parseMdnsServices, parsePair, parseWlanIp, type AdbDeviceRow } from './parse'
+import { findPngStart, parseUiDump, pngSize } from './uiDump'
 
 export interface AdbCommandsOpts {
   spawn: Spawner
   cwd: string
   adb: () => Promise<string | null>
-  timing?: Partial<{ connectMs: number; pairMs: number; cmdMs: number }>
+  timing?: Partial<{ connectMs: number; pairMs: number; cmdMs: number; captureMs: number; dumpMs: number }>
 }
 
 export interface AdbCommands {
@@ -20,9 +22,73 @@ export interface AdbCommands {
   mdnsServices(): Promise<AdbMdnsService[]>
   /** One-shot `adb devices -l`; null when adb is missing, timed out or failed. */
   list(): Promise<AdbDeviceRow[] | null>
+  screencap(id: string): Promise<DevCapture>
+  /** Dumps to a temp file on the device, reads it back and removes it. */
+  uiDump(id: string): Promise<DevUiDump>
 }
 
-const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000 }
+const TIMING = { connectMs: 15_000, pairMs: 20_000, cmdMs: 10_000, captureMs: 15_000, dumpMs: 20_000 }
+const CAPTURE_MAX = 64 * 1024 * 1024
+export const UI_DUMP_PATH = '/sdcard/orrery-ui.xml'
+const DETAIL_MAX = 300
+
+const detailOf = (text: string): string | undefined => {
+  const d = text.replace(/\s+/g, ' ').trim().slice(0, DETAIL_MAX)
+  return d || undefined
+}
+
+const fail = (error: DevErrorCode, text = ''): { ok: false; error: DevErrorCode; detail?: string } => {
+  const detail = detailOf(text)
+  return detail ? { ok: false, error, detail } : { ok: false, error }
+}
+
+interface Bytes {
+  code: number | null
+  out: Buffer
+  err: string
+  timedOut?: boolean
+}
+
+/** Like `collect`, but keeps stdout as bytes (screencap PNG) and stops past `max`. */
+function collectBytes(spawn: Spawner, file: string, args: string[], cwd: string, timeoutMs: number, max: number): Promise<Bytes> {
+  return new Promise((resolve) => {
+    let child: ChildProcess
+    try {
+      child = spawn({ file, args, cwd })
+    } catch {
+      resolve({ code: null, out: Buffer.alloc(0), err: '' })
+      return
+    }
+    const chunks: Buffer[] = []
+    let size = 0
+    let err = ''
+    let settled = false
+    const finish = (code: number | null, timedOut = false): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      const out = Buffer.concat(chunks)
+      resolve(timedOut ? { code, out, err, timedOut } : { code, out, err })
+    }
+    const timer = setTimeout(() => {
+      killAdbClient(child)
+      finish(null, true)
+    }, timeoutMs)
+    child.stdout?.on('data', (d: Buffer | string) => {
+      const b = typeof d === 'string' ? Buffer.from(d) : d
+      size += b.length
+      if (size > max) {
+        killAdbClient(child)
+        finish(null)
+        return
+      }
+      chunks.push(b)
+    })
+    child.stderr?.on('data', (d: Buffer | string) => (err = (err + d.toString()).slice(-4096)))
+    child.once('error', () => finish(null))
+    child.once('close', (code: number | null) => finish(code))
+  })
+}
 
 export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
   const t = { ...TIMING, ...opts.timing }
@@ -65,6 +131,34 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
     async list() {
       const r = await run(['devices', '-l'], t.cmdMs)
       return r && !r.timedOut && r.code === 0 ? parseAdbDeviceRows(r.out) : null
+    },
+    async screencap(id) {
+      const adb = await opts.adb()
+      if (!adb) return fail('adb-missing')
+      const r = await collectBytes(opts.spawn, adb, ['-s', id, 'exec-out', 'screencap', '-p'], opts.cwd, t.captureMs, CAPTURE_MAX)
+      if (r.timedOut) return fail('timeout')
+      const start = findPngStart(r.out)
+      const png = start >= 0 ? r.out.subarray(start) : null
+      const size = png ? pngSize(png) : null
+      if (!png || !size) {
+        const text = `${r.out.subarray(0, 2048).toString()} ${r.err}`
+        return fail(/secure/i.test(text) ? 'secure' : 'capture-failed', text)
+      }
+      return { ok: true, png: `data:image/png;base64,${png.toString('base64')}`, ...size }
+    },
+    async uiDump(id) {
+      const dumped = await run(['-s', id, 'shell', 'uiautomator', 'dump', UI_DUMP_PATH], t.dumpMs)
+      if (!dumped) return fail('adb-missing')
+      if (dumped.timedOut) return fail('timeout')
+      if (dumped.code !== 0 || !/dumped to/i.test(dumped.out)) return fail(/secure/i.test(dumped.out) ? 'secure' : 'dump-failed', dumped.out)
+      try {
+        const read = await run(['-s', id, 'exec-out', 'cat', UI_DUMP_PATH], t.cmdMs)
+        if (!read || read.timedOut || read.code !== 0) return fail('dump-failed', read?.out ?? '')
+        const parsed = parseUiDump(read.out)
+        return parsed ? { ok: true, ...parsed } : fail('dump-failed', read.out.slice(0, DETAIL_MAX))
+      } finally {
+        await run(['-s', id, 'shell', 'rm', '-f', UI_DUMP_PATH], t.cmdMs)
+      }
     },
   }
 }

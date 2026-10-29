@@ -178,6 +178,14 @@ async function showSearch(query?: SearchQuery): Promise<void> {
   await nextTick()
   await explorerPanel.value?.showSearch(query)
 }
+watch(
+  () => workspace.searchRequest,
+  (req) => {
+    if (!req) return
+    if (req.root) explorer.setRoot(req.root)
+    void showSearch(req.query)
+  },
+)
 
 async function showExplorer(): Promise<void> {
   explorerOpen.value = true

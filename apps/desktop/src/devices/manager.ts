@@ -1,4 +1,4 @@
-import type { AdbDevice, AdbState, DevBatchResult, DevEvent, DevResult, DevSnapshot } from '@ccm/shared'
+import type { AdbDevice, AdbState, DevBatchResult, DevCapture, DevEvent, DevResult, DevSnapshot, DevUiDump } from '@ccm/shared'
 import { createAdbWatch, type AdbWatch } from '../run/android/adbWatch'
 import { findAdbTools } from '../run/android/devices'
 import type { EnvDeps } from '../run/android/env'
@@ -292,6 +292,24 @@ export class DeviceManager {
     history.remove(targets)
     this.emit()
     return { ok: true }
+  }
+
+  /** Ready devices only: adb would otherwise wait for an unauthorized / offline one until the timeout. */
+  private async readyCheck(id: string): Promise<DevResult> {
+    const adb = await this.resolveAdb()
+    if (!adb) return MISSING
+    const live = await this.liveRows(adb)
+    return live?.some((r) => r.id === id && r.state === 'ready') ? { ok: true } : { ok: false, error: 'not-connected' }
+  }
+
+  async screencap(id: string): Promise<DevCapture> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? this.commands.screencap(id) : ready
+  }
+
+  async uiDump(id: string): Promise<DevUiDump> {
+    const ready = await this.readyCheck(id)
+    return ready.ok ? this.commands.uiDump(id) : ready
   }
 
   setAlias(id: string, alias: string | null): DevResult {
