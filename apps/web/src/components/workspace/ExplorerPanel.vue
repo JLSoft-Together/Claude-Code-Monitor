@@ -281,6 +281,9 @@ async function onAction(id: ExplorerAction, row: TreeRow): Promise<void> {
     case 'apk-size':
       ui.apkSize = { path: row.path, root }
       break
+    case 'strings':
+      ui.stringsTable = { dir: root, focus: row.path }
+      break
   }
 }
 

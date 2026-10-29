@@ -230,6 +230,17 @@ const items = computed<Item[]>(() => {
               ui.i18nScan = { dir: null }
             },
           },
+          {
+            id: 'c:strings',
+            group: 'actions' as const,
+            label: t('stringsTable.palette'),
+            sub: t('stringsTable.paletteSub'),
+            icon: Languages,
+            run: () => {
+              ui.setView('workspace')
+              ui.stringsTable = { dir: null, focus: null }
+            },
+          },
         ]
       : []),
     ...(hasTerminals && hasApkSize

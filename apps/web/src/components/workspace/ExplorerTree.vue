@@ -16,6 +16,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitCompare,
+  Languages,
   Link2,
   Package,
   Pencil,
@@ -31,7 +32,7 @@ import ContextMenu from '../ui/ContextMenu.vue'
 import { isShowDiffKey, KIND_CLASS, KIND_LETTER, pathKey, samePath, type GitMarks } from '../../lib/changesView'
 import { hasRun } from '../../lib/desktop'
 import { hasApkSize } from '../../lib/apkSize'
-import { hasPreview } from '../../lib/preview'
+import { hasI18nScan, hasPreview } from '../../lib/preview'
 import { warmOnIntent } from '../../lib/layoutPreview'
 import { explorerKey, explorerMenu, type ExplorerAction } from '../../lib/explorer/contextMenu'
 import { setDragPath } from '../../lib/explorer/dragPath'
@@ -171,11 +172,12 @@ const MENU_ICONS: Partial<Record<string, typeof File>> = {
   'compare-with': GitCompare,
   'compare-clipboard': ClipboardCopy,
   'apk-size': Package,
+  strings: Languages,
 }
 const withIcons = (list: MenuEntry[]): MenuEntry[] => list.map((e) => (isSeparator(e) ? e : { ...e, icon: MENU_ICONS[e.id], children: e.children && withIcons(e.children) }))
 const compareCtx = (row: TreeRow) => (hasPreview ? { selected: props.compareSel ?? null, self: !!props.compareSel && samePath(props.compareSel.path, row.path) } : undefined)
 const menuFor = (row: TreeRow): MenuEntry[] =>
-  withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun, compare: compareCtx(row), apk: hasApkSize }, (k, p) => t(k, p ?? {})))
+  withIcons(explorerMenu(row, { mac: isMac, repo: !!props.repo, changed: !!gitKind(row), run: hasRun, compare: compareCtx(row), apk: hasApkSize, strings: hasI18nScan }, (k, p) => t(k, p ?? {})))
 
 const menu = ref<{ at: DOMRect; row: TreeRow; trigger: HTMLElement | null } | null>(null)
 

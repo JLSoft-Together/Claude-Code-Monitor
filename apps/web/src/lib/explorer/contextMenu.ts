@@ -1,5 +1,6 @@
 import type { MenuEntry } from '../menu'
 import type { TreeRow } from './tree'
+import { isStringsPath } from '../strings/table'
 
 export type ExplorerAction =
   | 'new-file'
@@ -20,6 +21,7 @@ export type ExplorerAction =
   | 'compare-with'
   | 'compare-clipboard'
   | 'apk-size'
+  | 'strings'
 
 export interface ExplorerMenuCtx {
   mac: boolean
@@ -33,6 +35,8 @@ export interface ExplorerMenuCtx {
   compare?: { selected: { path: string; name: string } | null; self: boolean }
   /** The APK / AAB size analyzer exists (desktop `apkAnalyze`): "Analyze size" shows on .apk / .aab rows. */
   apk?: boolean
+  /** The project can be scanned for translations (desktop `i18nScan`): strings table on res / values* / .arb / strings.xml rows. */
+  strings?: boolean
 }
 
 const M = 'workspace.explorer.menu.'
@@ -77,6 +81,7 @@ export function explorerMenu(row: TreeRow, ctx: ExplorerMenuCtx, t: (key: string
   ]
   if (ctx.run && isRunnableRow(row)) entries.push({ id: 'run', label: t(`${M}run`) })
   if (ctx.apk && !row.directory && /\.(apk|aab)$/i.test(row.name)) entries.push({ id: 'apk-size', label: t('apkSize.menu') })
+  if (ctx.strings && !row.outOfRoot && isStringsPath(row.name, row.directory)) entries.push({ id: 'strings', label: t('stringsTable.menu') })
   if (ctx.compare && !row.directory) {
     const { selected, self } = ctx.compare
     entries.push({ separator: true }, self ? { id: 'compare-clear', label: t(`${M}compareClear`) } : { id: 'compare-select', label: t(`${M}compareSelect`) })
