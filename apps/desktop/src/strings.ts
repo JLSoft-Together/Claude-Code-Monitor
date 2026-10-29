@@ -149,6 +149,9 @@ The app is force-stopped first, then the file is written on the device. The firs
   prefsRestoreTitle: (pkg: string) => `Restore the original SharedPreferences file of ${pkg}?`,
   prefsRestoreDetail: (file: string) => `${file} goes back to the copy kept before the first change from Orrery. The app is force-stopped first.`,
   prefsRestoreConfirm: 'Restore and stop app',
+  updateQuitTitle: (n: number) => (n === 1 ? 'Restart to update and close 1 session?' : `Restart to update and close ${n} sessions?`),
+  updateQuitDetail: 'Orrery quits, installs the new version and opens again. Agents in closed panes can be reopened with resume.',
+  updateQuitConfirm: 'Restart and update',
 }
 
 const vi: typeof en = {
@@ -296,6 +299,9 @@ ${key}: ${clip(before)} → ${clip(after)}
   prefsRestoreTitle: (pkg) => `Khôi phục file SharedPreferences gốc của ${pkg}?`,
   prefsRestoreDetail: (file) => `${file} sẽ trở về bản đã giữ trước lần đổi đầu tiên từ Orrery. Ứng dụng sẽ bị dừng (force-stop) trước.`,
   prefsRestoreConfirm: 'Khôi phục và dừng ứng dụng',
+  updateQuitTitle: (n) => `Khởi động lại để cập nhật và đóng ${n} phiên?`,
+  updateQuitDetail: 'Orrery sẽ thoát, cài bản mới rồi tự mở lại. Agent trong các pane bị đóng có thể mở lại bằng resume.',
+  updateQuitConfirm: 'Khởi động lại và cập nhật',
 }
 
 export type Strings = typeof en

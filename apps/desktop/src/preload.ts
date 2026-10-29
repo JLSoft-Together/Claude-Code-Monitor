@@ -22,6 +22,18 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   setHooks: (on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:hooks-set', on),
   grantFolder: (): Promise<unknown> => ipcRenderer.invoke('ccm:grant-folder'),
   logs: (action: 'copy' | 'save', report: string): Promise<unknown> => ipcRenderer.invoke('ccm:logs', action, report),
+  update: {
+    state: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-state'),
+    check: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-check'),
+    download: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-download'),
+    cancel: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-cancel'),
+    install: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-install'),
+    skip: (version: string): Promise<unknown> => ipcRenderer.invoke('ccm:update-skip', version),
+    setAutoCheck: (on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:update-auto', on),
+    openPage: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-page'),
+    reveal: (): Promise<unknown> => ipcRenderer.invoke('ccm:update-reveal'),
+    onState: (handler: (state: unknown) => void): (() => void) => subscribe('ccm:update-event', handler),
+  },
   /** Toast click: the page answers whether a workspace pane holds that session. */
   onFocus: (handler: (terminalId: string) => boolean): void => {
     ipcRenderer.on('ccm:focus', (_event, terminalId: unknown) => {

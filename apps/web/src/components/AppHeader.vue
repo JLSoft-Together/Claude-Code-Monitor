@@ -2,7 +2,7 @@
 import ArtImage from './ArtImage.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, Ellipsis, History, Inbox, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, CircleArrowDown, Ellipsis, History, Inbox, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
 import { hasExtensions, hasTerminals, titleBar } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
 import { now, relativeTime } from '../lib/format'
@@ -12,6 +12,7 @@ import { formatKeys } from '../lib/shortcuts'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
 import { useInboxStore } from '../stores/inbox'
+import { useUpdateStore } from '../stores/update'
 import { useUiStore, type View } from '../stores/ui'
 import PlanLimits from './PlanLimits.vue'
 import SettingsMenu from './SettingsMenu.vue'
@@ -24,6 +25,8 @@ const connection = useConnectionStore()
 const extras = useExtrasStore()
 const ui = useUiStore()
 const inbox = useInboxStore()
+const update = useUpdateStore()
+const updateVersion = computed(() => update.state?.release?.version ?? '')
 const inboxBtn = ref<HTMLButtonElement | null>(null)
 const inboxAt = ref<DOMRect | null>(null)
 const inboxCount = computed(() => inbox.items.length)
@@ -178,6 +181,19 @@ function onTabKey(e: KeyboardEvent): void {
       </span>
 
       <div class="flex shrink-0 items-center gap-0.5">
+        <button
+          v-if="update.available && !ui.compact"
+          type="button"
+          class="ccm-btn-plain mr-1 h-6 gap-1 rounded-full bg-fill px-2 text-xs font-medium text-accent-ink"
+          :title="t('update.pillTitle', { version: updateVersion })"
+          :aria-label="t('update.pillTitle', { version: updateVersion })"
+          aria-haspopup="dialog"
+          data-update-pill
+          @click="update.dialogOpen = true"
+        >
+          <CircleArrowDown :size="14" aria-hidden="true" />
+          <span class="hidden tabular-nums sm:inline">{{ t('update.pill', { version: updateVersion }) }}</span>
+        </button>
         <button
           ref="inboxBtn"
           type="button"

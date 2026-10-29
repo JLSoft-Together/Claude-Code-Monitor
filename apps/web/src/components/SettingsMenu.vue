@@ -23,6 +23,9 @@ import LottieArt from './LottieArt.vue'
 import RunSdkSettings from './RunSdkSettings.vue'
 import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
 import { hasGitHub } from '../lib/github'
+import { hasUpdater } from '../lib/update'
+import { useUpdateStore } from '../stores/update'
+import UpdateSettings from './UpdateSettings.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ThemePicker from './ui/ThemePicker.vue'
@@ -34,6 +37,7 @@ const extras = useExtrasStore()
 const connection = useConnectionStore()
 const ui = useUiStore()
 const tips = useTipsStore()
+const update = useUpdateStore()
 const tipsOn = computed({ get: () => !tips.state.off, set: (on: boolean) => tips.setOff(!on) })
 const panel = ref<HTMLElement | null>(null)
 const grantsForgotten = ref(false)
@@ -279,14 +283,15 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
   <button
     type="button"
     data-tour="settings"
-    class="ccm-btn-plain size-8"
-    :aria-label="t('settings.title')"
+    class="ccm-btn-plain relative size-8"
+    :aria-label="update.available ? `${t('settings.title')} · ${t('update.availableShort', { version: update.state?.release?.version ?? '' })}` : t('settings.title')"
     :title="t('settings.title')"
     :aria-expanded="ui.settingsOpen"
     aria-controls="settings-panel"
     @click="ui.settingsOpen = !ui.settingsOpen"
   >
     <Settings2 :size="18" aria-hidden="true" />
+    <span v-if="update.available" class="absolute top-1 right-1 size-2 rounded-full bg-accent ring-2 ring-canvas" aria-hidden="true" data-update-dot />
   </button>
 
   <Teleport to="body">
@@ -608,6 +613,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             </div>
           </section>
 
+          <UpdateSettings v-if="hasUpdater && ui.settingsOpen" />
           <section aria-labelledby="set-help" class="mt-6">
             <h3 id="set-help" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
             <div class="ccm-group overflow-hidden">

@@ -19,6 +19,8 @@ import BreakToast from './components/BreakToast.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import QuickSetup from './components/QuickSetup.vue'
 import WhatsNewDialog from './components/WhatsNewDialog.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
+import { useUpdateStore } from './stores/update'
 import ZoomHud from './components/ZoomHud.vue'
 import { useWheelZoom } from './composables/useWheelZoom'
 import CompactView from './components/CompactView.vue'
@@ -46,6 +48,7 @@ useNotifications()
 useBreakReminder()
 useWheelZoom()
 useAwayStore().install()
+useUpdateStore().start()
 
 // Windows toast buttons reach the app through agent-monitor://; a session running in a pane opens that pane.
 const reveal = useRevealInWorkspace()
@@ -138,6 +141,7 @@ onBeforeUnmount(() => {
     <QuickSetup />
     <OnboardingTour />
     <WhatsNewDialog />
+    <UpdateDialog />
     <BreakToast />
     <ShortcutsDialog />
     <ZoomHud />

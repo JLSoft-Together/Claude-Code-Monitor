@@ -49,6 +49,11 @@ import { removeDeadShortcuts } from './shortcuts'
 import { claudeSettingsFile, plannedStatusLine, readStatusLine, writeStatusLine } from './statusline'
 import { plannedHooks, readHooks, writeHooks } from './hooks'
 import { stringsFor, type Strings } from './strings'
+import { DEFAULT_FEED } from './update/github'
+import { prepareMac, prepareNsis, preparePortable, type Prepared } from './update/install'
+import { registerUpdateIpc } from './update/ipc'
+import { UpdateManager } from './update/manager'
+import { installKind, platformKind } from './update/pick'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
 const APP_ID = 'dev.ccm.monitor'
@@ -115,6 +120,10 @@ let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
 let appData: AppDataInspector | null = null
 let disposeAppData: (() => void) | null = null
+let updates: UpdateManager | null = null
+let disposeUpdate: (() => void) | null = null
+// Set once the owner confirmed "Restart to update": the quit skips its own confirm and starts the installer on the way out.
+let updateLaunch: (() => void) | null = null
 let sqlJs: Promise<SqlJsStatic> | null = null
 let layoutIpc: LayoutIpc | null = null
 let flutterPreview: FlutterPreviewWire | null = null
@@ -210,6 +219,9 @@ function stopPreview(): Promise<void> {
   disposeApk = null
   disposeAppData?.()
   disposeAppData = null
+  disposeUpdate?.()
+  disposeUpdate = null
+  updates?.dispose()
   appData?.closeAll()
   appData = null
   deviceManager?.stop(true)
@@ -505,7 +517,7 @@ async function confirmUnsaved(): Promise<boolean> {
 }
 
 /** Quitting kills every embedded terminal (and the agents in them), so name them before asking. */
-async function confirmQuit(): Promise<boolean> {
+async function confirmQuit(forUpdate = false): Promise<boolean> {
   if (!(await confirmUnsaved())) return false
   const census = ptys ? await ptys.census() : []
   const runs = runManager?.live() ?? []
@@ -523,11 +535,12 @@ async function confirmQuit(): Promise<boolean> {
   if (mainWindow && !mainWindow.isVisible()) showMain()
   const terms = census?.length !== 0
   const detail = [terms ? (lines.length ? `${t.quitDetail}\n${lines.join('\n')}` : t.quitDetail) : '', runLines.length ? `${t.quitRuns}\n${runLines.join('\n')}` : '']
+  if (forUpdate) detail.unshift(t.updateQuitDetail)
   const opts: Electron.MessageBoxOptions = {
     type: 'warning',
-    message: terms ? t.quitTitle(live.length) : t.quitRunsTitle(runs.length),
+    message: forUpdate ? t.updateQuitTitle(live.length + runs.length) : terms ? t.quitTitle(live.length) : t.quitRunsTitle(runs.length),
     detail: detail.filter(Boolean).join('\n\n'),
-    buttons: [t.quitConfirm, t.quitCancel],
+    buttons: [forUpdate ? t.updateQuitConfirm : t.quitConfirm, t.quitCancel],
     defaultId: 1,
     cancelId: 1,
     noLink: true,
@@ -728,6 +741,48 @@ function lockPermissions(): void {
     callback(allowed(permission, details.requestingUrl)),
   )
   session.defaultSession.setPermissionCheckHandler((_contents, permission, origin) => allowed(permission, origin))
+}
+
+function launchUpdate(): void {
+  const launch = updateLaunch
+  updateLaunch = null
+  launch?.()
+}
+
+/** v74 in-app update from GitHub Releases; dev builds only check and open the page unless CCM_UPDATE_FEED points at a test feed. */
+function createUpdates(): UpdateManager {
+  const testFeed = process.env.CCM_UPDATE_FEED
+  const kind = installKind({ platform: process.platform, packaged: app.isPackaged, portable: PORTABLE_EXE })
+  const prepare = async (file: string): Promise<Prepared> => {
+    if (kind === 'nsis') return prepareNsis(file)
+    if (kind === 'portable' && PORTABLE_EXE) return preparePortable(file, PORTABLE_EXE, process.pid)
+    if (kind === 'mac') return prepareMac(file, app.getPath('exe'), process.pid)
+    return { ok: false, error: 'install' }
+  }
+  return new UpdateManager({
+    current: app.getVersion(),
+    kind,
+    assetKind: kind === 'dev' ? platformKind(process.platform, PORTABLE_EXE) : kind,
+    canDownload: kind === 'dev' ? !!testFeed : kind !== 'unsupported',
+    arch: process.arch,
+    dataDir: DATA_DIR,
+    feed: testFeed || DEFAULT_FEED,
+    allowLocal: !!testFeed,
+    fetch: (url, init) => net.fetch(url, init),
+    broadcast: (state) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:update-event', state)
+    },
+    prepare,
+    restart: async (launch, version) => {
+      if (!(await confirmQuit(true))) return false
+      const page = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
+      updateLaunch = launch
+      app.quit()
+      return true
+    },
+    openUrl: (target) => (/^https?:\/\//i.test(target) ? openExternal(target) : void shell.openPath(target)),
+    reveal: (file) => shell.showItemInFolder(file),
+  })
 }
 
 async function ready(): Promise<void> {
@@ -1191,6 +1246,9 @@ async function ready(): Promise<void> {
     shell.showItemInFolder(res.filePath)
     return { ok: true, path: res.filePath }
   })
+  updates = createUpdates()
+  disposeUpdate = registerUpdateIpc({ ipcMain, isAppFrame, manager: updates })
+  updates.start()
   repairLoginItem()
   removeStaleShortcuts()
   createTray()
@@ -1228,6 +1286,7 @@ if (!app.requestSingleInstanceLock()) {
       if (contents !== mainWindow?.webContents) event.preventDefault()
     })
   })
+  app.on('quit', launchUpdate)
   app.on('window-all-closed', () => {
     // Closing windows only hides the dashboard; quitting goes through the tray.
   })
@@ -1249,14 +1308,17 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault()
     if (stopping || confirming) return
     confirming = true
-    void confirmQuit()
+    void (updateLaunch ? Promise.resolve(true) : confirmQuit())
       .catch(() => true)
       .then((ok) => {
         if (!ok) return
         quitting = true
         attention?.clear()
         // A hung child must never leave the app unquittable.
-        const hardExit = setTimeout(() => app.exit(0), QUIT_DEADLINE_MS)
+        const hardExit = setTimeout(() => {
+          launchUpdate()
+          app.exit(0)
+        }, QUIT_DEADLINE_MS)
         stopping = Promise.allSettled([host.stop(), ptys?.stop(), stopPreview(), stopRuns()]).then(() => {
           clearTimeout(hardExit)
           stopped = true
