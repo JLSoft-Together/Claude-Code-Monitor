@@ -17,6 +17,8 @@ import {
   type PeerLink,
   type PlanLimits,
   type ResponseStats,
+  type ResourceReport,
+  type SensitiveSettings,
   type ServerMessage,
   type TerminalSession,
   type NotifySettings,
@@ -62,6 +64,8 @@ export class MonitorStore implements UsageSink {
   private codexLimits: PlanLimits | null = null
   private response: ResponseStats | null = null
   private modelNames: Record<string, string> = {}
+  private resources: ResourceReport | null = null
+  private sensitive: SensitiveSettings | null = null
   statusLineCommand?: string
   dayStartedAt?: string
   private loading = false
@@ -313,6 +317,23 @@ export class MonitorStore implements UsageSink {
     this.emit({ type: 'models.updated', payload: { modelNames: this.modelNames } })
   }
 
+  setSensitive(settings: SensitiveSettings): void {
+    if (JSON.stringify(settings) === JSON.stringify(this.sensitive)) return
+    this.sensitive = settings
+    this.emit({ type: 'sensitive.settings', payload: settings })
+  }
+
+  projectRoot(dir: string): string | undefined {
+    return this.roots.get(dir)
+  }
+
+  /** Sent only when something besides the timestamp changed. */
+  setResources(report: ResourceReport): void {
+    const same = this.resources !== null && JSON.stringify({ ...report, at: '' }) === JSON.stringify({ ...this.resources, at: '' })
+    this.resources = report
+    if (!same) this.emit({ type: 'resources', payload: report })
+  }
+
   usageSnapshot(): UsageSnapshot {
     return { buckets: [...this.usage.values()], scan: { ...this.usageScan }, roots: Object.fromEntries(this.roots) }
   }
@@ -337,6 +358,8 @@ export class MonitorStore implements UsageSink {
       notify: this.notify,
       snoozes: { ...this.snoozes },
       peerLinks: [...this.links.values()],
+      ...(this.resources ? { resources: this.resources } : {}),
+      ...(this.sensitive ? { sensitive: this.sensitive } : {}),
       ...(this.loading ? { loading: true } : {}),
     }
   }

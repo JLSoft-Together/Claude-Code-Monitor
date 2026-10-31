@@ -52,6 +52,9 @@ import backupV74 from './backup-v74'
 import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
+import resourcesV76 from './resources-v76'
+import captureV76 from './capture-v76'
+import sensitiveV76 from './sensitive-v76'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
@@ -100,6 +103,9 @@ export default {
   ...devicesV75.en,
   ...devtoolsV75.en,
   ...promptSearchV75.en,
+  ...resourcesV76.en,
+  ...captureV76.en,
+  ...sensitiveV76.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
@@ -869,6 +875,8 @@ export default {
       stuck: 'Session gone quiet (threshold below)',
       context: 'Context at 95%',
       limit: '5-hour limit running out',
+      idle: 'Forgotten sessions, servers and daemons (time below)',
+      sensitive: 'Agent touched a sensitive file or ran a risky command',
     },
     quiet: 'Quiet hours',
     quietHint: 'No system alerts, browser notifications or sounds in this window. The tab title and taskbar count keep updating.',

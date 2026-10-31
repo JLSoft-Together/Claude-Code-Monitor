@@ -64,6 +64,11 @@ export class CollectorHost {
     await this.waitHealthy()
   }
 
+  /** Structured note to the collector, e.g. a `DeviceUsedMessage` (dropped while it restarts). */
+  post(message: object): void {
+    this.child?.postMessage(message)
+  }
+
   async stop(): Promise<void> {
     this.stopping = true
     const child = this.child

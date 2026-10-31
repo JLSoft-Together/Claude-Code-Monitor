@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, safeStorage, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Rectangle, type WebContents } from 'electron'
 import { defaultDataDir } from '../../collector/src/datadir'
 import { HEX_COLOR, isZoomAction, nextZoom, parseLook, readAppearance, writeAppearance, zoomPercent, type Appearance } from './appearance'
 import { createAttention, type Attention } from './attention'
@@ -67,6 +67,16 @@ import { registerUpdateIpc } from './update/ipc'
 import { UpdateManager } from './update/manager'
 import { installKind, platformKind } from './update/pick'
 import { BackupService } from './backup/service'
+import { DeviceUseReporter } from './resources/deviceUse'
+import { confirmLines, fixtureKill, killTreeByPid, liveStarts, planKill } from './resources/kill'
+import { parseBusy, parseKillTargets, parsePhoneEpisode, type ResKillResult, type ResourceReport } from '@ccm/shared'
+import { AWAKE_FILE, KeepAwake, readAwakeMode, writeAwakeMode } from './power/awake'
+import { CAPTURE_FILE } from './capture/files'
+import { CaptureFolder } from './capture/folder'
+import { registerCaptureIpc } from './capture/ipc'
+import { PHONE_FILE, PhoneNotifier } from './phone/notifier'
+import { registerPhoneIpc } from './phone/ipc'
+import { e2eOverride } from './phone/send'
 import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 
@@ -130,7 +140,14 @@ let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
 let disposeRun: (() => void) | null = null
 let deviceManager: DeviceManager | null = null
+let deviceUse: DeviceUseReporter | null = null
+let resReport: ResourceReport | null = null
 let recorder: ScreenRecorder | null = null
+let awake: KeepAwake | null = null
+let capture: CaptureFolder | null = null
+let disposeCapture: (() => void) | null = null
+let phone: PhoneNotifier | null = null
+let disposePhone: (() => void) | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
 let disposeRelease: (() => void) | null = null
@@ -264,6 +281,12 @@ function stopPreview(): Promise<void> {
   appData = null
   recorder?.dispose()
   recorder = null
+  disposeCapture?.()
+  disposeCapture = null
+  disposePhone?.()
+  disposePhone = null
+  capture?.dispose()
+  awake?.dispose()
   deviceManager?.stop(true)
   deviceManager = null
   previewWatch.closeAll()
@@ -523,6 +546,50 @@ function showError(reason: FatalReason): void {
   showingError = true
   mainWindow.loadURL(errorPage(t, fatalMessage(reason), host.tail, saved().look)).catch(() => undefined)
   showMain()
+}
+
+/**
+ * R1 / R2 stop: only pids in the newest collector report, with the same creation time now (no reused pid), after one
+ * native confirm for all. Emulators go through `adb emu kill`. `CCM_RES_FIXTURE` (E2E) never stops anything real.
+ */
+async function resKill(sender: WebContents, targets: ReturnType<typeof parseKillTargets>): Promise<ResKillResult> {
+  if (!targets) return { ok: false, error: 'invalid' }
+  const plan = planKill(resReport, targets, Date.now())
+  if (!plan.ok) return plan
+  const items = plan.items
+  const fixture = process.env.CCM_RES_FIXTURE || null
+  const sameStart = async (): Promise<boolean> => {
+    if (fixture) return true
+    const live = await liveStarts(items.map((i) => i.pid))
+    return items.every((i) => live.get(i.pid) === i.start)
+  }
+  if (!(await sameStart())) return { ok: false, error: 'gone' }
+  const opts: Electron.MessageBoxOptions = {
+    type: 'warning',
+    message: t.resKillTitle(items.length, items[0]!.name),
+    detail: t.resKillDetail(confirmLines(items, t.resKillSession), items.some((i) => i.session)),
+    buttons: [t.resKillConfirm(items.length), t.quitCancel],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  }
+  const autoYes = fixture !== null && process.env.CCM_E2E_RES_CONFIRM === '1'
+  if (!autoYes && !(await confirmBox(BrowserWindow.fromWebContents(sender), opts))) return { ok: false, error: 'cancelled' }
+  if (fixture) {
+    await fixtureKill(fixture, items.map((i) => i.pid))
+    return { ok: true, killed: items.length }
+  }
+  const live = await liveStarts(items.map((i) => i.pid))
+  let killed = 0
+  for (const i of items) {
+    if (live.get(i.pid) !== i.start) continue
+    if (i.avd && (await deviceManager?.avdStop(i.avd))?.ok) {
+      killed++
+      continue
+    }
+    if (await killTreeByPid(i.pid)) killed++
+  }
+  return killed ? { ok: true, killed } : { ok: false, error: 'failed' }
 }
 
 /** Native confirm; the first button is the action. */
@@ -877,6 +944,81 @@ function createUpdates(): UpdateManager {
   })
 }
 
+function setupCaptureAndAwake(): void {
+  // E2E: the battery state and the folder dialog cannot be driven; tests also shorten the 2-minute grace.
+  const e2ePower = process.env.CCM_E2E_POWER
+  const e2eGrace = Number(process.env.CCM_E2E_AWAKE_GRACE_MS)
+  const e2eCaptureDir = process.env.CCM_E2E_CAPTURE_DIR || null
+  const awakeFile = path.join(DATA_DIR, AWAKE_FILE)
+  const keep = new KeepAwake(
+    {
+      start: () => powerSaveBlocker.start('prevent-app-suspension'),
+      stop: (id) => {
+        if (powerSaveBlocker.isStarted(id)) powerSaveBlocker.stop(id)
+      },
+      onBattery: () => (e2ePower === 'battery' ? true : e2ePower === 'ac' ? false : powerMonitor.isOnBatteryPower()),
+      ...(Number.isFinite(e2eGrace) && e2eGrace > 0 ? { graceMs: e2eGrace } : {}),
+      onChange: (state) => {
+        for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:awake-event', state)
+      },
+    },
+    readAwakeMode(awakeFile),
+  )
+  awake = keep
+  powerMonitor.on('on-battery', () => keep.powerChanged())
+  powerMonitor.on('on-ac', () => keep.powerChanged())
+  const folder = new CaptureFolder({
+    file: path.join(DATA_DIR, CAPTURE_FILE),
+    tmpRoot: os.tmpdir(),
+    videos: () => app.getPath('videos'),
+    held: () => recorder?.heldFiles() ?? [],
+    onMissing: (dir) => {
+      if (Notification.isSupported()) new Notification({ title: t.captureMissingTitle, body: t.captureMissingBody(dir) }).show()
+    },
+  })
+  capture = folder
+  folder.start()
+  disposeCapture = registerCaptureIpc({
+    ipcMain,
+    isAppFrame,
+    folder,
+    awake: keep,
+    setAwakeMode: (mode) => {
+      keep.setMode(mode)
+      writeAwakeMode(awakeFile, mode)
+    },
+    pickFolder: async (event, near) => {
+      if (e2eCaptureDir) return e2eCaptureDir
+      const opts: Electron.OpenDialogOptions = { title: t.capturePickTitle, defaultPath: near ?? app.getPath('pictures'), properties: ['openDirectory', 'createDirectory'] }
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+    openFolder: async (dir) => (await shell.openPath(dir)) === '',
+  })
+}
+
+function setupPhone(): void {
+  const broadcast = (channel: string, payload: unknown) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
+  }
+  // E2E: a loopback receiver stands in for ntfy / Discord, and system idle time is faked.
+  const e2eIdle = Number(process.env.CCM_E2E_IDLE_S)
+  phone = new PhoneNotifier({
+    file: path.join(DATA_DIR, PHONE_FILE),
+    crypt: { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) },
+    fetch: (url, init) => net.fetch(url, init),
+    idleSeconds: () => (Number.isFinite(e2eIdle) && e2eIdle >= 0 && process.env.CCM_E2E_IDLE_S ? e2eIdle : powerMonitor.getSystemIdleTime()),
+    locale: () => saved().locale ?? 'vi',
+    home: os.homedir(),
+    platform: process.platform,
+    override: e2eOverride(process.env.CCM_PHONE_URL_OVERRIDE),
+    onState: (state) => broadcast('ccm:phone-event', { state }),
+    onFailure: (error) => broadcast('ccm:phone-event', { failed: error }),
+  })
+  disposePhone = registerPhoneIpc(ipcMain, isAppFrame, phone)
+}
+
 async function ready(): Promise<void> {
   t = stringsFor(saved().locale ?? 'vi')
   if (IS_MAC) {
@@ -895,14 +1037,30 @@ async function ready(): Promise<void> {
   backups = new BackupService({ dataDir: DATA_DIR, app: app.getVersion(), platform: process.platform, github: () => ghStore?.list() ?? [] })
   // An import staged before the restart lands before the collector and the main stores read their files.
   backups.applyPending()
+  setupCaptureAndAwake()
+  setupPhone()
   host = new CollectorHost({
     script: path.join(__dirname, 'collector.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
     port: PORT,
     env: collectorEnv(),
     logFile: path.join(app.getPath('logs'), 'collector.log'),
     onFatal: showError,
-    onMessage: (data) => attention?.handle(data),
-    onExit: () => attention?.clear(),
+    onMessage: (data) => {
+      const m = data as { type?: unknown; report?: unknown } | null
+      if (m?.type === 'resources' && typeof m.report === 'object' && m.report !== null) resReport = m.report as ResourceReport
+      else if (m?.type === 'busy') {
+        const busy = parseBusy(data)
+        if (busy) awake?.setBusy(busy.agents, busy.jobs)
+      } else if (m?.type === 'phone') {
+        const episode = parsePhoneEpisode(data)
+        if (episode) void phone?.handle(episode)
+      } else attention?.handle(data)
+    },
+    onExit: () => {
+      attention?.clear()
+      // A restarting collector re-sends its counts; until then nothing is known to work.
+      awake?.setBusy(0, 0)
+    },
   })
   const unpacked = (file: string): string => path.join(__dirname, file).replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
   ptys = new PtySupervisor({
@@ -1188,6 +1346,9 @@ async function ready(): Promise<void> {
     },
   })
   await runManager.loadSettings()
+  runManager.onSessionState((_session, _cfg, device) => {
+    if (device?.platform.startsWith('android')) deviceUse?.used(device.id)
+  })
   const previewGate = previewIpc
   disposeRun = registerRunIpc({ ipcMain, isAppFrame, manager: runManager, resolveDir: (dir) => previewGate.resolveDir(dir) })
   const devices = new DeviceManager({
@@ -1211,6 +1372,7 @@ async function ready(): Promise<void> {
         cancelId: 1,
         noLink: true,
       }),
+    onDeviceUse: (serial) => deviceUse?.used(serial),
     confirmWipe: (name) =>
       confirmBox(mainWindow, {
         type: 'warning',
@@ -1223,7 +1385,15 @@ async function ready(): Promise<void> {
       }),
   })
   deviceManager = devices
-  recorder = new ScreenRecorder({ withDevice: (id, fn) => devices.withReady(id, fn), tmpDir: path.join(os.tmpdir(), 'orrery-rec'), kill: killAdbClient })
+  deviceUse = new DeviceUseReporter((msg) => host.post(msg), (serial) => devices.avdName(serial))
+  ipcMain.handle('ccm:res-kill', (event, raw: unknown) => resKill(event.sender, isAppFrame(event) ? parseKillTargets(raw) : null))
+  const folder = capture
+  recorder = new ScreenRecorder({
+    withDevice: (id, fn) => devices.withReady(id, fn),
+    tmpDir: () => folder?.recordingsDir() ?? path.join(os.tmpdir(), 'orrery-rec'),
+    keepFiles: (file) => folder?.keeps(file) ?? false,
+    kill: killAdbClient,
+  })
   // E2E: the native Save dialog cannot be driven over CDP.
   const e2eRecFile = process.env.CCM_E2E_RECORD_FILE || null
   disposeDevices = registerDevicesIpc({
@@ -1234,7 +1404,7 @@ async function ready(): Promise<void> {
     recorder,
     saveRecording: async (event, defaultName) => {
       if (e2eRecFile) return e2eRecFile
-      const opts: Electron.SaveDialogOptions = { title: t.recSaveTitle, defaultPath: path.join(app.getPath('videos'), defaultName), filters: [{ name: t.recFilter, extensions: ['mp4'] }] }
+      const opts: Electron.SaveDialogOptions = { title: t.recSaveTitle, defaultPath: path.join(folder?.saveDir() ?? app.getPath('videos'), defaultName), filters: [{ name: t.recFilter, extensions: ['mp4'] }] }
       const win = BrowserWindow.fromWebContents(event.sender)
       const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
       return res.canceled ? null : (res.filePath ?? null)

@@ -15,6 +15,8 @@ import { useInboxStore } from '../stores/inbox'
 import { useUpdateStore } from '../stores/update'
 import { useUiStore, type View } from '../stores/ui'
 import PlanLimits from './PlanLimits.vue'
+import ResourcesButton from './ResourcesButton.vue'
+import KeepAwakeBadge from './KeepAwakeBadge.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
@@ -194,6 +196,8 @@ function onTabKey(e: KeyboardEvent): void {
           <CircleArrowDown :size="14" aria-hidden="true" />
           <span class="hidden tabular-nums sm:inline">{{ t('update.pill', { version: updateVersion }) }}</span>
         </button>
+        <KeepAwakeBadge v-if="!ui.compact" />
+        <ResourcesButton v-if="!ui.compact" />
         <button
           ref="inboxBtn"
           type="button"

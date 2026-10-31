@@ -2,11 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
-import { ListFilter, Mail, X } from 'lucide-vue-next'
+import { ListFilter, Mail, ShieldAlert, X } from 'lucide-vue-next'
 import { waitReason, type ActivityEvent } from '@ccm/shared'
 import { clockTime, compactNumber } from '../lib/format'
 import { modeMeta } from '../lib/mode'
 import { isCodex } from '../lib/provider'
+import { ruleText } from '../lib/sensitive'
 import { displayTitle } from '../lib/title'
 import { useActivityStore } from '../stores/activity'
 import { useAgentsStore } from '../stores/agents'
@@ -18,6 +19,7 @@ import ArtImage from './ArtImage.vue'
 import Pager from './Pager.vue'
 import PanelHeader from './PanelHeader.vue'
 import ProviderBadge from './ProviderBadge.vue'
+import SensitiveActions from './SensitiveActions.vue'
 import StatusIcon from './StatusIcon.vue'
 
 const props = defineProps<{ terminalId?: string | null }>()
@@ -70,6 +72,7 @@ function fromCodex(e: ActivityEvent): boolean {
 function message(e: ActivityEvent): string {
   const d = e.data ?? {}
   if (e.kind === 'peer.message') return t('peer.activity', { from: d.title || terminalTitle(e), to: d.to || '—' })
+  if (e.kind === 'sensitive') return t('sensitive.activity', { agent: agentName(e), rule: ruleText(d.rule, t) })
   if (!te(`activity.${e.kind.replace('.', '_')}`)) return e.kind
   switch (e.kind) {
     case 'terminal.renamed':
@@ -141,6 +144,7 @@ function secondary(e: ActivityEvent): string | null {
   if (e.kind.startsWith('agent.') && e.data?.agentType === 'codex') return terminalTitle(e)
   if (e.kind.startsWith('agent.') && e.data?.description) return e.data.description
   if (e.kind.startsWith('tool.')) return terminalTitle(e)
+  if (e.kind === 'sensitive') return [e.data?.tool, e.data?.path ?? terminalTitle(e)].filter(Boolean).join(' · ')
   return null
 }
 
@@ -233,12 +237,14 @@ const rows = computed(() =>
         >
           <time :datetime="e.at" class="pt-0.5 font-mono text-2xs text-ink-faint tabular">{{ clockTime(e.at, locale) }}</time>
           <Mail v-if="e.kind === 'peer.message'" :size="14" class="mt-1 text-peer" aria-hidden="true" data-activity-peer />
+          <ShieldAlert v-else-if="e.kind === 'sensitive'" :size="14" class="mt-1 text-warning" aria-hidden="true" data-activity-sensitive />
           <StatusIcon v-else :status="ICON_STATUS[e.kind] ?? 'unknown'" :size="14" :animate="false" class="mt-1" />
           <div class="min-w-0">
             <p class="flex min-w-0 items-start gap-1.5">
               <ProviderBadge v-if="codex" class="mt-0.5" variant="icon" /><span class="min-w-0 break-words">{{ text }}</span>
             </p>
             <p v-if="sub" class="truncate text-xs text-ink-faint" :title="sub">{{ sub }}</p>
+            <SensitiveActions v-if="e.kind === 'sensitive'" :event="e" />
           </div>
         </li>
       </TransitionGroup>

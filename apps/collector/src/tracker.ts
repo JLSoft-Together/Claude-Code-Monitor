@@ -18,6 +18,7 @@ import type { RegistryRecord } from './registry'
 import { JsonlTailer, type LineFilter } from './tailer'
 import { SPAN_RETENTION_MS, ToolSpanLog } from './tool-spans'
 import { extractSignals, TranscriptState, type Signal } from './transcript'
+import type { SensitiveHit, ToolTouch } from './sensitive/rules'
 
 export type ActivityDraft = Omit<ActivityEvent, 'id' | 'at'> & { at?: string }
 
@@ -29,6 +30,7 @@ export interface ContextHints {
   sessionContext?: Map<string, { pct?: number; bufferPct?: number; at: string }>
   /** Buffer from the collector's own CLAUDE_CODE_AUTO_COMPACT_WINDOW, used when the bridge sent none. */
   bufferPct?: number
+  sensitive?: { check(terminalId: string, touch: ToolTouch, cwd: string | undefined): (SensitiveHit & { project?: string })[] }
 }
 
 interface SubagentMeta {
@@ -455,6 +457,11 @@ export class SessionTracker {
     for (const s of signals) {
       if (s.k === 'tool_use') {
         activity.push({ kind: 'tool.started', terminalId: this.terminalId, agentId, at: s.at, data: { tool: s.name } })
+        if (s.touch && this.hints.sensitive) {
+          for (const h of this.hints.sensitive.check(this.terminalId, s.touch, this.record.cwd)) {
+            activity.push({ kind: 'sensitive', terminalId: this.terminalId, agentId, at: s.at, data: { tool: s.name, rule: h.rule, path: h.path, file: h.file, project: h.project } })
+          }
+        }
       } else if (s.k === 'tool_result' && s.isError) {
         const tool = state.openTools.get(s.toolUseId)
         activity.push({ kind: 'tool.failed', terminalId: this.terminalId, agentId, at: s.at, data: { tool } })
@@ -553,6 +560,21 @@ export class SessionTracker {
     const out = this.main.codexCalls.map((at) => ({ agentId: this.mainAgentId, at }))
     for (const e of this.subagents.values()) for (const at of e.state.codexCalls) out.push({ agentId: e.agentId, at })
     return out
+  }
+
+  lastDeviceCallAt(): string | undefined {
+    let last = this.main.deviceCallAt
+    for (const e of this.subagents.values()) last = laterOf(last, e.state.deviceCallAt)
+    return last
+  }
+
+  lastPortConflict(): { port: number; at: string } | undefined {
+    let last = this.main.portConflict
+    for (const e of this.subagents.values()) {
+      const c = e.state.portConflict
+      if (c && (!last || c.at > last.at)) last = c
+    }
+    return last
   }
 
   buildTerminal(): TerminalSession {

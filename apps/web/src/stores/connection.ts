@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, ServerMessage, ToastKind, ToolStatDays } from '@ccm/shared'
+import type { ClientMessage, FolderPickResult, LaunchMode, OpenApp, MonitorEvent, MonitorSnapshot, QuietHours, SensitiveSettings, ServerMessage, ToastKind, ToolStatDays } from '@ccm/shared'
 import { officeFeed } from '../office/feed'
 import { useActivityStore } from './activity'
 import { useAgentsStore } from './agents'
@@ -9,6 +9,8 @@ import { useFavoritesStore } from './favorites'
 import { useHistoryStore } from './history'
 import { usePeersStore } from './peers'
 import { usePromptSearchStore } from './promptSearch'
+import { useResourcesStore } from './resources'
+import { useSensitiveStore } from './sensitive'
 import { useSettingsStore } from './settings'
 import { useSnoozeStore } from './snooze'
 import { useTerminalsStore } from './terminals'
@@ -70,6 +72,8 @@ export const useConnectionStore = defineStore('connection', () => {
   const toolSpans = useToolSpansStore()
   const peers = usePeersStore()
   const promptSearch = usePromptSearchStore()
+  const resources = useResourcesStore()
+  const sensitive = useSensitiveStore()
   let pendingFocus = takeFocusParam()
 
   function url(): string {
@@ -88,6 +92,8 @@ export const useConnectionStore = defineStore('connection', () => {
     history.invalidate()
     supportedClaudeVersion.value = snapshot.supportedClaudeVersion ?? null
     snooze.replaceAll(snapshot.snoozes ?? {})
+    resources.set(snapshot.resources)
+    sensitive.set(snapshot.sensitive)
     if (snapshot.notify) settings.stuckMinutes = snapshot.notify.stuckMinutes
     if (ui.selectedAgentId && !agents.byId[ui.selectedAgentId]) ui.selectAgent(null)
     sessionsLoading.value = snapshot.loading === true
@@ -231,6 +237,12 @@ export const useConnectionStore = defineStore('connection', () => {
           break
         case 'notify.testResult':
           extras.setToastTest({ state: 'done', result: event.payload.result, health: event.payload.health })
+          break
+        case 'resources':
+          resources.set(event.payload)
+          break
+        case 'sensitive.settings':
+          sensitive.set(event.payload)
           break
         case 'snooze.updated':
           snooze.replaceAll(event.payload.snoozes ?? {})
@@ -410,7 +422,7 @@ export const useConnectionStore = defineStore('connection', () => {
   }
 
   const loadDiagnostics = (): boolean => request({ type: 'diagnostics.get' })
-  const updateNotify = (patch: { toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number }): boolean =>
+  const updateNotify = (patch: { toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number; idleMinutes?: number }): boolean =>
     request({ type: 'notify.update', ...patch })
   const setNote = (terminalId: string, note: string | null): boolean => request({ type: 'terminal.note', terminalId, note })
   function testToast(): boolean {
@@ -421,6 +433,9 @@ export const useConnectionStore = defineStore('connection', () => {
     extras.setToastTest({ state: 'sending' })
     return true
   }
+  const updateSensitive = (patch: { groups?: Partial<SensitiveSettings['groups']>; globs?: string[]; ignore?: Record<string, string[]> }): boolean =>
+    request({ type: 'sensitive.update', ...patch })
+  const ignoreSensitive = (project: string, rule: string, on: boolean): boolean => request({ type: 'sensitive.ignore', project, rule, on })
   const snoozeTerminal = (terminalId: string, minutes: number | null): boolean => request({ type: 'terminal.snooze', terminalId, minutes })
 
   function focusWindow(terminalId: string): boolean {
@@ -453,6 +468,8 @@ export const useConnectionStore = defineStore('connection', () => {
     openFolder,
     loadDiagnostics,
     updateNotify,
+    updateSensitive,
+    ignoreSensitive,
     snoozeTerminal,
     setNote,
     testToast,

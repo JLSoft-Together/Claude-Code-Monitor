@@ -1,0 +1,78 @@
+// Top-level `awake` + `capture` of en.ts / vi.ts (v76): keep the machine awake while agents run, capture folder.
+const en = {
+  awake: {
+    section: 'Keep awake',
+    setting: 'Keep the computer awake',
+    settingHint: 'Stops sleep while a session, subagent or background job is working, and for 2 minutes after the last one stops. The display can still turn off.',
+    mode: { off: 'Off', running: 'While agents run', plugged: 'Only on power' },
+    badge: 'Keeping awake ({n} agent) | Keeping awake ({n} agents)',
+    badgeJobs: 'Keeping awake ({n} job) | Keeping awake ({n} jobs)',
+    badgeGrace: 'Keeping awake (2 min)',
+    tip: {
+      working: 'Orrery keeps this computer from sleeping: {agents} working, {jobs} background jobs. The display can still turn off.',
+      grace: 'Nothing is working now; the computer may sleep again at {time}.',
+    },
+    battery: 'On battery: not keeping awake (Settings › Keep awake)',
+  },
+  capture: {
+    section: 'Screenshots and recordings',
+    folder: 'Capture folder',
+    folderHint: 'Recordings are kept in recordings/ and screenshots sent to agents in shots/. Empty: recordings stay in the temp folder and screenshots go through the clipboard.',
+    none: 'Not set',
+    choose: 'Choose…',
+    chooseFor: 'Choose the capture folder',
+    clear: 'Clear',
+    clearFor: 'Stop using the capture folder',
+    open: 'Open folder',
+    missing: 'The folder cannot be found (drive removed?). Using the temp folder until it is back.',
+    notWritable: 'Orrery cannot write to this folder. Using the temp folder.',
+    asFile: 'Send screenshots as files',
+    asFileHint: 'Attach writes the PNG into shots/ and puts its path in the agent prompt instead of pasting image bytes. Claude Code still stores an image it reads in the session transcript.',
+    keep: 'Keep files for',
+    keepHint: 'Older files, and the oldest past the size limit, are removed at start and every 6 hours. Only files Orrery named in recordings/ and shots/ are touched.',
+    days: '{n} day | {n} days',
+    maxSize: 'Size limit',
+    gb: '{n} GB',
+    failed: 'Could not save the setting.',
+  },
+}
+
+const vi: typeof en = {
+  awake: {
+    section: 'Giữ máy thức',
+    setting: 'Giữ máy tính không ngủ',
+    settingHint: 'Chặn máy ngủ khi có session, subagent hay job nền đang chạy, và thêm 2 phút sau khi cái cuối cùng dừng. Màn hình vẫn tắt được.',
+    mode: { off: 'Tắt', running: 'Khi agent đang chạy', plugged: 'Chỉ khi cắm sạc' },
+    badge: 'Đang giữ máy thức ({n} agent)',
+    badgeJobs: 'Đang giữ máy thức ({n} job)',
+    badgeGrace: 'Đang giữ máy thức (2 phút)',
+    tip: {
+      working: 'Orrery đang chặn máy ngủ: {agents} agent đang chạy, {jobs} job nền. Màn hình vẫn tắt được.',
+      grace: 'Không còn gì đang chạy; máy được ngủ lại lúc {time}.',
+    },
+    battery: 'Đang chạy pin: không giữ máy thức (Cài đặt › Giữ máy thức)',
+  },
+  capture: {
+    section: 'Ảnh chụp và video quay',
+    folder: 'Thư mục chụp / quay',
+    folderHint: 'Video quay giữ trong recordings/, ảnh chụp gửi agent trong shots/. Để trống: video ở thư mục temp và ảnh đi qua clipboard.',
+    none: 'Chưa đặt',
+    choose: 'Chọn…',
+    chooseFor: 'Chọn thư mục chụp / quay',
+    clear: 'Bỏ',
+    clearFor: 'Thôi dùng thư mục chụp / quay',
+    open: 'Mở thư mục',
+    missing: 'Không tìm thấy thư mục (đã rút ổ?). Tạm dùng thư mục temp cho tới khi có lại.',
+    notWritable: 'Orrery không ghi được vào thư mục này. Tạm dùng thư mục temp.',
+    asFile: 'Gửi ảnh chụp dạng file',
+    asFileHint: 'Nút Đính kèm ghi PNG vào shots/ và điền đường dẫn vào prompt của agent thay vì dán ảnh. Claude Code vẫn lưu ảnh nó đọc vào transcript của session.',
+    keep: 'Giữ file trong',
+    keepHint: 'File cũ hơn, và file cũ nhất khi vượt dung lượng, bị xoá lúc mở app và mỗi 6 giờ. Chỉ đụng tới file do Orrery đặt tên trong recordings/ và shots/.',
+    days: '{n} ngày',
+    maxSize: 'Dung lượng tối đa',
+    gb: '{n} GB',
+    failed: 'Không lưu được cài đặt.',
+  },
+}
+
+export default { en, vi }

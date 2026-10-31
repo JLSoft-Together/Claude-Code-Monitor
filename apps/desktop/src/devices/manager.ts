@@ -4,7 +4,9 @@ import { findAdbTools } from '../run/android/devices'
 import { fsEnvDeps, type EnvDeps } from '../run/android/env'
 import { killAdbClient, type Spawner } from '../run/proc'
 import { createAdbCommands, type AdbCommands } from './adb'
+import { isEmulatorSerial, parseEmuAvdName } from './avd'
 import { AvdManager } from './emulators'
+import { collect } from '../run/collect'
 import type { DeviceHistory, HistoryEntry } from './history'
 import { addressKey, isWifiId, parseAdbDeviceRows, parseAddress, transportOf, type AdbDeviceRow } from './parse'
 import { newQrSecret, qrPayload, runQrPairing } from './qr'
@@ -33,6 +35,8 @@ export interface DeviceManagerDeps {
   confirmRemove: (ids: string[]) => Promise<boolean>
   /** Native confirm before `emulator -wipe-data`; without it wiping is refused. */
   confirmWipe?: (name: string) => Promise<boolean>
+  /** Every `adb -s <serial> …` Orrery runs (resource idle rule for emulators, v76). */
+  onDeviceUse?: (serial: string) => void
   /** Where the display-test originals are kept (`UI_ORIGINALS_FILE` in the data dir). */
   uiOriginalsFile: string
   timing?: Partial<DeviceManagerTiming>
@@ -132,6 +136,7 @@ export class DeviceManager {
         cwd: deps.home,
         adb: async () => this.adb,
         timing: { connectMs: this.t.connectMs, pairMs: this.t.pairMs, cmdMs: this.t.cmdMs },
+        onUse: (serial) => deps.onDeviceUse?.(serial),
       })
     this.ui = new DeviceUiTester({ shell: (id, args) => this.commands.shell(id, args), file: deps.uiOriginalsFile })
     this.avds = new AvdManager({
@@ -163,6 +168,15 @@ export class DeviceManager {
 
   avdStop(name: string): Promise<AvdResult> {
     return this.avds.stop(name)
+  }
+
+  /** AVD name of a running emulator serial (`adb emu avd name`), null when unknown. */
+  async avdName(serial: string): Promise<string | null> {
+    if (!isEmulatorSerial(serial)) return null
+    const adb = this.adb ?? (await this.resolveAdb())
+    if (!adb) return null
+    const r = await collect(this.deps.spawn, adb, ['-s', serial, 'emu', 'avd', 'name'], this.deps.home, { timeoutMs: this.t.cmdMs, kill: killAdbClient })
+    return r.code === 0 ? parseEmuAvdName(r.out) : null
   }
 
   private makeWatch(adb: string): AdbWatch<AdbDeviceRow> {

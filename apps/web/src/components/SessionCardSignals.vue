@@ -1,21 +1,28 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FoldVertical, GitMerge, Hourglass, Repeat, ShieldX, Snowflake } from 'lucide-vue-next'
+import { ChevronDown, Cpu, FoldVertical, GitMerge, Hourglass, Repeat, ShieldAlert, ShieldX, Snowflake } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { cacheState, formatUsd, quietFor } from '../lib/attention'
-import { compactNumber, duration, now } from '../lib/format'
+import { clockTime, compactNumber, duration, now } from '../lib/format'
+import { ruleText } from '../lib/sensitive'
+import SensitiveActions from './SensitiveActions.vue'
 import { useBump } from '../composables/useBump'
 import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
 import { useAttentionStore } from '../stores/attention'
+import { useResourcesStore } from '../stores/resources'
+import { useSensitiveStore } from '../stores/sensitive'
+import { formatBytes, formatCpu } from '../lib/resources'
 import { useSettingsStore } from '../stores/settings'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore } from '../stores/ui'
 
 const props = defineProps<{ terminal: TerminalSession }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const resources = useResourcesStore()
+const sensitive = useSensitiveStore()
 const agents = useAgentsStore()
 const attention = useAttentionStore()
 const settings = useSettingsStore()
@@ -68,7 +75,16 @@ const denied = computed(() => {
   const tools = props.terminal.deniedTools?.join(', ') || t('activity.unknownTool')
   return { label: t('terminal.denied', { n }), title: t('terminal.deniedTitle', { tools }) }
 })
+// Monitor has no Activity panel since d8b4c84, so the hits (with Open file / Open diff / Ignore) unfold under the badge.
+const sensitiveHits = computed(() => (sensitive.bySession.get(props.terminal.id) ?? []).slice(0, 10))
+const sensitiveCount = computed(() => sensitive.bySession.get(props.terminal.id)?.length ?? 0)
+const sensitiveOpen = ref(false)
 const coldBump = useBump(() => cache.value?.cold)
+const usage = computed(() => {
+  const r = ended.value ? undefined : resources.bySession.get(props.terminal.id)
+  if (!r || r.ramBytes === null) return null
+  return { label: t('resources.card', { ram: formatBytes(r.ramBytes, locale.value), cpu: formatCpu(r.cpuPct, locale.value) }), forgotten: r.forgotten }
+})
 </script>
 
 <template>
@@ -89,6 +105,31 @@ const coldBump = useBump(() => cache.value?.cold)
   <p v-if="denied" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-warning" :title="denied.title" data-card-denied>
     <ShieldX :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ denied.label }}</span>
   </p>
+  <button
+    v-if="sensitiveCount"
+    type="button"
+    class="ccm-enter relative z-10 mt-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded text-left text-xs text-warning hover:underline"
+    :title="t('sensitive.badgeTitle')"
+    :aria-expanded="sensitiveOpen"
+    data-card-sensitive
+    @click="sensitiveOpen = !sensitiveOpen"
+  >
+    <ShieldAlert :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate">{{ t('sensitive.badge', { n: sensitiveCount }, sensitiveCount) }}</span>
+    <ChevronDown :size="12" class="shrink-0 transition-transform duration-(--ccm-dur-fast)" :class="sensitiveOpen ? 'rotate-180' : ''" aria-hidden="true" />
+  </button>
+  <ul v-if="sensitiveCount && sensitiveOpen" class="relative z-10 mt-1 flex flex-col divide-y divide-line rounded-inner bg-fill px-2" data-card-sensitive-list>
+    <li v-for="e in sensitiveHits" :key="e.id" class="grid min-w-0 grid-cols-[auto_1fr] gap-x-2 py-1.5 text-xs">
+      <ShieldAlert :size="13" class="mt-0.5 text-warning" aria-hidden="true" data-activity-sensitive />
+      <div class="min-w-0">
+        <p class="flex min-w-0 items-baseline gap-2">
+          <span class="min-w-0 flex-1 truncate text-ink">{{ ruleText(e.data?.rule, t) }}</span>
+          <time :datetime="e.at" class="shrink-0 font-mono text-2xs text-ink-faint tabular">{{ clockTime(e.at, locale) }}</time>
+        </p>
+        <p v-if="e.data?.tool || e.data?.path" class="truncate text-2xs text-ink-faint" :title="e.data?.path">{{ [e.data?.tool, e.data?.path].filter(Boolean).join(' · ') }}</p>
+        <SensitiveActions :event="e" />
+      </div>
+    </li>
+  </ul>
   <p v-if="loop" class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-warning" :title="loop.title">
     <Repeat :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ loop.label }}</span>
   </p>
@@ -102,4 +143,8 @@ const coldBump = useBump(() => cache.value?.cold)
   >
     <GitMerge :size="13" class="shrink-0" :class="conflict.hot ? 'ccm-pulse' : ''" aria-hidden="true" /><span class="truncate">{{ conflict.label }}</span>
   </button>
+  <p v-if="usage" class="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted" :title="t('resources.cardTitle')" data-card-resources>
+    <Cpu :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate tabular">{{ usage.label }}</span>
+    <span v-if="usage.forgotten" class="inline-flex shrink-0 items-center gap-1 text-warning"><Hourglass :size="12" aria-hidden="true" />{{ t('resources.state.forgotten') }}</span>
+  </p>
 </template>

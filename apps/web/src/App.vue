@@ -14,8 +14,11 @@ import AppHeader from './components/AppHeader.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import RecapDialog from './components/RecapDialog.vue'
 import DiagnosticsDialog from './components/DiagnosticsDialog.vue'
+import ResourcesDialog from './components/ResourcesDialog.vue'
 import OnboardingTour from './components/OnboardingTour.vue'
 import BreakToast from './components/BreakToast.vue'
+import PhoneFailToast from './components/PhoneFailToast.vue'
+import { hasPhone } from './lib/phone'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import QuickSetup from './components/QuickSetup.vue'
 import WhatsNewDialog from './components/WhatsNewDialog.vue'
@@ -138,11 +141,13 @@ onBeforeUnmount(() => {
     <RecapDialog />
     <DevToolsDialog v-if="ui.devTools" :tool="ui.devTools" @close="ui.devTools = null" />
     <DiagnosticsDialog />
+    <ResourcesDialog />
     <QuickSetup />
     <OnboardingTour />
     <WhatsNewDialog />
     <UpdateDialog />
     <BreakToast />
+    <PhoneFailToast v-if="hasPhone" />
     <ShortcutsDialog />
     <ZoomHud />
   </div>

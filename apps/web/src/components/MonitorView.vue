@@ -6,6 +6,7 @@ import { useConnectionStore } from '../stores/connection'
 import { useTerminalsStore } from '../stores/terminals'
 import { useUiStore, type Panel } from '../stores/ui'
 import AwaySummary from './AwaySummary.vue'
+import PortConflictBar from './PortConflictBar.vue'
 import AgentMap from './AgentMap.vue'
 import PanelHeader from './PanelHeader.vue'
 import PanelSplitter from './PanelSplitter.vue'
@@ -68,6 +69,7 @@ function panelTransition(p: Panel): string {
   >
     <div class="flex shrink-0 flex-col gap-2 px-3 pt-2 empty:hidden">
       <AwaySummary />
+      <PortConflictBar />
       <WaitingQueue v-if="!ui.sessionTab" data-tour="waiting" class="ccm-scroll max-h-40 overflow-y-auto" />
     </div>
 

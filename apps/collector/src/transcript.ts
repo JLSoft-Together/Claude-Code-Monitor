@@ -1,9 +1,11 @@
 import type { CacheTtl, LimitHit } from '@ccm/shared'
 import { socketKey } from './registry'
+import { portConflictIn } from './resources/ports'
+import { touchOf, type ToolTouch } from './sensitive/rules'
 
 export type Signal =
-  | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true }
-  | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string }
+  | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true; device?: true; touch?: ToolTouch }
+  | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string; portConflict?: number }
   | { k: 'turn_end'; at?: string }
   | { k: 'assistant_end'; at?: string }
   | { k: 'usage'; messageId: string; input: number; output: number; cacheRead: number; ttl?: CacheTtl; at?: string }
@@ -44,6 +46,13 @@ const MAX_CODEX_CALLS = 20
 // Only a yes/no leaves this function: the command text itself is never stored.
 function mentionsCodex(name: string, input: unknown): boolean {
   return SHELL_TOOLS.has(name) && isObj(input) && typeof input.command === 'string' && CODEX_COMMAND_RE.test(input.command)
+}
+
+const DEVICE_COMMAND_RE = /\badb\b|\bflutter\s+run\b|\binstall\w*Debug\b/
+
+/** Emulator idle rule (v76): likewise only a yes/no. */
+export function mentionsDevice(name: string, input: unknown): boolean {
+  return SHELL_TOOLS.has(name) && isObj(input) && typeof input.command === 'string' && DEVICE_COMMAND_RE.test(input.command)
 }
 
 const NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/g
@@ -156,7 +165,16 @@ export function extractSignals(rec: unknown): Signal[] {
     if (Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (isObj(b) && b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string') {
-          out.push({ k: 'tool_use', id: b.id, name: b.name, at, ...(mentionsCodex(b.name, b.input) ? { codex: true as const } : {}) })
+          const touch = touchOf(b.name, b.input)
+          out.push({
+            k: 'tool_use',
+            id: b.id,
+            name: b.name,
+            at,
+            ...(mentionsCodex(b.name, b.input) ? { codex: true as const } : {}),
+            ...(mentionsDevice(b.name, b.input) ? { device: true as const } : {}),
+            ...(touch ? { touch } : {}),
+          })
           if (b.name === 'SendMessage' && isObj(b.input) && b.input.to === 'main') out.push({ k: 'send_main', key: b.id, at })
         }
       }
@@ -174,7 +192,9 @@ export function extractSignals(rec: unknown): Signal[] {
     if (Array.isArray(content)) {
       for (const b of content) {
         if (isObj(b) && b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
-          out.push({ k: 'tool_result', toolUseId: b.tool_use_id, isError: b.is_error === true, asyncLaunched, at })
+          const isError = b.is_error === true
+          const port = isError ? portConflictIn(textsOf(b.content).join('\n')) : null
+          out.push({ k: 'tool_result', toolUseId: b.tool_use_id, isError, asyncLaunched, at, ...(port ? { portConflict: port } : {}) })
         }
       }
     }
@@ -230,6 +250,10 @@ export class TranscriptState {
   readonly openTools = new Map<string, string>()
   /** When shell calls that mention codex were made, newest last (links Codex runs to the agent that started them). */
   readonly codexCalls: string[] = []
+  /** Newest shell call mentioning adb / flutter run / installDebug. */
+  deviceCallAt?: string
+  /** Newest failed tool call that reported a port already in use (R2): the port number only. */
+  portConflict?: { port: number; at: string }
   private readonly usage = new Map<string, UsageTotals>()
   model?: string
   effort?: string
@@ -291,10 +315,12 @@ export class TranscriptState {
             this.codexCalls.push(s.at)
             if (this.codexCalls.length > MAX_CODEX_CALLS) this.codexCalls.shift()
           }
+          if (s.device && s.at && (!this.deviceCallAt || s.at > this.deviceCallAt)) this.deviceCallAt = s.at
           break
         case 'tool_result':
           this.openTools.delete(s.toolUseId)
           this.ended = false
+          if (s.portConflict && s.at && (!this.portConflict || s.at > this.portConflict.at)) this.portConflict = { port: s.portConflict, at: s.at }
           break
         case 'turn_end':
           this.openTools.clear()

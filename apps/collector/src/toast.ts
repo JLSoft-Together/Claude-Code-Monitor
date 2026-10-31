@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   CONTEXT_THRESHOLDS,
+  DEFAULT_IDLE_MINUTES,
   DEFAULT_QUIET,
   DEFAULT_STUCK_MINUTES,
   DEFAULT_TOAST_KINDS,
@@ -9,6 +10,7 @@ import {
   inQuietHours,
   quietFor,
   remindersDue,
+  sanitizeIdle,
   sanitizeKinds,
   sanitizeQuiet,
   sanitizeStuck,
@@ -16,8 +18,12 @@ import {
   type BackgroundJob,
   type JobState,
   type NotifySettings,
+  type PhoneEpisodeMessage,
+  type PhoneReason,
   type PlanLimits,
   type QuietHours,
+  type ResourceReport,
+  type ServerRes,
   type TerminalSession,
   type TerminalStatus,
   waitReason,
@@ -26,6 +32,7 @@ import {
   type ToastState,
   type ToastTestResult,
 } from '@ccm/shared'
+import path from 'node:path'
 import { JsonFile } from './json-file'
 import { PsHost } from './ps-host'
 
@@ -146,6 +153,10 @@ interface Texts {
   stuckBody: (minutes: number) => string
   contextTitle: (name: string, pct: number) => string
   contextBody: string
+  idleTitle: (n: number, size: string) => string
+  idleBody: (names: string) => string
+  sensitiveTitle: (name: string) => string
+  sensitiveBody: (rule: string, tool: string, path?: string) => string
   testTitle: string
   testBody: string
   snooze: (minutes: number) => string
@@ -176,6 +187,10 @@ export const TEXT: Record<ToastLocale, Texts> = {
     stuckBody: (minutes) => `Working but no output for ${minutes} min.`,
     contextTitle: (name, pct) => `${name} context at ${pct}%`,
     contextBody: 'Run /compact before Claude compacts on its own.',
+    idleTitle: (n, size) => (n === 1 ? `1 forgotten item uses ${size}` : `${n} forgotten items use ${size}`),
+    idleBody: (names) => `${names}. Open Orrery to review and stop them.`,
+    sensitiveTitle: (name) => `${name} touched something sensitive`,
+    sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'en')}${path ? ` · ${path}` : ''}`,
     testTitle: 'Test notification',
     testBody: 'Windows notifications from Orrery work.',
     snooze: (minutes) => `Snooze ${minutes} min`,
@@ -204,6 +219,10 @@ export const TEXT: Record<ToastLocale, Texts> = {
     stuckBody: (minutes) => `Đang chạy nhưng không có output ${minutes} phút.`,
     contextTitle: (name, pct) => `${name} đã dùng ${pct}% context`,
     contextBody: 'Nên /compact trước khi Claude tự compact.',
+    idleTitle: (n, size) => `${n} mục bỏ quên đang dùng ${size}`,
+    idleBody: (names) => `${names}. Mở Orrery để xem và tắt.`,
+    sensitiveTitle: (name) => `${name} vừa đụng vào thứ nhạy cảm`,
+    sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'vi')}${path ? ` · ${path}` : ''}`,
     testTitle: 'Thông báo thử',
     testBody: 'Thông báo Windows của Orrery đang chạy.',
     snooze: (minutes) => `Hoãn ${minutes} phút`,
@@ -212,6 +231,33 @@ export const TEXT: Record<ToastLocale, Texts> = {
     dismiss: 'Bỏ qua',
   },
 }
+
+const RULE_LABELS: Record<string, [string, string]> = {
+  'outside-project': ['file outside the project', 'file ngoài project'],
+  'git-force-push': ['git push --force', 'git push --force'],
+  'git-reset-hard': ['git reset --hard', 'git reset --hard'],
+  'git-clean': ['git clean -fd', 'git clean -fd'],
+  'rm-rf': ['rm -rf outside the project', 'rm -rf ngoài project'],
+  'del-s': ['del /s outside the project', 'del /s ngoài project'],
+  'remove-item-recurse': ['Remove-Item -Recurse outside the project', 'Remove-Item -Recurse ngoài project'],
+  'adb-uninstall': ['adb uninstall', 'adb uninstall'],
+  'drop-table': ['DROP TABLE', 'DROP TABLE'],
+}
+
+export function ruleLabel(rule: string, locale: ToastLocale): string {
+  const pair = RULE_LABELS[rule]
+  if (pair) return pair[locale === 'vi' ? 1 : 0]
+  return rule.replace(/^custom:/, '')
+}
+
+/** Phone messages leave the machine: the alias the owner typed or the folder name, never the auto title. */
+export function phoneName(t: Pick<TerminalSession, 'alias' | 'cwd'>): string {
+  if (t.alias) return t.alias.slice(0, 80)
+  const base = t.cwd ? path.win32.basename(t.cwd.replace(/[\\/]+$/, '')) : ''
+  return (base || 'Claude').slice(0, 80)
+}
+
+export const LONG_JOB_MS = 5 * 60_000
 
 export function toastTag(key: string): string {
   return createHash('sha1').update(key).digest('hex').slice(0, 16)
@@ -232,6 +278,23 @@ export function toastContent(terminal: TerminalSession, locale: ToastLocale, url
   }
 }
 
+export function formatBytes(bytes: number, locale: ToastLocale): string {
+  const gb = bytes / 1024 ** 3
+  const [value, unit] = gb >= 1 ? [gb.toFixed(1), 'GB'] : [String(Math.max(1, Math.round(bytes / 1024 ** 2))), 'MB']
+  return `${locale === 'vi' ? value.replace('.', ',') : value} ${unit}`
+}
+
+const DAEMON_LABEL = { gradle: 'Gradle daemon', kotlin: 'Kotlin daemon', dart: 'Dart analysis server', flutter: 'Flutter daemon', emulator: 'Emulator' } as const
+
+export function serverLabel(s: ServerRes): string {
+  const d = s.daemon
+  if (!d) return s.name.replace(/\.exe$/i, '')
+  const extra = d.type === 'emulator' ? d.avd : d.version
+  return extra ? `${DAEMON_LABEL[d.type]} ${extra}` : DAEMON_LABEL[d.type]
+}
+
+const IDLE_LIST_MAX = 3
+
 export const TOAST_THROTTLE_MS = 30_000
 export const TOAST_SNOOZE_MIN = 15
 
@@ -248,6 +311,7 @@ export interface NotifyPatch {
   kinds?: Partial<Record<ToastKind, boolean>>
   quiet?: QuietHours
   stuckMinutes?: number
+  idleMinutes?: number
 }
 
 export class Toaster {
@@ -257,6 +321,9 @@ export class Toaster {
   private kinds: Record<ToastKind, boolean> = { ...DEFAULT_TOAST_KINDS }
   private quiet: QuietHours = { ...DEFAULT_QUIET }
   private stuckMinutes = DEFAULT_STUCK_MINUTES
+  private idleMinutesValue = DEFAULT_IDLE_MINUTES
+  private readonly idleSent = new Set<string>()
+  private idlePrimed = false
   private health: ToastHealth | undefined
   private readonly stuckSent = new Set<string>()
   private readonly contextHigh = new Set<string>()
@@ -271,6 +338,9 @@ export class Toaster {
   private readonly limitSent = new Set<string>()
   private limitsPrimed = false
   private readonly presence = new Map<number, boolean>()
+  private readonly workSince = new Map<string, number>()
+  /** Desktop main forwards these to the phone when the owner enabled it and the machine is idle. */
+  onPhone: ((m: PhoneEpisodeMessage) => void) | null = null
   private readonly ops = new Map<string, Promise<boolean>>()
   private readonly file: JsonFile | null
 
@@ -282,7 +352,7 @@ export class Toaster {
   }
 
   async load(): Promise<void> {
-    const raw = (await this.file?.read()) as { toast?: unknown; locale?: unknown; kinds?: unknown; quiet?: unknown; stuckMinutes?: unknown; key?: unknown } | null
+    const raw = (await this.file?.read()) as { toast?: unknown; locale?: unknown; kinds?: unknown; quiet?: unknown; stuckMinutes?: unknown; idleMinutes?: unknown; key?: unknown } | null
     // Toasts still in the Action Center carry the key of the run that showed them.
     if (typeof raw?.key === 'string' && /^[0-9a-f]{32}$/.test(raw.key)) this.keyValue = raw.key
     else this.save()
@@ -291,6 +361,7 @@ export class Toaster {
     Object.assign(this.kinds, sanitizeKinds(raw?.kinds) ?? {})
     this.quiet = sanitizeQuiet(raw?.quiet) ?? this.quiet
     this.stuckMinutes = sanitizeStuck(raw?.stuckMinutes) ?? this.stuckMinutes
+    this.idleMinutesValue = sanitizeIdle(raw?.idleMinutes) ?? this.idleMinutesValue
   }
 
   async refreshHealth(): Promise<ToastHealth | undefined> {
@@ -328,7 +399,7 @@ export class Toaster {
   }
 
   settings(): NotifySettings {
-    const out: NotifySettings = { toast: this.state, kinds: { ...this.kinds }, quiet: { ...this.quiet }, stuckMinutes: this.stuckMinutes }
+    const out: NotifySettings = { toast: this.state, kinds: { ...this.kinds }, quiet: { ...this.quiet }, stuckMinutes: this.stuckMinutes, idleMinutes: this.idleMinutesValue }
     if (this.health) out.health = this.health
     return out
   }
@@ -347,7 +418,53 @@ export class Toaster {
     if (patch.quiet) this.quiet = { ...patch.quiet }
     const stuck = sanitizeStuck(patch.stuckMinutes)
     if (stuck !== null) this.stuckMinutes = stuck
+    const idle = sanitizeIdle(patch.idleMinutes)
+    if (idle !== null) {
+      this.idleMinutesValue = idle
+      if (idle === 0) this.hideKey('idle:all')
+    }
     this.save()
+  }
+
+  get idleMinutes(): number {
+    return this.idleMinutesValue
+  }
+
+  /** The sampler keeps running without a window only for this. */
+  get idleWatch(): boolean {
+    return this.state === 'on' && this.kinds.idle && this.idleMinutesValue > 0
+  }
+
+  /** One grouped toast whenever an item becomes forgotten; an item counts once per idle episode. */
+  observeIdle(report: ResourceReport): void {
+    const items: { key: string; label: string }[] = []
+    for (const s of report.sessions) {
+      if (!s.forgotten) continue
+      const t = this.terms.get(s.sessionId)
+      items.push({ key: `s:${s.sessionId}|${s.idleSinceMs ?? ''}`, label: t ? nameOf(t) : s.sessionId })
+    }
+    for (const s of report.servers) {
+      if (!s.forgotten) continue
+      items.push({ key: `p:${s.pid}:${s.start}|${s.orphan ? 'orphan' : (s.idleSinceMs ?? '')}`, label: serverLabel(s) })
+    }
+    const fresh = items.filter((i) => !this.idleSent.has(i.key))
+    const current = new Set(items.map((i) => i.key))
+    for (const key of [...this.idleSent]) if (!current.has(key)) this.idleSent.delete(key)
+    for (const key of current) this.idleSent.add(key)
+    const primed = this.idlePrimed
+    this.idlePrimed = true
+    if (items.length === 0) return this.hideKey('idle:all')
+    if (!primed || fresh.length === 0 || report.idleMinutes <= 0 || !this.can('idle')) return
+    const text = TEXT[this.localeValue]
+    const names = items.slice(0, IDLE_LIST_MAX).map((i) => i.label)
+    const more = items.length - names.length
+    this.show('idle:all', {
+      title: text.idleTitle(items.length, formatBytes(report.totals.forgottenRamBytes, this.localeValue)),
+      body: text.idleBody(more > 0 ? `${names.join(', ')} +${more}` : names.join(', ')),
+      url: this.linkFor(),
+      open: text.openDashboard,
+      persistent: false,
+    })
   }
 
   setEnabled(on: boolean): void {
@@ -393,7 +510,7 @@ export class Toaster {
   }
 
   hideFor(terminalId: string): void {
-    for (const kind of ['waiting', 'done', 'loop', 'stuck', 'context'] as const) this.hideKey(`${kind}:${terminalId}`)
+    for (const kind of ['waiting', 'done', 'loop', 'stuck', 'context', 'sensitive'] as const) this.hideKey(`${kind}:${terminalId}`)
   }
 
   observe(snap: ToastSnapshot): void {
@@ -404,12 +521,16 @@ export class Toaster {
       this.terms.set(t.id, t)
       const before = this.prev.get(t.id)
       this.prev.set(t.id, t.status)
+      const worked = this.trackWork(t, before, nowMs)
       this.watchStuck(t, before, nowMs)
       this.watchContext(t, before, snap.contextPct?.(t.id) ?? null)
       if (t.status !== 'idle' || t.endedAt) this.hideKey(`done:${t.id}`)
       if (t.status !== 'waiting' || t.endedAt) {
         this.hideKey(`waiting:${t.id}`)
-        if (before === 'working' && t.status === 'idle' && !t.endedAt) this.showDone(t)
+        if (before === 'working' && t.status === 'idle' && !t.endedAt) {
+          this.showDone(t)
+          if (worked !== null && worked >= LONG_JOB_MS) this.phone({ episode: `d:${t.id}|${t.statusSince ?? ''}`, reason: 'done', name: phoneName(t), since: nowMs - worked })
+        }
         continue
       }
       if (this.snoozed(t)) this.hideKey(`waiting:${t.id}`)
@@ -428,6 +549,7 @@ export class Toaster {
     for (const id of [...this.prev.keys()]) {
       if (alive.has(id)) continue
       this.prev.delete(id)
+      this.workSince.delete(id)
       this.terms.delete(id)
       this.lastAt.delete(id)
       this.hideFor(id)
@@ -473,7 +595,50 @@ export class Toaster {
     return this.state === 'on' && this.kinds[kind] && !this.attentive && !inQuietHours(this.quiet, new Date(this.deps.now()))
   }
 
+  /** Sensitive hit (R5): one toast per hit, the watch already drops repeats of a rule + path. */
+  observeSensitive(e: ActivityEvent): void {
+    if (e.kind !== 'sensitive' || !e.terminalId || !e.data?.rule) return
+    const t = this.terms.get(e.terminalId)
+    if (!t || !this.can('sensitive')) return
+    const text = TEXT[this.localeValue]
+    this.show(`sensitive:${t.id}`, {
+      title: text.sensitiveTitle(nameOf(t)),
+      body: text.sensitiveBody(e.data.rule, e.data.tool ?? '?', e.data.path),
+      url: this.linkFor(t.id),
+      open: text.open,
+      persistent: false,
+    })
+  }
+
+  private trackWork(t: TerminalSession, before: TerminalStatus | undefined, nowMs: number): number | null {
+    if (t.status === 'working') {
+      if (before !== 'working' || !this.workSince.has(t.id)) {
+        const since = t.statusSince ? Date.parse(t.statusSince) : NaN
+        // First sight of a session already working: its start is unknown, so it never counts as a long job.
+        this.workSince.set(t.id, before === undefined ? Infinity : Number.isFinite(since) ? since : nowMs)
+      }
+      return null
+    }
+    const since = this.workSince.get(t.id)
+    this.workSince.delete(t.id)
+    return since === undefined || !Number.isFinite(since) ? null : Math.max(0, nowMs - since)
+  }
+
+  private phone(m: Omit<PhoneEpisodeMessage, 'type'>, kind?: ToastKind): void {
+    if (!this.onPhone || (kind && !this.kinds[kind]) || inQuietHours(this.quiet, new Date(this.deps.now()))) return
+    this.onPhone({ type: 'phone', ...m })
+  }
+
+  private phoneWaiting(t: TerminalSession, nowMs: number, tool?: string): void {
+    if (this.snoozed(t)) return
+    const kind = waitReason(t.waitingFor)
+    const reason: PhoneReason = kind === 'question' ? 'question' : kind === 'permission' ? 'permission' : 'waiting'
+    const since = t.statusSince ? Date.parse(t.statusSince) : nowMs
+    this.phone({ episode: `w:${t.id}|${t.statusSince ?? ''}`, reason, name: phoneName(t), ...(tool ? { tool } : {}), since: Number.isFinite(since) ? since : nowMs }, 'waiting')
+  }
+
   private showWaiting(t: TerminalSession, nowMs: number, tool?: string): void {
+    this.phoneWaiting(t, nowMs, tool)
     if (!this.can('waiting') || this.snoozed(t)) return
     if (nowMs - (this.lastAt.get(t.id) ?? -Infinity) < TOAST_THROTTLE_MS) return
     this.lastAt.set(t.id, nowMs)
@@ -491,6 +656,7 @@ export class Toaster {
     }
     if (due <= sent) return
     this.reminded.set(episode, due)
+    this.phoneWaiting(t, nowMs, tool)
     if (!this.can('waiting') || this.snoozed(t)) return
     const text = TEXT[this.localeValue]
     const since = t.statusSince ? Date.parse(t.statusSince) : nowMs
@@ -563,9 +729,12 @@ export class Toaster {
         this.hideKey(`job:${job.id}`)
         continue
       }
-      if (before === undefined || before === 'blocked' || !this.can('job')) continue
-      const text = TEXT[this.localeValue]
+      if (before === undefined || before === 'blocked') continue
       const owner = job.sessionId ? [...this.terms.values()].find((t) => t.claudeSessionId === job.sessionId) : undefined
+      const since = job.stateSince ? Date.parse(job.stateSince) : NaN
+      this.phone({ episode: `j:${job.id}|${job.stateSince ?? ''}`, reason: 'job', name: owner ? phoneName(owner) : 'Claude', ...(Number.isFinite(since) ? { since } : {}) }, 'job')
+      if (!this.can('job')) continue
+      const text = TEXT[this.localeValue]
       this.show(`job:${job.id}`, {
         title: text.jobTitle((job.name ?? job.id).slice(0, 80)),
         body: text.jobBody,
@@ -591,7 +760,9 @@ export class Toaster {
     const key = w.resetsAt ?? 'unknown'
     if (this.limitSent.has(key)) return
     this.limitSent.add(key)
-    if (!primed || !this.can('limit')) return
+    if (!primed) return
+    this.phone({ episode: `l:${key}`, reason: 'limit', name: 'Claude' }, 'limit')
+    if (!this.can('limit')) return
     const text = TEXT[this.localeValue]
     const at = new Date(full).toLocaleTimeString(this.localeValue === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
     this.show('limit:5h', { title: text.limitTitle(Math.round(w.usedPct)), body: text.limitBody(at), url: this.linkFor(), open: text.openDashboard, persistent: false })
@@ -629,6 +800,6 @@ export class Toaster {
   }
 
   private save(): void {
-    this.file?.schedule(() => ({ toast: this.enabled, locale: this.localeValue, kinds: this.kinds, quiet: this.quiet, stuckMinutes: this.stuckMinutes, key: this.keyValue }))
+    this.file?.schedule(() => ({ toast: this.enabled, locale: this.localeValue, kinds: this.kinds, quiet: this.quiet, stuckMinutes: this.stuckMinutes, idleMinutes: this.idleMinutesValue, key: this.keyValue }))
   }
 }

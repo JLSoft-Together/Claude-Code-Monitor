@@ -1,3 +1,4 @@
+import { captureShot, captureStatus, hasCapture } from '../lib/capture'
 import { imageData } from '../lib/imageData'
 import type { SearchQuery } from '../lib/preview'
 import { handoffPaneFor } from '../lib/runUi'
@@ -32,6 +33,19 @@ export function useDeviceHandoff(root: () => string | null) {
     return 'ok'
   }
 
+  /** Capture folder set with "send as file": the PNG goes to `<dir>/shots/` and the agent gets its path; else image bytes. */
+  async function attachShot(png: string, device: string, frame?: number): Promise<HandoffResult> {
+    const pane = target()
+    if (!pane) return 'no-agent'
+    const status = hasCapture ? await captureStatus() : null
+    if (!status?.active || !status.config.asFile) return attachImage(png, `${device.replace(/[^\w.-]+/g, '-') || 'device'}${frame ? `-frame-${frame}` : ''}.png`)
+    const r = await captureShot(png, device, frame)
+    if (!r.ok) return 'failed'
+    attachments.add(pane.key, [{ kind: 'file', name: r.path.split(/[\\/]/).pop() ?? r.path, source: 'pick', path: r.path }])
+    show(pane.key)
+    return 'ok'
+  }
+
   function fillText(text: string): HandoffResult {
     const pane = target()
     if (!pane) return 'no-agent'
@@ -45,5 +59,5 @@ export function useDeviceHandoff(root: () => string | null) {
     if (ui.view !== 'workspace') ui.setView('workspace')
   }
 
-  return { target, attachImage, fillText, findInFiles }
+  return { target, attachImage, attachShot, fillText, findInFiles }
 }

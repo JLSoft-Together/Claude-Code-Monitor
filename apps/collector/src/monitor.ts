@@ -516,6 +516,27 @@ export class Monitor {
     }))
   }
 
+  /** Newest adb / flutter run / installDebug shell call across live sessions (emulator idle rule), epoch ms. */
+  lastDeviceCallAt(): number | null {
+    let last: number | null = null
+    for (const t of this.trackers.values()) {
+      const at = Date.parse(t.lastDeviceCallAt() ?? '')
+      if (Number.isFinite(at) && (last === null || at > last)) last = at
+    }
+    return last
+  }
+
+  /** Newest "port already in use" failure per live session, epoch ms. */
+  portConflicts(): { sessionId: string; port: number; at: number }[] {
+    const out: { sessionId: string; port: number; at: number }[] = []
+    for (const [id, t] of this.trackers) {
+      const c = t.lastPortConflict()
+      const at = Date.parse(c?.at ?? '')
+      if (c && Number.isFinite(at)) out.push({ sessionId: id, port: c.port, at })
+    }
+    return out
+  }
+
   /** Returns how many ended sessions were removed. */
   dismissEnded(terminalId?: string): number {
     let removed = this.codex?.dismissEnded(terminalId) ?? 0

@@ -185,6 +185,14 @@ Running Claude sessions pick this up on their next start.`,
 
 It runs in ${cwd} with a made-up JSON input on stdin and a minimal environment, stopped after 10 seconds. A hook that changes files or calls a service really does so.`,
   hookTestConfirm: 'Run test',
+  resKillTitle: (n: number, name: string) => (n === 1 ? `Stop ${name}?` : `Stop ${n} forgotten processes?`),
+  resKillDetail: (lines: string[], session: boolean) =>
+    `${lines.join('\n')}\n\nEach process is stopped together with everything it started.${session ? ' A stopped agent session loses the reply or tool call it is in the middle of; reopen it later with claude --resume.' : ''}`,
+  resKillConfirm: (n: number): string => (n === 1 ? 'Stop' : 'Stop all'),
+  resKillSession: 'agent session',
+  capturePickTitle: 'Folder for screenshots and recordings',
+  captureMissingTitle: 'Capture folder not available',
+  captureMissingBody: (dir: string) => `${dir} cannot be found (drive removed?). Recordings go to the temp folder and screenshots to the clipboard until it is back.`,
   backupApplyTitle: (n: number) => (n === 1 ? 'Import 1 section and restart Orrery?' : `Import ${n} sections and restart Orrery?`),
   backupApplyDetail: (names: string[]) =>
     `${names.map((n) => `• ${n}`).join('\n')}\n\nThese values replace the ones on this machine. The current setup is saved first in the backups folder of the Orrery data folder. Orrery restarts to finish.`,
@@ -381,6 +389,14 @@ Các phiên Claude đang chạy sẽ nhận thay đổi ở lần khởi động
 
 Lệnh chạy trong ${cwd} với input JSON giả trên stdin và môi trường tối thiểu, dừng sau 10 giây. Hook nào sửa file hay gọi dịch vụ thì vẫn làm thật.`,
   hookTestConfirm: 'Chạy thử',
+  resKillTitle: (n, name) => (n === 1 ? `Tắt ${name}?` : `Tắt ${n} process bị bỏ quên?`),
+  resKillDetail: (lines, session) =>
+    `${lines.join('\n')}\n\nMỗi process bị tắt cùng mọi thứ nó đã khởi chạy.${session ? ' Session agent bị tắt sẽ mất câu trả lời hoặc tool đang chạy dở; mở lại sau bằng claude --resume.' : ''}`,
+  resKillConfirm: (n) => (n === 1 ? 'Tắt' : 'Tắt tất cả'),
+  resKillSession: 'session agent',
+  capturePickTitle: 'Thư mục lưu ảnh chụp và video quay',
+  captureMissingTitle: 'Không dùng được thư mục chụp / quay',
+  captureMissingBody: (dir) => `Không tìm thấy ${dir} (đã rút ổ?). Video quay tạm ghi vào thư mục temp và ảnh chụp đi qua clipboard cho tới khi thư mục có lại.`,
   backupApplyTitle: (n) => `Nhập ${n} mục và khởi động lại Orrery?`,
   backupApplyDetail: (names) =>
     `${names.map((n) => `• ${n}`).join('\n')}\n\nCác giá trị này sẽ thay giá trị trên máy này. Cấu hình hiện tại được lưu trước vào thư mục backups trong thư mục dữ liệu Orrery. Orrery sẽ khởi động lại để hoàn tất.`,

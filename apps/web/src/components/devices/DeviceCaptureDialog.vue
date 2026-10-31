@@ -224,7 +224,7 @@ async function fillA11y(): Promise<void> {
 
 async function attach(): Promise<void> {
   if (!shot.value) return
-  const r = await handoff.attachImage(shot.value.png, `${props.deviceName.replace(/[^\w.-]+/g, '-')}.png`)
+  const r = await handoff.attachShot(shot.value.png, props.deviceName)
   if (r === 'ok') emit('close')
   else say(t(r === 'no-agent' ? 'deviceTools.capture.noAgent' : 'deviceTools.capture.failed'), true)
 }
@@ -336,7 +336,7 @@ async function attachFrames(): Promise<void> {
   if (r.phase !== 'done') return
   if (!r.frames.length) return say(t('deviceRec.noFrames'), true)
   for (const [i, png] of r.frames.entries()) {
-    const res = await handoff.attachImage(png, `${recName()}-frame-${i + 1}.png`)
+    const res = await handoff.attachShot(png, recName(), i + 1)
     if (res !== 'ok') return say(t(res === 'no-agent' ? 'deviceTools.capture.noAgent' : 'deviceTools.capture.failed'), true)
   }
   say(t('deviceRec.attached'))

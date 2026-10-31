@@ -1,7 +1,11 @@
 import path from 'node:path'
 import { TIMELINE_DIR, TimelineRecorder } from '@ccm/habblaud/server/history/timeline'
 import { NameStore } from '@ccm/habblaud/server/model/names'
-import type { MonitorEvent } from '@ccm/shared'
+import { busyCounts, parseDeviceUsed, type BusyMessage, type MonitorEvent } from '@ccm/shared'
+import { defaultProcReader } from './resources/procs'
+import { defaultPortTable } from './resources/ports'
+import { fixturePortTable, fixtureProcReader } from './resources/fixture'
+import { ResourceSampler } from './resources/sampler'
 import { OfficeHub } from './office/hub'
 import { OfficeModel } from './office/model'
 import { useEnglishOffice } from './office/locale'
@@ -27,6 +31,7 @@ import { PromptSearcher } from './prompt-search'
 import { CodexMonitor } from './codex/monitor'
 import { listCodexProcesses } from './codex/processes'
 import { isPidAlive } from './process'
+import { SENSITIVE_FILE, SensitiveWatch } from './sensitive/watch'
 
 async function main(): Promise<void> {
   useEnglishOffice()
@@ -65,6 +70,11 @@ async function main(): Promise<void> {
       codexLimitHistory,
     )
   }
+  const sensitive = new SensitiveWatch({ claudeRoot: config.claudeRoot, rootOf: (cwd) => store.projectRoot(cwd) }, path.join(config.dataDir, SENSITIVE_FILE))
+  await sensitive.load()
+  sensitive.onChange = (settings) => store.setSensitive(settings)
+  store.setSensitive(sensitive.settings)
+  monitor.contextHints.sensitive = sensitive
   const usage = new UsageIndex(path.join(config.claudeRoot, 'projects'), path.join(config.dataDir, 'usage-index.json'), store)
   monitor.onProjectFile = (file) => usage.notify(file)
   const promptSearch = new PromptSearcher(path.join(config.claudeRoot, 'projects'), { openFolder })
@@ -92,12 +102,51 @@ async function main(): Promise<void> {
     toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id) })
   }
   store.subscribe(observe)
+  store.subscribe((message) => {
+    for (const e of message.events) if (e.type === 'activity' && e.payload.kind === 'sensitive') toaster.observeSensitive(e.payload)
+  })
+  // v76 R6: desktop main decides (enabled, machine idle, rate limit); the collector only reports episodes.
+  if (hostPort) toaster.onPhone = (m) => hostPort.postMessage(m)
+  // The desktop app keeps the machine awake while something works (v76 R3); only changes cross the port.
+  let lastBusy = ''
+  const postBusy = () => {
+    if (!hostPort) return
+    const busy: BusyMessage = { type: 'busy', ...busyCounts(store.terminalList(), store.agentList(), store.jobList()) }
+    const key = `${busy.agents}:${busy.jobs}`
+    if (key === lastBusy) return
+    lastBusy = key
+    hostPort.postMessage(busy)
+  }
+  store.subscribe(postBusy)
+  postBusy()
   void toaster.refreshHealth().then(() => store.setNotify(toaster.settings()))
   const toastTimer = setInterval(() => {
     observe()
     toaster.checkLoops(store.toolEvents())
   }, 15_000)
   toastTimer.unref()
+
+  let windows = 0
+  const resFixture = process.env.CCM_RES_FIXTURE || null
+  const portTable = resFixture ? fixturePortTable(resFixture) : defaultPortTable()
+  const sampler = new ResourceSampler({
+    reader: resFixture ? fixtureProcReader(resFixture) : defaultProcReader(),
+    ...(portTable ? { ports: portTable } : {}),
+    terminals: () => store.terminalList(),
+    agents: () => store.agentList(),
+    jobs: () => store.jobList(),
+    idleMinutes: () => toaster.idleMinutes,
+    lastDeviceCallAt: () => monitor.lastDeviceCallAt(),
+    conflicts: () => monitor.portConflicts(),
+    onReport: (report) => {
+      store.setResources(report)
+      toaster.observeIdle(report)
+      // The desktop app checks kill requests against the newest report (pid + creation time).
+      hostPort?.postMessage({ type: 'resources', report })
+    },
+  })
+  const syncSampler = () => sampler.setActive(windows > 0 || toaster.idleWatch)
+  syncSampler()
 
   // Listen first: the dashboard opens at once and sessions arrive as the first pass publishes them.
   store.setLoading(true)
@@ -111,6 +160,10 @@ async function main(): Promise<void> {
     devOriginPorts: config.devOriginPorts,
     appKey: config.appKey,
     store,
+    onClientCount: (count) => {
+      windows = count
+      syncSampler()
+    },
     onClientClose: (clientId) => {
       toaster.dropClient(clientId)
       promptSearch.dropClient(clientId)
@@ -207,8 +260,9 @@ async function main(): Promise<void> {
           toaster.setPresence(ctx.clientId, message.attentive, message.locale)
           break
         case 'notify.update':
-          toaster.update({ toast: message.toast, kinds: message.kinds, quiet: message.quiet, stuckMinutes: message.stuckMinutes })
+          toaster.update({ toast: message.toast, kinds: message.kinds, quiet: message.quiet, stuckMinutes: message.stuckMinutes, idleMinutes: message.idleMinutes })
           store.setNotify(toaster.settings())
+          syncSampler()
           break
         case 'notify.test':
           void toaster.test().then((r) => {
@@ -218,6 +272,12 @@ async function main(): Promise<void> {
           break
         case 'terminal.note':
           monitor.setNote(message.terminalId, message.note)
+          break
+        case 'sensitive.update':
+          sensitive.update({ groups: message.groups, globs: message.globs, ignore: message.ignore })
+          break
+        case 'sensitive.ignore':
+          sensitive.ignore(message.project, message.rule, message.on)
           break
         case 'terminal.snooze': {
           const terminal = store.getTerminal(message.terminalId)
@@ -245,6 +305,7 @@ async function main(): Promise<void> {
     if (closing) return
     closing = true
     clearInterval(toastTimer)
+    sampler.stop()
     monitor.stop()
     officeHub?.stop()
     recorder.stop()
@@ -254,6 +315,7 @@ async function main(): Promise<void> {
       toaster.clear(),
       toaster.flush(),
       snoozes.flush(),
+      sensitive.flush(),
       usageStarted ? usage.stop() : undefined,
       response.save(),
       limitHistory.save(),
@@ -268,7 +330,9 @@ async function main(): Promise<void> {
   // Electron utilityProcess (desktop app) receives no signals on Windows; the host asks over parentPort instead.
   const { parentPort } = process as NodeJS.Process & { parentPort?: { on(event: 'message', fn: (e: { data: unknown }) => void): void } }
   parentPort?.on('message', (e) => {
-    if (e.data === 'shutdown') shutdown()
+    if (e.data === 'shutdown') return shutdown()
+    const used = parseDeviceUsed(e.data)
+    if (used) sampler.deviceUsed(used)
   })
 
   await monitor.start()

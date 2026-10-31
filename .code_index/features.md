@@ -76,6 +76,10 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Nhắc nghỉ giải lao** — toast nhắc sau một khoảng thời gian · `apps/web/src/composables/useBreakReminder.ts`
 - **Link từ toast** — hoãn (snooze), focus session, mở pane · `apps/desktop/src/main.ts`
 - **Cài đặt thông báo** — từng loại, âm thanh, giờ yên lặng · `apps/web/src/components/SettingsMenu.vue`
+- **Process agent + bỏ quên** (v76) — RAM / CPU cây session, shell / dev server, daemon Gradle / Kotlin / Dart, emulator, mồ côi; nhàn rỗi ≥ ngưỡng (Settings, mặc định 60 phút) → toast `idle` gộp · `apps/collector/src/resources/`
+- **Thẻ Tài nguyên + bản đồ cổng** (v76) — Session / Server / Daemon & emulator / Cổng, lọc bỏ quên, Tắt từng dòng / tất cả (confirm native, pane → đóng pane), Mở `localhost:<port>` trong Browser, badge ở header / rail / cạnh Mission Control, báo đụng cổng · `apps/web/src/components/ResourcesDialog.vue`, `apps/collector/src/resources/ports.ts`, `apps/desktop/src/resources/kill.ts`
+- **Canh file / lệnh nhạy cảm** (v76) — Edit / Write file bí mật (.env, keystore, …), file ngoài project, git push -f / reset --hard / clean -fd, rm -rf / del /s / Remove-Item ngoài project, adb uninstall, DROP TABLE → badge card (bấm mở danh sách từng lần) + toast `sensitive`; Mở file / Mở diff / Bỏ qua theo project; Cài đặt nhóm, mẫu riêng, danh sách bỏ qua; chỉ cảnh báo · `apps/collector/src/sensitive/`, `apps/web/src/components/SensitiveSettings.vue`
+- **Báo ra điện thoại** (v76) — ntfy / Discord webhook, mặc định tắt, chỉ khi máy rảnh ≥ N phút; chờ / xin quyền / xong việc ≥ 5 phút / job / hạn mức; 20 tin / giờ, secret bằng safeStorage · `apps/desktop/src/phone/`, `apps/web/src/components/PhoneSettings.vue`
 
 ## Workspace & terminal (lõi)
 
@@ -199,6 +203,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Xem dữ liệu app debug** (v73) — database, SharedPreferences, chỉ đọc có chặn SQL · `apps/desktop/src/devices/appData.ts`
 - **Phân tích dung lượng APK / AAB** (v73) — so với bản trước, top 20 · `apps/desktop/src/apk/analyze.ts`
 - **Emulator (AVD)** (v74) — danh sách AVD (API, ABI, máy), Chạy / Cold boot / Tắt / Xoá dữ liệu (xác nhận), đánh dấu AVD đang chạy · `apps/desktop/src/devices/emulators.ts`, `apps/web/src/components/devices/DeviceEmulators.vue`
+- **Thư mục chụp / quay** (v76) — video quay giữ trong `<dir>/recordings/`, ảnh chụp / khung hình gửi agent dạng file `<dir>/shots/…png` (điền `@đường dẫn`, không qua clipboard), dọn 7 ngày / 2 GB chỉ file Orrery đặt tên, ổ mất → về temp + báo 1 lần · `apps/desktop/src/capture/folder.ts`, `apps/web/src/components/CaptureSettings.vue`
 
 ## Preview (XML layout / drawable / Flutter / web)
 
@@ -242,6 +247,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Deep link `agent-monitor://`** — mở session, focus, snooze; `open` không hỏi, giới hạn 10 lượt / phút · `apps/desktop/src/openLink.ts`
 - **MCP server `orrery`** (v49) — tool `open_session`, token theo pane · `apps/desktop/src/pty/mcp.ts`
 - **Khởi động cùng Windows** (login item) — `ccm:login-item` · `apps/desktop/src/main.ts`
+- **Giữ máy thức khi agent chạy** (v76) — chặn ngủ (không chặn tắt màn hình) khi có session / subagent / job nền đang chạy + 2 phút; Tắt / Khi agent chạy / Chỉ khi cắm sạc; huy hiệu cốc cà phê ở header · `apps/desktop/src/power/awake.ts`, `apps/web/src/components/KeepAwakeBadge.vue`
 - **Status line bridge** — cài script, sao lưu `settings.json` trước khi ghi · `apps/desktop/src/statusline.ts`
 - **Chép / lưu log chẩn đoán** — gom log đã che bí mật · `apps/desktop/src/main.ts` (`logReport`)
 - **Nhật ký đã che bí mật** — `apps/desktop/src/log-mask.ts`

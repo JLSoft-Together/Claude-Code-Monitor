@@ -8,9 +8,17 @@ export interface WinProc {
   start: bigint | null
 }
 
+export interface ProcUsage {
+  privateBytes: number | null
+  workingSet: number | null
+  cpuMs: number | null
+}
+
 export interface WinProcApi {
   list(): WinProc[]
   commandLine(pid: number): string | null
+  /** Null when the process can't be opened (elevated, protected, gone). */
+  usage(pid: number): ProcUsage | null
 }
 
 const TH32CS_SNAPPROCESS = 0x2
@@ -52,6 +60,21 @@ export function bindWinProcs(koffi: Koffi): WinProcApi {
   const out = koffi.out(koffi.pointer(filetime))
   const times = k32.func('__stdcall', 'GetProcessTimes', 'bool', [handle, out, out, out, out])
   const query = ntdll.func('__stdcall', 'NtQueryInformationProcess', 'int32', [handle, 'uint32', koffi.out(koffi.pointer('uint8')), 'uint32', koffi.out(koffi.pointer('uint32'))])
+  const counters = koffi.struct({
+    cb: 'uint32',
+    PageFaultCount: 'uint32',
+    PeakWorkingSetSize: 'size_t',
+    WorkingSetSize: 'size_t',
+    QuotaPeakPagedPoolUsage: 'size_t',
+    QuotaPagedPoolUsage: 'size_t',
+    QuotaPeakNonPagedPoolUsage: 'size_t',
+    QuotaNonPagedPoolUsage: 'size_t',
+    PagefileUsage: 'size_t',
+    PeakPagefileUsage: 'size_t',
+    PrivateUsage: 'size_t',
+  })
+  const memInfo = k32.func('__stdcall', 'K32GetProcessMemoryInfo', 'bool', [handle, koffi.inout(koffi.pointer(counters)), 'uint32'])
+  const countersSize = koffi.sizeof(counters)
   const entrySize = koffi.sizeof(entry)
   const invalid = (h: unknown): boolean => !h || Number(h) === -1
 
@@ -103,6 +126,18 @@ export function bindWinProcs(koffi: Koffi): WinProcApi {
         return buf.toString('utf16le', UNICODE_STRING_SIZE, UNICODE_STRING_SIZE + len)
       })
     },
+    usage(pid) {
+      return withProcess(pid, (h) => {
+        const kernel = { lo: 0, hi: 0 }
+        const user = { lo: 0, hi: 0 }
+        const ticks = (f: { lo: number; hi: number }) => f.hi * 2 ** 32 + f.lo
+        const cpuMs = times(h, {}, {}, kernel, user) ? (ticks(kernel) + ticks(user)) / 10_000 : null
+        const m: Record<string, unknown> = { cb: countersSize }
+        const mem = memInfo(h, m, countersSize)
+        const num = (v: unknown) => (mem && (typeof v === 'number' || typeof v === 'bigint') ? Number(v) : null)
+        return { privateBytes: num(m.PrivateUsage), workingSet: num(m.WorkingSetSize), cpuMs }
+      })
+    },
   }
 }
 
@@ -133,6 +168,14 @@ export function nativeProcessTable(): WinProc[] | null {
   if (!procs) return null
   try {
     return procs.list()
+  } catch {
+    return null
+  }
+}
+
+export function nativeUsage(pid: number): ProcUsage | null {
+  try {
+    return winProcs()?.usage(pid) ?? null
   } catch {
     return null
   }

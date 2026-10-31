@@ -59,7 +59,7 @@ export function mp4Complete(read: (pos: number, len: number) => Uint8Array, size
   return moov && pos === size
 }
 
-function fileComplete(file: string): boolean {
+export function fileComplete(file: string): boolean {
   let fd: number | null = null
   try {
     const size = statSync(file).size
@@ -78,7 +78,10 @@ function fileComplete(file: string): boolean {
 
 export interface RecorderDeps {
   withDevice: <T>(id: string, fn: (cmds: AdbCommands) => Promise<T>) => Promise<T | DevFailure>
-  tmpDir: string
+  /** Read per recording: the capture folder can change or vanish between two. */
+  tmpDir: string | (() => string)
+  /** True = the file sits in the owner's capture folder: dropping its token keeps it (retention sweeps it later). */
+  keepFiles?: (file: string) => boolean
   kill: (child: ChildProcess) => void
   now?: () => number
   timing?: Partial<typeof TIMING>
@@ -206,10 +209,11 @@ export class ScreenRecorder {
   private async finish(id: string, s: Session): Promise<DevRecResult> {
     this.halt(s)
     const durationMs = Math.min(this.now() - s.startedAt, REC_LIMIT_S * 1000)
-    const local = path.join(this.deps.tmpDir, `${remoteName(s.ts)}.mp4`)
+    const dir = typeof this.deps.tmpDir === 'function' ? this.deps.tmpDir() : this.deps.tmpDir
+    const local = path.join(dir, `${remoteName(s.ts)}.mp4`)
     try {
       await this.finishProcess(id, s)
-      await fs.mkdir(this.deps.tmpDir, { recursive: true })
+      await fs.mkdir(dir, { recursive: true })
       const pulled = await s.cmds.pull(id, remotePath(s.ts), local, this.t.pullMs)
       if (!pulled) return fail('adb-missing')
       if (pulled.timedOut) return fail('timeout')
@@ -220,7 +224,7 @@ export class ScreenRecorder {
       const bytes = (await fs.stat(local)).size
       const token = randomBytes(16).toString('hex')
       this.files.set(token, local)
-      while (this.files.size > TOKENS_MAX) this.discard(this.files.keys().next().value!)
+      while (this.files.size > TOKENS_MAX) this.release(this.files.keys().next().value!)
       return { ok: true, token, bytes, durationMs, frames: pickEven(s.frames), framesFailed: s.framesFailed }
     } catch (e) {
       await fs.rm(local, { force: true }).catch(() => undefined)
@@ -274,6 +278,18 @@ export class ScreenRecorder {
     return true
   }
 
+  /** Token no longer reachable (evicted / quit): the temp file goes, one in the capture folder stays. */
+  private release(token: string): void {
+    const file = this.files.get(token)
+    if (file && this.deps.keepFiles?.(file)) this.files.delete(token)
+    else this.discard(token)
+  }
+
+  /** Files behind live tokens; retention never deletes them. */
+  heldFiles(): string[] {
+    return [...this.files.values()]
+  }
+
   /** App quit: kill recorders, ask the devices to drop their files (not awaited), delete temp files. */
   dispose(): void {
     for (const [id, s] of this.sessions) {
@@ -286,6 +302,6 @@ export class ScreenRecorder {
         .catch(() => undefined)
     }
     this.sessions.clear()
-    for (const token of [...this.files.keys()]) this.discard(token)
+    for (const token of [...this.files.keys()]) this.release(token)
   }
 }

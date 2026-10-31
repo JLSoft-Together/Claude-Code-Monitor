@@ -53,6 +53,9 @@ import backupV74 from './backup-v74'
 import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
+import resourcesV76 from './resources-v76'
+import captureV76 from './capture-v76'
+import sensitiveV76 from './sensitive-v76'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
@@ -101,6 +104,9 @@ const vi: typeof en = {
   ...devicesV75.vi,
   ...devtoolsV75.vi,
   ...promptSearchV75.vi,
+  ...resourcesV76.vi,
+  ...captureV76.vi,
+  ...sensitiveV76.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
@@ -870,6 +876,8 @@ const vi: typeof en = {
       stuck: 'Session không có output (ngưỡng bên dưới)',
       context: 'Context đạt 95%',
       limit: 'Giới hạn 5h sắp hết',
+      idle: 'Session, server và daemon bị bỏ quên (thời gian ở dưới)',
+      sensitive: 'Agent đụng vào file nhạy cảm hoặc chạy lệnh rủi ro',
     },
     quiet: 'Giờ yên lặng',
     quietHint: 'Trong khung giờ này không báo hiệu hệ thống, thông báo browser hay âm báo. Số đếm trên tab và taskbar vẫn cập nhật.',

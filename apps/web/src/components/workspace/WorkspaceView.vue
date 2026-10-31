@@ -71,6 +71,8 @@ import WorkspaceSidebar from './WorkspaceSidebar.vue'
 import SideResizer from './SideResizer.vue'
 import RailColumn from './rail/RailColumn.vue'
 import MissionControl from './MissionControl.vue'
+import ResourcesButton from '../ResourcesButton.vue'
+import { useResourcesStore } from '../../stores/resources'
 import AttentionPopover from './AttentionPopover.vue'
 import TabRenameInput from './TabRenameInput.vue'
 import UndoToast, { type UndoInfo } from './UndoToast.vue'
@@ -235,6 +237,7 @@ const otherNews = computed(() => {
   return latest ? t('peerWs.projectNews', { text: info.peerView(latest).label }) : null
 })
 
+const resources = useResourcesStore()
 const missionOpen = ref(false)
 const missionOpener = ref<HTMLElement | null>(null)
 let missionReturn: HTMLElement | null = null
@@ -1916,6 +1919,7 @@ onBeforeUnmount(() => {
           </span>
         </Transition>
       </button>
+      <ResourcesButton v-if="activeCluster && resources.forgotten" class="shrink-0" />
       <div
         ref="tabRow"
         class="flex min-w-0 flex-1 items-center gap-1 rounded-inner outline-2 -outline-offset-2 transition-[background-color,outline-color] duration-(--ccm-dur-fast)"

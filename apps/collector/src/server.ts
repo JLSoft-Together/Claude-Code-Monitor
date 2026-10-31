@@ -10,6 +10,11 @@ import {
   PROMPT_SEARCH_QUERY_MAX,
   sanitizeKinds,
   sanitizeQuiet,
+  sanitizeIdle,
+  sanitizeGlobs,
+  sanitizeGroups,
+  sanitizeIgnore,
+  isSensitiveRule,
   sanitizeStuck,
   type ClientMessage,
   type FocusWindowResult,
@@ -216,6 +221,8 @@ export function startServer(options: {
   timelineDir?: string
   onClientMessage?: (message: ClientMessage, ctx: ClientContext) => void
   onClientClose?: (clientId: number) => void
+  /** Open sockets after a connect / close (drives the resource sampler). */
+  onClientCount?: (count: number) => void
   onFocusRun?: (terminalId: string, key: string | null) => Promise<FocusWindowResult | null>
   onSnoozeLink?: (terminalId: string, key: string | null, minutes: number) => boolean
 }): Promise<Server> {
@@ -312,6 +319,7 @@ export function startServer(options: {
     // Pending events go out before this socket joins, so its first message is the snapshot that already includes them.
     store.flush()
     clients.add(ws)
+    options.onClientCount?.(clients.size)
     alive.set(ws, true)
     ws.on('pong', () => alive.set(ws, true))
     send(ws, store.snapshotMessage())
@@ -320,7 +328,7 @@ export function startServer(options: {
       try {
         const msg: unknown = JSON.parse(String(data))
         if (typeof msg !== 'object' || msg === null) return
-        const m = msg as { type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown; days?: unknown; project?: unknown; searchId?: unknown; query?: unknown; sessionId?: unknown }
+        const m = msg as { groups?: unknown; globs?: unknown; ignore?: unknown; rule?: unknown; type?: unknown; attentive?: unknown; locale?: unknown; toast?: unknown; kinds?: unknown; quiet?: unknown; minutes?: unknown; stuckMinutes?: unknown; idleMinutes?: unknown; note?: unknown; dirs?: unknown; terminalId?: unknown; alias?: unknown; dir?: unknown; mode?: unknown; terminalApp?: unknown; label?: unknown; app?: unknown; requestId?: unknown; jobId?: unknown; since?: unknown; on?: unknown; days?: unknown; project?: unknown; searchId?: unknown; query?: unknown; sessionId?: unknown }
         if (m.type === 'resync') {
           send(ws, store.snapshotMessage())
         } else if (m.type === 'office.subscribe' && typeof m.on === 'boolean') {
@@ -383,7 +391,10 @@ export function startServer(options: {
           const kinds = m.kinds === undefined ? undefined : sanitizeKinds(m.kinds)
           const quiet = m.quiet === undefined ? undefined : sanitizeQuiet(m.quiet)
           const stuckMinutes = m.stuckMinutes === undefined ? undefined : sanitizeStuck(m.stuckMinutes)
-          if (kinds !== null && quiet !== null && stuckMinutes !== null) options.onClientMessage?.({ type: 'notify.update', toast: m.toast, kinds, quiet, stuckMinutes }, ctx())
+          const idleMinutes = m.idleMinutes === undefined ? undefined : sanitizeIdle(m.idleMinutes)
+          if (kinds !== null && quiet !== null && stuckMinutes !== null && idleMinutes !== null) {
+            options.onClientMessage?.({ type: 'notify.update', toast: m.toast, kinds, quiet, stuckMinutes, idleMinutes }, ctx())
+          }
         } else if (m.type === 'notify.test') {
           options.onClientMessage?.({ type: 'notify.test' }, ctx())
         } else if (m.type === 'terminal.note' && typeof m.terminalId === 'string' && (m.note === null || (typeof m.note === 'string' && m.note.length <= 1000))) {
@@ -394,6 +405,13 @@ export function startServer(options: {
           (m.minutes === null || (typeof m.minutes === 'number' && Number.isFinite(m.minutes)))
         ) {
           options.onClientMessage?.({ type: 'terminal.snooze', terminalId: m.terminalId, minutes: m.minutes }, ctx())
+        } else if (m.type === 'sensitive.update') {
+          const groups = m.groups === undefined ? undefined : sanitizeGroups(m.groups)
+          const globs = m.globs === undefined ? undefined : sanitizeGlobs(m.globs)
+          const ignore = m.ignore === undefined ? undefined : sanitizeIgnore(m.ignore)
+          if (groups !== null && globs !== null && ignore !== null) options.onClientMessage?.({ type: 'sensitive.update', groups, globs, ignore }, ctx())
+        } else if (m.type === 'sensitive.ignore' && typeof m.project === 'string' && m.project.length <= 1024 && isSensitiveRule(m.rule) && typeof m.on === 'boolean') {
+          options.onClientMessage?.({ type: 'sensitive.ignore', project: m.project, rule: m.rule, on: m.on }, ctx())
         } else if (m.type === 'favorite.open' && typeof m.dir === 'string' && (m.mode === 'new' || m.mode === 'continue')) {
           const terminalApp = m.terminalApp === 'terminal' || m.terminalApp === 'iterm' ? m.terminalApp : undefined
           options.onClientMessage?.({ type: 'favorite.open', dir: m.dir, mode: m.mode, ...(terminalApp && { terminalApp }) }, ctx())
@@ -405,8 +423,12 @@ export function startServer(options: {
     ws.on('close', () => {
       clients.delete(ws)
       options.onClientClose?.(clientId)
+      options.onClientCount?.(clients.size)
     })
-    ws.on('error', () => clients.delete(ws))
+    ws.on('error', () => {
+      clients.delete(ws)
+      options.onClientCount?.(clients.size)
+    })
   })
 
   store.subscribe((message) => {

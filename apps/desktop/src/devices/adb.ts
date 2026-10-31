@@ -10,6 +10,8 @@ export interface AdbCommandsOpts {
   cwd: string
   adb: () => Promise<string | null>
   timing?: Partial<{ connectMs: number; pairMs: number; cmdMs: number; captureMs: number; dumpMs: number }>
+  /** Called with the serial before every `adb -s <serial> …` (resource idle rule for emulators, v76). */
+  onUse?: (serial: string) => void
 }
 
 export interface AdbCommands {
@@ -111,6 +113,7 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
   const t = { ...TIMING, ...opts.timing }
 
   const run = async (args: string[], timeoutMs: number): Promise<Collected | null> => {
+    if (args[0] === '-s' && args[1]) opts.onUse?.(args[1])
     const adb = await opts.adb()
     return adb ? collect(opts.spawn, adb, args, opts.cwd, { timeoutMs, kill: killAdbClient }) : null
   }
@@ -152,6 +155,7 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
     async screencap(id) {
       const adb = await opts.adb()
       if (!adb) return fail('adb-missing')
+      opts.onUse?.(id)
       const r = await collectBytes(opts.spawn, adb, ['-s', id, 'exec-out', 'screencap', '-p'], opts.cwd, t.captureMs, CAPTURE_MAX)
       if (r.timedOut) return fail('timeout')
       const start = findPngStart(r.out)
@@ -166,13 +170,16 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
     shell: (id, args, timeoutMs) => run(['-s', id, 'shell', ...args], timeoutMs ?? t.cmdMs),
     async execOut(id, args, timeoutMs, max) {
       const adb = await opts.adb()
+      opts.onUse?.(id)
       return adb ? collectBytes(opts.spawn, adb, ['-s', id, 'exec-out', ...args], opts.cwd, timeoutMs, max) : null
     },
     async shellInput(id, args, input, timeoutMs) {
       const adb = await opts.adb()
+      opts.onUse?.(id)
       return adb ? collectBytes(opts.spawn, adb, ['-s', id, 'shell', ...args], opts.cwd, timeoutMs, 64 * 1024, input) : null
     },
     async spawnShell(id, args) {
+      opts.onUse?.(id)
       const adb = await opts.adb()
       if (!adb) return null
       try {
@@ -182,6 +189,7 @@ export function createAdbCommands(opts: AdbCommandsOpts): AdbCommands {
       }
     },
     async spawnAdb(id, args, stdin) {
+      opts.onUse?.(id)
       const adb = await opts.adb()
       if (!adb) return null
       try {

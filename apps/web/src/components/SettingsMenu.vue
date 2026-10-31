@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DEFAULT_QUIET, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
+import { DEFAULT_IDLE_MINUTES, DEFAULT_QUIET, IDLE_CHOICES, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
 import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Sparkles, Stethoscope, X } from 'lucide-vue-next'
 import { AUTO_SAVE_DELAYS, AUTO_SAVE_MODES } from '../lib/autoSave'
 import { APP_VERSION } from '../lib/changelog'
@@ -21,6 +21,12 @@ import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
 import LottieArt from './LottieArt.vue'
 import RunSdkSettings from './RunSdkSettings.vue'
+import AwakeSettings from './AwakeSettings.vue'
+import CaptureSettings from './CaptureSettings.vue'
+import { hasAwake, hasCapture } from '../lib/capture'
+import PhoneSettings from './PhoneSettings.vue'
+import SensitiveSettings from './SensitiveSettings.vue'
+import { hasPhone } from '../lib/phone'
 import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
 import { hasGitHub } from '../lib/github'
 import { hasUpdater } from '../lib/update'
@@ -117,6 +123,10 @@ const autoSaveModes = computed(() => AUTO_SAVE_MODES.map((mode) => ({ value: mod
 const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms, label: t('settings.seconds', { n: ms / 1000 }) })))
 const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
 const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
+const idleOptions = computed(() =>
+  IDLE_CHOICES.map((m) => ({ value: m as number, label: !m ? t('settings.off') : m % 60 ? t('settings.minutes', { n: m }) : t('resources.hours', { n: m / 60 }) })),
+)
+const idleMinutes = computed(() => extras.notify?.idleMinutes ?? DEFAULT_IDLE_MINUTES)
 
 const events = computed(() => [
   { key: 'notifyWaiting', label: t('settings.notifyWaiting') },
@@ -414,6 +424,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             </div>
           </section>
 
+          <AwakeSettings v-if="hasAwake && ui.settingsOpen" />
+
           <section v-if="isMac" aria-labelledby="set-launch" class="mt-6">
             <h3 id="set-launch" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.launch') }}</h3>
             <div class="ccm-group">
@@ -509,7 +521,24 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 </label>
               </div>
             </div>
+            <div v-if="extras.notify" class="ccm-group mt-4">
+              <div class="px-3 py-2">
+                <p class="text-sm">{{ t('resources.idleSetting') }}</p>
+                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('resources.idleSettingHint') }}</p>
+                <SegmentedControl
+                  :model-value="idleMinutes"
+                  :options="idleOptions"
+                  :label="t('resources.idleSetting')"
+                  :disabled="offline"
+                  fill
+                  class="mt-2 w-full"
+                  @update:model-value="(m: number) => connection.updateNotify({ idleMinutes: m })"
+                />
+              </div>
+            </div>
           </section>
+          <PhoneSettings v-if="hasPhone && ui.settingsOpen" :open="ui.settingsOpen" />
+          <SensitiveSettings v-if="ui.settingsOpen" />
 
           <section aria-labelledby="set-reminders" class="mt-6">
             <h3 id="set-reminders" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.reminders') }}</h3>
@@ -584,6 +613,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           </section>
 
           <RunSdkSettings v-if="hasRun && ui.settingsOpen" :open="ui.settingsOpen" />
+
+          <CaptureSettings v-if="hasCapture && ui.settingsOpen" :open="ui.settingsOpen" />
 
           <GitHubAccountsSettings v-if="hasGitHub && ui.settingsOpen" :open="ui.settingsOpen" />
 

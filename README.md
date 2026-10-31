@@ -17,6 +17,7 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 - **Chỉ quan sát**: đọc file local của Claude Code / Codex (session, transcript, hook). Không gọi API, không gửi prompt, không chạy LLM khác: **không tốn thêm token**. Ngoại lệ duy nhất do bạn bấm: **Compact…** gửi một prompt bàn giao vào pane agent bạn chọn.
 - **Chỉ local**: collector bind `127.0.0.1` và từ chối mọi request không mang khoá của app (trình duyệt mở `127.0.0.1:4317` nhận `403`).
 - Không đưa nội dung prompt, tham số tool, env hay secret ra giao diện. Ngoại lệ do bạn bấm: **Tìm session cũ** hiện đoạn prompt khớp (đã che secret, không lưu lại). Token chỉ hiện khi có số liệu thật.
+- **Không gửi gì ra ngoài**, trừ một ngoại lệ bạn tự bật: **Báo ra điện thoại** (Cài đặt › Điện thoại, mặc định tắt) gửi tới ntfy / Discord webhook của bạn chỉ tên app, alias hoặc tên thư mục session, lý do và thời gian chờ, khi máy rảnh. URL / topic cất bằng keychain của hệ thống.
 
 ## Tính năng chính
 

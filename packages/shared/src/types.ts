@@ -1,5 +1,7 @@
 import type { OfficeSnapshot } from '@ccm/habblaud/shared/types'
 import type { PromptSearchDays, PromptSearchDone, PromptSearchProgress } from './promptSearch'
+import type { ResourceReport } from './resources'
+import type { SensitiveSettings } from './sensitive'
 
 export type TerminalStatus = 'working' | 'waiting' | 'idle' | 'stale' | 'error' | 'unknown'
 
@@ -160,6 +162,8 @@ export type ActivityKind =
   | 'job.stopped'
   | 'job.stopFailed'
   | 'peer.message'
+  /** v76 R5: a tool call touched a sensitive file or ran a risky command (warning only). */
+  | 'sensitive'
 
 export interface ActivityEvent {
   id: string
@@ -181,6 +185,11 @@ export interface ActivityEvent {
     postTokens?: number
     error?: string
     jobId?: string
+    /** `sensitive`: rule id, shortened path (project-relative or ~/…), and the absolute file for Open file. */
+    rule?: string
+    path?: string
+    file?: string
+    project?: string
   }
 }
 
@@ -222,10 +231,13 @@ export interface MonitorSnapshot {
   /** True while the collector's first pass over live sessions runs; `sessions.loading` reports the end. */
   loading?: boolean
   peerLinks?: PeerLink[]
+  /** Latest process sample (v76); absent until the sampler ran while a window was connected. */
+  resources?: ResourceReport
+  sensitive?: SensitiveSettings
 }
 
 export type ToastState = 'on' | 'off' | 'unsupported'
-export type ToastKind = 'waiting' | 'done' | 'job' | 'loop' | 'limit' | 'context' | 'stuck'
+export type ToastKind = 'waiting' | 'done' | 'job' | 'loop' | 'limit' | 'context' | 'stuck' | 'idle' | 'sensitive'
 export type ToastHealth = 'ok' | 'globalOff' | 'appOff' | 'unknown'
 export type ToastTestResult = 'ok' | 'failed' | 'unsupported'
 
@@ -240,6 +252,8 @@ export interface NotifySettings {
   kinds: Record<ToastKind, boolean>
   quiet: QuietHours
   stuckMinutes: number
+  /** Sessions / servers / daemons idle this long count as forgotten; 0 = off. */
+  idleMinutes: number
   health?: ToastHealth
 }
 
@@ -503,6 +517,9 @@ export type MonitorEvent =
   | { type: 'notify.settings'; payload: NotifySettings }
   | { type: 'snooze.updated'; payload: { snoozes: Record<string, SnoozeEntry> } }
   | { type: 'notify.testResult'; payload: { result: ToastTestResult; health?: ToastHealth } }
+  /** Process sample every 30 s while a window is connected or idle alerts are on (v76). */
+  | { type: 'resources'; payload: ResourceReport }
+  | { type: 'sensitive.settings'; payload: SensitiveSettings }
 
 export interface ServerMessage {
   seq: number
@@ -547,7 +564,10 @@ export type ClientMessage =
   | { type: 'job.dismiss'; jobId?: string }
   | { type: 'job.stop'; jobId: string }
   | { type: 'client.presence'; attentive: boolean; locale?: 'en' | 'vi' }
-  | { type: 'notify.update'; toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number }
+  | { type: 'notify.update'; toast?: boolean; kinds?: Partial<Record<ToastKind, boolean>>; quiet?: QuietHours; stuckMinutes?: number; idleMinutes?: number }
   | { type: 'notify.test' }
   | { type: 'terminal.note'; terminalId: string; note: string | null }
   | { type: 'terminal.snooze'; terminalId: string; minutes: number | null }
+  | { type: 'sensitive.update'; groups?: Partial<SensitiveSettings['groups']>; globs?: string[]; ignore?: Record<string, string[]> }
+  /** Ignore (or stop ignoring) one rule for one project folder. */
+  | { type: 'sensitive.ignore'; project: string; rule: string; on: boolean }

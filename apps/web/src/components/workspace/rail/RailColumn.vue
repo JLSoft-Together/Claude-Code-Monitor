@@ -9,6 +9,7 @@ import { avatarInitials } from '../../../lib/rail/avatars'
 import type { RailCluster } from '../../../lib/rail/railModel'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import WorkspaceSidebar from '../WorkspaceSidebar.vue'
+import ResourcesButton from '../../ResourcesButton.vue'
 
 // Sidebar listeners (scripts, run, close, …) arrive as attrs and go to the flyout's rail.
 defineOptions({ inheritAttrs: false })
@@ -113,6 +114,7 @@ function label(c: RailCluster): string {
       </span>
     </button>
     </div>
+    <ResourcesButton variant="rail" />
 
     <Teleport to="body">
       <Transition name="ccm-menu" @before-leave="retireOverlay">

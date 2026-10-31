@@ -1,9 +1,11 @@
 import type { ActivityEvent, NotifySettings, QuietHours, SnoozeEntry, TerminalSession, ToastKind } from './types'
 
-export const TOAST_KINDS: readonly ToastKind[] = ['waiting', 'done', 'job', 'loop', 'stuck', 'context', 'limit']
-export const DEFAULT_TOAST_KINDS: Record<ToastKind, boolean> = { waiting: true, done: false, job: true, loop: true, stuck: true, context: true, limit: true }
+export const TOAST_KINDS: readonly ToastKind[] = ['waiting', 'done', 'job', 'loop', 'stuck', 'context', 'limit', 'idle', 'sensitive']
+export const DEFAULT_TOAST_KINDS: Record<ToastKind, boolean> = { waiting: true, done: false, job: true, loop: true, stuck: true, context: true, limit: true, idle: true, sensitive: true }
 export const STUCK_CHOICES = [0, 5, 10, 15, 30] as const
 export const DEFAULT_STUCK_MINUTES = 10
+export const IDLE_CHOICES = [0, 15, 30, 60, 120, 240] as const
+export const DEFAULT_IDLE_MINUTES = 60
 export const DEFAULT_QUIET: QuietHours = { enabled: false, from: '22:00', to: '08:00' }
 
 export const LONG_WAIT_MS = 5 * 60_000
@@ -47,11 +49,15 @@ export function inQuietHours(quiet: QuietHours | null | undefined, at: Date): bo
 }
 
 export function defaultNotifySettings(toast: NotifySettings['toast']): NotifySettings {
-  return { toast, kinds: { ...DEFAULT_TOAST_KINDS }, quiet: { ...DEFAULT_QUIET }, stuckMinutes: DEFAULT_STUCK_MINUTES }
+  return { toast, kinds: { ...DEFAULT_TOAST_KINDS }, quiet: { ...DEFAULT_QUIET }, stuckMinutes: DEFAULT_STUCK_MINUTES, idleMinutes: DEFAULT_IDLE_MINUTES }
 }
 
 export function sanitizeStuck(value: unknown): number | null {
   return typeof value === 'number' && (STUCK_CHOICES as readonly number[]).includes(value) ? value : null
+}
+
+export function sanitizeIdle(value: unknown): number | null {
+  return typeof value === 'number' && (IDLE_CHOICES as readonly number[]).includes(value) ? value : null
 }
 
 export function quietFor(terminal: TerminalSession, nowMs: number, thresholdMin: number): number | null {
