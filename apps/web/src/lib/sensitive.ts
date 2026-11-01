@@ -1,4 +1,5 @@
-import { CUSTOM_PREFIX, COMMAND_RULES, OUTSIDE_RULE } from '@ccm/shared'
+import { CUSTOM_PREFIX, COMMAND_RULES, OUTSIDE_RULE, type DenyRequest, type DenyResult } from '@ccm/shared'
+import { desktop } from './desktop'
 
 /** i18n key for built-in command / outside rules; file globs are shown as they are. */
 export function ruleKey(rule: string | undefined): string | null {
@@ -23,3 +24,14 @@ export function relInside(file: string, root: string): string | null {
 }
 
 export const folderName = (dir: string): string => dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || dir
+
+interface DenyBridge {
+  sensitiveDeny?: (req: DenyRequest) => Promise<DenyResult>
+}
+const denyBridge = desktop as unknown as DenyBridge | undefined
+
+export const hasDeny = typeof denyBridge?.sensitiveDeny === 'function'
+
+/** Desktop derives the rules again from `rule` + `tool`, asks natively with the diff, then writes. */
+export const sensitiveDeny = (req: DenyRequest): Promise<DenyResult> =>
+  denyBridge?.sensitiveDeny ? denyBridge.sensitiveDeny({ ...req }).catch(() => ({ ok: false, error: 'failed' }) as DenyResult) : Promise.resolve({ ok: false, error: 'unavailable' })

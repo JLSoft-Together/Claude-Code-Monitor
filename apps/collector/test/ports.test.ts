@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseKillTargets, type ResPort } from '@ccm/shared'
 import { parseFixture } from '../src/resources/fixture'
-import { TCP_ESTABLISHED, TCP_LISTEN, parseLsof, parseTcpTable4, parseTcpTable6, portConflictIn, portsByPid } from '../src/resources/ports'
+import { TCP_ESTABLISHED, TCP_LISTEN, netTcpPortTable, parseLsof, parseNetTcp, parseTcpTable4, parseTcpTable6, portConflictIn, portsByPid } from '../src/resources/ports'
 import { outsidePorts, portConflicts } from '../src/resources/sampler'
 import { extractSignals, TranscriptState } from '../src/transcript'
 
@@ -204,5 +204,41 @@ describe('CCM_RES_FIXTURE', () => {
     const f = parseFixture(JSON.stringify({ procs: [{ pid: 10, ppid: 1, name: 'node.exe', start: '5', ram: 1024, cpuMs: 0, cmd: 'node vite' }, { pid: 'x' }], ports: { '10': [{ port: 5173, address: '127.0.0.1', established: 0 }, { port: 'bad' }] } }))
     expect(f.procs).toEqual([{ pid: 10, ppid: 1, name: 'node.exe', start: '5', startMs: 5, ramBytes: 1024, cpuMs: 0, cmd: 'node vite' }])
     expect(f.ports.get(10)).toEqual([{ port: 5173, address: '127.0.0.1', established: 0 }])
+  })
+})
+
+describe('Get-NetTCPConnection fallback', () => {
+  it('parses listen / established rows, numeric or named state, drops junk', () => {
+    const json = JSON.stringify([
+      { a: '127.0.0.1', p: 5173, s: 2, o: 900 },
+      { a: '::', p: 5173, s: 'Listen', o: 900 },
+      { a: '127.0.0.1', p: 5173, s: 5, o: 1200 },
+      { a: 'fe80::1%12', p: 8080, s: 2, o: 77 },
+      { a: '0.0.0.0', p: 135, s: 11, o: 4 },
+      { a: '0.0.0.0', p: 0, s: 2, o: 5 },
+      { a: '0.0.0.0', p: 'x', s: 2, o: 5 },
+      null,
+    ])
+    const rows = parseNetTcp(json)
+    expect(rows).toEqual([
+      { pid: 900, state: TCP_LISTEN, address: '127.0.0.1', port: 5173 },
+      { pid: 900, state: TCP_LISTEN, address: '::', port: 5173 },
+      { pid: 1200, state: TCP_ESTABLISHED, address: '127.0.0.1', port: 5173 },
+      { pid: 77, state: TCP_LISTEN, address: 'fe80::1', port: 8080 },
+    ])
+    expect(portsByPid(rows).get(900)).toEqual([{ port: 5173, address: '127.0.0.1, ::', established: 1 }])
+    expect(parseNetTcp(JSON.stringify({ a: '::1', p: 4471, s: 2, o: 3 }))).toHaveLength(1)
+    expect(parseNetTcp('')).toEqual([])
+    expect(parseNetTcp('not json')).toEqual([])
+  })
+
+  it('runs one non-interactive PowerShell call per pass, null on failure', async () => {
+    const calls: string[][] = []
+    const ok = netTcpPortTable(async (_file, args) => (calls.push(args), JSON.stringify([{ a: '127.0.0.1', p: 3000, s: 2, o: 42 }])))
+    expect((await ok())?.get(42)).toEqual([{ port: 3000, address: '127.0.0.1', established: 0 }])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slice(0, 2)).toEqual(['-NoProfile', '-NonInteractive'])
+    expect(calls[0]!.at(-1)).toMatch(/Get-NetTCPConnection[^]*\}\);\s*ConvertTo-Json -Compress/)
+    expect(await netTcpPortTable(async () => null)()).toBeNull()
   })
 })

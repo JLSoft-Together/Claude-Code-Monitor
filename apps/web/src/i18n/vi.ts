@@ -56,6 +56,9 @@ import hooksV74 from './hooks-v74'
 import resourcesV76 from './resources-v76'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
+import agentDataV76 from './agentdata-v76'
+import diskV77 from './disk-v77'
+import workspaceV77 from './workspace-v77'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
@@ -107,6 +110,9 @@ const vi: typeof en = {
   ...resourcesV76.vi,
   ...captureV76.vi,
   ...sensitiveV76.vi,
+  ...agentDataV76.vi,
+  ...diskV77.vi,
+  ...workspaceV77.vi,
   app: {
     title: 'Orrery',
     skipToContent: 'Tới nội dung chính',
@@ -878,6 +884,7 @@ const vi: typeof en = {
       limit: 'Giới hạn 5h sắp hết',
       idle: 'Session, server và daemon bị bỏ quên (thời gian ở dưới)',
       sensitive: 'Agent đụng vào file nhạy cảm hoặc chạy lệnh rủi ro',
+      disk: 'Ổ đĩa sắp đầy',
     },
     quiet: 'Giờ yên lặng',
     quietHint: 'Trong khung giờ này không báo hiệu hệ thống, thông báo browser hay âm báo. Số đếm trên tab và taskbar vẫn cập nhật.',

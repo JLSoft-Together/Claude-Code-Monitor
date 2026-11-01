@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMain, type IpcMainInvokeEvent } from 'electron'
-import { maskLog } from '../log-mask'
+import { maskSecrets } from '@ccm/shared'
 import type { PreviewServer } from '../preview/server'
 import { RootWatcher } from '../preview/watch'
 import { defaultSpawner, killTree, killTreeSparing, runEnv } from '../run/proc'
@@ -69,7 +69,7 @@ export function wireLayout(deps: WireLayoutDeps): LayoutIpc {
   const s = deps.locale.toLowerCase().startsWith('vi') ? STRINGS.vi : STRINGS.en
   const home = os.homedir()
   const log = (level: string, message: string): void => {
-    const line = `${new Date().toISOString()} [${level}] ${maskLog(message, home, process.platform)}\n`
+    const line = `${new Date().toISOString()} [${level}] ${maskSecrets(message, home, process.platform)}\n`
     appendFile(deps.logFile, line, () => undefined)
   }
   return registerLayoutIpc({

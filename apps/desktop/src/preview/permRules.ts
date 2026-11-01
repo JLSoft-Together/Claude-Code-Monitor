@@ -58,13 +58,13 @@ export async function readAsks(dataDir: string, root: string, now = Date.now()):
   return out.sort((a, b) => a.at.localeCompare(b.at))
 }
 
-interface SettingsRead {
+export interface SettingsRead {
   state: PermFileState
   text: string
   settings: Record<string, unknown> | null
 }
 
-async function readSettings(file: string): Promise<SettingsRead> {
+export async function readSettings(file: string): Promise<SettingsRead> {
   let text: string
   try {
     const st = await fs.stat(file)
@@ -77,8 +77,8 @@ async function readSettings(file: string): Promise<SettingsRead> {
     const v: unknown = text.trim() ? JSON.parse(text.replace(/^﻿/, '')) : {}
     if (!isObj(v)) return { state: 'unreadable', text, settings: null }
     if (v.permissions !== undefined && !isObj(v.permissions)) return { state: 'unreadable', text, settings: null }
-    const allow = isObj(v.permissions) ? v.permissions.allow : undefined
-    if (allow !== undefined && !Array.isArray(allow)) return { state: 'unreadable', text, settings: null }
+    const perms = isObj(v.permissions) ? v.permissions : {}
+    if ((perms.allow !== undefined && !Array.isArray(perms.allow)) || (perms.deny !== undefined && !Array.isArray(perms.deny))) return { state: 'unreadable', text, settings: null }
     return { state: 'ok', text, settings: v }
   } catch {
     return { state: 'unreadable', text, settings: null }

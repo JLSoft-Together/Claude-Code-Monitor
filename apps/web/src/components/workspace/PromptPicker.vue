@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookText, CornerDownLeft, Pencil, Plus, Slash, Trash2, X } from 'lucide-vue-next'
+import { BookText, Copy, CornerDownLeft, EyeOff, FileDown, FileUp, Pencil, Plus, Slash, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { fuzzyScore, highlightRuns } from '../../lib/fuzzy'
 import { isMac } from '../../lib/platform'
 import { fileMention } from '../../lib/promptAttachments'
@@ -9,23 +9,26 @@ import { checksText, diffstatText, expand, missingVars, type PromptContext, type
 import { changesStatus, commandsList, type SlashCommand } from '../../lib/preview'
 import { useChecksStore } from '../../stores/checks'
 import { dirKey } from '../../stores/favorites'
-import { usePromptsStore } from '../../stores/prompts'
+import type { PromptSample } from '../../lib/promptSamples'
+import type { ClashChoice, ImportPlan } from '../../lib/promptTransfer'
+import { hasPromptTransfer, usePromptsStore } from '../../stores/prompts'
 import { isTerm, useWorkspaceStore, workCwd, type Pane } from '../../stores/workspace'
 
 const emit = defineEmits<{ close: [] }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const workspace = useWorkspaceStore()
 const prompts = usePromptsStore()
 const checks = useChecksStore()
 
 interface Row {
   id: string
-  kind: 'saved' | 'command'
+  kind: 'saved' | 'sample' | 'command'
   name: string
   sub: string
   text: string
   saved?: SavedPrompt
+  sample?: PromptSample
 }
 
 const MAX_SELECTION = 4000
@@ -74,8 +77,10 @@ onMounted(async () => {
   }
 })
 
+const lang = computed(() => (locale.value === 'vi' ? 'vi' : 'en'))
 const all = computed<Row[]>(() => [
   ...prompts.forScope(scope).map((p) => ({ id: `p:${p.id}`, kind: 'saved' as const, name: p.name, sub: t(p.scope === 'global' ? 'workspace.prompts.global' : 'workspace.prompts.project'), text: p.text, saved: p })),
+  ...prompts.samples.map((s) => ({ id: `s:${s.id}`, kind: 'sample' as const, name: s.name[lang.value], sub: t('promptLib.sample'), text: s.text[lang.value], sample: s })),
   ...commands.value.map((c) => ({ id: `c:${c.scope}:${c.name}`, kind: 'command' as const, name: `/${c.name}`, sub: c.description || t(`workspace.prompts.${c.scope}Command`), text: `/${c.name} ` })),
 ])
 const rows = computed(() => {
@@ -107,6 +112,53 @@ function startEdit(p: SavedPrompt): void {
   editing.value = { id: p.id, name: p.name, text: p.text, global: p.scope === 'global' }
   void nextTick(() => card.value?.querySelector<HTMLInputElement>('[data-prompt-name]')?.focus())
 }
+function duplicate(s: PromptSample): void {
+  editing.value = { name: s.name[lang.value], text: s.text[lang.value], global: true }
+  void nextTick(() => card.value?.querySelector<HTMLInputElement>('[data-prompt-name]')?.select())
+}
+
+const hiddenCount = computed(() => (prompts.samplesOff ? 0 : prompts.hiddenSamples.length))
+const sampleHead = (i: number): boolean => !query.value.trim() && rows.value[i]?.row.kind === 'sample' && rows.value[i - 1]?.row.kind !== 'sample'
+
+const notice = ref<{ text: string; error?: boolean } | null>(null)
+const pendingImport = ref<ImportPlan | null>(null)
+const busy = ref(false)
+const errorText = (code: string): string => t(`promptLib.error.${['invalid', 'too-large', 'read', 'write'].includes(code) ? code : 'failed'}`)
+
+async function exportPrompts(): Promise<void> {
+  if (busy.value) return
+  if (!prompts.list.length) {
+    notice.value = { text: t('promptLib.nothingToExport') }
+    return
+  }
+  busy.value = true
+  const res = await prompts.exportAll()
+  busy.value = false
+  if (res.ok) notice.value = { text: t('promptLib.exported', { n: res.count }, res.count) }
+  else if (res.error !== 'cancelled') notice.value = { text: errorText(res.error), error: true }
+}
+
+async function importPrompts(): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  const res = await prompts.startImport()
+  busy.value = false
+  if (!res.ok) {
+    if (res.error !== 'cancelled') notice.value = { text: errorText(res.error), error: true }
+    return
+  }
+  if (res.plan.clashes.length) pendingImport.value = res.plan
+  else finishImport(res.plan, 'skip')
+}
+
+function finishImport(plan: ImportPlan, choice: ClashChoice): void {
+  pendingImport.value = null
+  const out = prompts.finishImport(plan, choice)
+  const text = t('promptLib.imported', { added: out.added, replaced: out.replaced, skipped: out.skipped })
+  notice.value = { text: out.dropped ? `${text} ${t('promptLib.dropped', { n: out.dropped })}` : text, error: out.dropped > 0 }
+  void nextTick(() => input.value?.focus())
+}
+
 const canSave = computed(() => !!editing.value?.name.trim() && !!editing.value.text.trim())
 function saveEdit(): void {
   const e = editing.value
@@ -125,7 +177,8 @@ function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault()
     e.stopPropagation()
-    if (editing.value) {
+    if (pendingImport.value) pendingImport.value = null
+    else if (editing.value) {
       editing.value = null
       void nextTick(() => input.value?.focus())
     } else emit('close')
@@ -173,6 +226,14 @@ const braced = (v: string): string => `{${v}}`
             spellcheck="false"
             data-prompt-search
           />
+          <template v-if="hasPromptTransfer">
+            <button type="button" class="ccm-btn-plain size-7 shrink-0" :title="t('promptLib.import')" :aria-label="t('promptLib.import')" :disabled="busy" data-prompt-import @click="importPrompts()">
+              <FileDown :size="14" aria-hidden="true" />
+            </button>
+            <button type="button" class="ccm-btn-plain size-7 shrink-0" :title="t('promptLib.export')" :aria-label="t('promptLib.export')" :disabled="busy" data-prompt-export @click="exportPrompts()">
+              <FileUp :size="14" aria-hidden="true" />
+            </button>
+          </template>
           <button type="button" class="ccm-btn h-7 shrink-0 gap-1 text-xs" data-prompt-new @click="startNew()">
             <Plus :size="13" aria-hidden="true" />{{ t('workspace.prompts.new') }}
           </button>
@@ -180,6 +241,13 @@ const braced = (v: string): string => `{${v}}`
             <X :size="14" aria-hidden="true" />
           </button>
         </header>
+
+        <div v-if="pendingImport" class="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-fill px-3 py-2" role="group" :aria-label="t('promptLib.import')" data-prompt-clash>
+          <p class="min-w-0 flex-1 text-xs text-ink">{{ t('promptLib.clash', { n: pendingImport.clashes.length }, pendingImport.clashes.length) }}</p>
+          <button type="button" class="ccm-btn h-7 text-xs" data-clash="overwrite" @click="finishImport(pendingImport, 'overwrite')">{{ t('promptLib.overwrite') }}</button>
+          <button type="button" class="ccm-btn ccm-btn-primary h-7 text-xs" data-clash="both" @click="finishImport(pendingImport, 'both')">{{ t('promptLib.keepBoth') }}</button>
+          <button type="button" class="ccm-btn h-7 text-xs" data-clash="skip" @click="finishImport(pendingImport, 'skip')">{{ t('promptLib.skip') }}</button>
+        </div>
 
         <form v-if="editing" class="flex min-h-0 flex-1 flex-col gap-2 p-3" @submit.prevent="saveEdit()">
           <input v-model="editing.name" class="ccm-field h-8 text-sm" :placeholder="t('workspace.prompts.name')" :aria-label="t('workspace.prompts.name')" maxlength="80" data-prompt-name />
@@ -204,9 +272,14 @@ const braced = (v: string): string => `{${v}}`
 
         <div v-else class="flex min-h-0 flex-1 flex-col md:flex-row">
           <ul id="prompt-rows" class="ccm-scroll max-h-[40%] shrink-0 overflow-y-auto border-b border-line py-1 md:max-h-none md:w-[45%] md:border-r md:border-b-0" role="listbox" :aria-label="t('workspace.prompts.title')">
+            <template v-for="(r, i) in rows" :key="r.row.id">
+            <li v-if="sampleHead(i)" role="presentation" class="mx-1 mt-1.5 flex h-7 items-center gap-1.5 px-2 text-2xs font-semibold text-ink-muted" data-prompt-samples-head>
+              <Sparkles :size="12" aria-hidden="true" />
+              <span class="flex-1">{{ t('promptLib.samples') }}</span>
+              <button v-if="hiddenCount" type="button" class="ccm-btn-plain h-6 px-1.5! text-2xs font-normal" data-prompt-samples-show @click="prompts.showAllSamples()">{{ t('promptLib.showHidden', { n: hiddenCount }) }}</button>
+              <button type="button" class="ccm-btn-plain h-6 px-1.5! text-2xs font-normal" data-prompt-samples-off @click="prompts.samplesOff = true">{{ t('promptLib.hideAll') }}</button>
+            </li>
             <li
-              v-for="(r, i) in rows"
-              :key="r.row.id"
               role="option"
               :aria-selected="i === active"
               class="group mx-1 flex min-h-8 cursor-pointer items-center gap-2 rounded-inner px-2 py-1 text-xs"
@@ -215,7 +288,7 @@ const braced = (v: string): string => `{${v}}`
               @click="active = i"
               @dblclick="fill(r.row)"
             >
-              <component :is="r.row.kind === 'command' ? Slash : BookText" :size="13" class="shrink-0 opacity-70" aria-hidden="true" />
+              <component :is="r.row.kind === 'command' ? Slash : r.row.kind === 'sample' ? Sparkles : BookText" :size="13" class="shrink-0 opacity-70" aria-hidden="true" />
               <span class="flex min-w-0 flex-1 flex-col">
                 <span class="truncate font-medium"><template v-for="(run, k) in highlightRuns(r.row.name, r.positions)" :key="k"><mark v-if="run.hit" class="bg-transparent font-semibold text-accent-ink">{{ run.text }}</mark><template v-else>{{ run.text }}</template></template></span>
                 <span class="truncate text-2xs" :class="i === active ? 'text-accent-ink' : 'text-ink-faint'">{{ r.row.sub }}</span>
@@ -228,8 +301,22 @@ const braced = (v: string): string => `{${v}}`
                   <Trash2 :size="12" aria-hidden="true" />
                 </button>
               </template>
+              <template v-else-if="r.row.sample">
+                <button type="button" class="ccm-btn-plain size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" :title="t('promptLib.duplicate')" :aria-label="t('promptLib.duplicate')" data-prompt-duplicate @click.stop="duplicate(r.row.sample)">
+                  <Copy :size="12" aria-hidden="true" />
+                </button>
+                <button type="button" class="ccm-btn-plain size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" :title="t('promptLib.hide')" :aria-label="t('promptLib.hide')" data-prompt-hide @click.stop="prompts.hideSample(r.row.sample.id)">
+                  <EyeOff :size="12" aria-hidden="true" />
+                </button>
+              </template>
             </li>
+            </template>
             <li v-if="!rows.length" class="px-3 py-3 text-xs text-ink-faint">{{ all.length ? t('workspace.prompts.noMatch') : t('workspace.prompts.empty') }}</li>
+            <li v-if="prompts.samplesOff || (hiddenCount && !prompts.samples.length)" role="presentation" class="mx-1 mt-1 px-1">
+              <button type="button" class="ccm-btn-plain h-7 gap-1.5 px-1.5! text-2xs" data-prompt-samples-show @click="prompts.showAllSamples()">
+                <Sparkles :size="12" aria-hidden="true" />{{ t('promptLib.showSamples') }}
+              </button>
+            </li>
           </ul>
           <div class="flex min-h-0 min-w-0 flex-1 flex-col">
             <pre class="ccm-scroll m-0 min-h-0 flex-1 overflow-auto p-3 font-mono text-xs whitespace-pre-wrap text-ink" data-prompt-preview>{{ preview }}</pre>
@@ -239,6 +326,7 @@ const braced = (v: string): string => `{${v}}`
           </div>
         </div>
 
+        <p v-if="notice && !editing" class="shrink-0 border-t border-line px-3 py-1.5 text-2xs" :class="notice.error ? 'text-warning' : 'text-ink-muted'" role="status" data-prompt-notice>{{ notice.text }}</p>
         <footer v-if="!editing" class="flex h-10 shrink-0 items-center gap-2 border-t border-line px-3">
           <span class="min-w-0 flex-1 truncate text-2xs text-ink-faint" :title="targetLabel ?? undefined">{{
             targetLabel ? t('workspace.prompts.into', { pane: targetLabel }) : t('workspace.prompts.noTarget')

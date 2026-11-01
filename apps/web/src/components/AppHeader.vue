@@ -17,6 +17,7 @@ import { useUiStore, type View } from '../stores/ui'
 import PlanLimits from './PlanLimits.vue'
 import ResourcesButton from './ResourcesButton.vue'
 import KeepAwakeBadge from './KeepAwakeBadge.vue'
+import DiskBadge from './DiskBadge.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
@@ -197,6 +198,7 @@ function onTabKey(e: KeyboardEvent): void {
           <span class="hidden tabular-nums sm:inline">{{ t('update.pill', { version: updateVersion }) }}</span>
         </button>
         <KeepAwakeBadge v-if="!ui.compact" />
+        <DiskBadge v-if="!ui.compact" />
         <ResourcesButton v-if="!ui.compact" />
         <button
           ref="inboxBtn"

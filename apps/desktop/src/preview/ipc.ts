@@ -27,6 +27,7 @@ import { NotesStore } from './notes'
 import { checkEnv, revealEnv } from './envCheck'
 import { scanI18n } from './i18nScan'
 import { readPermissions, writeAllow, type ConfirmAllow } from './permRules'
+import { isSessionProject, sessionCwds, writeDeny, type ConfirmDeny } from './denyRules'
 import { contextSources, defaultCtxEnv } from './contextSources'
 import { memoryDoctor } from './memoryDoctorIo'
 import { LocalHistory } from './localHistory'
@@ -91,6 +92,10 @@ export interface PreviewIpcDeps {
   confirmReplace?: (req: { find: string; replacement: string; lines: number; files: number; paths: string[] }) => Promise<boolean>
   /** Native yes/no showing the exact settings.local.json diff before allow rules are added. */
   confirmPermRules?: ConfirmAllow
+  /** Native yes/no showing the settings file and the deny rules before "Block next time" writes them (v76 R5b). */
+  confirmDenyRules?: ConfirmDeny
+  /** Claude Code config folder (`CLAUDE_CONFIG_DIR` or `~/.claude`): session registry + user settings.json. */
+  claudeConfigDir?: string
   /** App data folder: checkpoint stores (`checkpoints/`), project notes (`notes/`) and Local History (`history/`). All off without it. */
   dataDir?: string
   /** OS trash for discarded untracked / added files; defaults to `shell.trashItem` when the shell passed in has it. */
@@ -122,7 +127,7 @@ const CHANNELS = [
   'ccm:changes-status', 'ccm:changes-diff', 'ccm:git-show-image', 'ccm:changes-file', 'ccm:changes-discard', 'ccm:changes-watch', 'ccm:changes-unwatch', 'ccm:list-files', 'ccm:clipboard-image', 'ccm:clipboard-image-file', 'ccm:pick-files', 'ccm:capture-guest', 'ccm:forget-grants', 'ccm:full-access',
   'ccm:log-refs', 'ccm:log-page', 'ccm:log-commit', 'ccm:log-contains', 'ccm:log-diff', 'ccm:git-branch-create', 'ccm:git-branch-delete', 'ccm:git-fetch', 'ccm:git-branch-update', 'ccm:git-push-preview', 'ccm:git-push', 'ccm:gh-repo-account', 'ccm:gh-repo-account-set',
   'ccm:project-root', 'ccm:scripts', 'ccm:list-dir', 'ccm:create-entry', 'ccm:rename-entry', 'ccm:trash-entry',
-  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan', 'ccm:perm-read', 'ccm:perm-allow', 'ccm:ctx-sources', 'ccm:memory-doctor',
+  'ccm:file-write', 'ccm:search', 'ccm:git-stage', 'ccm:git-unstage', 'ccm:git-can-amend', 'ccm:git-commit', 'ccm:git-commit-cancel', 'ccm:check-run', 'ccm:check-cancel', 'ccm:wt-compare', 'ccm:wt-merge', 'ccm:cp-state', 'ccm:cp-set', 'ccm:cp-take', 'ccm:git-blame', 'ccm:git-merge-state', 'ccm:git-merge-abort', 'ccm:cp-diff', 'ccm:cp-file-diff', 'ccm:cp-revert-hunk', 'ccm:cp-restore', 'ccm:commands-list', 'ccm:wt-diff', 'ccm:wt-file-diff', 'ccm:wt-take', 'ccm:overlap-files', 'ccm:overlap-dryrun', 'ccm:notes-read', 'ccm:notes-write', 'ccm:lh-list', 'ccm:lh-read', 'ccm:format', 'ccm:env-check', 'ccm:env-reveal', 'ccm:replace-files', 'ccm:i18n-scan', 'ccm:perm-read', 'ccm:perm-allow', 'ccm:sensitive-deny', 'ccm:ctx-sources', 'ccm:memory-doctor',
 ]
 
 type Subs = Map<number, { contents: WebContents; roots: Map<string, { root: string; refs: number }> }>
@@ -788,6 +793,21 @@ export function registerPreviewIpc(deps: PreviewIpcDeps): PreviewIpc {
     permWriting = true
     try {
       return await writeAllow(real, rules, deps.confirmPermRules)
+    } finally {
+      permWriting = false
+    }
+  })
+  ipcMain.handle('ccm:sensitive-deny', async (event, req: unknown) => {
+    const { project, rule, tool, scope } = (req ?? {}) as { project?: unknown; rule?: unknown; tool?: unknown; scope?: unknown }
+    const configDir = deps.claudeConfigDir
+    if (!isAppFrame(event) || !deps.confirmDenyRules || !configDir || typeof project !== 'string' || project.length > 1024 || !path.isAbsolute(project)) return { ok: false, error: 'denied' }
+    const real = await realOrNull(project)
+    if (!real || path.dirname(real) === real || !(await fs.stat(real).catch(() => null))?.isDirectory()) return { ok: false, error: 'denied' }
+    if (!(await checkDir(real)) && !(await isSessionProject(real, await sessionCwds(configDir)))) return { ok: false, error: 'denied' }
+    if (permWriting) return { ok: false, error: 'failed' }
+    permWriting = true
+    try {
+      return await writeDeny({ project: real, rule, tool, scope, configDir }, deps.confirmDenyRules)
     } finally {
       permWriting = false
     }

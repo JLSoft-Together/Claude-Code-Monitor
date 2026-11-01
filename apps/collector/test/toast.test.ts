@@ -427,3 +427,21 @@ describe('toast link key', () => {
     expect(second.accepts(first.key)).toBe(true)
   })
 })
+
+describe('Toaster disk (v77 R9)', () => {
+  it('shows the disk toast; only danger goes to the phone; kind off silences both', async () => {
+    const { toaster, shown, flush } = setup()
+    const phone: unknown[] = []
+    toaster.onPhone = (m) => phone.push(m)
+    toaster.observeDisk({ type: 'disk.alert', label: 'C:', level: 'warn', freeBytes: 8 * 1024 ** 3, totalBytes: 500 * 1024 ** 3 })
+    toaster.observeDisk({ type: 'disk.alert', label: 'C:', level: 'danger', freeBytes: 1.5 * 1024 ** 3, totalBytes: 500 * 1024 ** 3 })
+    await flush()
+    expect(shown.map((s) => s.title)).toEqual(['Ổ C: sắp đầy: còn 8.0 GB', 'Ổ C: sắp đầy: còn 1.5 GB'])
+    expect(phone).toEqual([expect.objectContaining({ type: 'phone', reason: 'disk', name: 'C:', freeBytes: 1.5 * 1024 ** 3 })])
+    toaster.update({ kinds: { disk: false } })
+    toaster.observeDisk({ type: 'disk.alert', label: 'D:', level: 'danger', freeBytes: 1, totalBytes: 2 })
+    await flush()
+    expect(shown).toHaveLength(2)
+    expect(phone).toHaveLength(1)
+  })
+})

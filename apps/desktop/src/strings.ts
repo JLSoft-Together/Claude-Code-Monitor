@@ -7,6 +7,9 @@ const clip = (s: string): string => (s.length > 300 ? `${s.slice(0, 300)}…` : 
 const en = {
   appName: 'Orrery',
   loading: 'Starting the monitor…',
+  promptsExportTitle: 'Export prompt library',
+  promptsImportTitle: 'Import prompt library',
+  promptsFilter: 'Orrery prompts',
   loadingHint: 'Local server on 127.0.0.1',
   errorTitle: 'The monitor could not start',
   retry: 'Try again',
@@ -141,6 +144,15 @@ ${diff}
 
 Claude Code will run these without asking in this project.`,
   permConfirm: 'Add rules',
+  denyTitle: (n: number, scope: 'project' | 'local' | 'user') =>
+    `Block ${n === 1 ? 'this' : `these ${n}`} next time ${scope === 'user' ? 'in every project' : 'in this project'}?`,
+  denyDetail: (file: string, scope: 'project' | 'local' | 'user', diff: string) =>
+    `Orrery will add deny rules to ${file}${scope === 'project' ? ' (shared with everyone who clones the repo)' : scope === 'local' ? ' (only on this machine)' : ' (your user settings, every project)'}. Other keys stay; the old file is kept as ${file.split(/[\\/]/).pop()}.orrery-bak:
+
+${diff}
+
+Claude Code will refuse matching tool calls instead of asking.`,
+  denyConfirm: 'Block',
   prefsWriteTitle: (pkg: string) => `Change a SharedPreferences value of ${pkg}?`,
   prefsWriteDetail: (file: string, key: string, before: string, after: string) =>
     `${file}
@@ -208,11 +220,56 @@ It runs in ${cwd} with a made-up JSON input on stdin and a minimal environment, 
     updates: 'Update preferences',
     github: 'GitHub account names (tokens are added again)',
   } as Record<BackupSectionId, string>,
+  agentPickTarget: 'Choose the drive folder to move the agent data into',
+  agentPickBackup: 'Choose a folder for the original transcripts',
+  agentData: {
+    cancel: 'Cancel',
+    group: (id: string): string =>
+      (({ debugLogs: 'Debug logs', shellSnapshots: 'Shell snapshots', appCache: 'App caches', codexLogs: 'Codex logs', codexCache: 'Codex caches', codexTemp: 'Codex temp files' }) as Record<string, string>)[id] ?? id,
+    cleanTitle: (files: number, size: string) => (files === 1 ? `Delete 1 cache file (${size})?` : `Delete ${files} cache files (${size})?`),
+    cleanDetail: (lines: string[], days: number) =>
+      `${lines.join('\n')}\n\n${days ? `Only files not changed for ${days} days.` : 'Every file in these groups.'} Files changed in the last 24 hours are kept. Transcripts, settings and sign-in are never touched.`,
+    cleanConfirm: 'Delete',
+    stripTitle: (files: number, images: number) => `Remove ${images} images from ${files} old transcripts?`,
+    stripDetail: (size: string, backup: string) =>
+      `About ${size} of image data is replaced by a short note. The original files are copied first to:\n${backup}\n\nResuming those sessions later works, but the agent no longer sees the removed images. Running sessions and recent ones are skipped.`,
+    stripConfirm: 'Back up and remove images',
+    moveTitle: (from: string, to: string) => `Move ${from} to ${to}?`,
+    moveDetail: (size: string, original: string) =>
+      `${size} is copied and checked (file count, sizes, sample hashes). Then the original is renamed to ${original} and a link takes its place, so Claude Code, Codex and Orrery keep using the same path.\n\nDo not start Claude Code or Codex until it finishes. Orrery's monitor restarts once. The original stays until you choose Delete original.`,
+    moveConfirm: 'Copy and move',
+    undoTitle: (folder: string) => `Move ${folder} back?`,
+    undoDetail: (target: string, newFiles: number, originalDeleted: boolean) =>
+      originalDeleted
+        ? `The original was deleted, so everything is copied back from:\n${target}\n\nThe copy there is kept.`
+        : newFiles
+          ? `${newFiles} files were written at ${target} after the move. Copy them back over the original, or go back to the original as it was when it was moved. The copy at the new place is kept either way.`
+          : `The link is removed and the original comes back. The copy at ${target} is kept.`,
+    undoCopyBack: (n: number) => (n === 1 ? 'Undo and copy back 1 file' : `Undo and copy back ${n} files`),
+    undoOnly: 'Undo',
+    deleteTitle: (folder: string) => `Delete the original ${folder}?`,
+    deleteDetail: (size: string) => `${size} is deleted for good. The moved copy keeps working; Undo after this copies everything back from it.`,
+    deleteConfirm: 'Delete original',
+    discardTitle: (folder: string) => `Delete the unfinished copy ${folder}?`,
+    discardDetail: 'A move was interrupted before it finished. The original folder is in place and in use; only this partial copy is deleted.',
+    discardConfirm: 'Delete copy',
+  },
+  buildClean: {
+    cancel: 'Cancel',
+    title: (dirs: number, size: string) => (dirs === 1 ? `Delete 1 build folder (${size})?` : `Delete ${dirs} build folders (${size})?`),
+    detail: (lines: string[], more: number, reinstall: boolean, trash: boolean) =>
+      `${lines.join('\n')}${more ? `\n…and ${more} more` : ''}\n\n${reinstall ? 'Packages (node_modules / .venv) must be installed again, and the next build takes longer.' : 'The next build rebuilds them and takes longer.'} ${trash ? 'They go to the Recycle Bin / Trash.' : 'They are deleted for good, not moved to the Recycle Bin / Trash.'} Source files are never touched.`,
+    confirm: 'Delete',
+    confirmTrash: 'Move to Trash',
+  },
 }
 
 const vi: typeof en = {
   appName: 'Orrery',
   loading: 'Đang khởi động monitor…',
+  promptsExportTitle: 'Xuất thư viện prompt',
+  promptsImportTitle: 'Nhập thư viện prompt',
+  promptsFilter: 'Prompt Orrery',
   loadingHint: 'Server nội bộ trên 127.0.0.1',
   errorTitle: 'Không khởi động được monitor',
   retry: 'Thử lại',
@@ -345,6 +402,14 @@ ${diff}
 
 Claude Code sẽ chạy các lệnh này không hỏi lại trong dự án này.`,
   permConfirm: 'Thêm luật',
+  denyTitle: (n, scope) => `Chặn ${n === 1 ? 'việc này' : `${n} mẫu này`} lần sau ${scope === 'user' ? 'ở mọi dự án' : 'trong dự án này'}?`,
+  denyDetail: (file, scope, diff) =>
+    `Orrery sẽ thêm luật deny vào ${file}${scope === 'project' ? ' (chia sẻ với mọi người clone repo)' : scope === 'local' ? ' (chỉ trên máy này)' : ' (cài đặt người dùng, mọi dự án)'}. Các khoá khác giữ nguyên; tệp cũ được giữ lại thành ${file.split(/[\\/]/).pop()}.orrery-bak:
+
+${diff}
+
+Claude Code sẽ từ chối các lệnh tool khớp luật thay vì hỏi.`,
+  denyConfirm: 'Chặn',
   prefsWriteTitle: (pkg) => `Đổi một giá trị SharedPreferences của ${pkg}?`,
   prefsWriteDetail: (file, key, before, after) =>
     `${file}
@@ -411,6 +476,48 @@ Lệnh chạy trong ${cwd} với input JSON giả trên stdin và môi trường
     run: 'Cài đặt Run và mẫu cấu hình',
     updates: 'Tuỳ chọn cập nhật',
     github: 'Tên tài khoản GitHub (cần thêm lại token)',
+  },
+  agentPickTarget: 'Chọn thư mục trên ổ đích để chuyển dữ liệu agent tới',
+  agentPickBackup: 'Chọn thư mục giữ bản gốc của transcript',
+  agentData: {
+    cancel: 'Huỷ',
+    group: (id: string): string =>
+      (({ debugLogs: 'Log debug', shellSnapshots: 'Ảnh chụp shell', appCache: 'Cache ứng dụng', codexLogs: 'Log Codex', codexCache: 'Cache Codex', codexTemp: 'File tạm Codex' }) as Record<string, string>)[id] ?? id,
+    cleanTitle: (files: number, size: string) => `Xoá ${files} file cache (${size})?`,
+    cleanDetail: (lines: string[], days: number) =>
+      `${lines.join('\n')}\n\n${days ? `Chỉ file không đổi trong ${days} ngày.` : 'Mọi file trong các nhóm này.'} File đổi trong 24 giờ qua được giữ lại. Không bao giờ đụng transcript, cài đặt hay đăng nhập.`,
+    cleanConfirm: 'Xoá',
+    stripTitle: (files: number, images: number) => `Gỡ ${images} ảnh khỏi ${files} transcript cũ?`,
+    stripDetail: (size: string, backup: string) =>
+      `Khoảng ${size} dữ liệu ảnh được thay bằng một dòng ghi chú. File gốc được sao trước vào:\n${backup}\n\nVẫn resume được các session đó, nhưng agent không còn thấy những ảnh đã gỡ. Session đang chạy và session hoạt động gần đây được bỏ qua.`,
+    stripConfirm: 'Sao lưu và gỡ ảnh',
+    moveTitle: (from: string, to: string) => `Chuyển ${from} sang ${to}?`,
+    moveDetail: (size: string, original: string) =>
+      `${size} được chép rồi kiểm (số file, dung lượng, hash mẫu). Sau đó bản gốc đổi tên thành ${original} và một liên kết thế chỗ, nên Claude Code, Codex và Orrery vẫn dùng đường dẫn cũ.\n\nĐừng mở Claude Code hay Codex tới khi xong. Bộ theo dõi của Orrery khởi động lại một lần. Bản gốc được giữ tới khi bạn chọn Xoá bản gốc.`,
+    moveConfirm: 'Chép và chuyển',
+    undoTitle: (folder: string) => `Chuyển ${folder} về chỗ cũ?`,
+    undoDetail: (target: string, newFiles: number, originalDeleted: boolean) =>
+      originalDeleted
+        ? `Bản gốc đã bị xoá, nên mọi thứ được chép về từ:\n${target}\n\nBản ở đó vẫn được giữ.`
+        : newFiles
+          ? `Có ${newFiles} file được ghi ở ${target} sau khi chuyển. Chép chúng đè lên bản gốc, hoặc quay về bản gốc như lúc chuyển. Bản ở chỗ mới được giữ trong cả hai cách.`
+          : `Liên kết bị gỡ và bản gốc trở lại. Bản ở ${target} được giữ.`,
+    undoCopyBack: (n: number) => `Hoàn tác và chép về ${n} file`,
+    undoOnly: 'Hoàn tác',
+    deleteTitle: (folder: string) => `Xoá bản gốc ${folder}?`,
+    deleteDetail: (size: string) => `${size} bị xoá hẳn. Bản đã chuyển vẫn chạy bình thường; hoàn tác sau đó sẽ chép mọi thứ về từ bản này.`,
+    deleteConfirm: 'Xoá bản gốc',
+    discardTitle: (folder: string) => `Xoá bản chép dở ${folder}?`,
+    discardDetail: 'Một lần chuyển bị ngắt giữa chừng. Thư mục gốc vẫn ở chỗ cũ và đang được dùng; chỉ bản chép dở này bị xoá.',
+    discardConfirm: 'Xoá bản chép',
+  },
+  buildClean: {
+    cancel: 'Huỷ',
+    title: (dirs: number, size: string) => `Xoá ${dirs} thư mục build (${size})?`,
+    detail: (lines: string[], more: number, reinstall: boolean, trash: boolean) =>
+      `${lines.join('\n')}${more ? `\n…và ${more} thư mục nữa` : ''}\n\n${reinstall ? 'Phải cài lại gói (node_modules / .venv), và lần build sau sẽ lâu hơn.' : 'Lần build sau sẽ tạo lại và lâu hơn.'} ${trash ? 'Chúng được chuyển vào Thùng rác.' : 'Chúng bị xoá hẳn, không vào Thùng rác.'} Mã nguồn không bao giờ bị đụng tới.`,
+    confirm: 'Xoá',
+    confirmTrash: 'Chuyển vào Thùng rác',
   },
 }
 

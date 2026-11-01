@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceUsedMessage, ResourceReport, ServerRes } from '@ccm/shared'
 import { createAdbCommands } from '../src/devices/adb'
-import { DeviceUseReporter } from '../src/resources/deviceUse'
+import { adbSerialOf, DeviceUseReporter, RUN_USE_THROTTLE_MS, withAdbUse } from '../src/resources/deviceUse'
 import { confirmLines, planKill } from '../src/resources/kill'
 
 const NOW = 1_800_000_000_000
@@ -107,5 +107,40 @@ describe('DeviceUseReporter', () => {
       { type: 'device.used', serial: 'emulator-5554', at: NOW + 20_000, avd: 'Pixel_8' },
     ])
     expect(asked).toBe(1)
+  })
+})
+
+describe('Run pane adb use', () => {
+  it('finds the serial of adb -s calls only', () => {
+    expect(adbSerialOf({ file: 'C:\\sdk\\platform-tools\\adb.exe', args: ['-s', 'emulator-5554', 'install', '-r', 'a.apk'] })).toBe('emulator-5554')
+    expect(adbSerialOf({ file: '/opt/sdk/platform-tools/adb', args: ['-s', 'R58', 'shell', 'am', 'start'] })).toBe('R58')
+    expect(adbSerialOf({ file: 'adb', args: ['devices', '-l'] })).toBeNull()
+    expect(adbSerialOf({ file: 'gradlew.bat', args: ['-s', 'R58'] })).toBeNull()
+    expect(adbSerialOf({ file: 'adb', args: ['-s', 'bad serial;'] })).toBeNull()
+  })
+
+  it('reports before spawning and throttles Run calls to one per 30 s per serial', () => {
+    let now = NOW
+    const sent: DeviceUsedMessage[] = []
+    const r = new DeviceUseReporter((m) => sent.push(m), async () => null, () => now)
+    const spawned: string[][] = []
+    const spawn = withAdbUse(
+      (spec) => {
+        spawned.push(spec.args)
+        return null as never
+      },
+      (serial) => r.used(serial, RUN_USE_THROTTLE_MS),
+    )
+    spawn({ file: 'adb', args: ['-s', 'R58', 'install', 'a.apk'], cwd: '.' })
+    now += 20_000
+    spawn({ file: 'adb', args: ['-s', 'R58', 'shell', 'am', 'start'], cwd: '.' })
+    spawn({ file: 'adb', args: ['devices'], cwd: '.' })
+    now += 11_000
+    spawn({ file: 'adb', args: ['-s', 'R58', 'logcat'], cwd: '.' })
+    expect(spawned).toHaveLength(4)
+    expect(sent).toEqual([
+      { type: 'device.used', serial: 'R58', at: NOW },
+      { type: 'device.used', serial: 'R58', at: NOW + 31_000 },
+    ])
   })
 })

@@ -19,6 +19,7 @@ import OnboardingTour from './components/OnboardingTour.vue'
 import BreakToast from './components/BreakToast.vue'
 import PhoneFailToast from './components/PhoneFailToast.vue'
 import { hasPhone } from './lib/phone'
+import { hasBuildClean } from './lib/buildClean'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import QuickSetup from './components/QuickSetup.vue'
 import WhatsNewDialog from './components/WhatsNewDialog.vue'
@@ -35,12 +36,14 @@ import { hasDevices } from './lib/devices'
 import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
 import { useTurnCheckpoints } from './composables/useTurnCheckpoints'
 import { isMac } from './lib/platform'
+import { restoreMode, restoreWith, startupRun, uncleanExit } from './lib/workspaceRestore'
 
 // xterm + addons (~400 KB) load only when the workspace is first opened.
 const WorkspaceView = defineAsyncComponent(() => import('./components/workspace/WorkspaceView.vue'))
 const ExtensionsView = defineAsyncComponent(() => import('./components/extensions/ExtensionsView.vue'))
 const DevicesView = defineAsyncComponent(() => import('./components/devices/DevicesView.vue'))
 const DevToolsDialog = defineAsyncComponent(() => import('./components/DevToolsDialog.vue'))
+const BuildCleanDialog = defineAsyncComponent(() => import('./components/BuildCleanDialog.vue'))
 
 const { t } = useI18n()
 const connection = useConnectionStore()
@@ -81,6 +84,16 @@ desktop?.onPaneOpen?.((req) => {
   else ui.setView('workspace')
   return result
 })
+
+// Only the first window of an app start: reopen the last workspace in the background, or flag a crash for the picker.
+if (hasTerminals && !ui.compact)
+  void startupRun().then(async ({ first, unclean }) => {
+    if (!first) return
+    if (restoreMode.value === 'auto' && workspace.last && !workspace.panes.length) {
+      await restoreWith(workspace.lastMovedDirs, undefined, (run, gone) => workspace.restoreLast(run, gone))
+      workspaceOpened.value = true
+    } else uncleanExit.value = unclean
+  })
 
 // The outgoing view lingers for its fade; it must not keep the #main skip target or take clicks.
 function retireView(el: Element): void {
@@ -142,6 +155,7 @@ onBeforeUnmount(() => {
     <DevToolsDialog v-if="ui.devTools" :tool="ui.devTools" @close="ui.devTools = null" />
     <DiagnosticsDialog />
     <ResourcesDialog />
+    <BuildCleanDialog v-if="ui.buildClean && hasBuildClean" :dir="ui.buildClean.dir" @close="ui.buildClean = null" />
     <QuickSetup />
     <OnboardingTour />
     <WhatsNewDialog />

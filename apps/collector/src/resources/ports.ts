@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { ResPort } from '@ccm/shared'
+import { windowsPowerShell } from '../win-exe'
 import { defaultKoffiLoader } from '../win-procs'
 
 export const TCP_LISTEN = 2
@@ -186,8 +187,55 @@ export function lsofPortTable(): PortTable {
     })
 }
 
+const NET_TCP_SCRIPT = [
+  "$out = @(Get-NetTCPConnection -State Listen,Established -ErrorAction SilentlyContinue | ForEach-Object {",
+  '[pscustomobject]@{ a = [string]$_.LocalAddress; p = [int]$_.LocalPort; s = [int]$_.State; o = [int]$_.OwningProcess } });',
+  'ConvertTo-Json -Compress -InputObject $out',
+].join(' ')
+
+const NET_TCP_STATES: Record<string, number> = { listen: TCP_LISTEN, established: TCP_ESTABLISHED }
+
+/** Parses the `Get-NetTCPConnection` fallback's JSON; State comes as the MIB number (or its name on some hosts). */
+export function parseNetTcp(stdout: string): TcpRow[] {
+  const text = stdout.trim()
+  if (!text) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return []
+  }
+  const rows: TcpRow[] = []
+  for (const row of Array.isArray(parsed) ? parsed : [parsed]) {
+    if (typeof row !== 'object' || row === null) continue
+    const r = row as Record<string, unknown>
+    const state = typeof r.s === 'number' ? r.s : typeof r.s === 'string' ? (NET_TCP_STATES[r.s.toLowerCase()] ?? 0) : 0
+    const port = Number(r.p)
+    const pid = Number(r.o)
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535 || !Number.isInteger(pid) || pid < 0) continue
+    if (state !== TCP_LISTEN && state !== TCP_ESTABLISHED) continue
+    rows.push({ pid, state, address: typeof r.a === 'string' ? r.a.replace(/%.*$/, '') : '', port })
+  }
+  return rows
+}
+
+type RunPs = (file: string, args: string[]) => Promise<string | null>
+
+const runPs: RunPs = (file, args) =>
+  new Promise((resolve) => {
+    execFile(file, args, { timeout: 15_000, windowsHide: true, maxBuffer: 16_000_000 }, (err, stdout) => resolve(err ? null : String(stdout ?? '')))
+  })
+
+/** Windows without koffi (`CCM_NATIVE_PROCS=0` or the binding failed): one PowerShell call per sampler pass. */
+export function netTcpPortTable(exec: RunPs = runPs): PortTable {
+  return async () => {
+    const out = await exec(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', NET_TCP_SCRIPT])
+    return out === null ? null : portsByPid(parseNetTcp(out))
+  }
+}
+
 export function defaultPortTable(): PortTable | null {
-  if (process.platform === 'win32') return process.env.CCM_NATIVE_PROCS === '0' ? null : winPortTable()
+  if (process.platform === 'win32') return (process.env.CCM_NATIVE_PROCS === '0' ? null : winPortTable()) ?? netTcpPortTable()
   if (process.platform === 'darwin' || process.platform === 'linux') return lsofPortTable()
   return null
 }

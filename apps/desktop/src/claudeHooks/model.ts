@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { maskLog } from '../log-mask'
+import { maskSecrets } from '@ccm/shared'
 import { HOOK_MARK } from '../hooks'
 
 export type Obj = Record<string, unknown>
@@ -100,7 +100,7 @@ export function maskHookText(text: string, home: string, platform: NodeJS.Platfo
     .replace(new RegExp(`\\b(${SECRET_NAME})(\\s*[=:]\\s*)("[^"]*"|'[^']*'|[^\\s;&|"']+)`, 'gi'), '$1$2••••')
     .replace(/(--?[A-Za-z0-9-]*(?:token|secret|password|passwd|api-?key|auth|key)[A-Za-z0-9-]*)(=|\s+)("[^"]*"|'[^']*'|[^\s;&|"'-][^\s;&|"']*)/gi, '$1$2••••')
     .replace(/([?&](?:token|key|secret|sig|signature|access_token|api_key|apikey|password)=)[^&\s"']+/gi, '$1••••')
-  out = maskLog(out, home, platform)
+  out = maskSecrets(out, home, platform)
   return out.replace(/\[masked\]/g, '••••')
 }
 

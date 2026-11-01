@@ -55,6 +55,9 @@ import hooksV74 from './hooks-v74'
 import resourcesV76 from './resources-v76'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
+import agentDataV76 from './agentdata-v76'
+import diskV77 from './disk-v77'
+import workspaceV77 from './workspace-v77'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
@@ -106,6 +109,9 @@ export default {
   ...resourcesV76.en,
   ...captureV76.en,
   ...sensitiveV76.en,
+  ...agentDataV76.en,
+  ...diskV77.en,
+  ...workspaceV77.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
@@ -877,6 +883,7 @@ export default {
       limit: '5-hour limit running out',
       idle: 'Forgotten sessions, servers and daemons (time below)',
       sensitive: 'Agent touched a sensitive file or ran a risky command',
+      disk: 'Drive almost full',
     },
     quiet: 'Quiet hours',
     quietHint: 'No system alerts, browser notifications or sounds in this window. The tab title and taskbar count keep updating.',

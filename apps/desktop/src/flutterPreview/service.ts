@@ -7,7 +7,7 @@ import { killTree, type Spawner } from '../run/proc'
 import { BadArgError } from '../run/resolve'
 import { findFlutterSdk, flutterSpawn, nodeEnvDeps, sdkInsideProject, sdkSettings, type FlutterEnvOpts, type FlutterSdkLookup } from '../run/flutter/env'
 import { createMachineClient, type MachineClient, type MachineReply } from '../run/flutter/machine'
-import { maskLog } from '../log-mask'
+import { maskSecrets } from '@ccm/shared'
 import { ERROR_MARKER, hostContext, hostSource, readPackage, SHOW_EXTENSION, writeHost, type HostContext } from './host'
 import { scanProject } from './scan'
 
@@ -382,7 +382,7 @@ export class FlutterPreviewService {
     const onLine = (line: string): void => {
       if (!line.trim()) return
       this.log(line)
-      if (firstError === null && /error/i.test(line)) firstError = maskLog(line, this.deps.home, platform).slice(0, MESSAGE_CAP)
+      if (firstError === null && /error/i.test(line)) firstError = maskSecrets(line, this.deps.home, platform).slice(0, MESSAGE_CAP)
     }
     const out = lineSplitter(onLine)
     const err = lineSplitter(onLine)
@@ -433,7 +433,7 @@ export class FlutterPreviewService {
     }
     const { id, message } = (parsed ?? {}) as { id?: unknown; message?: unknown }
     if (typeof id !== 'string' || typeof message !== 'string') return null
-    const clean = maskLog(message, this.deps.home, this.deps.platform)
+    const clean = maskSecrets(message, this.deps.home, this.deps.platform)
       .replace(/[\u0000-\u001f\u007f]+/g, ' ')
       .slice(0, MESSAGE_CAP)
     return { code: 'widget', entry: id.slice(0, 512), detail: clean }

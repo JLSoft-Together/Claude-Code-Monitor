@@ -87,3 +87,47 @@ describe('restore with picked projects', () => {
     expect(tabMenu({ active: true, panes: 2, targets: [], others: 0 }, t).some((e) => 'id' in e && e.id === 'wake')).toBe(false)
   })
 })
+
+describe('restore keeps where a shell had moved to', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    seedLast()
+    setActivePinia(createPinia())
+  })
+
+  it('saves the live folder for shells and the start folder for resumed agents', async () => {
+    const ws = useWorkspaceStore()
+    ws.restoreLast()
+    const [agent, shell] = ws.panes
+    ws.update(shell!.key, { liveCwd: 'D:\\work\\orrery\\apps' })
+    ws.update(agent!.key, { liveCwd: 'D:\\elsewhere' })
+    await nextTick()
+    const snap = JSON.parse(localStorage.getItem('ccm.workspace.last')!)
+    expect(snap.panes[0]).toMatchObject({ cwd: 'D:\\work\\orrery', resume: A })
+    expect(snap.panes[0].home).toBeUndefined()
+    expect(snap.panes[1]).toMatchObject({ cwd: 'D:\\work\\orrery\\apps', home: 'D:\\work\\orrery' })
+  })
+
+  it('lists moved folders and falls back to the start folder when one is gone', () => {
+    const raw = JSON.parse(localStorage.getItem('ccm.workspace.last')!)
+    raw.panes[1] = { key: 'a2', preset: 'shell', cwd: 'D:\\work\\orrery\\gone', home: 'D:\\work\\orrery' }
+    raw.panes.push({ key: 'x', preset: 'shell', cwd: 'D:\\x', home: 'relative\\bad' })
+    raw.tabs.push({ key: 'tx', root: { pane: 'x' }, focus: 'x', project: 'D:\\x' })
+    localStorage.setItem('ccm.workspace.last', JSON.stringify(raw))
+    const ws = useWorkspaceStore()
+    expect(ws.lastMovedDirs).toEqual(['D:\\work\\orrery\\gone'])
+    ws.restoreLast(undefined, new Set(['D:\\work\\orrery\\gone']))
+    expect(ws.panes[1]!.cwd).toBe('D:\\work\\orrery')
+    ws.dismissLast()
+  })
+
+  it('keeps the moved folder when it still exists', () => {
+    const raw = JSON.parse(localStorage.getItem('ccm.workspace.last')!)
+    raw.panes[1] = { key: 'a2', preset: 'shell', cwd: 'D:\\work\\orrery\\apps', home: 'D:\\work\\orrery' }
+    localStorage.setItem('ccm.workspace.last', JSON.stringify(raw))
+    const ws = useWorkspaceStore()
+    ws.restoreLast(undefined, new Set())
+    expect(ws.panes[1]!.cwd).toBe('D:\\work\\orrery\\apps')
+  })
+})

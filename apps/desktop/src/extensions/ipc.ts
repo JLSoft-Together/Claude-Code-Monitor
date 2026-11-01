@@ -5,7 +5,7 @@ import path from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import type { AvailablePlugin, ExtInstallRequest, ExtRemoveRequest, ExtResult, ExtScope, ExtSourceRequest, ExtStatus, McpServerRow } from '@ccm/shared'
 import { findClaudeCli, type CliRun } from '../../../collector/src/job-stop'
-import { maskLog } from '../log-mask'
+import { maskSecrets } from '@ccm/shared'
 import { childEnv } from '../pty/presets'
 import {
   buildInstall,
@@ -94,7 +94,7 @@ export function registerExtensionsIpc(deps: ExtensionsDeps): () => void {
   const clean = (text: string, secrets: readonly string[]): string => {
     let out = text
     for (const s of secrets) if (s) out = out.split(s).join('••••')
-    out = maskLog(out, home, platform).trim()
+    out = maskSecrets(out, home, platform).trim()
     return out.length > 600 ? `…${out.slice(-600)}` : out
   }
 

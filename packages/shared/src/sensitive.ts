@@ -104,3 +104,50 @@ export function sanitizeSensitive(value: unknown): SensitiveSettings {
 export function isSensitiveRule(v: unknown): v is string {
   return isRule(v)
 }
+
+/** "Block next time" (v76 R5b): which Claude Code settings file gets the deny rules. */
+export const DENY_SCOPES = ['project', 'local', 'user'] as const
+export type DenyScope = (typeof DENY_SCOPES)[number]
+
+export interface DenyRequest {
+  project: string
+  /** Sensitive rule id of the hit; the desktop derives the deny rules itself, the page never sends rule text. */
+  rule: string
+  /** Tool of the hit (`Edit`, `Write`, `Bash`, `PowerShell`…). */
+  tool: string
+  scope: DenyScope
+}
+
+export type DenyError = 'denied' | 'invalid' | 'unreadable' | 'cancelled' | 'changed' | 'failed' | 'unavailable'
+export type DenyResult = { ok: true; scope: DenyScope; added: string[] } | { ok: false; error: DenyError }
+
+const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell'])
+// File-name globs only: `/`, parentheses, spaces and backslashes would change the meaning of the rule.
+const DENY_GLOB_RE = /^[\w.*?@+~-]{1,100}$/
+
+const COMMAND_DENY: Partial<Record<CommandRule, { shells: readonly string[]; patterns: readonly string[] }>> = {
+  'git-force-push': { shells: ['Bash', 'PowerShell'], patterns: ['git push --force *', 'git push -f *', 'git push * --force *', 'git push * -f *'] },
+  'git-reset-hard': { shells: ['Bash', 'PowerShell'], patterns: ['git reset --hard *', 'git reset * --hard *'] },
+  // git clean refuses to delete anything without -f (clean.requireForce), so blocking it whole loses little.
+  'git-clean': { shells: ['Bash', 'PowerShell'], patterns: ['git clean *'] },
+  'rm-rf': { shells: ['Bash'], patterns: ['rm -rf *', 'rm -fr *', 'rm -Rf *'] },
+  'adb-uninstall': { shells: ['Bash', 'PowerShell'], patterns: ['adb uninstall *', 'adb * uninstall *'] },
+}
+
+/**
+ * Claude Code permission deny rules (2.1.294 syntax, docs §11ak) that stop the hit next time; empty when no rule
+ * matches it faithfully (outside the project, DROP TABLE, cmd / PowerShell deletes, globs with a path).
+ */
+export function denyRulesFor(rule: unknown, tool: unknown): string[] {
+  if (typeof rule !== 'string' || typeof tool !== 'string' || !isRule(rule)) return []
+  const group = ruleGroup(rule)
+  if (group === 'secrets' || group === 'custom') {
+    const glob = group === 'custom' ? rule.slice(CUSTOM_PREFIX.length) : rule
+    // `Edit(path)` covers Write / Edit / NotebookEdit; `Write(path)` rules are not matched by file checks.
+    return FILE_TOOLS.has(tool) && DENY_GLOB_RE.test(glob) && !/^[*?]*$/.test(glob) ? [`Edit(**/${glob})`] : []
+  }
+  const spec = COMMAND_DENY[rule as CommandRule]
+  if (!spec || !SHELL_TOOLS.has(tool) || !spec.shells.includes(tool)) return []
+  return spec.patterns.map((p) => `${tool}(${p})`)
+}

@@ -1,7 +1,7 @@
 import type { ActivityEvent, NotifySettings, QuietHours, SnoozeEntry, TerminalSession, ToastKind } from './types'
 
-export const TOAST_KINDS: readonly ToastKind[] = ['waiting', 'done', 'job', 'loop', 'stuck', 'context', 'limit', 'idle', 'sensitive']
-export const DEFAULT_TOAST_KINDS: Record<ToastKind, boolean> = { waiting: true, done: false, job: true, loop: true, stuck: true, context: true, limit: true, idle: true, sensitive: true }
+export const TOAST_KINDS: readonly ToastKind[] = ['waiting', 'done', 'job', 'loop', 'stuck', 'context', 'limit', 'idle', 'sensitive', 'disk']
+export const DEFAULT_TOAST_KINDS: Record<ToastKind, boolean> = { waiting: true, done: false, job: true, loop: true, stuck: true, context: true, limit: true, idle: true, sensitive: true, disk: true }
 export const STUCK_CHOICES = [0, 5, 10, 15, 30] as const
 export const DEFAULT_STUCK_MINUTES = 10
 export const IDLE_CHOICES = [0, 15, 30, 60, 120, 240] as const

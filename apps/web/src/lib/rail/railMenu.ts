@@ -27,6 +27,8 @@ export interface ProjectMenuCtx {
   i18n?: boolean
   /** Desktop `ccm:perm-read` exists. */
   perms?: boolean
+  /** Desktop `ccm:build-scan` exists (v77 R8). */
+  buildClean?: boolean
   /** Desktop `ccm:reveal` exists (OS file manager). */
   reveal: boolean
   canUp: boolean
@@ -51,6 +53,7 @@ export function projectMenu(ctx: ProjectMenuCtx, t: T): MenuEntry[] {
   if (ctx.env && ctx.dir) entries.push({ id: 'env', label: t('workspace.envCheck.open') })
   if (ctx.i18n && ctx.dir) entries.push({ id: 'i18n', label: t('workspace.i18nScan.open') })
   if (ctx.perms && ctx.dir) entries.push({ id: 'perms', label: t('permAdvisor.open') })
+  if (ctx.buildClean && ctx.dir && !ctx.home) entries.push({ id: 'build-clean', label: t('buildClean.open') })
   if (ctx.layouts && ctx.dir) {
     const kids: MenuEntry[] = [{ id: 'layout-save', label: t('workspace.layouts.save') }]
     if (ctx.layouts.length) kids.push({ id: 'layout-manage', label: t('workspace.layouts.manage') }, { separator: true })

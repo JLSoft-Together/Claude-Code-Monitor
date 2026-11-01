@@ -237,7 +237,7 @@ export interface MonitorSnapshot {
 }
 
 export type ToastState = 'on' | 'off' | 'unsupported'
-export type ToastKind = 'waiting' | 'done' | 'job' | 'loop' | 'limit' | 'context' | 'stuck' | 'idle' | 'sensitive'
+export type ToastKind = 'waiting' | 'done' | 'job' | 'loop' | 'limit' | 'context' | 'stuck' | 'idle' | 'sensitive' | 'disk'
 export type ToastHealth = 'ok' | 'globalOff' | 'appOff' | 'unknown'
 export type ToastTestResult = 'ok' | 'failed' | 'unsupported'
 

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { TIMELINE_DIR, TimelineRecorder } from '@ccm/habblaud/server/history/timeline'
 import { NameStore } from '@ccm/habblaud/server/model/names'
-import { busyCounts, parseDeviceUsed, type BusyMessage, type MonitorEvent } from '@ccm/shared'
+import { busyCounts, parseDeviceUsed, parseDiskAlert, type BusyMessage, type MonitorEvent } from '@ccm/shared'
 import { defaultProcReader } from './resources/procs'
 import { defaultPortTable } from './resources/ports'
 import { fixturePortTable, fixtureProcReader } from './resources/fixture'
@@ -332,7 +332,9 @@ async function main(): Promise<void> {
   parentPort?.on('message', (e) => {
     if (e.data === 'shutdown') return shutdown()
     const used = parseDeviceUsed(e.data)
-    if (used) sampler.deviceUsed(used)
+    if (used) return sampler.deviceUsed(used)
+    const disk = parseDiskAlert(e.data)
+    if (disk) toaster.observeDisk(disk)
   })
 
   await monitor.start()

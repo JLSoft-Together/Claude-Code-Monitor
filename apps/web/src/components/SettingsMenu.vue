@@ -16,6 +16,7 @@ import { useExtrasStore } from '../stores/extras'
 import { useTipsStore } from '../stores/tips'
 import { useUiStore } from '../stores/ui'
 import { desktop, hasRun, hasTerminals } from '../lib/desktop'
+import { RESTORE_MODES, restoreMode } from '../lib/workspaceRestore'
 import { CODE_SIZE_MAX, CODE_SIZE_MIN } from '../lib/fonts'
 import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
 import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
@@ -23,9 +24,13 @@ import LottieArt from './LottieArt.vue'
 import RunSdkSettings from './RunSdkSettings.vue'
 import AwakeSettings from './AwakeSettings.vue'
 import CaptureSettings from './CaptureSettings.vue'
+import AgentDataSettings from './AgentDataSettings.vue'
+import { hasAgentData } from '../lib/agentData'
 import { hasAwake, hasCapture } from '../lib/capture'
 import PhoneSettings from './PhoneSettings.vue'
 import SensitiveSettings from './SensitiveSettings.vue'
+import DiskSettings from './DiskSettings.vue'
+import { hasDisk } from '../lib/buildClean'
 import { hasPhone } from '../lib/phone'
 import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
 import { hasGitHub } from '../lib/github'
@@ -120,6 +125,7 @@ const fileIconStyles = computed(() => [
   { value: 'simple' as const, label: t('settings.fileIconsSimple') },
 ])
 const autoSaveModes = computed(() => AUTO_SAVE_MODES.map((mode) => ({ value: mode, label: t(`settings.autoSaveMode.${mode}`) })))
+const restoreModes = computed(() => RESTORE_MODES.map((mode) => ({ value: mode, label: t(`wsRestore.modes.${mode}`) })))
 const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms, label: t('settings.seconds', { n: ms / 1000 }) })))
 const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
 const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
@@ -411,10 +417,16 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             </div>
           </section>
 
-          <section v-if="loginItem !== null" aria-labelledby="set-startup" class="mt-6">
+          <section v-if="loginItem !== null || hasTerminals" aria-labelledby="set-startup" class="mt-6">
             <h3 id="set-startup" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.startup') }}</h3>
             <div class="ccm-group">
+              <div v-if="hasTerminals" class="px-3 py-2">
+                <p class="text-sm">{{ t('wsRestore.mode') }}</p>
+                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('wsRestore.modeHint') }}</p>
+                <SegmentedControl v-model="restoreMode" :options="restoreModes" :label="t('wsRestore.mode')" fill class="mt-2 w-full" data-setting="restore-mode" />
+              </div>
               <ToggleSwitch
+                v-if="loginItem !== null"
                 :model-value="loginItem"
                 :label="t(isMac ? 'settings.loginItemMac' : 'settings.loginItem')"
                 :hint="t(isMac ? 'settings.loginItemHintMac' : 'settings.loginItemHint')"
@@ -536,6 +548,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 />
               </div>
             </div>
+            <DiskSettings v-if="hasDisk && ui.settingsOpen" />
           </section>
           <PhoneSettings v-if="hasPhone && ui.settingsOpen" :open="ui.settingsOpen" />
           <SensitiveSettings v-if="ui.settingsOpen" />
@@ -615,6 +628,8 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           <RunSdkSettings v-if="hasRun && ui.settingsOpen" :open="ui.settingsOpen" />
 
           <CaptureSettings v-if="hasCapture && ui.settingsOpen" :open="ui.settingsOpen" />
+
+          <AgentDataSettings v-if="hasAgentData && ui.settingsOpen" :open="ui.settingsOpen" />
 
           <GitHubAccountsSettings v-if="hasGitHub && ui.settingsOpen" :open="ui.settingsOpen" />
 

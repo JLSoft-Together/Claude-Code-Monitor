@@ -7,6 +7,7 @@ import {
   DEFAULT_TOAST_KINDS,
   TOAST_KINDS,
   errorLoops,
+  formatGb,
   inQuietHours,
   quietFor,
   remindersDue,
@@ -16,6 +17,7 @@ import {
   sanitizeStuck,
   type ActivityEvent,
   type BackgroundJob,
+  type DiskAlertMessage,
   type JobState,
   type NotifySettings,
   type PhoneEpisodeMessage,
@@ -157,6 +159,8 @@ interface Texts {
   idleBody: (names: string) => string
   sensitiveTitle: (name: string) => string
   sensitiveBody: (rule: string, tool: string, path?: string) => string
+  diskTitle: (label: string, free: string) => string
+  diskBody: (danger: boolean) => string
   testTitle: string
   testBody: string
   snooze: (minutes: number) => string
@@ -191,6 +195,8 @@ export const TEXT: Record<ToastLocale, Texts> = {
     idleBody: (names) => `${names}. Open Orrery to review and stop them.`,
     sensitiveTitle: (name) => `${name} touched something sensitive`,
     sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'en')}${path ? ` · ${path}` : ''}`,
+    diskTitle: (label, free) => `Drive ${label} almost full: ${free} left`,
+    diskBody: (danger) => (danger ? 'Builds and agents may fail soon. Open Orrery to clean build output or agent data.' : 'Open Orrery to see what can be cleaned.'),
     testTitle: 'Test notification',
     testBody: 'Windows notifications from Orrery work.',
     snooze: (minutes) => `Snooze ${minutes} min`,
@@ -223,6 +229,8 @@ export const TEXT: Record<ToastLocale, Texts> = {
     idleBody: (names) => `${names}. Mở Orrery để xem và tắt.`,
     sensitiveTitle: (name) => `${name} vừa đụng vào thứ nhạy cảm`,
     sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'vi')}${path ? ` · ${path}` : ''}`,
+    diskTitle: (label, free) => `Ổ ${label} sắp đầy: còn ${free}`,
+    diskBody: (danger) => (danger ? 'Build và agent sắp lỗi vì hết chỗ. Mở Orrery để dọn đồ build hoặc dữ liệu agent.' : 'Mở Orrery để xem có thể dọn gì.'),
     testTitle: 'Thông báo thử',
     testBody: 'Thông báo Windows của Orrery đang chạy.',
     snooze: (minutes) => `Hoãn ${minutes} phút`,
@@ -608,6 +616,14 @@ export class Toaster {
       open: text.open,
       persistent: false,
     })
+  }
+
+  /** Low disk (v77 R9): desktop main already sends one alert per drive per crossing. */
+  observeDisk(m: DiskAlertMessage): void {
+    if (m.level === 'danger') this.phone({ episode: `disk:${m.label}:${this.deps.now()}`, reason: 'disk', name: m.label, freeBytes: m.freeBytes }, 'disk')
+    if (!this.can('disk')) return
+    const text = TEXT[this.localeValue]
+    this.show(`disk:${m.label}`, { title: text.diskTitle(m.label, formatGb(m.freeBytes)), body: text.diskBody(m.level === 'danger'), url: this.linkFor(), open: text.openDashboard, persistent: false })
   }
 
   private trackWork(t: TerminalSession, before: TerminalStatus | undefined, nowMs: number): number | null {

@@ -21,7 +21,8 @@ import {
   type RunTemplates,
   type ToolchainReport,
 } from '@ccm/shared'
-import { createLogMasker } from '../log-mask'
+import { createLogMasker } from '@ccm/shared'
+import { withAdbUse } from '../resources/deviceUse'
 import { isWithin, realOrNull } from '../preview/paths'
 import { detectAndroid } from './android/detect'
 import { androidEnv, gradlewFile } from './android/env'
@@ -68,6 +69,8 @@ export interface RunManagerDeps {
   exec?: ToolchainExec
   watch?: WatchFn
   watchDebounceMs?: number
+  /** Every `adb -s <serial>` call a runner spawns (emulator idle rule). */
+  onAdbUse?: (serial: string) => void
 }
 
 interface Live {
@@ -416,7 +419,7 @@ export class RunManager {
       env: this.deps.env,
       platform: this.deps.platform,
       home: this.deps.home,
-      spawn: this.deps.spawn,
+      spawn: this.deps.onAdbUse ? withAdbUse(this.deps.spawn, this.deps.onAdbUse) : this.deps.spawn,
       hooks: {
         state: (state, patch) => this.update(session.id, { state, ...patch, ...(isRunLive(state) ? {} : { endedAt: Date.now(), progress: null }) }),
         fail: (failure) => this.update(session.id, { state: 'failed', failure, endedAt: Date.now(), progress: null }),

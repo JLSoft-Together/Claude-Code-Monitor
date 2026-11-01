@@ -8,12 +8,13 @@ import { HEX_COLOR, isZoomAction, nextZoom, parseLook, readAppearance, writeAppe
 import { createAttention, type Attention } from './attention'
 import { createEditorTracker, type EditorTracker } from './editors'
 import { installBridge, type BridgeInstall } from './bridge'
-import { maskLog } from './log-mask'
+import { maskSecrets } from '@ccm/shared'
 import { CollectorHost, FatalError, type FatalReason } from './collector-host'
 import { adoptLoginShellPath, offerMoveToApplications, setMacMenu } from './mac'
 import { errorPage, INTRO_MS, LEAVE_MS, LEAVE_SCRIPT, loadingPage, RETRY_URL } from './pages'
 import { pickStartDir } from './pick-start'
 import { hardenWebviews, PREVIEW_PARTITION, registerPreviewIpc, type PreviewIpc } from './preview/ipc'
+import { claudeConfigDir } from './preview/denyRules'
 import { PreviewServer } from './preview/server'
 import { RootWatcher } from './preview/watch'
 import { FULL_ACCESS_FILE, FullAccess, GrantStore, GRANTS_FILE } from './preview/grants'
@@ -67,9 +68,9 @@ import { registerUpdateIpc } from './update/ipc'
 import { UpdateManager } from './update/manager'
 import { installKind, platformKind } from './update/pick'
 import { BackupService } from './backup/service'
-import { DeviceUseReporter } from './resources/deviceUse'
+import { DeviceUseReporter, RUN_USE_THROTTLE_MS } from './resources/deviceUse'
 import { confirmLines, fixtureKill, killTreeByPid, liveStarts, planKill } from './resources/kill'
-import { parseBusy, parseKillTargets, parsePhoneEpisode, type ResKillResult, type ResourceReport } from '@ccm/shared'
+import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, type ResKillResult, type ResourceReport } from '@ccm/shared'
 import { AWAKE_FILE, KeepAwake, readAwakeMode, writeAwakeMode } from './power/awake'
 import { CAPTURE_FILE } from './capture/files'
 import { CaptureFolder } from './capture/folder'
@@ -79,6 +80,18 @@ import { registerPhoneIpc } from './phone/ipc'
 import { e2eOverride } from './phone/send'
 import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
+import { AgentDataService } from './agentData/service'
+import { MoveStore, freeBytes, isLocalDir } from './agentData/move'
+import { agentProcs } from './agentData/procs'
+import { registerAgentDataIpc } from './agentData/ipc'
+import { isInsideOrSame } from './agentData/fsTree'
+import { BuildCleanService } from './buildClean/service'
+import { registerBuildCleanIpc } from './buildClean/ipc'
+import { DISK_FILE, DiskWatch, type DiskSpace } from './disk/watch'
+import { registerDiskIpc } from './disk/ipc'
+import { runGit } from './pty/git'
+import { registerRestoreIpc } from './restore/ipc'
+import { markClean, markRunning, readPreviousRun, RUN_STATE_FILE } from './restore/runState'
 
 const APP_ID = 'dev.ccm.monitor'
 const LEGACY_EXES = ['Claude Code Monitor.exe', 'Agent Monitor.exe', 'GolAIm.exe']
@@ -148,6 +161,10 @@ let capture: CaptureFolder | null = null
 let disposeCapture: (() => void) | null = null
 let phone: PhoneNotifier | null = null
 let disposePhone: (() => void) | null = null
+let disposeAgentData: (() => void) | null = null
+let disposeBuildClean: (() => void) | null = null
+let disposeDisk: (() => void) | null = null
+let disk: DiskWatch | null = null
 let disposeDevices: (() => void) | null = null
 let disposeApk: (() => void) | null = null
 let disposeRelease: (() => void) | null = null
@@ -285,6 +302,14 @@ function stopPreview(): Promise<void> {
   disposeCapture = null
   disposePhone?.()
   disposePhone = null
+  disposeAgentData?.()
+  disposeAgentData = null
+  disposeBuildClean?.()
+  disposeBuildClean = null
+  disposeDisk?.()
+  disposeDisk = null
+  disk?.stop()
+  disk = null
   capture?.dispose()
   awake?.dispose()
   deviceManager?.stop(true)
@@ -676,6 +701,7 @@ function boot(): Promise<void> {
       await mainWindow.loadURL(loadingPage(t, saved().look, app.getVersion())).catch(() => undefined)
       const shownAt = Date.now()
       await host.start()
+      disk?.start()
       if (DEV_URL) await waitForDevServer(DEV_URL)
       if (showingError) return
       // A login start stays in the tray: nobody watches the intro, so the dashboard loads at once.
@@ -735,7 +761,7 @@ function logReport(pageReport: string): string {
   ]
   const sections = [head.join('\n'), pageReport && `## Diagnostics\n${pageReport}`]
   for (const name of LOG_FILES) sections.push(`## ${name}\n${tailOf(path.join(app.getPath('logs'), name)).trimEnd()}`)
-  return maskLog(sections.filter(Boolean).join('\n\n'), os.homedir(), process.platform) + '\n'
+  return maskSecrets(sections.filter(Boolean).join('\n\n'), os.homedir(), process.platform) + '\n'
 }
 
 function sendAppKey(): void {
@@ -907,6 +933,34 @@ function wireBackup(): void {
   })
 }
 
+function setupRestore(): void {
+  const file = path.join(DATA_DIR, RUN_STATE_FILE)
+  const previous = readPreviousRun(file)
+  markRunning(file)
+  const winOf = (event: Electron.IpcMainInvokeEvent): BrowserWindow | null => BrowserWindow.fromWebContents(event.sender)
+  const e2eFile = process.env.CCM_E2E_PROMPTS_FILE || null
+  const filters = [{ name: t.promptsFilter, extensions: ['json'] }]
+  registerRestoreIpc({
+    ipcMain,
+    isAppFrame,
+    previous,
+    saveDialog: async (event) => {
+      if (e2eFile) return e2eFile
+      const opts: Electron.SaveDialogOptions = { title: t.promptsExportTitle, defaultPath: path.join(app.getPath('documents'), 'orrery-prompts.json'), filters }
+      const win = winOf(event)
+      const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      return res.canceled ? null : (res.filePath ?? null)
+    },
+    openDialog: async (event) => {
+      if (e2eFile) return e2eFile
+      const opts: Electron.OpenDialogOptions = { title: t.promptsImportTitle, properties: ['openFile'], filters }
+      const win = winOf(event)
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+  })
+}
+
 /** v74 in-app update from GitHub Releases; dev builds only check and open the page unless CCM_UPDATE_FEED points at a test feed. */
 function createUpdates(): UpdateManager {
   const testFeed = process.env.CCM_UPDATE_FEED
@@ -1019,6 +1073,132 @@ function setupPhone(): void {
   disposePhone = registerPhoneIpc(ipcMain, isAppFrame, phone)
 }
 
+/** v76 R7: agent data sizes, cache clean, image strip, move to another drive (docs §11al). */
+async function setupAgentData(): Promise<void> {
+  const broadcast = (channel: string, payload: unknown) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
+  }
+  // E2E: the folder dialogs cannot be driven over CDP.
+  const e2eFolders = { target: process.env.CCM_E2E_AGENT_TARGET || null, backup: process.env.CCM_E2E_AGENT_BACKUP || null }
+  const claudeApp = path.join(app.getPath('appData'), 'Claude')
+  const service = new AgentDataService({
+    roots: () => ({
+      claude: claudeConfigDir(process.env, os.homedir()),
+      codex: process.env.CODEX_HOME || path.join(os.homedir(), '.codex'),
+      claudeApp: existsSync(claudeApp) && !process.env.CCM_E2E_AGENT_TARGET ? claudeApp : null,
+    }),
+    store: new MoveStore(path.join(DATA_DIR, 'agent-data-move.json')),
+    procs: (agent) => agentProcs(agent),
+    confirm: async (spec) => {
+      const opts: Electron.MessageBoxOptions = { type: 'warning', message: spec.message, detail: spec.detail, buttons: spec.buttons, defaultId: spec.buttons.length - 1, cancelId: spec.buttons.length - 1, noLink: true }
+      if (mainWindow && !mainWindow.isVisible()) showMain()
+      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+      return response
+    },
+    pickFolder: async (purpose) => {
+      const forced = e2eFolders[purpose]
+      if (forced) return forced
+      const opts: Electron.OpenDialogOptions = { title: purpose === 'target' ? t.agentPickTarget : t.agentPickBackup, properties: ['openDirectory', 'createDirectory'] }
+      const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts)
+      return res.canceled ? null : (res.filePaths[0] ?? null)
+    },
+    stopCollector: () => host.stop(),
+    startCollector: async () => {
+      try {
+        await host.start()
+      } catch (err) {
+        showError(err instanceof FatalError ? err.reason : { kind: 'exited', code: null })
+      }
+    },
+    emit: (progress) => broadcast('ccm:agentdata-event', progress),
+    isLocal: (dir) => isLocalDir(dir),
+    freeBytes: (dir) => freeBytes(dir),
+    texts: () => ({ ...t.agentData, cancel: t.quitCancel }),
+  })
+  await service.recover().catch(() => undefined)
+  disposeAgentData = registerAgentDataIpc({ ipcMain, isAppFrame, service })
+}
+
+/** v77 R8: rebuildable build folders of known projects; deletes only what the last scan offered. */
+function setupBuildClean(): void {
+  const service = new BuildCleanService({
+    git: (cwd, args) => runGit(cwd, args),
+    confirm: async (spec) => {
+      const opts: Electron.MessageBoxOptions = { type: 'warning', message: spec.message, detail: spec.detail, buttons: spec.buttons, defaultId: spec.buttons.length - 1, cancelId: spec.buttons.length - 1, noLink: true }
+      if (mainWindow && !mainWindow.isVisible()) showMain()
+      const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+      return response
+    },
+    emit: (progress) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:build-event', progress)
+    },
+    running: (root) => [
+      ...(resReport?.servers ?? []).filter((s) => s.cwd && isInsideOrSame(root, s.cwd)).map((s) => `${s.name} (${s.pid})`),
+      ...(runManager?.live() ?? []).filter((r) => isInsideOrSame(root, r.cwd)).map((r) => r.configName),
+    ],
+    daemons: () =>
+      (resReport?.servers ?? [])
+        .filter((s) => s.kind === 'daemon' && (s.daemon?.type === 'gradle' || s.daemon?.type === 'kotlin') && s.start)
+        .map((s) => ({ pid: s.pid, start: s.start, name: s.name })),
+    trash: (p) => shell.trashItem(p),
+    texts: () => ({ ...t.buildClean, cancel: t.quitCancel }),
+  })
+  disposeBuildClean = registerBuildCleanIpc({ ipcMain, isAppFrame, service })
+}
+
+function androidDirs(): string[] {
+  const env = process.env
+  const home = os.homedir()
+  const sdkDefault = IS_MAC ? path.join(home, 'Library', 'Android', 'sdk') : path.join(env.LOCALAPPDATA ?? path.join(home, 'AppData', 'Local'), 'Android', 'Sdk')
+  const sdk = runManager?.getSettings().androidSdk || env.ANDROID_HOME || env.ANDROID_SDK_ROOT || sdkDefault
+  return [sdk, env.ANDROID_AVD_HOME || path.join(home, '.android', 'avd')].filter((d) => existsSync(d))
+}
+
+/** v77 R9: free space of the drives Orrery and the agents write to (read only). */
+function setupDisk(): void {
+  let projects: string[] = []
+  // E2E: a JSON file `{ free, total }` stands in for every drive, so low space can be shown without filling a disk.
+  const fake = process.env.CCM_E2E_DISK || null
+  const watch = new DiskWatch({
+    file: path.join(DATA_DIR, DISK_FILE),
+    places: () => [
+      { place: 'claude' as const, dir: claudeConfigDir(process.env, os.homedir()) },
+      { place: 'codex' as const, dir: process.env.CODEX_HOME || path.join(os.homedir(), '.codex') },
+      { place: 'data' as const, dir: DATA_DIR },
+      ...(capture ? [{ place: 'capture' as const, dir: capture.saveDir() }] : []),
+      ...projects.map((dir) => ({ place: 'project' as const, dir })),
+      ...androidDirs().map((dir) => ({ place: 'android' as const, dir })),
+    ],
+    ...(fake
+      ? {
+          statfs: async (): Promise<DiskSpace | null> => {
+            try {
+              return JSON.parse(readFileSync(fake, 'utf8')) as DiskSpace
+            } catch {
+              return null
+            }
+          },
+        }
+      : {}),
+    onState: (state) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:disk-event', state)
+    },
+    onAlert: (m) => host.post(m),
+  })
+  disk = watch
+  disposeDisk = registerDiskIpc({
+    ipcMain,
+    isAppFrame,
+    watch,
+    setProjects: (dirs) => {
+      const changed = dirs.join('\n') !== projects.join('\n')
+      projects = dirs
+      if (changed) watch.poke(2_000)
+    },
+    openFolder: async (dir) => (await shell.openPath(dir)) === '',
+  })
+}
+
 async function ready(): Promise<void> {
   t = stringsFor(saved().locale ?? 'vi')
   if (IS_MAC) {
@@ -1039,6 +1219,10 @@ async function ready(): Promise<void> {
   backups.applyPending()
   setupCaptureAndAwake()
   setupPhone()
+  setupRestore()
+  await setupAgentData()
+  setupBuildClean()
+  setupDisk()
   host = new CollectorHost({
     script: path.join(__dirname, 'collector.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
     port: PORT,
@@ -1300,6 +1484,19 @@ async function ready(): Promise<void> {
       }
       return confirmBox(mainWindow, opts)
     },
+    confirmDenyRules: async (req) => {
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        message: t.denyTitle(req.added.length, req.scope),
+        detail: t.denyDetail(req.file, req.scope, req.diff),
+        buttons: [t.denyConfirm, t.gitDeleteCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      }
+      return confirmBox(mainWindow, opts)
+    },
+    claudeConfigDir: claudeConfigDir(process.env, os.homedir()),
     dataDir: DATA_DIR,
   })
   disposeLayouts = registerLayoutsIpc({ ipcMain, isAppFrame, store: new LayoutStore(path.join(DATA_DIR, LAYOUTS_FILE)) })
@@ -1309,6 +1506,7 @@ async function ready(): Promise<void> {
     platform: process.platform,
     home: os.homedir(),
     spawn: defaultSpawner,
+    onAdbUse: (serial) => deviceUse?.used(serial, RUN_USE_THROTTLE_MS),
     runners: { flutter: createFlutterRunner, android: createAndroidRunner, custom: createCustomRunner },
     devices: {
       flutter: (settings) => createFlutterDevices({ settings, env: process.env, platform: process.platform, home: os.homedir(), spawn: defaultSpawner }),
@@ -1346,8 +1544,9 @@ async function ready(): Promise<void> {
     },
   })
   await runManager.loadSettings()
-  runManager.onSessionState((_session, _cfg, device) => {
-    if (device?.platform.startsWith('android')) deviceUse?.used(device.id)
+  runManager.onSessionState((session, _cfg, device) => {
+    if (device?.platform.startsWith('android')) deviceUse?.used(device.id, RUN_USE_THROTTLE_MS)
+    if (!isRunLive(session.state)) disk?.poke()
   })
   const previewGate = previewIpc
   disposeRun = registerRunIpc({ ipcMain, isAppFrame, manager: runManager, resolveDir: (dir) => previewGate.resolveDir(dir) })
@@ -1403,6 +1602,7 @@ async function ready(): Promise<void> {
     resolveDir: (dir) => previewGate.resolveDir(dir),
     recorder,
     saveRecording: async (event, defaultName) => {
+      disk?.poke(15_000)
       if (e2eRecFile) return e2eRecFile
       const opts: Electron.SaveDialogOptions = { title: t.recSaveTitle, defaultPath: path.join(folder?.saveDir() ?? app.getPath('videos'), defaultName), filters: [{ name: t.recFilter, extensions: ['mp4'] }] }
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -1745,6 +1945,7 @@ if (!app.requestSingleInstanceLock()) {
       .then((ok) => {
         if (!ok) return
         quitting = true
+        markClean(path.join(DATA_DIR, RUN_STATE_FILE))
         attention?.clear()
         // A hung child must never leave the app unquittable.
         const hardExit = setTimeout(() => {

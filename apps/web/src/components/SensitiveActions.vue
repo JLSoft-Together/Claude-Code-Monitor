@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { EyeOff, FileDiff, FileText } from 'lucide-vue-next'
-import type { ActivityEvent } from '@ccm/shared'
+import { EyeOff, FileDiff, FileText, ShieldBan, ShieldCheck } from 'lucide-vue-next'
+import { denyRulesFor, type ActivityEvent, type DenyScope } from '@ccm/shared'
 import { hasTerminals } from '../lib/desktop'
-import { folderName, relInside, ruleText } from '../lib/sensitive'
+import { folderName, hasDeny, relInside, ruleText, sensitiveDeny } from '../lib/sensitive'
 import { useCheckpointsStore } from '../stores/checkpoints'
 import { useConnectionStore } from '../stores/connection'
 import { useSensitiveStore } from '../stores/sensitive'
 import { useUiStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
+import SensitiveDenyMenu from './SensitiveDenyMenu.vue'
 
 /** Open file / Open diff / Ignore for one `sensitive` activity row (v76 R5). */
 const props = defineProps<{ event: ActivityEvent }>()
@@ -59,10 +60,31 @@ function openDiff(): void {
 function ignore(): void {
   if (project.value && rule.value) connection.ignoreSensitive(project.value, rule.value, true)
 }
+
+const tool = computed(() => props.event.data?.tool)
+const denyRules = computed(() => (hasDeny && project.value ? denyRulesFor(rule.value, tool.value) : []))
+const denyButton = ref<HTMLElement | null>(null)
+const denyAnchor = ref<DOMRect | null>(null)
+const denyBusy = ref(false)
+const denyNote = ref<{ ok: boolean; text: string } | null>(null)
+
+function toggleDeny(): void {
+  denyAnchor.value = denyAnchor.value ? null : (denyButton.value?.getBoundingClientRect() ?? null)
+}
+
+async function blockNextTime(scope: DenyScope): Promise<void> {
+  if (!project.value || !rule.value || !tool.value || denyBusy.value) return
+  denyBusy.value = true
+  denyNote.value = null
+  const res = await sensitiveDeny({ project: project.value, rule: rule.value, tool: tool.value, scope })
+  denyBusy.value = false
+  if (res.ok) denyNote.value = { ok: true, text: t(res.added.length ? 'sensitive.deny.done' : 'sensitive.deny.already', { file: t(`sensitive.deny.file.${scope}`) }) }
+  else if (res.error !== 'cancelled') denyNote.value = { ok: false, text: t(`sensitive.deny.error.${res.error}`) }
+}
 </script>
 
 <template>
-  <div class="mt-1 flex flex-wrap items-center gap-1" data-sensitive-actions>
+  <div class="mt-1 flex flex-wrap items-center gap-1" data-sensitive-actions :data-sensitive-rule="rule">
     <button v-if="inside && hasTerminals" type="button" class="ccm-btn-plain h-6 px-1.5! text-2xs" data-sensitive-open @click="openFile">
       <FileText :size="12" aria-hidden="true" />{{ t('sensitive.openFile') }}
     </button>
@@ -79,5 +101,29 @@ function ignore(): void {
     >
       <EyeOff :size="12" aria-hidden="true" />{{ t('sensitive.ignore') }}
     </button>
+    <button
+      v-if="denyRules.length"
+      ref="denyButton"
+      type="button"
+      class="ccm-btn-plain h-6 px-1.5! text-2xs"
+      :title="t('sensitive.deny.title')"
+      :aria-expanded="!!denyAnchor"
+      aria-haspopup="menu"
+      :disabled="denyBusy"
+      data-sensitive-deny
+      @click="toggleDeny"
+    >
+      <ShieldBan :size="12" aria-hidden="true" />{{ t('sensitive.deny.button') }}
+    </button>
+    <span
+      v-if="denyNote"
+      class="inline-flex items-center gap-1 text-2xs"
+      :class="denyNote.ok ? 'text-ink-muted' : 'text-st-error'"
+      role="status"
+      :data-sensitive-deny-note="denyNote.ok ? 'ok' : 'error'"
+    >
+      <ShieldCheck v-if="denyNote.ok" :size="12" class="text-success" aria-hidden="true" />{{ denyNote.text }}
+    </span>
+    <SensitiveDenyMenu v-if="denyAnchor" :anchor="denyAnchor" :rules="denyRules" :trigger="denyButton" @pick="blockNextTime" @close="denyAnchor = null" />
   </div>
 </template>

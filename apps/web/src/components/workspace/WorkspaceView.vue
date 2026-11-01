@@ -66,6 +66,7 @@ import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
 import RestorePicker from './RestorePicker.vue'
+import { restoreMode, restoreWith, setRestorer, uncleanExit } from '../../lib/workspaceRestore'
 import ViewPaneControls from './ViewPaneControls.vue'
 import WorkspaceSidebar from './WorkspaceSidebar.vue'
 import SideResizer from './SideResizer.vue'
@@ -576,8 +577,12 @@ function openLayout(layout: SavedLayout): void {
   })
 }
 
+const adoptRestore = (run: ReadonlySet<string> | undefined, gone: ReadonlySet<string>): void => adoptNew(() => workspace.restoreLast(run, gone))
+setRestorer(adoptRestore)
+onBeforeUnmount(() => setRestorer(null))
+
 function restoreLast(run?: ReadonlySet<string>): void {
-  adoptNew(() => workspace.restoreLast(run))
+  void restoreWith(workspace.lastMovedDirs, run, adoptRestore)
 }
 
 // "Open on start": the first terminal opened in a project during this window's life brings its start layout along.
@@ -2150,10 +2155,12 @@ onBeforeUnmount(() => {
           <p class="mt-1 text-sm text-ink-muted">{{ t('workspace.empty.body') }}</p>
         </div>
         <RestorePicker
-          v-if="lastSummary"
+          v-if="lastSummary && restoreMode !== 'off'"
           :projects="workspace.lastProjects"
           :tabs="lastSummary.tabs"
           :agents="lastSummary.agents"
+          :unclean="uncleanExit"
+          :at="workspace.last?.at"
           @restore="restoreLast"
           @dismiss="workspace.dismissLast()"
         />

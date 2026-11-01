@@ -217,6 +217,8 @@ interface LastPane extends ViewFields {
   key: string
   preset: PtyPreset
   cwd?: string
+  /** The pane's starting folder when `cwd` is where its shell had moved to; used when that folder is gone. */
+  home?: string
   resume?: string
 }
 
@@ -330,7 +332,10 @@ function loadLast(): LastWorkspace | null {
   try {
     const raw = JSON.parse(readLocal(LAST_KEY) ?? 'null') as LastWorkspace | null
     if (!raw || !Array.isArray(raw.panes) || !Array.isArray(raw.tabs)) return null
-    const panes = raw.panes.map(cleanPane).filter((p): p is LastPane => !!p)
+    const panes = raw.panes
+      .map(cleanPane)
+      .filter((p): p is LastPane => !!p)
+      .map((p) => ({ ...p, home: isAbs(p.home) && p.home !== p.cwd ? p.home : undefined }))
     const known = new Set(panes.map((p) => p.key))
     const tabs = raw.tabs
       .filter((t) => t && isLayout(t.root) && leaves(t.root).every((k) => known.has(k)))
@@ -516,7 +521,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (!panes.value.length) return
       const snapshot: LastWorkspace = {
         at: new Date().toISOString(),
-        panes: panes.value.map((p) => ({ key: p.key, preset: p.preset, cwd: p.cwd, resume: !isTerm(p) || p.preset === 'shell' ? undefined : (p.agentSessionId ?? p.resume), ...viewOf(p) })),
+        panes: panes.value.map((p) => {
+          const resume = !isTerm(p) || p.preset === 'shell' ? undefined : (p.agentSessionId ?? p.resume)
+          // As closedPane: a resumed agent must start where its session lives; a shell comes back where it was.
+          const cwd = isTerm(p) && !resume ? workCwd(p) : p.cwd
+          return { key: p.key, preset: p.preset, cwd, home: cwd !== p.cwd ? p.cwd : undefined, resume, ...viewOf(p) }
+        }),
         tabs: tabs.value,
       }
       writeLocal(LAST_KEY, JSON.stringify(snapshot))
@@ -872,7 +882,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   const lastProjects = computed<LastProject[]>(() => (last.value ? lastProjectsOf(last.value) : []))
 
-  function restoreLast(run?: ReadonlySet<string>): void {
+  /** Folders a restore must check first: shells saved where they had `cd`-ed to. */
+  const lastMovedDirs = computed(() => (last.value?.panes ?? []).filter((p) => p.home && p.cwd).map((p) => p.cwd!))
+
+  function restoreLast(run?: ReadonlySet<string>, gone?: ReadonlySet<string>): void {
     const snap = last.value
     last.value = null
     writeLocal(LAST_KEY, 'null')
@@ -885,7 +898,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         keys.set(p.key, addView(viewOf(p), p.cwd).key)
         continue
       }
-      const pane = addPane(p.preset, p.cwd, p.resume)
+      const pane = addPane(p.preset, p.home && p.cwd && gone?.has(p.cwd) ? p.home : p.cwd, p.resume)
       if (sleeping.has(p.key)) update(pane.key, { state: 'parked' })
       keys.set(p.key, pane.key)
     }
@@ -1319,6 +1332,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     saveFiles,
     resumeSession,
     restoreLast,
+    lastMovedDirs,
     lastProjects,
     wake,
     dismissLast,

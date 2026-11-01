@@ -80,7 +80,7 @@ const CIM_SCRIPT = [
   'ft = $(if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc().ToString() } else { $null });',
   'ws = $(if ($null -ne $_.WorkingSetSize) { [double]$_.WorkingSetSize } else { $null });',
   'cpu = $(if ($null -ne $_.KernelModeTime -and $null -ne $_.UserModeTime) { [double]($_.KernelModeTime + $_.UserModeTime) / 10000 } else { $null });',
-  'cmd = $_.CommandLine } })',
+  'cmd = $_.CommandLine } });',
   'ConvertTo-Json -Compress -InputObject $out',
 ].join(' ')
 

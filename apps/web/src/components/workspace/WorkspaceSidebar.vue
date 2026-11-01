@@ -15,6 +15,7 @@ import { motionMs, pinLeaving, retireOverlay } from '../../lib/motion'
 import { isMac } from '../../lib/platform'
 import { hasChanges, hasEnvCheck, hasExplorer, hasI18nScan, hasLog, hasPreview, hasReveal, pickFile, revealPath } from '../../lib/preview'
 import { hasPermAdvisor } from '../../lib/permAdvisor'
+import { hasBuildClean } from '../../lib/buildClean'
 import { hasCtxSources } from '../../lib/ctxSources'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import type { RailDragSource } from '../../lib/rail/railDrag'
@@ -277,6 +278,7 @@ async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: 
       env: hasEnvCheck,
       i18n: hasI18nScan,
       perms: hasPermAdvisor,
+      buildClean: hasBuildClean,
       reveal: hasReveal,
       canUp: at_ > 0,
       canDown: at_ >= 0 && at_ < all.length - 1,
@@ -325,6 +327,9 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
       break
     case 'perms':
       if (dir) ui.permAdvisor = { dir }
+      break
+    case 'build-clean':
+      if (dir) ui.buildClean = { dir }
       break
     case 'layout-save':
       if (dir) emit('saveLayout', dir, nameOf(c))
