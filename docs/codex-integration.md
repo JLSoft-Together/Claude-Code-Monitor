@@ -98,3 +98,24 @@ start from the newest rollout of today/yesterday; forecast via `LimitHistory` (`
 - No Codex usage history or cost: no reliable GPT price table; counters only appear on live agents.
 - Codex subagent records (`source.subagent.thread_spawn.parent_thread_id`) were not present on this machine; parsing is
   tolerant (any nested `parent_thread_id`).
+
+## 7. Data folder `~/.codex` (v76 R7, verified 2026-11-01 on Codex 0.162 / app-server of 0.164 alpha, Windows 11; sizes / names only)
+
+`~/.codex` = 6.9 GB here. Dot folders are not where the size hides: they are only `.sandbox-bin` (439 MB: one `codex-command-runner-<version>.exe` per Codex version since 0.130 + a 335 MB `codex.exe` copy for the sandbox user) and `.tmp` (111 MB: plugin sync staging). The "missing 4.5 GB" of the first estimate were `generated_images` (2.4 GB, **already a junction to `L:\AI\codex_cache`**, so it is not on C: at all), `sessions/` (2.26 GB rollouts) and `thread_history_1.sqlite` (1.83 GB), none of them hidden. Group table: `packages/shared/src/agentData.ts`.
+
+| Group (id) | Entries | Kind | Size here | Orrery may |
+|---|---|---|---|---|
+| rollouts | `sessions/YYYY/MM/DD/rollout-*.jsonl`, `archived_sessions` | history (resume, Orrery Codex runs) | 2.26 GB | move |
+| threads | `thread_history_*.sqlite*`, `state_*.sqlite*`, `session_index.jsonl`, `history.jsonl`, `goals_*`, `queue_*`, `memories*`, `attachments` | history | 1.84 GB | move |
+| generatedImages | `generated_images` | history (owner's images) | 2.4 GB (junction here) | move (the junction is copied as a junction) |
+| codexLogs | `log/`, `sandbox*.log` | cache | < 1 MB | clean |
+| logDb | `logs_*.sqlite*` | cache (database Codex keeps open) | 72 MB | move only |
+| codexCache | `cache/`, `models_cache.json` | cache | 72 MB | clean |
+| codexTemp | `.tmp/`, `tmp/` | cache, used live | 111 MB | clean only while no `codex` runs |
+| codexPrograms | `packages/` (app-server daemon 923 MB), `plugins/` (510 MB), `.sandbox-bin/`, `vendor_imports/` | program | 1.88 GB | move only |
+| codexExtensions | `skills`, `rules`, `AGENTS.md`, `hooks.json` | config | small | move only |
+| codexSettings | `config.toml*`, `.codex-global-state.json*`, `version.json`, `app-server-*`, lock folders, migration markers, … | config | small | move only |
+| codexCredentials | `auth.json`, `.sandbox-secrets`, `.sandbox`, `cap_sid`, `installation_id` | config / secret | small | move only, never read |
+| unknown | `sqlite/` (a second set of `logs_2` / `state_5` / `codex-dev.db`, 253 MB), `ambient-suggestions`, `tui-thread-reference-capabilities`, `visualizations`, … | unknown | | move only |
+
+Moving `~/.codex` follows docs/claude-code-integration.md §11al (refused while any `codex` / `codex.exe` process runs, including the Codex desktop app). Not verified: Codex's Windows sandbox grants its sandbox user access to `CODEX_HOME` (`.sandbox`, `cap_sid`); the copy does not carry ACLs, so the first sandboxed run after a move may set them up again.

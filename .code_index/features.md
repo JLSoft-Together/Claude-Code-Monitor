@@ -79,6 +79,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Process agent + bỏ quên** (v76) — RAM / CPU cây session, shell / dev server, daemon Gradle / Kotlin / Dart, emulator, mồ côi; nhàn rỗi ≥ ngưỡng (Settings, mặc định 60 phút) → toast `idle` gộp · `apps/collector/src/resources/`
 - **Thẻ Tài nguyên + bản đồ cổng** (v76) — Session / Server / Daemon & emulator / Cổng, lọc bỏ quên, Tắt từng dòng / tất cả (confirm native, pane → đóng pane), Mở `localhost:<port>` trong Browser, badge ở header / rail / cạnh Mission Control, báo đụng cổng · `apps/web/src/components/ResourcesDialog.vue`, `apps/collector/src/resources/ports.ts`, `apps/desktop/src/resources/kill.ts`
 - **Canh file / lệnh nhạy cảm** (v76) — Edit / Write file bí mật (.env, keystore, …), file ngoài project, git push -f / reset --hard / clean -fd, rm -rf / del /s / Remove-Item ngoài project, adb uninstall, DROP TABLE → badge card (bấm mở danh sách từng lần) + toast `sensitive`; Mở file / Mở diff / Bỏ qua theo project; Cài đặt nhóm, mẫu riêng, danh sách bỏ qua; chỉ cảnh báo · `apps/collector/src/sensitive/`, `apps/web/src/components/SensitiveSettings.vue`
+- **Chặn lần sau** (v76 R5b) — từ cảnh báo nhạy cảm thêm luật deny Claude Code vào `.claude/settings.json` / `settings.local.json` / user settings sau confirm native có diff, backup `.orrery-bak` · `apps/desktop/src/preview/denyRules.ts`, `apps/web/src/components/SensitiveDenyMenu.vue`
 - **Báo ra điện thoại** (v76) — ntfy / Discord webhook, mặc định tắt, chỉ khi máy rảnh ≥ N phút; chờ / xin quyền / xong việc ≥ 5 phút / job / hạn mức; 20 tin / giờ, secret bằng safeStorage · `apps/desktop/src/phone/`, `apps/web/src/components/PhoneSettings.vue`
 
 ## Workspace & terminal (lõi)
@@ -91,6 +92,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Làm mờ pane không hoạt động** (v52) — DimToggle · `apps/web/src/components/workspace/DimToggle.vue`
 - **Dust hiệu ứng khi đóng pane** (v50, tùy chọn) — `apps/web/src/lib/dust.ts`
 - **Khôi phục workspace, chọn project để chạy** (v64) — pane ngủ "parked" · `apps/web/src/components/workspace/RestorePicker.vue`
+- **Khôi phục sau khởi động lại** (v77) — Hỏi / Tự mở lại / Không làm gì, báo thoát bất thường, shell về thư mục đã cd, gợi ý chạy cùng Windows · `apps/web/src/lib/workspaceRestore.ts`, `apps/desktop/src/restore/runState.ts`
 - **Hàng đợi spawn** — tối đa 2 pane khởi động cùng lúc, ưu tiên pane đang nhìn thấy · `apps/web/src/lib/spawnQueue.ts`
 - **Thả xuống terminal (Ctrl+`)** — terminal kéo từ trên xuống · `apps/web/src/components/workspace/DropTerminal.vue`
 - **Nhận diện agent trong shell** — pane shell đang chạy `claude` / `codex` được coi là agent · `apps/web/src/composables/useWorkspaceLinks.ts`
@@ -174,7 +176,8 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 
 - **Problems trong editor** (v68) — lỗi Checks hiện như chẩn đoán, F8 / Shift+F8 · `apps/web/src/components/workspace/ProblemBar.vue`
 - **Inbox việc cần chủ nhân** (v69) — J/K, Enter, E, badge trên header · `apps/web/src/components/inbox/InboxPanel.vue`
-- **Thư viện prompt** (v69) — biến, chèn vào pane (chỉ điền, không gửi) · `apps/desktop/src/preview/commands.ts`
+- **Thư viện prompt** (v69) — biến, chèn vào pane (chỉ điền, không gửi) · `apps/web/src/components/workspace/PromptPicker.vue` (`apps/desktop/src/preview/commands.ts` chỉ là slash command)
+- **Mẫu prompt + nhập / xuất thư viện** (v77) — 12 mẫu en / vi, nhân bản để sửa, ẩn mẫu; xuất / nhập JSON qua hộp thoại native, trùng tên hỏi Ghi đè / Giữ cả hai / Bỏ qua · `apps/web/src/lib/promptSamples.ts`, `apps/web/src/lib/promptTransfer.ts`
 - **Hàng đợi prompt theo pane** (v70) — điền khi agent chuyển sang idle · `apps/web/src/lib/promptQueue.ts`
 - **Plan board** (v70) — đọc checklist `- [ ]` trong Markdown, đi tới dòng · `apps/web/src/components/workspace/PlanBoard.vue`
 - **Gợi ý luật allow từ hỏi quyền lặp** (v72) — gợi ý luật allow từ các lần hỏi lặp, ghi `settings.local.json` sau xác nhận · `apps/desktop/src/preview/permRules.ts`
@@ -234,6 +237,10 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Lỗ hổng thư viện (OSV)** (v75) — nút Bảo mật trong Kiểm bản mới: hỏi osv.dev (chỉ tên + version) khi bấm, cột số lỗ hổng · mức cao nhất · bản đã vá, danh sách advisory mở osv.dev, lọc chỉ lib có lỗ hổng, prompt nâng cấp đưa lib lỗ hổng lên đầu, cache chung 1 giờ · `apps/desktop/src/libs/osv.ts`, `LibChecker.vulns`
 - **Công cụ dev (Ctrl+K)** — giải mã JWT, v.v., không kiểm chữ ký · `apps/web/src/components/DevToolsDialog.vue`
 
+- **Dữ liệu agent** (v76 R7) — Cài đặt › Dữ liệu agent: đo `~/.claude` / `~/.codex` theo nhóm (dọn được / lịch sử / cài đặt / đã cài / không rõ), dọn cache cũ, gỡ ảnh khỏi transcript cũ (có backup), chuyển sang ổ khác bằng junction + hoàn tác / xoá bản gốc · `apps/desktop/src/agentData/service.ts`, `apps/web/src/components/AgentDataSettings.vue`
+- **Dọn đồ build của project** (v77 R8) — node_modules / build / .gradle / dist / target… của project đã biết, chỉ thư mục git ignore, đo khi bấm, confirm native, chặn khi project đang chạy · `apps/web/src/components/BuildCleanDialog.vue`, `apps/desktop/src/buildClean/`
+- **Cảnh báo ổ sắp đầy** (v77 R9) — badge + popover trên thanh trên, toast `disk` / điện thoại khi < 2 GB, ngưỡng ở Cài đặt › Thông báo · `apps/web/src/components/DiskBadge.vue`, `apps/desktop/src/disk/watch.ts`
+
 ## Codex CLI
 
 - **Theo dõi lượt chạy Codex** (v16) — hiện dưới agent Claude đã gọi nó · `apps/collector/src/codex/monitor.ts`
@@ -250,7 +257,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Giữ máy thức khi agent chạy** (v76) — chặn ngủ (không chặn tắt màn hình) khi có session / subagent / job nền đang chạy + 2 phút; Tắt / Khi agent chạy / Chỉ khi cắm sạc; huy hiệu cốc cà phê ở header · `apps/desktop/src/power/awake.ts`, `apps/web/src/components/KeepAwakeBadge.vue`
 - **Status line bridge** — cài script, sao lưu `settings.json` trước khi ghi · `apps/desktop/src/statusline.ts`
 - **Chép / lưu log chẩn đoán** — gom log đã che bí mật · `apps/desktop/src/main.ts` (`logReport`)
-- **Nhật ký đã che bí mật** — `apps/desktop/src/log-mask.ts`
+- **Nhật ký đã che bí mật** — một bộ luật chung `maskSecrets` / `createLogMasker` · `packages/shared/src/secretMask.ts`
 - **Lưu giao diện desktop** (nền, look, zoom) — `apps/desktop/src/appearance.ts`
 - **Thiết lập menu macOS, Dock** — `apps/desktop/src/mac.ts`
 - **Màn hình khởi động và giới thiệu** — `apps/desktop/src/pages.ts`
