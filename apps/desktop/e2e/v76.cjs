@@ -3,12 +3,16 @@
 // keep-awake (CCM_E2E_POWER, short CCM_E2E_AWAKE_GRACE_MS), capture folder (CCM_E2E_CAPTURE_DIR), sensitive watch
 // from live transcript lines, and phone notifications to a loopback receiver (CCM_PHONE_URL_OVERRIDE, CCM_E2E_IDLE_S).
 // Sessions are two idle `node` processes registered in a fake CLAUDE_CONFIG_DIR; nothing real is stopped.
+// "Block next time" writes deny rules into the temp project / fake config; its native confirm is answered by patching
+// dialog.showMessageBox in the main process over its Node inspector, as in v75.
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
 const os = require('node:os')
 const path = require('node:path')
-const { launch, OUT } = require('./cdp.cjs')
+const { launch, OUT, REPO } = require('./cdp.cjs')
+const WS = require(path.join(REPO, 'node_modules/ws'))
+const INSPECT = Number(process.env.CCM_E2E_INSPECT) || (Number(process.env.CCM_E2E_DBG) || 9333) + 7
 const S = `document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s`
 const UI = `${S}.get('ui')`
 const RES = `${S}.get('resources')`
@@ -109,6 +113,24 @@ function serve() {
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
+async function mainInspector() {
+  let list = null
+  for (let i = 0; i < 40 && !list; i++) {
+    list = await new Promise((r) => http.get(`http://127.0.0.1:${INSPECT}/json/list`, (res) => { let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => { try { r(JSON.parse(b)) } catch { r(null) } }) }).on('error', () => r(null)))
+    if (!list) await new Promise((r) => setTimeout(r, 250))
+  }
+  if (!list?.[0]) throw new Error('no main inspector')
+  const ws = new WS(list[0].webSocketDebuggerUrl)
+  await new Promise((r, j) => { ws.once('open', r); ws.once('error', j) })
+  let id = 0
+  const pending = new Map()
+  ws.on('message', (raw) => { const m = JSON.parse(raw); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } })
+  const evaluate = (expression) => new Promise((r) => { const i = ++id; pending.set(i, (m) => r(m.result?.result?.value ?? m.result?.exceptionDetails?.exception?.description ?? null)); ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression, includeCommandLineAPI: true, returnByValue: true, awaitPromise: true } })) })
+  const ok = await evaluate(`(() => { const req = typeof require === 'function' ? require : process.mainModule.require; const { dialog } = req('electron'); globalThis.__e2eAnswer = 0; globalThis.__e2eAsked = []; dialog.showMessageBox = async (...a) => { const o = a.find((x) => x && typeof x === 'object' && 'message' in x) || {}; globalThis.__e2eAsked.push(String(o.message) + ' ' + String(o.detail ?? '')); return { response: globalThis.__e2eAnswer, checkboxChecked: false } }; return 'patched' })()`)
+  if (ok !== 'patched') throw new Error('patch failed: ' + ok)
+  return { answer: (n) => evaluate(`globalThis.__e2eAnswer = ${n}`), asked: () => evaluate(`globalThis.__e2eAsked.slice()`), close: () => ws.close() }
+}
+
 async function main() {
   let server = null
   try {
@@ -133,7 +155,7 @@ async function main() {
     CCM_PHONE_URL_OVERRIDE: `http://127.0.0.1:${server.address().port}/phone`,
     CCM_E2E_IDLE_S: '900',
   }
-  const app = await launch({ env })
+  const app = await launch({ env, args: [`--inspect=${INSPECT}`] })
   const { evaluate, waitFor, shot, sleep, cmd, key } = app
   const esc = () => key('Escape', 'Escape', 27)
   const click = (sel) => evaluate(`(() => { const b = document.querySelector(${JSON.stringify(sel)}); if (!b) throw new Error('no ' + ${JSON.stringify(sel)}); b.click() })()`)
@@ -306,6 +328,79 @@ async function main() {
       toolCall('b', 'Write', { file_path: path.join(DIR_B, 'keys.secret'), content: 'x' })
       await waitFor(`${S}.get('activity').items.some((e) => e.kind === 'sensitive' && e.data.rule === 'custom:*.secret')`, 15000, 'custom rule hit')
       check('Write of keys.secret flagged by the own glob', true)
+    })
+
+    await step('block next time', async () => {
+      const main = await mainInspector()
+      try {
+        const sharedFile = path.join(DIR_B, '.claude', 'settings.json')
+        const localFile = path.join(DIR_B, '.claude', 'settings.local.json')
+        const userFile = path.join(CONFIG, 'settings.json')
+        const sharedBefore = '{\n  "model": "opus",\n  "permissions": {\n    "allow": ["Read"]\n  },\n  "env": {}\n}\n'
+        write(sharedFile, sharedBefore)
+        await evaluate(`${UI}.setView('monitor')`)
+        await evaluate(`${UI}.panels.sessions.open = true`)
+        await waitFor(`!!document.querySelector('[data-card-sensitive]')`, 5000, 'card badge')
+        if (!(await evaluate(`!!document.querySelector('[data-card-sensitive-list]')`))) await click('[data-card-sensitive]')
+        await waitFor(`!!document.querySelector('[data-sensitive-rule="custom:*.secret"]')`, 5000, 'rows')
+        const row = (rule) => `[data-card-sensitive-list] [data-sensitive-rule="${rule}"]`
+        const noteSel = (rule, kind = '') => `${row(rule)} [data-sensitive-deny-note${kind ? `="${kind}"` : ''}]`
+        const note = (rule) => evaluate(`document.querySelector(${JSON.stringify(noteSel(rule))})?.textContent.trim() ?? ''`)
+        const waitNote = (rule, kind) => waitFor(`!!document.querySelector(${JSON.stringify(noteSel(rule, kind))})`, 10000, `note ${kind} for ${rule}`)
+        const buttons = await evaluate(`Object.fromEntries([...document.querySelectorAll('[data-card-sensitive-list] [data-sensitive-actions]')].map((r) => [r.dataset.sensitiveRule, !!r.querySelector('[data-sensitive-deny]')]))`)
+        check('Block next time on .env, git push --force and *.secret rows', buttons['.env*'] === true && buttons['git-force-push'] === true && buttons['custom:*.secret'] === true, JSON.stringify(buttons))
+        const pick = async (rule, scope) => {
+          await click(`${row(rule)} [data-sensitive-deny]`)
+          await waitFor(`!!document.querySelector('[data-sensitive-deny-menu]')`, 5000, 'deny menu')
+          const menu = await evaluate(`({ rules: [...document.querySelectorAll('[data-sensitive-deny-rules] li')].map((l) => l.textContent.trim()), scopes: [...document.querySelectorAll('[data-sensitive-deny-scope]')].map((b) => b.dataset.sensitiveDenyScope) })`)
+          if (scope === 'shot') return menu
+          await click(`[data-sensitive-deny-scope="${scope}"]`)
+          await waitFor(`!document.querySelector('[data-sensitive-deny-menu]')`, 5000, 'menu closed')
+          return menu
+        }
+
+        const menu = await pick('.env*', 'shot')
+        check('menu shows the rule to add and three scopes', JSON.stringify(menu.rules) === '["Edit(**/.env*)"]' && JSON.stringify(menu.scopes) === '["project","local","user"]', JSON.stringify(menu))
+        await shot('v76-12-deny-menu').catch(() => {})
+        await click('[data-sensitive-deny-scope="local"]')
+        await waitNote('.env*', 'ok')
+        const asked = await main.asked()
+        check('native confirm names settings.local.json and the rule', asked.length === 1 && asked[0].includes('settings.local.json') && asked[0].includes('Edit(**/.env*)'), JSON.stringify(asked))
+        check('.env → Edit(**/.env*) in .claude/settings.local.json', fs.existsSync(localFile) && JSON.stringify(JSON.parse(fs.readFileSync(localFile, 'utf8'))) === '{"permissions":{"deny":["Edit(**/.env*)"]}}')
+
+        await pick('git-force-push', 'project')
+        await waitNote('git-force-push', 'ok')
+        const shared = JSON.parse(fs.readFileSync(sharedFile, 'utf8'))
+        check('git push --force → 4 Bash deny rules merged into settings.json, other keys kept', shared.model === 'opus' && JSON.stringify(shared.permissions.allow) === '["Read"]' && shared.permissions.deny.length === 4 && shared.permissions.deny[0] === 'Bash(git push --force *)' && JSON.stringify(Object.keys(shared)) === '["model","permissions","env"]', JSON.stringify(shared))
+        check('previous settings.json kept as settings.json.orrery-bak', fs.readFileSync(`${sharedFile}.orrery-bak`, 'utf8') === sharedBefore)
+        await sleep(300)
+        await pick('git-force-push', 'project')
+        await waitFor(`/already/i.test(document.querySelector(${JSON.stringify(noteSel('git-force-push'))})?.textContent ?? '')`, 10000, 'already')
+        check('same rules again → "Already blocked", no second confirm', (await main.asked()).length === 2 && JSON.parse(fs.readFileSync(sharedFile, 'utf8')).permissions.deny.length === 4, await note('git-force-push'))
+
+        await pick('custom:*.secret', 'user')
+        await waitNote('custom:*.secret', 'ok')
+        check('own glob → Edit(**/*.secret) in user settings of CLAUDE_CONFIG_DIR', fs.existsSync(userFile) && JSON.stringify(JSON.parse(fs.readFileSync(userFile, 'utf8')).permissions.deny) === '["Edit(**/*.secret)"]')
+
+        fs.writeFileSync(localFile, '{ "permissions": { "deny": [ ')
+        await pick('.env*', 'local')
+        await waitNote('.env*', 'error')
+        check('invalid JSON → error note, file untouched', /not valid JSON/.test(await note('.env*')) && fs.readFileSync(localFile, 'utf8') === '{ "permissions": { "deny": [ ', await note('.env*'))
+        fs.rmSync(localFile)
+        await main.answer(1)
+        const n = (await main.asked()).length
+        await pick('.env*', 'local')
+        await sleep(1500)
+        check('confirm cancelled → nothing written', (await main.asked()).length === n + 1 && !fs.existsSync(localFile))
+        await main.answer(0)
+
+        const r1 = await evaluate(`window.ccmDesktop.sensitiveDeny({ project: ${JSON.stringify(FAKE)}, rule: '.env*', tool: 'Edit', scope: 'local' })`)
+        const r2 = await evaluate(`window.ccmDesktop.sensitiveDeny({ project: ${JSON.stringify(DIR_B)}, rule: 'Bash(curl *)', tool: 'Bash', scope: 'local' })`)
+        const r3 = await evaluate(`window.ccmDesktop.sensitiveDeny({ project: ${JSON.stringify(DIR_B)}, rule: 'outside-project', tool: 'Edit', scope: 'user' })`)
+        check('IPC refuses a non-session folder, free-text rules and rules with no deny mapping', r1?.error === 'denied' && r2?.error === 'invalid' && r3?.error === 'invalid' && !fs.existsSync(path.join(FAKE, '.claude')), JSON.stringify([r1, r2, r3]))
+      } finally {
+        main.close()
+      }
     })
 
     await step('idle setting', async () => {
