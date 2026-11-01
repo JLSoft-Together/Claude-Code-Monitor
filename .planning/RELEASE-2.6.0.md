@@ -1,4 +1,4 @@
-<!-- Bản nháp 2.6.0 (v75), chưa release; thêm mục khi làm tiếp. -->
+<!-- 2.6.0 (v75 + v76 + v77), release 2026-11-01. -->
 # English
 
 ## Devices

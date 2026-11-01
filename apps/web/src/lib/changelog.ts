@@ -18,6 +18,30 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '2.6.0',
+    date: '2026-11-01',
+    items: [
+      { en: 'Resources: RAM / CPU of sessions, servers, daemons, emulators; alert and stop forgotten ones', vi: 'Tài nguyên: RAM / CPU của session, server, daemon, emulator; báo và tắt thứ bị bỏ quên' },
+      { en: 'Listening ports with their process; name the holder when a port is already in use', vi: 'Cổng đang lắng nghe kèm process; báo process giữ cổng khi cổng đã bị chiếm' },
+      { en: 'Keep the computer awake while agents work (only on power by default)', vi: 'Giữ máy thức khi agent đang làm (mặc định chỉ khi cắm sạc)' },
+      { en: 'Capture folder: recordings kept, screenshots reach agents as files', vi: 'Thư mục chụp / quay: giữ video quay, ảnh chụp tới agent dạng file' },
+      { en: 'Sensitive watch: warn on .env / keystore edits, force push, deletes outside the project', vi: 'Canh nhạy cảm: cảnh báo khi sửa .env / keystore, force push, xoá ngoài project' },
+      { en: 'Block next time: turn a warning into a Claude Code deny rule after a confirm', vi: 'Chặn lần sau: biến cảnh báo thành luật deny của Claude Code sau khi xác nhận' },
+      { en: 'Phone notifications through ntfy or Discord when a session waits and you are away', vi: 'Báo ra điện thoại qua ntfy hoặc Discord khi session chờ mà bạn rời máy' },
+      { en: 'Agent data: measure ~/.claude and ~/.codex, clean caches, move them to another drive', vi: 'Dữ liệu agent: đo ~/.claude và ~/.codex, dọn cache, chuyển sang ổ khác' },
+      { en: 'Clean build output: node_modules, build, .gradle, dist, target of your projects', vi: 'Dọn đồ build: node_modules, build, .gradle, dist, target của các project' },
+      { en: 'Low disk warning: top bar badge and one alert when a drive gets below 10 GB or 5 %', vi: 'Cảnh báo ổ đầy: badge trên thanh trên và một thông báo khi ổ dưới 10 GB hoặc 5 %' },
+      { en: 'Prompt library: 12 ready-made prompts, export and import as JSON', vi: 'Thư viện prompt: 12 mẫu dựng sẵn, xuất và nhập bằng JSON' },
+      { en: 'Reopen the last workspace after a restart or crash; shells return to their folder', vi: 'Mở lại workspace sau khi khởi động lại hoặc crash; shell về đúng thư mục' },
+      { en: 'History: find a past session by what you asked and resume it', vi: 'History: tìm session cũ theo những gì bạn đã hỏi rồi tiếp tục' },
+      { en: 'CLAUDE.md / memory check: broken links, stale paths, oversized files', vi: 'Kiểm CLAUDE.md / memory: link gãy, đường dẫn cũ, file quá lớn' },
+      { en: 'Library updates: known vulnerabilities from osv.dev with the fixed version', vi: 'Kiểm bản mới thư viện: lỗ hổng đã biết từ osv.dev kèm bản đã vá' },
+      { en: 'Release check for Android / Flutter: versionCode, targetSdk, manifest, signing key', vi: 'Kiểm phát hành Android / Flutter: versionCode, targetSdk, manifest, khoá ký' },
+      { en: 'Devices: accessibility check on screenshots, screen recording up to 30 s', vi: 'Thiết bị: kiểm trợ năng trên ảnh chụp, quay màn tối đa 30 s' },
+      { en: 'Devices: app performance (janky frames, memory, cold start) and a file browser', vi: 'Thiết bị: đo hiệu năng app (giật khung, bộ nhớ, mở nguội) và duyệt file' },
+    ],
+  },
+  {
     version: '2.5.0',
     date: '2026-10-29',
     items: [
