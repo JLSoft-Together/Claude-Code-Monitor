@@ -18,6 +18,16 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '2.6.1',
+    date: '2026-11-02',
+    items: [
+      { en: 'Go to project (Ctrl+Alt+P): fuzzy-find open, closed and favourite projects', vi: 'Chuyển tới dự án (Ctrl+Alt+P): tìm nhanh dự án đang mở, đã đóng và yêu thích' },
+      { en: 'Hold Ctrl+Alt and press P again to step through projects; let go to jump', vi: 'Giữ Ctrl+Alt, bấm P tiếp để chọn dự án; thả phím là chuyển' },
+      { en: 'Project list shows branch, last used, run state and agents that need you', vi: 'Danh sách dự án hiện nhánh, lần dùng gần nhất, trạng thái Run và agent cần bạn' },
+      { en: 'Rail: collapse other projects, or collapse them on every project switch', vi: 'Thanh bên: thu gọn dự án khác, hoặc tự thu gọn mỗi khi chuyển dự án' },
+    ],
+  },
+  {
     version: '2.6.0',
     date: '2026-11-01',
     items: [
