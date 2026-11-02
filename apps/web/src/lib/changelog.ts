@@ -18,6 +18,22 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.0.0',
+    date: '2026-11-03',
+    items: [
+      { en: 'Settings is a window: ten pages, a search box and one table of events by channel', vi: 'Cài đặt là một cửa sổ: mười trang, ô tìm và một bảng sự kiện theo kênh báo' },
+      { en: 'Monitor: sessions grouped by need, three-line cards, ⋯ menu for the extra actions', vi: 'Monitor: session chia theo việc cần làm, thẻ ba dòng, thao tác phụ trong menu ⋯' },
+      { en: 'Agent Map keeps colour only on nodes waiting for you', vi: 'Agent Map chỉ tô màu node đang chờ bạn' },
+      { en: 'Workspace rail: one line per session, agents first, filter box, Open project icon', vi: 'Thanh bên Workspace: mỗi phiên một dòng, agent lên đầu, ô lọc, nút mở dự án dạng icon' },
+      { en: 'Pane headers are quieter; a lone pane lends its header to the tab bar', vi: 'Header pane gọn hơn; pane đứng một mình đưa thông tin lên thanh tab' },
+      { en: 'Workspace tab bar has a single ⋯ button; one-pane projects take one rail row', vi: 'Thanh tab Workspace chỉ còn một nút ⋯; dự án một pane chiếm một dòng ở thanh bên' },
+      { en: 'Top bar: limits, keep-awake, disk, resources and connection in one Limits button', vi: 'Thanh trên: hạn mức, giữ máy thức, ổ đĩa, tài nguyên và kết nối trong một nút Hạn mức' },
+      { en: 'Limits shows the lowest percent left; Dim, Shortcuts and Guide moved into the ⋯ menu', vi: 'Hạn mức hiện % còn lại thấp nhất; Dim, Phím tắt và Hướng dẫn chuyển vào menu ⋯' },
+      { en: 'Cleaner History, Usage, Devices, Extensions and Git branches toolbar', vi: 'Gọn lại Lịch sử, Thống kê, Thiết bị, Tiện ích và thanh nhánh Git Log' },
+      { en: 'Status labels are fully Vietnamese in the Vietnamese UI', vi: 'Nhãn trạng thái hoàn toàn bằng tiếng Việt khi dùng giao diện tiếng Việt' },
+    ],
+  },
+  {
     version: '2.6.1',
     date: '2026-11-02',
     items: [
