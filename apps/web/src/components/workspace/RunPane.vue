@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bot, Camera, CircleAlert, ClipboardCheck, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
+import { Bot, Camera, CircleAlert, CirclePlay, CircleSlash, CircleStop, CircleX, LoaderCircle, Package, PlayCircle, TriangleAlert, X } from 'lucide-vue-next'
 import { isRunLive, type EnvIssue, type RunSession, type RunState } from '@ccm/shared'
 import { desktop, type RunSdkKey } from '../../lib/desktop'
 import { hasDeviceCapture } from '../../lib/devices'
-import { hasReleaseCheck } from '../../lib/releaseCheck'
 import { baseName } from '../../lib/preview'
 import { issueKey, projectMark, runStep, tidyIssueText } from '../../lib/runUi'
 import { dirKey } from '../../stores/favorites'
@@ -260,17 +259,6 @@ function sessionLabel(s: RunSession): string {
           <option v-for="s in switchable" :key="s.id" :value="s.id">{{ sessionLabel(s) }} · {{ t(`run.state.${s.state}`) }}</option>
         </select>
         <span v-else-if="session" class="hidden min-w-0 truncate text-2xs text-ink-faint @md:inline" :title="session.cwd">{{ sessionLabel(session) }}</span>
-        <button
-          v-if="hasReleaseCheck"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :title="t('releaseCheck.button')"
-          :aria-label="t('releaseCheck.button')"
-          data-run-release-check
-          @click="openReleaseCheck"
-        >
-          <ClipboardCheck :size="13" aria-hidden="true" />
-        </button>
         <button
           v-if="androidDevice"
           type="button"

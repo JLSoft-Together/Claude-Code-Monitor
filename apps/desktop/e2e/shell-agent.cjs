@@ -10,7 +10,7 @@ const CTRL = 2
 ;(async () => {
   const app = await launch()
   const { evaluate, waitFor, shot, type, key, sleep } = app
-  const head = () => evaluate(`(() => { const p = ${W}.panes[0]; const h = document.querySelector('[data-pane="' + p.key + '"] [data-pane-head]'); return { text: h?.innerText ?? '', icon: h?.querySelector('svg')?.getAttribute('class') ?? '' } })()`)
+  const head = () => evaluate(`(() => { const p = ${W}.panes[0]; const h = document.querySelector('[data-pane-of="' + p.key + '"]'); const row = document.querySelector('[data-side-pane="' + p.key + '"]')?.closest('li'); return { text: (h?.innerText ?? '') + ' ' + (row?.innerText ?? ''), icon: row?.querySelector('svg')?.getAttribute('class') ?? '' } })()`)
   const enter = async (text) => {
     await evaluate(`document.querySelector('.xterm-helper-textarea').focus()`)
     await type(text)
@@ -33,14 +33,14 @@ const CTRL = 2
     await sleep(2500)
     await app.cmd('Page.bringToFront')
     const before = await head()
-    check('shell pane starts as Shell', /Shell/.test(before.text) && /text-agent-shell/.test(before.icon), JSON.stringify(before))
+    check('shell pane starts as Shell', /text-agent-shell/.test(before.icon), JSON.stringify(before))
 
     await enter('claude')
     const claudeMs = await until(`${W}.panes[0]?.agent === 'claude'`, 45000)
     check('claude typed in the shell is detected', claudeMs !== null, `${claudeMs} ms`)
     await sleep(300)
     const asClaude = await head()
-    check('header shows Claude Code and its icon', /Claude Code/.test(asClaude.text) && /text-agent-claude/.test(asClaude.icon), JSON.stringify(asClaude))
+    check('header shows Claude Code and its icon', /Claude/.test(asClaude.text) && /text-agent-claude/.test(asClaude.icon), JSON.stringify(asClaude))
     await shot('shell-agent-01-claude')
 
     await enter('/exit')
@@ -48,7 +48,7 @@ const CTRL = 2
     check('back to Shell after /exit', backMs !== null, `${backMs} ms`)
     await sleep(300)
     const after = await head()
-    check('header shows Shell again', /Shell/.test(after.text) && /text-agent-shell/.test(after.icon), JSON.stringify(after))
+    check('header shows Shell again', /text-agent-shell/.test(after.icon), JSON.stringify(after))
 
     // Codex 0.162 writes its rollout (what the monitor sees) only with the first prompt, and none is sent here.
     await sleep(1500)
@@ -58,7 +58,7 @@ const CTRL = 2
     await shot('shell-agent-02-codex')
     if (codexMs !== null) {
       const asCodex = await head()
-      check('header shows Codex and its icon', /Codex/.test(asCodex.text) && /text-agent-codex/.test(asCodex.icon), JSON.stringify(asCodex))
+      check('header shows Codex and its icon', /Codex/i.test(asCodex.text) && /text-agent-codex/.test(asCodex.icon), JSON.stringify(asCodex))
     }
     await evaluate(`document.querySelector('.xterm-helper-textarea').focus()`)
     await key('c', 'KeyC', 67, CTRL)

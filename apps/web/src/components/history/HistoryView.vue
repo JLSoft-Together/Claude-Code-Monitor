@@ -107,31 +107,28 @@ const rangeLabel = computed(() => {
       </button>
     </div>
 
-    <section id="prompt-search" aria-labelledby="prompt-search-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
-      <h3 id="prompt-search-title" class="font-semibold">{{ t('promptSearch.title') }}</h3>
-      <p class="mb-4 text-xs text-ink-muted">{{ t('promptSearch.hint') }}</p>
+    <section id="prompt-search" aria-labelledby="prompt-search-title" class="mt-5">
+      <h3 id="prompt-search-title" class="sr-only">{{ t('promptSearch.title') }}</h3>
       <PromptSearchCard ref="promptSearchCard" />
     </section>
 
-    <section aria-labelledby="timeline-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
-      <h3 id="timeline-title" class="font-semibold">{{ t('history.timeline') }}</h3>
-      <p class="mb-4 text-xs text-ink-muted">{{ t('history.timelineHint') }}</p>
+    <section aria-labelledby="timeline-title" class="mt-6 border-t border-line pt-5">
       <TimelineChart />
     </section>
 
-    <section aria-labelledby="heatmap-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
+    <section aria-labelledby="heatmap-title" class="mt-6 border-t border-line pt-5">
       <h3 id="heatmap-title" class="font-semibold">{{ t('history.heatmap.title') }}</h3>
-      <p class="mb-4 text-xs text-ink-muted">{{ t('history.heatmap.hint') }}</p>
+      <p class="mb-3 text-xs text-ink-muted">{{ t('history.heatmap.hint') }}</p>
       <HeatmapChart />
     </section>
 
-    <section aria-labelledby="toolstats-title" class="mt-5 rounded-card bg-surface shadow-card p-4 sm:p-5">
+    <section aria-labelledby="toolstats-title" class="mt-6 border-t border-line pt-5">
       <h3 id="toolstats-title" class="font-semibold">{{ t('toolStats.title') }}</h3>
-      <p class="mb-4 text-xs text-ink-muted">{{ t('toolStats.hint') }}</p>
+      <p class="mb-3 text-xs text-ink-muted">{{ t('toolStats.hint') }}</p>
       <ToolStatsCard />
     </section>
 
-    <section aria-labelledby="ended-title" class="mt-5 rounded-card bg-surface shadow-card">
+    <section aria-labelledby="ended-title" class="mt-6 rounded-card bg-surface shadow-card">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
         <div class="min-w-0">
           <h3 id="ended-title" class="font-semibold">{{ t('history.ended') }}</h3>
@@ -152,6 +149,8 @@ const rangeLabel = computed(() => {
       <div v-else-if="!rows.length" class="flex flex-col items-center gap-3 px-5 py-8 text-center">
         <ArtImage :name="query ? 'empty-project-search' : 'empty-history'" class="w-40 max-w-full" />
         <p class="text-sm text-ink-muted">{{ query ? t('history.noMatch') : t('history.empty') }}</p>
+        <button v-if="query" type="button" class="ccm-btn" data-history-empty-action @click="query = ''">{{ t('pagesV79.history.clearSearch') }}</button>
+        <button v-else type="button" class="ccm-btn" data-history-empty-action @click="ui.setView('workspace')">{{ t('pagesV79.history.openWorkspace') }}</button>
       </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full table-fixed text-sm">

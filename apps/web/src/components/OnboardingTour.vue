@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-vue-next'
 import { hasTerminals } from '../lib/desktop'
 import { isMac } from '../lib/platform'
+import { markTourShownThisSession } from '../lib/onboardingGate'
 import { keyCombo, shortcutText } from '../lib/shortcuts'
 import { TOURS, markTourDone, tourDone, tourFor, type TourId } from '../lib/tour'
 import { useUiStore } from '../stores/ui'
@@ -143,6 +144,7 @@ watch(
   () => ui.tourOpen,
   (open) => {
     if (open) {
+      markTourShownThisSession()
       restoreFocus = document.activeElement as HTMLElement | null
       // Anything but 'workspace' (incl. a bare `true` from older callers) is the Monitor guide.
       active.value = open === 'workspace' ? 'workspace' : 'monitor'

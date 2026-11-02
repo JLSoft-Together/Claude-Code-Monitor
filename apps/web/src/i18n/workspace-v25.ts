@@ -31,7 +31,7 @@ const en = {
     },
     keys: {
       title: 'All shortcuts',
-      body: 'This button lists every shortcut and reopens this guide. When you do the same thing by mouse a few times, a small tip shows its shortcut; you can turn tips off.',
+      body: 'The ⋯ menu in the top bar lists every shortcut and reopens this guide. When you do the same thing by mouse a few times, a small tip shows its shortcut; you can turn tips off.',
       absent: 'Appears at the right end of the tab strip once a tab is open.',
     },
   },
@@ -84,7 +84,6 @@ const en = {
     },
   },
   wsHelp: {
-    button: 'Help',
     tour: 'Workspace guide',
     shortcuts: 'Keyboard shortcuts',
   },
@@ -122,7 +121,7 @@ const vi: typeof en = {
     },
     keys: {
       title: 'Toàn bộ phím tắt',
-      body: 'Nút này liệt kê mọi phím tắt và mở lại hướng dẫn này. Khi bạn làm cùng một việc bằng chuột vài lần, một mẹo nhỏ sẽ gợi ý phím tắt; bạn có thể tắt mẹo.',
+      body: 'Menu ⋯ trên thanh đầu liệt kê mọi phím tắt và mở lại hướng dẫn này. Khi bạn làm cùng một việc bằng chuột vài lần, một mẹo nhỏ sẽ gợi ý phím tắt; bạn có thể tắt mẹo.',
       absent: 'Xuất hiện ở cuối bên phải dải tab khi đã có tab.',
     },
   },
@@ -175,7 +174,6 @@ const vi: typeof en = {
     },
   },
   wsHelp: {
-    button: 'Trợ giúp',
     tour: 'Hướng dẫn Workspace',
     shortcuts: 'Phím tắt',
   },

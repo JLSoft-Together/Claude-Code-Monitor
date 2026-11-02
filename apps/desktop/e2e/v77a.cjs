@@ -113,6 +113,7 @@ async function main() {
       await waitFor(`!!document.querySelector('[data-disk-badge="warn"]')`, 20000, 'warn badge')
       check('low disk badge shows at start (5 GB free < 10 GB)', /low/.test(await evaluate(`document.querySelector('[data-disk-badge]').getAttribute('aria-label')`)))
       await click('[data-disk-badge]')
+      await click('[data-status-popover] [data-status-disk]')
       await waitFor(`!!document.querySelector('[data-disk-popover] [data-disk-drive]')`, 5000, 'popover')
       const places = await text('[data-disk-popover] [data-disk-drive]')
       check('popover: drive with level, free / total and places', /Running low/.test(places) && /Claude Code/.test(places) && /Orrery data/.test(places), places)
@@ -133,7 +134,7 @@ async function main() {
 
     await step('disk threshold setting', async () => {
       disk(5)
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'notify'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-disk-threshold]')`, 10000, 'threshold control')
       await evaluate(`[...document.querySelectorAll('[data-disk-threshold] button, [data-disk-threshold] [role=radio]')].find((b) => /Off/.test(b.textContent)).click()`)
       await waitFor(`${S}.get('disk').state?.warnGb === 0`, 5000, 'off saved')
@@ -146,6 +147,7 @@ async function main() {
 
     await step('agent data row opens the dialog with known projects', async () => {
       await waitFor(`Object.values(${TERMS}.byId).some((t) => t.cwd && t.cwd.toLowerCase() === ${JSON.stringify(PLAIN.toLowerCase())})`, 20000, 'session listed')
+      await evaluate(`${UI}.settingsPage = 'data'`)
       await waitFor(`!!document.querySelector('[data-agentdata-build-open]')`, 15000, 'agent data build row')
       await click('[data-agentdata-build-open]')
       await waitFor(`!!document.querySelector('[data-build-clean]')`, 10000, 'dialog')

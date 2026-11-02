@@ -113,7 +113,7 @@ async function session(app, keep) {
     await cmd('Page.reload')
     await waitFor(`!!${UI}`, 15000, 'reloaded')
   }
-  await evaluate(`${UI}.settingsOpen = true`)
+  await evaluate(`${UI}.settingsPage = 'data'; ${UI}.settingsOpen = true`)
   await waitFor(`!!document.querySelector('[data-agentdata] [data-agentdata-measure]')`, 15000, 'agent data section')
   const insp = await mainInspector()
   return insp

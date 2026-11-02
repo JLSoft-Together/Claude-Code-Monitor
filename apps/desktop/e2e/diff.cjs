@@ -160,7 +160,9 @@ async function run(app) {
   check('ignore whitespace disables revert', await evaluate(`!!document.querySelector('[data-kind=changes] .rv[aria-disabled="true"]')`))
   await evaluate(`document.querySelector('[data-ws="none"]').click()`)
   await evaluate(`document.querySelector('[data-diff-options-button]').click()`)
-  await evaluate(`document.querySelector('[data-changes-tree]').click()`)
+  await evaluate(`document.querySelector('[data-kind=changes] [data-pane-more]').click()`)
+  await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="tree"]')`, 5000, 'menu tree')
+  await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="tree"]').click()`)
   await sleep(300)
   check('tree mode groups files by folder', await evaluate(`!!document.querySelector('[data-kind=changes] [role=tree] [aria-expanded]')`))
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, CircleHelp, FolderOpen, GraduationCap, Keyboard, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
@@ -74,12 +74,9 @@ import WorkspaceSidebar from './WorkspaceSidebar.vue'
 import SideResizer from './SideResizer.vue'
 import RailColumn from './rail/RailColumn.vue'
 import MissionControl from './MissionControl.vue'
-import ResourcesButton from '../ResourcesButton.vue'
-import { useResourcesStore } from '../../stores/resources'
 import AttentionPopover from './AttentionPopover.vue'
 import TabRenameInput from './TabRenameInput.vue'
 import UndoToast, { type UndoInfo } from './UndoToast.vue'
-import DimToggle from './DimToggle.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
 import { clampSideWidth, EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
 import { hasRun } from '../../lib/desktop'
@@ -248,7 +245,6 @@ const otherNews = computed(() => {
   return latest ? t('peerWs.projectNews', { text: info.peerView(latest).label }) : null
 })
 
-const resources = useResourcesStore()
 const missionOpen = ref(false)
 const missionOpener = ref<HTMLElement | null>(null)
 let missionReturn: HTMLElement | null = null
@@ -1024,50 +1020,8 @@ watch(
 const KEY_TIP: Partial<Record<string, TipAction>> = { newTab: 'newTab', split: 'split', closePane: 'closePane', attention: 'attention', cycleTab: 'tab', tab: 'tab', focus: 'focus' }
 
 // Help: shortcuts list + this view's guide (ShortcutsDialog / OnboardingTour live in App.vue).
-const helpOpen = ref(false)
-const helpButton = ref<HTMLButtonElement | null>(null)
-const helpMenu = ref<HTMLElement | null>(null)
-
-function closeHelp(focusButton = false): void {
-  helpOpen.value = false
-  if (focusButton) helpButton.value?.focus()
-}
-
-async function toggleHelp(): Promise<void> {
-  if (helpOpen.value) return closeHelp()
-  helpOpen.value = true
-  await nextTick()
-  helpMenu.value?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
-}
-
-function helpAction(run: () => void): void {
-  closeHelp()
-  run()
-}
-
-function onHelpKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape' || e.key === 'Tab') {
-    if (e.key === 'Escape') e.preventDefault()
-    e.stopPropagation()
-    closeHelp(e.key === 'Escape')
-    return
-  }
-  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-  e.preventDefault()
-  const items = [...(helpMenu.value?.querySelectorAll<HTMLElement>('[role=menuitem]') ?? [])]
-  const at = items.indexOf(document.activeElement as HTMLElement)
-  items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
-}
-
-function onHelpOutside(e: PointerEvent): void {
-  const target = e.target as Node
-  if (!helpMenu.value?.contains(target) && !helpButton.value?.contains(target)) closeHelp()
-}
-
-watch(helpOpen, (open) => {
-  if (open) document.addEventListener('pointerdown', onHelpOutside, true)
-  else document.removeEventListener('pointerdown', onHelpOutside, true)
-})
+const paneBar = ref<HTMLElement | null>(null)
+provide('ccm-pane-bar', paneBar)
 
 function clearSeenAttention(): void {
   const pane = workspace.active
@@ -1133,8 +1087,11 @@ function unzoomTab(tab: Tab): void {
 
 function toggleDim(): void {
   settings.dimInactive = !settings.dimInactive
-  announce(t(settings.dimInactive ? 'workspace.dim.said.on' : 'workspace.dim.said.off'))
 }
+watch(
+  () => settings.dimInactive,
+  (on) => announce(t(on ? 'workspace.dim.said.on' : 'workspace.dim.said.off')),
+)
 
 function launch(cwd: string | undefined): void {
   closeMenu(false)
@@ -1866,7 +1823,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('focus', clearSeenAttention)
   window.removeEventListener('resize', onViewportResize)
   document.removeEventListener('pointerdown', onOutside, true)
-  document.removeEventListener('pointerdown', onHelpOutside, true)
   canvasObserver?.disconnect()
   pillObserver.disconnect()
   stripObserver.disconnect()
@@ -1938,7 +1894,6 @@ onBeforeUnmount(() => {
           </span>
         </Transition>
       </button>
-      <ResourcesButton v-if="activeCluster && resources.forgotten" class="shrink-0" />
       <div
         ref="tabRow"
         class="flex min-w-0 flex-1 items-center gap-1 rounded-inner outline-2 -outline-offset-2 transition-[background-color,outline-color] duration-(--ccm-dur-fast)"
@@ -2049,7 +2004,8 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="mr-1 inline-flex size-5 cursor-pointer items-center justify-center rounded-[5px] text-ink-faint hover:bg-fill-strong hover:text-ink"
+            class="mr-1 inline-flex size-5 cursor-pointer items-center justify-center rounded-[5px] text-ink-faint transition-opacity duration-(--ccm-dur-fast) hover:bg-fill-strong hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+            :class="tab === workspace.activeTab ? '' : 'opacity-0'"
             :title="t('workspace.closeTab')"
             :aria-label="`${t('workspace.closeTab')}: ${tabName(tab)}`"
             @click="closeTab(tab)"
@@ -2095,6 +2051,7 @@ onBeforeUnmount(() => {
         </Transition>
       </div>
       </div>
+      <div ref="paneBar" class="flex min-w-0 shrink-0 items-center empty:hidden" data-pane-bar />
       <button
         v-if="chipCount"
         ref="attentionChip"
@@ -2115,40 +2072,7 @@ onBeforeUnmount(() => {
           <AttentionPopover v-if="needsAnchor" :anchor="needsAnchor" :list="needs" :trigger="attentionChip" @close="closeNeeds" />
         </Transition>
       </Teleport>
-      <Transition name="ccm-fade">
-        <DimToggle v-if="multiPane" :on="settings.dimInactive" :visible="visible" @toggle="toggleDim" />
-      </Transition>
-      <div class="relative shrink-0" @keydown="onHelpKey">
-        <button
-          ref="helpButton"
-          type="button"
-          class="ccm-btn-plain"
-          aria-haspopup="menu"
-          :aria-expanded="helpOpen"
-          :aria-label="t('wsHelp.button')"
-          :title="t('wsHelp.button')"
-          data-tour="ws-help"
-          @click="toggleHelp"
-        >
-          <CircleHelp :size="16" aria-hidden="true" />
-        </button>
-        <Transition name="ccm-menu" @before-leave="retireOverlay">
-          <div
-            v-if="helpOpen"
-            ref="helpMenu"
-            role="menu"
-            :aria-label="t('wsHelp.button')"
-            class="ccm-menu absolute top-full right-0 z-40 mt-1.5 flex w-56 flex-col p-1 [--ccm-origin:top_right]"
-          >
-            <button type="button" role="menuitem" :class="MENU_ROW" data-menu="shortcuts" @click="helpAction(() => (ui.shortcutsOpen = true))">
-              <Keyboard :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('wsHelp.shortcuts') }}
-            </button>
-            <button type="button" role="menuitem" :class="MENU_ROW" data-menu="tour" @click="helpAction(() => (ui.tourOpen = 'workspace'))">
-              <GraduationCap :size="14" class="shrink-0 text-ink-muted group-focus-visible/row:text-on-accent" aria-hidden="true" />{{ t('wsHelp.tour') }}
-            </button>
-          </div>
-        </Transition>
-      </div>
+      <span class="mx-0.5 hidden h-4 w-px shrink-0 bg-line md:block" aria-hidden="true" data-explorer-divider />
       <button
         type="button"
         class="ccm-btn-plain hidden shrink-0 md:inline-flex"

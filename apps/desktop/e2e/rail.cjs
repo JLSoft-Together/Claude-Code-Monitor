@@ -219,7 +219,7 @@ async function run(app) {
   await waitFor(`!${MENU}`, 3000, 'empty menu closed')
 
   // --- Open Project (native folder picker, not driven here): pinned above the scrolling project list ---
-  check('Open Project is pinned at the top of the rail', await evaluate(`(() => { const b = ${NAV}.querySelector('[data-rail-open-project]'); return !!b && /Open Project/.test(b.textContent) && ${NAV}.firstElementChild.contains(b) && !b.closest('.overflow-y-auto') })()`))
+  check('Open Project is pinned at the top of the rail', await evaluate(`(() => { const b = ${NAV}.querySelector('[data-rail-open-project]'); return !!b && /Open Project/.test(b.getAttribute('aria-label') ?? '') && ${NAV}.firstElementChild.contains(b) && !b.closest('.overflow-y-auto') })()`))
 
   // --- Mouse wheel scrolls the tab strip sideways ---
   const wheel = await evaluate(`(() => {

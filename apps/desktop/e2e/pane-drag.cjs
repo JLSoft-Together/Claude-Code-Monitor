@@ -24,8 +24,16 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
   }
   // A point on the header's label, away from its buttons.
   const headOf = async (key) => {
-    const r = await rect(`[data-pane="${key}"] header`)
-    return { x: r.left + 30, y: r.top + r.height / 2 }
+    // v79: the head packs a status button and chips after the name, so scan for the first spot no control covers.
+    const hit = await evaluate(`(() => {
+      const h = document.querySelector('[data-pane="${key}"] header'); const r = h.getBoundingClientRect(); const y = r.top + r.height / 2
+      for (let x = r.left + 6; x < r.right - 6; x += 4) {
+        const e = document.elementFromPoint(x, y)
+        if (e && h.contains(e) && !e.closest('button, a, input, select, textarea, label, [role=button], [role=group], [data-pane-chip]')) return [x, y]
+      }
+      return null
+    })()`)
+    return { x: hit[0], y: hit[1] }
   }
   const nearEdge = async (key, edge) => {
     const r = await rect(`[data-pane="${key}"]`)

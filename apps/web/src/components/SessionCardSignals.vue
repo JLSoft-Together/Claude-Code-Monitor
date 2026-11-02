@@ -92,9 +92,8 @@ const usage = computed(() => {
     <Hourglass :size="13" class="ccm-pulse shrink-0" aria-hidden="true" /><span class="truncate">{{ quiet }}</span>
   </p>
   <p
-    v-if="cache"
-    class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs transition-colors duration-300"
-    :class="cache.cold ? 'font-medium text-warning' : 'text-ink-muted'"
+    v-if="cache?.cold"
+    class="ccm-enter mt-1.5 flex min-w-0 items-center gap-1.5 text-xs font-medium text-warning transition-colors duration-300"
     :title="cache.title"
   >
     <Snowflake :key="coldBump" :size="13" class="shrink-0" :class="coldBump ? 'ccm-pop' : ''" aria-hidden="true" /><span class="truncate">{{ cache.label }}</span>
@@ -143,8 +142,13 @@ const usage = computed(() => {
   >
     <GitMerge :size="13" class="shrink-0" :class="conflict.hot ? 'ccm-pulse' : ''" aria-hidden="true" /><span class="truncate">{{ conflict.label }}</span>
   </button>
-  <p v-if="usage" class="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted" :title="t('resources.cardTitle')" data-card-resources>
-    <Cpu :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate tabular">{{ usage.label }}</span>
+  <p
+    v-if="usage"
+    :class="usage.forgotten ? 'mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted' : 'sr-only'"
+    :title="t('resources.cardTitle')"
+    data-card-resources
+  >
+    <Cpu v-if="usage.forgotten" :size="13" class="shrink-0" aria-hidden="true" /><span class="truncate tabular">{{ usage.label }}</span>
     <span v-if="usage.forgotten" class="inline-flex shrink-0 items-center gap-1 text-warning"><Hourglass :size="12" aria-hidden="true" />{{ t('resources.state.forgotten') }}</span>
   </p>
 </template>

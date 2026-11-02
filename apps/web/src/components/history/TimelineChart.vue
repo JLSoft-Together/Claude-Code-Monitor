@@ -9,6 +9,7 @@ import { useHistoryStore } from '../../stores/history'
 import { useTerminalsStore } from '../../stores/terminals'
 import { useUiStore } from '../../stores/ui'
 import StatusIcon from '../StatusIcon.vue'
+import { summaryLine } from './summary'
 
 const { t, locale } = useI18n()
 const history = useHistoryStore()
@@ -96,62 +97,49 @@ const rows = computed(() =>
     .sort((a, b) => b.totals.working - a.totals.working),
 )
 
+const summary = computed(() =>
+  lanes.value.length
+    ? summaryLine(overall.value.totals, dur, { working: (d) => t('history.worked', { d }), waiting: (d) => t('history.waited', { d }), idle: (d) => t('pagesV79.history.idleFor', { d }) })
+    : '',
+)
+
 const range = (s: Seg) => `${clock.value.format(s.from)} – ${s.open ? t('history.now') : clock.value.format(s.to)}`
 </script>
 
 <template>
   <div>
+    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h3 id="timeline-title" class="font-semibold">{{ t('history.timeline') }}</h3>
+      <p v-if="summary" class="text-sm text-ink-muted tabular" data-history-summary>{{ summary }}</p>
+    </div>
+    <p class="mb-3 text-xs text-ink-muted">{{ t('history.timelineHint') }}</p>
     <p v-if="!lanes.length" class="py-6 text-center text-sm text-ink-muted">{{ t('history.timelineEmpty') }}</p>
     <template v-else-if="span">
-      <div class="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" :aria-label="t('history.legend')" role="list">
-        <div v-for="k in STATUSES" :key="k" role="listitem" class="flex items-center gap-3 rounded-control bg-fill px-3 py-2.5">
-          <span class="h-8 w-1.5 shrink-0 rounded-full" :class="FILL[k]" aria-hidden="true" />
-          <div class="min-w-0">
-            <p class="inline-flex items-center gap-1.5 text-xs text-ink-muted">
-              <StatusIcon :status="k" :size="13" :animate="false" />{{ t(`status.${k}`) }}
-            </p>
-            <p class="text-lg font-semibold leading-tight tabular" :class="k === 'idle' ? 'text-ink' : TEXT[k]">
-              {{ dur(overall.totals[k]) }}
-              <span v-if="overall.sum" class="text-xs font-normal text-ink-faint">{{ Math.round((overall.totals[k] / overall.sum) * 100) }}%</span>
-            </p>
+      <ul class="divide-y divide-line">
+        <li
+          v-for="r in rows"
+          :key="r.id"
+          class="grid grid-cols-[minmax(7rem,13rem)_minmax(0,1fr)_auto] items-center gap-x-3 py-2 sm:gap-x-4"
+          :title="t('history.laneLabel', { title: r.title, working: short(r.totals.working), waiting: short(r.totals.waiting) })"
+        >
+          <button
+            type="button"
+            class="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-sm font-medium hover:underline disabled:cursor-default disabled:no-underline"
+            :class="r.live ? 'text-ink' : 'text-ink-muted'"
+            :disabled="!r.live"
+            @click="(ui.setView('monitor'), ui.focusTerminal(r.id))"
+          >
+            <StatusIcon v-if="r.current && r.live" :status="r.current" :size="13" :animate="false" class="shrink-0" />
+            <span class="truncate">{{ r.title }}</span>
+          </button>
+          <div
+            class="flex h-2.5 min-w-0 gap-0.5 overflow-hidden rounded-full bg-fill"
+            role="img"
+            :aria-label="t('history.laneLabel', { title: r.title, working: short(r.totals.working), waiting: short(r.totals.waiting) })"
+          >
+            <span v-for="k in STATUSES" v-show="r.share[k] > 0" :key="k" class="h-full" :class="FILL[k]" :style="{ width: `${r.share[k]}%` }" />
           </div>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(3.5rem,auto))] items-center gap-x-3 border-b border-line pb-2 text-xs text-ink-muted sm:gap-x-6">
-        <span>{{ t('history.col.session') }}</span>
-        <span v-for="k in STATUSES" :key="k" class="inline-flex items-center justify-end gap-1.5">
-          <span class="size-2 rounded-full" :class="FILL[k]" aria-hidden="true" />{{ t(`status.${k}`) }}
-        </span>
-      </div>
-      <ul>
-        <li v-for="r in rows" :key="r.id" class="border-b border-line py-3 last:border-b-0">
-          <div class="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(3.5rem,auto))] items-center gap-x-3 sm:gap-x-6">
-            <button
-              type="button"
-              class="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-sm font-medium hover:underline disabled:cursor-default disabled:no-underline"
-              :class="r.live ? 'text-ink' : 'text-ink-muted'"
-              :title="r.title"
-              :disabled="!r.live"
-              @click="(ui.setView('monitor'), ui.focusTerminal(r.id))"
-            >
-              <StatusIcon v-if="r.current && r.live" :status="r.current" :size="13" :animate="false" class="shrink-0" />
-              <span class="truncate">{{ r.title }}</span>
-            </button>
-            <span class="text-right text-sm font-semibold text-st-working tabular">{{ short(r.totals.working) }}</span>
-            <span class="text-right text-sm tabular" :class="r.totals.waiting ? 'font-semibold text-st-waiting' : 'text-ink-faint'">{{ short(r.totals.waiting) }}</span>
-            <span class="text-right text-sm text-ink-muted tabular">{{ short(r.totals.idle) }}</span>
-          </div>
-          <div class="mt-2 flex items-center gap-3">
-            <div
-              class="flex h-2.5 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-full bg-fill"
-              role="img"
-              :aria-label="t('history.laneLabel', { title: r.title, working: short(r.totals.working), waiting: short(r.totals.waiting) })"
-            >
-              <span v-for="k in STATUSES" v-show="r.share[k] > 0" :key="k" class="h-full" :class="FILL[k]" :style="{ width: `${r.share[k]}%` }" />
-            </div>
-            <span class="w-20 shrink-0 text-right text-xs text-ink-muted tabular">{{ t('history.workShare', { p: Math.round(r.share.working) }) }}</span>
-          </div>
+          <span class="w-10 text-right text-xs text-ink-muted tabular">{{ Math.round(r.share.working) }}%</span>
         </li>
       </ul>
 

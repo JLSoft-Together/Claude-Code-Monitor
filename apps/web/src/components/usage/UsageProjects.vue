@@ -13,6 +13,8 @@ const usage = useUsageStore()
 
 const rows = computed<RankRow[]>(() => usage.topProjects.map((r) => ({ id: r.id, label: baseName(r.id), title: r.id, value: r.value, bar: 'bg-accent' })))
 const count = computed(() => usage.projectRows.length)
+// Names the leader only when no project filter already narrowed the list to one.
+const heading = computed(() => (!usage.project && rows.value.length ? t('pagesV79.usage.topProject', { name: rows.value[0]!.label }) : t('usageV53.topProjects')))
 
 const actionOf = (row: RankRow) => (usage.project === row.id ? t('usageV53.clearProject') : t('usageV53.filterProject', { name: row.label }))
 
@@ -24,7 +26,7 @@ function toggle(id: string): void {
 <template>
   <section class="flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card sm:p-5" aria-labelledby="usage-projects-title">
     <div class="flex min-h-7 flex-wrap items-center justify-between gap-x-3">
-      <h3 id="usage-projects-title" class="text-base font-semibold">{{ t('usageV53.topProjects') }}</h3>
+      <h3 id="usage-projects-title" class="min-w-0 truncate text-base font-semibold" :title="heading">{{ heading }}</h3>
       <button
         v-if="count > 0"
         type="button"

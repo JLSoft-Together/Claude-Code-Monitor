@@ -128,7 +128,7 @@ watch(() => ext.mode, () => void ext.refresh())
         <p class="mt-1 max-w-[80ch] text-sm text-ink-muted">{{ t('ext.subtitle') }}</p>
       </div>
       <SegmentedControl v-if="hasHooks" v-model="section" :options="sections" :label="t('hooksMgr.tab.label')" data-ext-section />
-      <button v-if="section === 'catalog'" type="button" class="ccm-btn" :disabled="!ext.status?.cli" data-ext-add-source @click="sourceOpen = true">
+      <button v-if="section === 'catalog'" type="button" class="ccm-btn ccm-btn-primary" :disabled="!ext.status?.cli" data-ext-add-source @click="sourceOpen = true">
         <Plus :size="14" aria-hidden="true" />{{ t('ext.addSource') }}
       </button>
     </div>
@@ -162,7 +162,12 @@ watch(() => ext.mode, () => void ext.refresh())
       </div>
     </div>
 
-    <p v-if="noProject" class="mt-6 rounded-card bg-surface px-4 py-6 text-center text-sm text-ink-muted shadow-card">{{ t('ext.project.hint') }}</p>
+    <div v-if="noProject" class="mt-6 flex flex-col items-center gap-3 rounded-card bg-surface px-4 py-6 text-center shadow-card" data-ext-no-project>
+      <p class="text-sm text-ink-muted">{{ t('ext.project.hint') }}</p>
+      <button type="button" class="ccm-btn" :disabled="browsing" @click="browse">
+        <FolderOpen :size="14" aria-hidden="true" />{{ t('ext.project.choose') }}
+      </button>
+    </div>
 
     <HooksPanel v-else-if="section === 'hooks'" :dir="ext.dir" />
 

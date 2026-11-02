@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, CircleCheck, ExternalLink, LoaderCircle, LogIn, TriangleAlert } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck, EllipsisVertical, ExternalLink, LoaderCircle, LogIn, Trash2, TriangleAlert } from 'lucide-vue-next'
 import type { CatalogEntry, ExtPrereq, ExtResult, ExtScope } from '@ccm/shared'
 import { removeScope, type EntryState } from '../../lib/extensions'
+import type { MenuEntry, Rect } from '../../lib/menu'
+import ContextMenu from '../ui/ContextMenu.vue'
 import { entryIcon, STATE_META } from './meta'
 
 const props = defineProps<{
@@ -42,6 +44,24 @@ const primary = computed<'signIn' | 'open' | 'remove' | null>(() => {
 const openLabel = computed(() =>
   props.entry.install.type === 'guide' ? t('ext.actions.setup') : multi.value && props.state.state === 'installed' ? t('ext.actions.manage') : t('ext.actions.install'),
 )
+const showOpen = computed(() => primary.value === 'open' || (primary.value === 'signIn' && multi.value))
+const showRemove = computed(() => !!scopeToRemove.value && !multi.value && (primary.value === 'remove' || primary.value === 'signIn'))
+
+// Docs sits here instead of a header icon so every card has one quiet overflow and install / manage stay the only buttons.
+const menuAt = ref<Rect | null>(null)
+const menuBtn = ref<HTMLButtonElement | null>(null)
+const menuEntries = computed<MenuEntry[]>(() => [
+  { id: 'docs', label: t('ext.actions.docs'), icon: ExternalLink },
+  ...(showRemove.value ? [{ separator: true } as const, { id: 'remove', label: t('ext.actions.remove'), icon: Trash2, disabled: props.disabled }] : []),
+])
+function openMenu(): void {
+  const r = menuBtn.value?.getBoundingClientRect()
+  if (r) menuAt.value = { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+}
+function pick(id: string): void {
+  if (id === 'docs') emit('docs')
+  else if (id === 'remove' && scopeToRemove.value) emit('remove', scopeToRemove.value)
+}
 const resultText = computed(() => {
   const r = props.result
   if (!r) return null
@@ -51,7 +71,7 @@ const resultText = computed(() => {
 
 <template>
   <article
-    class="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-4 shadow-card"
+    class="flex h-full min-w-0 flex-col gap-3 rounded-card bg-surface p-4 shadow-card"
     :data-ext-card="entry.id"
     :aria-busy="busy || undefined"
   >
@@ -63,9 +83,6 @@ const resultText = computed(() => {
         <h4 class="truncate text-sm font-semibold" :title="entry.name">{{ entry.name }}</h4>
         <p class="truncate text-2xs text-ink-faint" :title="entry.vendor">{{ entry.vendor }}</p>
       </div>
-      <button type="button" class="ccm-btn-plain -mt-1 -mr-1 shrink-0" :aria-label="`${t('ext.actions.docs')}: ${entry.name}`" :title="t('ext.actions.docs')" @click="emit('docs')">
-        <ExternalLink :size="14" aria-hidden="true" />
-      </button>
     </div>
 
     <p class="line-clamp-2 min-h-[2lh] text-xs leading-relaxed text-ink-muted">{{ t(`ext.desc.${entry.id}`) }}</p>
@@ -94,7 +111,7 @@ const resultText = computed(() => {
       <button
         v-if="primary === 'signIn'"
         type="button"
-        class="ccm-btn ccm-btn-primary"
+        class="ccm-btn"
         :disabled="disabled"
         :data-ext-action="'signIn'"
         @click="emit('signIn', state.server!)"
@@ -103,10 +120,9 @@ const resultText = computed(() => {
         <LogIn v-else :size="13" aria-hidden="true" />{{ t('ext.actions.signIn') }}
       </button>
       <button
-        v-if="primary === 'open' || (primary === 'signIn' && multi)"
+        v-if="showOpen"
         type="button"
         class="ccm-btn"
-        :class="{ 'ccm-btn-primary': primary === 'open' && state.state !== 'installed' && entry.install.type !== 'guide' }"
         :disabled="disabled && entry.install.type !== 'guide'"
         :aria-label="`${openLabel}: ${entry.name}`"
         data-ext-action="open"
@@ -115,15 +131,19 @@ const resultText = computed(() => {
         <LoaderCircle v-if="busy && primary === 'open'" :size="13" class="animate-spin" aria-hidden="true" />{{ openLabel }}
       </button>
       <button
-        v-if="scopeToRemove && (primary === 'remove' || primary === 'signIn') && !multi"
+        ref="menuBtn"
         type="button"
-        class="ccm-btn"
-        :disabled="disabled"
-        :aria-label="`${t('ext.actions.remove')}: ${entry.name}`"
-        data-ext-action="remove"
-        @click="emit('remove', scopeToRemove)"
+        class="ccm-btn-plain ml-auto shrink-0"
+        :aria-label="`${t('pagesV79.ext.more')}: ${entry.name}`"
+        :title="t('pagesV79.ext.more')"
+        aria-haspopup="menu"
+        :aria-expanded="!!menuAt"
+        :disabled="busy"
+        data-ext-action="menu"
+        @click="openMenu"
       >
-        <LoaderCircle v-if="busy && primary === 'remove'" :size="13" class="animate-spin" aria-hidden="true" />{{ t('ext.actions.remove') }}
+        <LoaderCircle v-if="busy && !showOpen" :size="14" class="animate-spin" aria-hidden="true" />
+        <EllipsisVertical v-else :size="14" aria-hidden="true" />
       </button>
       <p
         v-if="resultText"
@@ -137,5 +157,6 @@ const resultText = computed(() => {
         <span class="truncate">{{ resultText }}</span>
       </p>
     </div>
+  <ContextMenu v-if="menuAt" :at="menuAt" :entries="menuEntries" :label="`${t('pagesV79.ext.more')}: ${entry.name}`" :trigger="menuBtn" @pick="pick" @close="menuAt = null" />
   </article>
 </template>

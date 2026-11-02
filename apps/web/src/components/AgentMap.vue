@@ -1712,23 +1712,32 @@ const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' 
               <component :is="allTraysOpen ? Eye : EyeOff" :size="16" aria-hidden="true" />
               <span v-if="!allTraysOpen && hiddenTotal > 0" class="tabular-nums">{{ t('map.hiddenCount', { n: hiddenTotal }) }}</span>
             </button>
-            <button
-              v-for="c in controls"
-              :key="c.key"
-              type="button"
-              :class="TOOL"
-              :aria-label="c.label"
-              :title="c.label"
-              :aria-keyshortcuts="c.hint"
-              :disabled="!hasNodes"
-              @click="c.run()"
-            >
-              <component :is="c.icon" :size="16" aria-hidden="true" />
-              <KeyHint v-if="c.hint" :keys="c.hint" />
-            </button>
           </template>
         </div>
 
+      </div>
+
+      <div
+        v-if="ui.mapView === 'map'"
+        class="ccm-material pointer-events-auto absolute right-3 bottom-3 z-10 flex flex-col items-center gap-0.5 rounded-control p-0.5 shadow-pop"
+        role="toolbar"
+        aria-orientation="vertical"
+        :aria-label="t('monitorV79.zoomGroup')"
+        data-map-zoom
+      >
+        <button
+          v-for="c in controls"
+          :key="c.key"
+          type="button"
+          :class="TOOL"
+          :aria-label="c.label"
+          :title="c.hint ? `${c.label} (${c.hint})` : c.label"
+          :aria-keyshortcuts="c.hint"
+          :disabled="!hasNodes"
+          @click="c.run()"
+        >
+          <component :is="c.icon" :size="16" aria-hidden="true" />
+        </button>
       </div>
 
       <AgentDetails v-if="ui.mapView === 'map'" :flow-id="FLOW_ID" />

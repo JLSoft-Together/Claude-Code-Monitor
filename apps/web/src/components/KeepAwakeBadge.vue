@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Coffee } from 'lucide-vue-next'
 import { useAwakeStore } from '../stores/awake'
 
+defineProps<{ row?: boolean }>()
 const { t, locale } = useI18n()
 const awake = useAwakeStore()
 onMounted(() => awake.start())
@@ -24,8 +25,12 @@ const tip = computed(() => {
 </script>
 
 <template>
+  <p v-if="s?.holding && row" class="flex items-center gap-2 text-xs text-ink" :title="tip" :data-awake-row="s.reason">
+    <Coffee :size="14" class="shrink-0 text-ink-muted" aria-hidden="true" />
+    <span class="min-w-0 flex-1 truncate">{{ text }}</span>
+  </p>
   <span
-    v-if="s?.holding"
+    v-else-if="s?.holding"
     class="mr-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-fill px-2 text-xs font-medium text-ink-muted"
     role="status"
     :title="tip"

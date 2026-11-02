@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Columns2, FileText, GitBranch, Globe, ListOrdered, LoaderCircle, Mail, Maximize2, Minimize2, Moon, Network, Paperclip, Play, RotateCw, ScanSearch, TriangleAlert, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
@@ -16,7 +16,7 @@ import { fontEntry, termFontStack } from '../../lib/fonts'
 import { duration, now, shortPath } from '../../lib/format'
 import type { MenuEntry } from '../../lib/menu'
 import { newlineFor } from '../../lib/termKeys'
-import { isHeadBlank, processChip, STATE_BADGE, suggestCompact, zoomKeys } from '../../lib/paneHead'
+import { headMode, isHeadBlank, processChip, STATE_BADGE, statusWordShown, suggestCompact, zoomKeys } from '../../lib/paneHead'
 import { contextPctOf } from '../../lib/provider'
 import { retireOverlay } from '../../lib/motion'
 import { registerSnapshot } from '../../lib/paneSnapshots'
@@ -41,7 +41,6 @@ import { useChecksStore } from '../../stores/checks'
 import { presetOf, useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
-import DevServerChip from './DevServerChip.vue'
 import TermFind from './TermFind.vue'
 import StatusIcon from '../StatusIcon.vue'
 import { statusMeta } from '../../lib/status'
@@ -292,6 +291,10 @@ const compactFlow = useCompact()
 const compactSuggested = computed(() => props.pane.state === 'running' && !!context.value && suggestCompact(context.value.pct, compactFlow.stateOf(props.pane)))
 const compactPct = computed(() => Math.round(context.value?.pct ?? 0))
 
+const barSlot = inject<Ref<HTMLElement | null>>('ccm-pane-bar', ref(null))
+const inBar = computed(() => headMode(props.multi, props.zoomed) === 'bar' && props.visible && !!barSlot.value)
+const headTip = computed(() => [cwd.value, activityText.value, session.value ? sessionTitle.value : ''].filter(Boolean).join('\n') || undefined)
+
 const zoomLabel = computed(() => t(props.zoomed ? 'workspace.paneHead.unzoom' : 'workspace.paneHead.zoom', { key: zoomKeys(isMac) }))
 
 function onHeadDblClick(e: MouseEvent): void {
@@ -328,7 +331,7 @@ function pickMore(id: string): void {
   else if (id === 'attach') attachments.toggle(props.pane.key)
   else if (id === 'scripts') emit('scripts')
   else if (id === 'scan') scanErrors()
-  else if (id === 'queue') queueButton.value?.open((more.value?.$el as HTMLElement | undefined)?.getBoundingClientRect())
+  else if (id === 'queue') queueButton.value?.open(more.value?.button?.getBoundingClientRect())
   else if (id === 'restart') {
     if (reconnectable.value) reconnect()
     else restart()
@@ -1032,34 +1035,34 @@ onBeforeUnmount(() => {
     :aria-label="t(`workspace.preset.${preset}`)"
     @pointerdown="onPointerDown"
   >
+    <Teleport :to="barSlot ?? 'body'" :disabled="!inBar">
     <header
-      class="relative flex h-7 min-w-0 items-center gap-2 px-1 text-xs select-none @max-[420px]:gap-1"
-      :class="multi ? 'cursor-grab' : ''"
-      :title="multi ? t('workspace.drag.paneHint', { key: isMac ? '⌘' : 'Ctrl' }) : undefined"
+      class="relative flex h-7 min-w-0 items-center gap-1.5 px-1 text-xs select-none @max-[420px]:gap-1"
+      :class="[multi ? 'cursor-grab' : '', inBar ? 'max-w-full' : '']"
+      :title="multi ? t('workspace.drag.paneHint', { key: isMac ? '⌘' : 'Ctrl' }) : inBar ? headTip : undefined"
       :data-pane-grip="multi || undefined"
+      :data-pane-of="pane.key"
       :data-tour="focused ? 'ws-pane' : undefined"
       data-pane-head
       @dblclick="onHeadDblClick"
     >
       <span v-if="peerSweep" :key="peerSweep" class="ccm-peer-sweep-x absolute inset-x-1 top-0 h-0.5" aria-hidden="true" data-pane-peer-sweep />
-      <PresetIcon :preset="preset" :size="15" class="shrink-0" />
-      <span class="shrink-0 font-semibold transition-colors duration-(--ccm-dur-fast) ease-out-quint @max-[420px]:sr-only" :class="multi && !focused ? 'text-ink-muted' : 'text-ink'">{{
-        t(`workspace.preset.${preset}`)
-      }}</span>
-      <span v-if="cwd" class="min-w-0 shrink-[100] truncate text-ink-faint @max-[380px]:hidden" :title="cwd" data-cwd>{{ shortPath(cwd) }}</span>
-      <DevServerChip
-        v-if="devUrls.length"
-        class="min-w-0 shrink @max-[600px]:[&>span]:hidden @max-[420px]:hidden"
-        data-more="dev"
-        :urls="devUrls"
-        @open="(url) => emit('openLink', { kind: 'url', url }, {})"
-      />
+      <template v-if="!inBar">
+        <PresetIcon :preset="preset" :size="15" class="shrink-0" />
+        <span
+          class="min-w-0 shrink-0 truncate font-semibold transition-colors duration-(--ccm-dur-fast) ease-out-quint @max-[420px]:sr-only"
+          :class="multi && !focused ? 'text-ink-muted' : 'text-ink'"
+          :title="headTip"
+          data-pane-name
+          >{{ t(`workspace.preset.${preset}`) }}</span
+        >
+      </template>
       <button
         v-if="cwd && pane.state === 'running'"
         ref="wtButton"
         type="button"
         class="inline-flex h-6 shrink-[10] cursor-pointer items-center gap-1 rounded-[5px] px-1.5 text-ink-faint transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink aria-expanded:bg-fill aria-expanded:text-ink"
-        :title="branch ? t('workspace.paneHead.branch', { branch }) : t('workspace.wt.title')"
+        :title="[branch ? t('workspace.paneHead.branch', { branch }) : t('workspace.wt.title'), cwd].join('\n')"
         aria-haspopup="dialog"
         :aria-expanded="!!wtAnchor"
         data-pane-worktrees
@@ -1081,20 +1084,13 @@ onBeforeUnmount(() => {
           <span class="text-diff-del">−{{ diff.deletions }}</span>
         </span>
       </Transition>
-      <OverlapChip v-if="cwd && preset !== 'shell'" :cwd="cwd" :branch="branch" data-pane-chip />
       <Teleport to="body">
         <Transition name="ccm-menu" @before-leave="retireOverlay">
           <WorktreeMenu v-if="wtAnchor && cwd" :cwd="cwd" :anchor="wtAnchor" :trigger="wtButton" @close="closeWorktrees" />
         </Transition>
       </Teleport>
-      <span class="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] text-ink-muted *:[grid-area:1/1] @max-[640px]:hidden">
-        <Transition name="ccm-fade">
-          <span v-if="activityText" :key="`a:${activity?.tool}`" class="truncate tabular-nums" :title="activityText" data-pane-activity>{{ activityText }}</span>
-          <span v-else-if="session && sessionTitle" :key="`t:${sessionTitle}`" class="truncate" :title="sessionTitle">{{ sessionTitle }}</span>
-        </Transition>
-      </span>
       <div class="ml-auto flex min-w-0 items-center gap-1">
-        <ContextGauge v-if="context" class="w-24 shrink-0 @max-[600px]:hidden" :tokens="context.tokens" :window="context.window" :pct="context.pct" compact data-pane-chip />
+        <ContextGauge v-if="context" class="w-24 shrink-0 @max-[600px]:hidden" :class="inBar ? 'max-lg:hidden' : ''" :tokens="context.tokens" :window="context.window" :pct="context.pct" compact data-pane-chip />
         <span class="grid min-w-6 justify-items-end empty:hidden *:[grid-area:1/1] @max-[300px]:hidden" data-more="compact" data-pane-chip>
           <Transition name="ccm-fade">
             <button
@@ -1147,7 +1143,7 @@ onBeforeUnmount(() => {
                   </span>
                 </Transition>
               </span>
-              <span class="min-w-0 truncate @max-[460px]:sr-only">{{ sessionChip.label }}</span>
+              <span class="min-w-0 truncate" :class="statusWordShown(sessionChip.state) ? '@max-[460px]:sr-only' : 'sr-only'">{{ sessionChip.label }}</span>
               <span v-if="peerBadge && peer" class="sr-only">, {{ peer.label }}</span>
             </span>
             <span
@@ -1160,7 +1156,7 @@ onBeforeUnmount(() => {
             >
               <LoaderCircle v-if="!procChip.status" :size="12" class="ccm-spin shrink-0" aria-hidden="true" />
               <StatusIcon v-else :status="procChip.status" :size="12" class="shrink-0" />
-              <span class="min-w-0 truncate @max-[460px]:sr-only">{{ procChip.label }}</span>
+              <span class="min-w-0 truncate" :class="procChip.kind === 'exited' || procChip.kind === 'error' ? '@max-[460px]:sr-only' : 'sr-only'">{{ procChip.label }}</span>
             </span>
           </Transition>
         </span>
@@ -1195,77 +1191,10 @@ onBeforeUnmount(() => {
             </span>
           </Transition>
         </span>
+        <OverlapChip v-if="cwd && preset !== 'shell'" :cwd="cwd" :branch="branch" data-pane-chip />
         <LimitResumeChip v-if="!isShell && pane.state === 'running'" :pane-key="pane.key" :hit="limitHit" data-pane-chip />
-        <PromptQueueButton v-if="!isShell" ref="queueButton" :pane-key="pane.key" :can-fill="canFillQueue" @fill="fillQueued" />
-        <button
-          v-if="canAttach"
-          type="button"
-          class="ccm-btn-plain shrink-0 gap-1 @max-[420px]:hidden"
-          :aria-pressed="attachOpen"
-          :aria-label="t('attach.button')"
-          :title="`${t('attach.button')}: ${t('attach.hint')}`"
-          :data-tour="focused ? 'ws-attach' : undefined"
-          data-attach-toggle
-          data-more="attach"
-          @click="attachments.toggle(pane.key)"
-        >
-          <Paperclip :size="14" aria-hidden="true" />
-          <span v-if="attachCount" class="text-2xs tabular" data-attach-count>{{ attachCount }}</span>
-        </button>
-        <button
-          v-if="reconnectable"
-          type="button"
-          class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
-          :title="t('workspace.reconnect')"
-          :aria-label="t('workspace.reconnect')"
-          data-more="restart"
-          @click="reconnect"
-        >
-          <RotateCw :size="14" aria-hidden="true" />
-        </button>
-        <button
-          v-else
-          type="button"
-          class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
-          :title="t('workspace.restart')"
-          :aria-label="t('workspace.restart')"
-          data-more="restart"
-          @click="restart"
-        >
-          <RotateCw :size="14" aria-hidden="true" />
-        </button>
-        <button
-          v-if="isShell"
-          type="button"
-          class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
-          data-term-scan
-          data-more="scan"
-          :title="t('workspace.termScan.hint')"
-          :aria-label="t('workspace.termScan.button')"
-          @click="scanErrors"
-        >
-          <ScanSearch :size="14" aria-hidden="true" />
-        </button>
-        <button
-          v-if="hasScripts && cwd"
-          type="button"
-          class="ccm-btn-plain shrink-0 @max-[420px]:hidden"
-          data-scripts
-          data-more="scripts"
-          :title="t('workspace.scripts.open')"
-          :aria-label="t('workspace.scripts.open')"
-          aria-haspopup="dialog"
-          @click="emit('scripts')"
-        >
-          <Play :size="14" aria-hidden="true" />
-        </button>
-        <PaneMore
-          ref="more"
-          class="hidden @max-[420px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1"
-          :entries="moreEntries"
-          :label="t('workspace.paneHead.more')"
-          @pick="pickMore"
-        />
+        <span v-if="!isShell" class="hidden"><PromptQueueButton ref="queueButton" :pane-key="pane.key" :can-fill="canFillQueue" @fill="fillQueued" /></span>
+        <PaneMore ref="more" class="@max-[300px]:min-w-6 @max-[300px]:px-1" :entries="moreEntries" :label="t('workspace.paneHead.more')" @pick="pickMore" />
         <Transition name="ccm-fade">
           <button
             v-if="zoomed && hiddenCount > 0"
@@ -1330,6 +1259,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
+    </Teleport>
     <div class="flex min-h-0 flex-1 gap-1.5" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <div
       class="relative min-h-0 min-w-0 flex-1 rounded-card bg-well shadow-card outline-2 -outline-offset-2 transition-[outline-color] duration-(--ccm-dur-fast) ease-out-quint"

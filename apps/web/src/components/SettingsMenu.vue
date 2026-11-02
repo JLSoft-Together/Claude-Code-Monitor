@@ -1,245 +1,140 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DEFAULT_IDLE_MINUTES, DEFAULT_QUIET, IDLE_CHOICES, TOAST_KINDS, isHm, type QuietHours, type TerminalApp, type ToastKind } from '@ccm/shared'
-import { Bell, BellOff, Check, ChevronRight, CircleAlert, CircleCheck, Copy, FileText, FolderX, GraduationCap, ListChecks, Minus, Plus, Send, Settings2, Sparkles, Stethoscope, X } from 'lucide-vue-next'
-import { AUTO_SAVE_DELAYS, AUTO_SAVE_MODES } from '../lib/autoSave'
-import { APP_VERSION } from '../lib/changelog'
-import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
-import { now } from '../lib/format'
+import { Bell, BellOff, ChevronRight, Database, GitBranch, Info, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
 import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
-import { forgetGrants, fullAccess, hasGrants } from '../lib/preview'
-import { playChime } from '../lib/sound'
-import { useConnectionStore } from '../stores/connection'
-import { useExtrasStore } from '../stores/extras'
-import { useTipsStore } from '../stores/tips'
-import { useUiStore } from '../stores/ui'
-import { desktop, hasRun, hasTerminals } from '../lib/desktop'
-import { RESTORE_MODES, restoreMode } from '../lib/workspaceRestore'
-import { CODE_SIZE_MAX, CODE_SIZE_MIN } from '../lib/fonts'
-import { stepCodeSize, zoomApp, zoomHud } from '../composables/useWheelZoom'
-import { STUCK_CHOICES, useSettingsStore } from '../stores/settings'
-import LottieArt from './LottieArt.vue'
-import RunSdkSettings from './RunSdkSettings.vue'
-import AwakeSettings from './AwakeSettings.vue'
-import CaptureSettings from './CaptureSettings.vue'
-import AgentDataSettings from './AgentDataSettings.vue'
 import { hasAgentData } from '../lib/agentData'
-import { hasAwake, hasCapture } from '../lib/capture'
-import PhoneSettings from './PhoneSettings.vue'
-import SensitiveSettings from './SensitiveSettings.vue'
-import DiskSettings from './DiskSettings.vue'
-import { hasDisk } from '../lib/buildClean'
-import { hasPhone } from '../lib/phone'
-import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
-import { hasGitHub } from '../lib/github'
-import { hasUpdater } from '../lib/update'
-import { useUpdateStore } from '../stores/update'
-import UpdateSettings from './UpdateSettings.vue'
-import BackupSettings from './BackupSettings.vue'
 import { hasBackup } from '../lib/backup'
-import ToggleSwitch from './ToggleSwitch.vue'
-import SegmentedControl from './ui/SegmentedControl.vue'
-import ThemePicker from './ui/ThemePicker.vue'
-import FontPicker from './ui/FontPicker.vue'
+import { hasAwake, hasCapture } from '../lib/capture'
+import { hasDisk } from '../lib/buildClean'
+import { desktop, hasRun, hasTerminals } from '../lib/desktop'
+import { hasGitHub } from '../lib/github'
+import { hasPhone } from '../lib/phone'
+import { hasGrants } from '../lib/preview'
+import { hasUpdater } from '../lib/update'
+import { useExtrasStore } from '../stores/extras'
+import { useSettingsStore } from '../stores/settings'
+import { useUiStore } from '../stores/ui'
+import { useUpdateStore } from '../stores/update'
+import LottieArt from './LottieArt.vue'
+import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
+import SettingsAbout from './settings/SettingsAbout.vue'
+import SettingsAccess from './settings/SettingsAccess.vue'
+import SettingsAppearance from './settings/SettingsAppearance.vue'
+import SettingsData from './settings/SettingsData.vue'
+import SettingsEditor from './settings/SettingsEditor.vue'
+import SettingsGeneral from './settings/SettingsGeneral.vue'
+import SettingsIntegrations from './settings/SettingsIntegrations.vue'
+import SettingsNotify from './settings/SettingsNotify.vue'
+import SettingsReminders from './settings/SettingsReminders.vue'
+import SettingEmbed from './settings/SettingEmbed.vue'
+import { SETTINGS_PAGES, entries, isSettingsPage, loadPage, pageVisible, savePage, searchSettings, type SettingsEnv, type SettingsPage } from './settings'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
 const extras = useExtrasStore()
-const connection = useConnectionStore()
 const ui = useUiStore()
-const tips = useTipsStore()
 const update = useUpdateStore()
-const tipsOn = computed({ get: () => !tips.state.off, set: (on: boolean) => tips.setOff(!on) })
+
 const panel = ref<HTMLElement | null>(null)
-const grantsForgotten = ref(false)
-
-async function onForgetGrants(): Promise<void> {
-  grantsForgotten.value = await forgetGrants()
-  if (grantsForgotten.value) setTimeout(() => (grantsForgotten.value = false), 4000)
-}
-const fullAccessOn = ref<boolean | null>(null)
-async function setFullAccess(on: boolean): Promise<void> {
-  const now = await fullAccess(on)
-  fullAccessOn.value = typeof now === 'boolean' ? now : null
-}
-const loginItem = ref<boolean | null>(null)
-async function setLoginItem(on: boolean): Promise<void> {
-  loginItem.value = on
-  const now = await desktop?.loginItem?.(on)
-  loginItem.value = typeof now === 'boolean' ? now : null
-}
-// App zoom lives in the main process (Chromium level); read once per open, then follow the HUD.
-const appZoom = ref<number | null>(null)
-watch(zoomHud, (h) => {
-  if (h?.kind === 'app') appZoom.value = h.value
-})
-const steppers = computed(() => [
-  {
-    id: 'codesize',
-    label: t('fonts.size'),
-    hint: t(isMac ? 'fonts.sizeHintMac' : 'fonts.sizeHint'),
-    value: t('fonts.px', { n: settings.codeFontSize }),
-    canDown: settings.codeFontSize > CODE_SIZE_MIN,
-    canUp: settings.codeFontSize < CODE_SIZE_MAX,
-    step: (d: -1 | 0 | 1) => stepCodeSize(settings, d),
-  },
-  ...(desktop?.zoomApp && appZoom.value !== null
-    ? [
-        {
-          id: 'appzoom',
-          label: t('fonts.zoom'),
-          hint: t(isMac ? 'fonts.zoomHintMac' : 'fonts.zoomHint'),
-          value: `${appZoom.value}%`,
-          // Chromium levels -3…+3 ≈ 58%…173%.
-          canDown: appZoom.value > 58,
-          canUp: appZoom.value < 173,
-          step: (d: -1 | 0 | 1) => void zoomApp(d === 0 ? 'reset' : d > 0 ? 'in' : 'out'),
-        },
-      ]
-    : []),
-])
-const openFontLicenses = (): void => void window.open('/fonts-LICENSES.txt', '_blank')
-const openIconLicense = (): void => void window.open('/file-icons-LICENSE.txt', '_blank')
-const openHabblaudLicense = (): void => void window.open('/habblaud-LICENSE.txt', '_blank')
-const helpItems = computed<{ key: string; icon: Component; label: string; hint: string; run: () => void }[]>(() => [
-  { key: 'whatsNew', icon: Sparkles, label: t('whatsNew.open'), hint: t('whatsNew.openHint', { version: APP_VERSION }), run: () => (ui.whatsNewOpen = true) },
-  { key: 'tour', icon: GraduationCap, label: t('tour.open'), hint: t('settings.tourHint'), run: () => (ui.tourOpen = 'monitor') },
-  ...(hasTerminals ? [{ key: 'wsTour', icon: GraduationCap, label: t('wsHelp.tour'), hint: t('wsTour.welcome.title'), run: () => (ui.tourOpen = 'workspace') }] : []),
-  { key: 'diag', icon: Stethoscope, label: t('diag.open'), hint: t('settings.diagHint'), run: () => (ui.diagnosticsOpen = true) },
-  ...(desktop ? [{ key: 'setup', icon: ListChecks, label: t('setup.open'), hint: t('setup.openHint'), run: () => (ui.setupOpen = true) }] : []),
-  { key: 'fonts', icon: FileText, label: t('fonts.licenses'), hint: t('fonts.licensesHint'), run: openFontLicenses },
-  ...(hasTerminals ? [{ key: 'fileIcons', icon: FileText, label: t('settings.fileIconsLicense'), hint: t('settings.fileIconsLicenseHint'), run: openIconLicense }] : []),
-  { key: 'habblaud', icon: FileText, label: t('settings.habblaudLicense'), hint: t('settings.habblaudLicenseHint'), run: openHabblaudLicense },
-])
-const closeButton = ref<HTMLButtonElement | null>(null)
+const content = ref<HTMLElement | null>(null)
+const searchInput = ref<HTMLInputElement | null>(null)
+const page = ref<SettingsPage>('general')
+const query = ref('')
 let restoreFocus: HTMLElement | null = null
+let flashTimer: number | undefined
 
-const locales = [
-  { value: 'vi' as const, label: 'Tiếng Việt', lang: 'vi' },
-  { value: 'en' as const, label: 'English', lang: 'en' },
-]
-const fileIconStyles = computed(() => [
-  { value: 'atom' as const, label: t('settings.fileIconsAtom') },
-  { value: 'simple' as const, label: t('settings.fileIconsSimple') },
-])
-const autoSaveModes = computed(() => AUTO_SAVE_MODES.map((mode) => ({ value: mode, label: t(`settings.autoSaveMode.${mode}`) })))
-const restoreModes = computed(() => RESTORE_MODES.map((mode) => ({ value: mode, label: t(`wsRestore.modes.${mode}`) })))
-const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms, label: t('settings.seconds', { n: ms / 1000 }) })))
-const terminalApps = computed(() => (['terminal', 'iterm'] as TerminalApp[]).map((app) => ({ value: app, label: t(`settings.launchTerminalApp.${app}`) })))
-const stuckOptions = computed(() => STUCK_CHOICES.map((m) => ({ value: m as number, label: m ? t('settings.minutes', { n: m }) : t('settings.off') })))
-const idleOptions = computed(() =>
-  IDLE_CHOICES.map((m) => ({ value: m as number, label: !m ? t('settings.off') : m % 60 ? t('settings.minutes', { n: m }) : t('resources.hours', { n: m / 60 }) })),
-)
-const idleMinutes = computed(() => extras.notify?.idleMinutes ?? DEFAULT_IDLE_MINUTES)
-
-const events = computed(() => [
-  { key: 'notifyWaiting', label: t('settings.notifyWaiting') },
-  { key: 'notifyDone', label: t('settings.notifyDone') },
-  { key: 'notifyStuck', label: t('settings.notifyStuck') },
-  { key: 'notifyLoop', label: t('settings.notifyLoop') },
-  { key: 'notifyContext', label: t('settings.notifyContext') },
-  { key: 'notifyLimit', label: t('settings.notifyLimit') },
-] as const)
-
-const sound = computed({
-  get: () => settings.sound,
-  set: (on: boolean) => {
-    settings.sound = on
-    // The click is the user gesture that unlocks audio; the preview confirms the volume.
-    if (on) playChime('waiting')
-  },
-})
-const notify = computed({
-  get: () => settings.notifyEnabled,
-  set: () => void settings.toggleNotifications(),
-})
-
-const snippet = computed(() =>
-  extras.statusLineCommand ? JSON.stringify({ statusLine: { type: 'command', command: extras.statusLineCommand } }, null, 2) : '',
-)
-const copied = ref(false)
-async function copySnippet(): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(snippet.value)
-    copied.value = true
-    window.setTimeout(() => (copied.value = false), 1500)
-  } catch {
-    copied.value = false
-  }
+const pageIcons: Record<SettingsPage, Component> = {
+  general: SlidersHorizontal,
+  appearance: Palette,
+  editor: SquareTerminal,
+  notify: Bell,
+  reminders: Timer,
+  github: GitBranch,
+  integrations: Plug,
+  access: ShieldCheck,
+  data: Database,
+  about: Info,
 }
 
-const breakHint = computed(() => {
-  const anchor = breakAnchor(extras.dayStartedAt, now.value)
-  if (anchor === null) return t('settings.breakHint', { n: BREAK_MINUTES })
-  const fmt = new Intl.DateTimeFormat(settings.locale, { hour: '2-digit', minute: '2-digit', hour12: false })
-  return t('settings.breakHintAt', { n: BREAK_MINUTES, since: fmt.format(anchor), next: fmt.format(nextBreakAt(anchor, now.value)) })
-})
+const env = computed<SettingsEnv>(() => ({
+  terminals: hasTerminals,
+  mac: isMac,
+  loginItem: Boolean(desktop?.loginItem),
+  zoom: Boolean(desktop?.zoomApp),
+  awake: hasAwake,
+  github: hasGitHub,
+  run: hasRun,
+  capture: hasCapture,
+  agentData: hasAgentData,
+  phone: hasPhone,
+  disk: hasDisk,
+  updater: hasUpdater,
+  backup: hasBackup,
+  grants: hasGrants,
+  statusLine: Boolean(extras.statusLineCommand),
+  toast: extras.toast === 'on' || extras.toast === 'off',
+  notifyData: Boolean(extras.notify),
+}))
+const pages = computed(() => SETTINGS_PAGES.filter((p) => pageVisible(p, env.value)))
+const allEntries = computed(() => entries(isMac))
+const hits = computed(() => searchSettings(query.value, allEntries.value, env.value, (k) => t(k)))
+const searching = computed(() => query.value.trim() !== '')
+const pageLabel = (p: SettingsPage): string => t(`settingsV79.pages.${p}`)
 
+const bellLabel = computed(() => (settings.notifyEnabled ? t('settings.notifyOff') : t('settings.notifyOn')))
 const blocked = computed(() => settings.notifyPermission === 'denied')
 const unsupported = computed(() => settings.notifyPermission === 'unsupported')
-const bellLabel = computed(() => (settings.notifyEnabled ? t('settings.notifyOff') : t('settings.notifyOn')))
-const offline = computed(() => connection.state !== 'connected')
-const toast = computed({
-  get: () => extras.toast === 'on',
-  set: (on: boolean) => void connection.updateNotify({ toast: on }),
-})
-const toastAvailable = computed(() => extras.toast === 'on' || extras.toast === 'off')
-const quiet = computed(() => extras.notify?.quiet ?? DEFAULT_QUIET)
-
-function setKind(kind: ToastKind, on: boolean): void {
-  connection.updateNotify({ kinds: { [kind]: on } })
-}
-
-function setQuiet(patch: Partial<QuietHours>): void {
-  connection.updateNotify({ quiet: { ...quiet.value, ...patch } })
-}
-
-function setStuck(minutes: number): void {
-  settings.stuckMinutes = minutes
-  connection.updateNotify({ stuckMinutes: minutes })
-}
-
-const testNote = computed(() => {
-  const r = extras.toastTest
-  if (!r) return null
-  if (r.state === 'sending') return { tone: 'muted', text: t('settings.toastTest.sending') }
-  if (r.result !== 'ok') return { tone: 'error', text: t(`settings.toastTest.${r.result}`) }
-  return { tone: 'ok', text: t('settings.toastTest.ok') }
-})
-const healthNote = computed(() => {
-  const h = extras.toastTest?.state === 'done' ? (extras.toastTest.health ?? extras.notify?.health) : extras.notify?.health
-  return h === 'globalOff' || h === 'appOff' ? t(`settings.toastHealth.${h}`) : null
-})
-
-onBeforeUnmount(() => extras.setToastTest(null))
-
-function onTime(field: 'from' | 'to', e: Event): void {
-  const input = e.target as HTMLInputElement
-  if (isHm(input.value)) setQuiet({ [field]: input.value })
-  else input.value = quiet.value[field]
-}
-
-const notifyNote = computed(() => (unsupported.value ? t('settings.notifyUnsupported') : blocked.value ? t('settings.notifyBlocked') : t('settings.notifyHint')))
 
 function close(): void {
   ui.settingsOpen = false
 }
 
-function openFrom(action: () => void): void {
-  close()
-  void nextTick(action)
+function show(next: SettingsPage): void {
+  page.value = pageVisible(next, env.value) ? next : 'general'
+  savePage(page.value)
+  query.value = ''
+  if (content.value) content.value.scrollTop = 0
+}
+
+async function flash(id: string): Promise<void> {
+  await nextTick()
+  if (id === 'disk' || id === 'phone') {
+    content.value?.querySelector<HTMLElement>('[data-notify-more][aria-expanded="false"]')?.click()
+    await nextTick()
+  }
+  const row = content.value?.querySelector<HTMLElement>(`[data-setting-row="${id}"]`)
+  if (!row) return
+  row.scrollIntoView({ block: 'center' })
+  row.classList.add('ccm-setting-flash')
+  window.clearTimeout(flashTimer)
+  flashTimer = window.setTimeout(() => row.classList.remove('ccm-setting-flash'), 1400)
+}
+
+function openHit(hit: { page: SettingsPage; id: string }): void {
+  show(hit.page)
+  void flash(hit.id)
+}
+
+function takeRequestedPage(): void {
+  const wanted = ui.settingsPage
+  if (!wanted) return
+  ui.settingsPage = null
+  if (isSettingsPage(wanted)) show(wanted)
 }
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault()
-    close()
+    if (searching.value && document.activeElement === searchInput.value) query.value = ''
+    else close()
     return
   }
   if (e.key !== 'Tab' || !panel.value) return
-  const items = [...panel.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex="0"]')]
+  const items = [...panel.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]')].filter(
+    (el) => el.tabIndex >= 0 && el.offsetParent !== null,
+  )
   const first = items[0]
   const last = items[items.length - 1]
   if (!first || !last) return
@@ -252,22 +147,34 @@ function onKey(e: KeyboardEvent): void {
   }
 }
 
+function onGlobalKey(e: KeyboardEvent): void {
+  if (e.defaultPrevented || e.repeat || e.isComposing || e.altKey || e.shiftKey || e.code !== 'Comma' || !(isMac ? e.metaKey : e.ctrlKey)) return
+  e.preventDefault()
+  ui.settingsOpen = !ui.settingsOpen
+}
+onMounted(() => document.addEventListener('keydown', onGlobalKey))
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onGlobalKey)
+  window.clearTimeout(flashTimer)
+})
+
 watch(
   () => ui.settingsOpen,
   async (open) => {
     if (open) {
-      void desktop?.zoomApp?.('get').then((pct) => (appZoom.value = typeof pct === 'number' ? pct : null))
-      void desktop?.loginItem?.().then((on) => (loginItem.value = typeof on === 'boolean' ? on : null))
-      void fullAccess().then((on) => (fullAccessOn.value = on))
       restoreFocus = document.activeElement as HTMLElement | null
+      query.value = ''
+      page.value = pageVisible(loadPage(), env.value) ? loadPage() : 'general'
+      takeRequestedPage()
       await nextTick()
-      closeButton.value?.focus()
+      panel.value?.querySelector<HTMLElement>('[aria-current="page"]')?.focus()
     } else {
       if (restoreFocus?.isConnected) restoreFocus.focus()
       restoreFocus = null
     }
   },
 )
+watch(() => ui.settingsPage, () => ui.settingsOpen && takeRequestedPage())
 
 const ringing = ref(0)
 let ringTimer: number | undefined
@@ -313,378 +220,111 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
   </button>
 
   <Teleport to="body">
-    <Transition name="ccm-scrim">
-      <div v-if="ui.settingsOpen" class="fixed inset-0 z-50 ccm-scrim" @mousedown.self="close" />
-    </Transition>
-    <Transition name="ccm-side" @before-leave="retireOverlay">
-      <aside
-        v-if="ui.settingsOpen"
-        id="settings-panel"
-        ref="panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col bg-canvas shadow-pop"
-        @keydown="onKey"
-      >
-        <header class="flex items-center gap-3 border-b border-line px-4 py-3">
-          <div class="min-w-0 flex-1">
-            <h2 id="settings-title" class="text-base font-semibold">{{ t('settings.title') }}</h2>
-            <p class="truncate text-2xs text-ink-faint" :title="t('settings.subtitle')">{{ t('settings.subtitle') }}</p>
+    <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
+      <div v-if="ui.settingsOpen" class="fixed inset-0 z-50 flex items-center justify-center ccm-scrim p-4" @mousedown.self="close">
+        <div
+          id="settings-panel"
+          ref="panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+          class="ccm-sheet flex h-[min(620px,88vh)] w-[min(880px,92vw)] flex-col overflow-hidden bg-canvas"
+          data-settings-dialog
+          @keydown="onKey"
+        >
+          <h2 id="settings-title" class="sr-only">{{ t('settings.title') }}</h2>
+          <div class="@container flex min-h-0 flex-1 flex-col">
+          <div class="flex min-h-0 flex-1 flex-col @[720px]:flex-row">
+            <div class="flex shrink-0 flex-col gap-2 border-b border-line bg-fill p-3 @[720px]:w-56 @[720px]:border-r @[720px]:border-b-0">
+              <label class="relative block">
+                <span class="sr-only">{{ t('settingsV79.searchLabel') }}</span>
+                <Search :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
+                <input
+                  ref="searchInput"
+                  v-model="query"
+                  type="search"
+                  autocomplete="off"
+                  spellcheck="false"
+                  class="ccm-field w-full pr-2 pl-8"
+                  :placeholder="t('settingsV79.searchPlaceholder')"
+                  data-settings-search
+                  @keydown.enter.prevent="hits[0] && openHit(hits[0])"
+                />
+              </label>
+              <nav
+                :aria-label="t('settingsV79.nav')"
+                class="ccm-scroll flex min-h-0 flex-wrap gap-1 @[720px]:flex-1 @[720px]:flex-col @[720px]:flex-nowrap @[720px]:overflow-y-auto"
+              >
+                <button
+                  v-for="p in pages"
+                  :key="p"
+                  type="button"
+                  class="flex cursor-pointer items-center gap-2 rounded-control px-2.5 py-1.5 text-left text-sm transition-colors @[720px]:w-full"
+                  :class="p === page && !searching ? 'bg-accent-soft font-medium text-accent-ink' : 'text-ink-muted hover:bg-fill-strong hover:text-ink'"
+                  :aria-current="p === page && !searching ? 'page' : undefined"
+                  :data-settings-page="p"
+                  @click="show(p)"
+                >
+                  <component :is="pageIcons[p]" :size="15" class="shrink-0" aria-hidden="true" />
+                  <span class="min-w-0 truncate">{{ pageLabel(p) }}</span>
+                </button>
+              </nav>
+              <p class="hidden px-1 text-2xs text-ink-faint @[720px]:block">{{ t('settings.subtitle') }}</p>
+            </div>
+
+            <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+              <header class="flex shrink-0 items-center gap-3 border-b border-line py-2.5 pr-3 pl-5">
+                <h3 class="min-w-0 flex-1 truncate text-base font-semibold">{{ searching ? t('settingsV79.results') : pageLabel(page) }}</h3>
+                <button type="button" class="ccm-btn-plain" :aria-label="t('settings.close')" :title="t('settings.close')" @click="close">
+                  <X :size="16" aria-hidden="true" />
+                </button>
+              </header>
+
+              <div ref="content" class="ccm-scroll ccm-set-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-4 pb-6" :data-settings-current="searching ? 'search' : page">
+                <template v-if="searching">
+                  <ul v-if="hits.length" class="ccm-group overflow-hidden" data-settings-results>
+                    <li v-for="h in hits" :key="`${h.page}:${h.id}`">
+                      <button
+                        type="button"
+                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-fill"
+                        :data-settings-hit="`${h.page}:${h.id}`"
+                        @click="openHit(h)"
+                      >
+                        <span class="shrink-0 text-ink-muted">{{ pageLabel(h.page) }}</span>
+                        <ChevronRight :size="13" class="shrink-0 text-ink-faint" aria-hidden="true" />
+                        <span class="min-w-0 flex-1 truncate">{{ h.label }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                  <p v-else class="px-3 py-6 text-center text-sm text-ink-muted" role="status">{{ t('settingsV79.noResults', { q: query.trim() }) }}</p>
+                </template>
+                <template v-else>
+                  <SettingsGeneral v-if="page === 'general'" />
+                  <SettingsAppearance v-else-if="page === 'appearance'" />
+                  <SettingsEditor v-else-if="page === 'editor'" />
+                  <SettingsNotify v-else-if="page === 'notify'" />
+                  <SettingsReminders v-else-if="page === 'reminders'" />
+                  <SettingEmbed v-else-if="page === 'github'" id="github"><GitHubAccountsSettings :open="ui.settingsOpen" /></SettingEmbed>
+                  <SettingsIntegrations v-else-if="page === 'integrations'" />
+                  <SettingsAccess v-else-if="page === 'access'" />
+                  <SettingsData v-else-if="page === 'data'" />
+                  <SettingsAbout v-else-if="page === 'about'" />
+                </template>
+              </div>
+            </div>
           </div>
-          <button
-            ref="closeButton"
-            type="button"
-            class="ccm-btn-plain"
-            :aria-label="t('settings.close')"
-            :title="t('settings.close')"
-            @click="close"
-          >
-            <X :size="16" aria-hidden="true" />
-          </button>
-        </header>
-
-        <div class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-8">
-          <section aria-labelledby="set-appearance">
-            <h3 id="set-appearance" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.appearance') }}</h3>
-            <div class="ccm-group">
-              <div class="px-3 py-2">
-                <p class="mb-2 text-sm">{{ t('settings.theme') }}</p>
-                <ThemePicker />
-              </div>
-              <div class="flex items-center justify-between gap-3 px-3 py-2">
-                <span class="min-w-0 text-sm">{{ t('settings.language') }}</span>
-                <SegmentedControl v-model="settings.locale" :options="locales" :label="t('settings.language')" />
-              </div>
-              <ToggleSwitch v-model="settings.keyHints" :label="t('keys.hints')" :hint="t('keys.hintsHint')" class="px-3" />
-              <ToggleSwitch v-if="hasTerminals" v-model="settings.minimap" :label="t('settings.minimap')" :hint="t('settings.minimapHint')" class="px-3" />
-              <div v-if="hasTerminals" class="px-3 py-2">
-                <p class="text-sm">{{ t('settings.autoSave') }}</p>
-                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.autoSaveHint') }}</p>
-                <SegmentedControl v-model="settings.autoSave" :options="autoSaveModes" :label="t('settings.autoSave')" fill class="mt-2 w-full" data-setting="auto-save" />
-                <SegmentedControl
-                  v-if="settings.autoSave === 'afterDelay'"
-                  v-model="settings.autoSaveDelay"
-                  :options="autoSaveDelays"
-                  :label="t('settings.autoSaveDelay')"
-                  fill
-                  class="mt-2 w-full"
-                  data-setting="auto-save-delay"
-                />
-              </div>
-              <ToggleSwitch v-if="hasTerminals" v-model="settings.dimInactive" :label="t('workspace.dim.setting')" :hint="t('workspace.dim.settingHint')" class="px-3" />
-              <ToggleSwitch v-if="hasTerminals" v-model="settings.shellIntegration" :label="t('shellMarks.setting')" :hint="t('shellMarks.settingHint')" class="px-3" data-setting="shell-integration" />
-              <div v-if="hasTerminals" class="flex items-center justify-between gap-3 px-3 py-2">
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm">{{ t('settings.fileIcons') }}</p>
-                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.fileIconsHint') }}</p>
-                </div>
-                <SegmentedControl v-model="settings.fileIcons" :options="fileIconStyles" :label="t('settings.fileIcons')" data-setting="file-icons" />
-              </div>
-              <ToggleSwitch v-if="hasTerminals" v-model="settings.dustEffect" :label="t('settings.dust')" :hint="t('settings.dustHint')" class="px-3" />
-              <ToggleSwitch v-if="hasTerminals" v-model="tipsOn" :label="t('tips.setting')" :hint="t('tips.settingHint')" class="px-3" />
-            </div>
-          </section>
-
-          <section aria-labelledby="set-text" class="mt-6">
-            <h3 id="set-text" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('fonts.section') }}</h3>
-            <div class="ccm-group">
-              <FontPicker kind="code" />
-              <div v-for="row in steppers" :key="row.id" class="flex items-center gap-3 px-3 py-2">
-                <div class="min-w-0 flex-1">
-                  <p :id="`set-${row.id}`" class="text-sm">{{ row.label }}</p>
-                  <p class="mt-0.5 text-2xs text-ink-faint">{{ row.hint }}</p>
-                </div>
-                <div class="flex shrink-0 items-center gap-0.5" role="group" :aria-labelledby="`set-${row.id}`" :data-stepper="row.id">
-                  <button type="button" class="ccm-btn-plain size-7" :aria-label="t('fonts.smaller')" :title="t('fonts.smaller')" :disabled="!row.canDown" @click="row.step(-1)">
-                    <Minus :size="14" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    class="ccm-btn-plain h-7 min-w-14 justify-center px-1.5 text-sm tabular"
-                    :title="t('fonts.reset')"
-                    :aria-label="`${row.value} · ${t('fonts.reset')}`"
-                    @click="row.step(0)"
-                  >
-                    {{ row.value }}
-                  </button>
-                  <button type="button" class="ccm-btn-plain size-7" :aria-label="t('fonts.larger')" :title="t('fonts.larger')" :disabled="!row.canUp" @click="row.step(1)">
-                    <Plus :size="14" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-              <FontPicker kind="ui" />
-            </div>
-          </section>
-
-          <section v-if="loginItem !== null || hasTerminals" aria-labelledby="set-startup" class="mt-6">
-            <h3 id="set-startup" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.startup') }}</h3>
-            <div class="ccm-group">
-              <div v-if="hasTerminals" class="px-3 py-2">
-                <p class="text-sm">{{ t('wsRestore.mode') }}</p>
-                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('wsRestore.modeHint') }}</p>
-                <SegmentedControl v-model="restoreMode" :options="restoreModes" :label="t('wsRestore.mode')" fill class="mt-2 w-full" data-setting="restore-mode" />
-              </div>
-              <ToggleSwitch
-                v-if="loginItem !== null"
-                :model-value="loginItem"
-                :label="t(isMac ? 'settings.loginItemMac' : 'settings.loginItem')"
-                :hint="t(isMac ? 'settings.loginItemHintMac' : 'settings.loginItemHint')"
-                class="px-3"
-                @update:model-value="setLoginItem"
-              />
-            </div>
-          </section>
-
-          <AwakeSettings v-if="hasAwake && ui.settingsOpen" />
-
-          <section v-if="isMac" aria-labelledby="set-launch" class="mt-6">
-            <h3 id="set-launch" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.launch') }}</h3>
-            <div class="ccm-group">
-              <div class="flex items-center justify-between gap-3 px-3 py-2">
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm">{{ t('settings.launchTerminal') }}</p>
-                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.launchTerminalHint') }}</p>
-                </div>
-                <SegmentedControl v-model="ui.launchTerminal" :options="terminalApps" :label="t('settings.launchTerminal')" />
-              </div>
-            </div>
-          </section>
-
-          <section aria-labelledby="set-notify" class="mt-6">
-            <h3 id="set-notify" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.notifications') }}</h3>
-            <template v-if="toastAvailable">
-              <div class="ccm-group">
-                <ToggleSwitch v-model="toast" :label="t('settings.toast')" :hint="isMac ? t('settings.toastHintMac') : t('settings.toastHint')" :disabled="offline" class="px-3" />
-                <p v-if="healthNote" role="alert" class="flex items-start gap-2 bg-st-error/10 px-3 py-2 text-xs leading-relaxed text-ink">
-                  <CircleAlert :size="14" class="mt-0.5 shrink-0 text-st-error" aria-hidden="true" />{{ healthNote }}
-                </p>
-                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-                  <button
-                    type="button"
-                    class="ccm-btn"
-                    :disabled="!toast || offline || extras.toastTest?.state === 'sending'"
-                    @click="connection.testToast()"
-                  >
-                    <Send :size="13" aria-hidden="true" />{{ t('settings.toastTest.action') }}
-                  </button>
-                  <span
-                    v-if="testNote"
-                    aria-live="polite"
-                    class="text-2xs"
-                    :class="testNote.tone === 'error' ? 'text-st-error' : testNote.tone === 'ok' ? 'text-ink-muted' : 'text-ink-faint'"
-                  >{{ testNote.text }}</span>
-                </div>
-              </div>
-              <p class="mt-4 mb-1.5 px-3 text-2xs text-ink-faint" aria-hidden="true">{{ t('settings.toastKinds') }}</p>
-              <div class="ccm-group" role="group" :aria-label="t('settings.toastKinds')">
-                <ToggleSwitch
-                  v-for="k in TOAST_KINDS"
-                  :key="k"
-                  :model-value="extras.notify?.kinds[k] ?? false"
-                  :label="t(`settings.toastKind.${k}`)"
-                  :disabled="!toast || offline"
-                  class="px-3"
-                  @update:model-value="(on: boolean) => setKind(k, on)"
-                />
-              </div>
-            </template>
-            <div class="ccm-group" :class="toastAvailable ? 'mt-4' : ''">
-              <ToggleSwitch
-                v-model="notify"
-                :label="t('settings.notifyEnable')"
-                :hint="toast && !unsupported && !blocked ? `${notifyNote} ${t('settings.toastOnHint')}` : notifyNote"
-                :disabled="unsupported"
-                class="px-3"
-              />
-            </div>
-            <p class="mt-4 mb-1.5 px-3 text-2xs text-ink-faint" aria-hidden="true">{{ t('settings.notifyEvents') }}</p>
-            <div class="ccm-group" :aria-label="t('settings.notifyEvents')" role="group">
-              <ToggleSwitch
-                v-for="ev in events"
-                :key="ev.key"
-                v-model="settings[ev.key]"
-                :label="ev.label"
-                :disabled="!settings.notifyEnabled"
-                class="px-3"
-              />
-            </div>
-            <div class="ccm-group mt-4">
-              <ToggleSwitch v-model="sound" :label="t('settings.sound')" :hint="t('settings.soundHint')" class="px-3" />
-              <ToggleSwitch
-                v-if="extras.notify"
-                :model-value="quiet.enabled"
-                :label="t('settings.quiet')"
-                :hint="t('settings.quietHint')"
-                :disabled="offline"
-                class="px-3"
-                @update:model-value="(on: boolean) => setQuiet({ enabled: on })"
-              />
-              <div v-if="extras.notify" class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
-                <label v-for="f in (['from', 'to'] as const)" :key="f" class="flex items-center gap-2 text-xs text-ink-muted">
-                  {{ f === 'from' ? t('settings.quietFrom') : t('settings.quietTo') }}
-                  <input
-                    type="time"
-                    :value="quiet[f]"
-                    :disabled="!quiet.enabled || offline"
-                    class="ccm-field tabular disabled:cursor-not-allowed disabled:opacity-50"
-                    @change="onTime(f, $event)"
-                  />
-                </label>
-              </div>
-            </div>
-            <div v-if="extras.notify" class="ccm-group mt-4">
-              <div class="px-3 py-2">
-                <p class="text-sm">{{ t('resources.idleSetting') }}</p>
-                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('resources.idleSettingHint') }}</p>
-                <SegmentedControl
-                  :model-value="idleMinutes"
-                  :options="idleOptions"
-                  :label="t('resources.idleSetting')"
-                  :disabled="offline"
-                  fill
-                  class="mt-2 w-full"
-                  @update:model-value="(m: number) => connection.updateNotify({ idleMinutes: m })"
-                />
-              </div>
-            </div>
-            <DiskSettings v-if="hasDisk && ui.settingsOpen" />
-          </section>
-          <PhoneSettings v-if="hasPhone && ui.settingsOpen" :open="ui.settingsOpen" />
-          <SensitiveSettings v-if="ui.settingsOpen" />
-
-          <section aria-labelledby="set-reminders" class="mt-6">
-            <h3 id="set-reminders" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.reminders') }}</h3>
-            <div class="ccm-group">
-              <ToggleSwitch v-model="settings.breakReminder" :label="t('settings.breakReminder')" :hint="breakHint" class="px-3" />
-              <div class="px-3 py-2">
-                <p class="text-sm">{{ t('settings.stuck') }}</p>
-                <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.stuckHint') }}</p>
-                <SegmentedControl
-                  :model-value="settings.stuckMinutes"
-                  :options="stuckOptions"
-                  :label="t('settings.stuck')"
-                  fill
-                  class="mt-2 w-full"
-                  @update:model-value="setStuck"
-                />
-              </div>
-              <div class="flex items-center gap-3 px-3 py-2">
-                <div class="min-w-0 flex-1">
-                  <label for="set-budget" class="block text-sm">{{ t('settings.budget') }}</label>
-                  <p class="mt-0.5 text-2xs text-ink-faint">{{ t('settings.budgetHint') }}</p>
-                </div>
-                <div class="flex shrink-0 items-center gap-1.5">
-                  <div
-                    class="ccm-field flex w-24 items-center gap-1"
-                  >
-                    <span class="text-ink-muted" aria-hidden="true">$</span>
-                    <input
-                      id="set-budget"
-                      :value="settings.dailyBudget || ''"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputmode="decimal"
-                      :placeholder="t('settings.off')"
-                      class="ccm-bare-input h-full min-w-0 flex-1 bg-transparent tabular outline-none placeholder:text-ink-faint"
-                      @change="settings.dailyBudget = Math.max(0, Number(($event.target as HTMLInputElement).value) || 0)"
-                    />
-                  </div>
-                  <span class="text-2xs text-ink-faint">{{ t('settings.perDay') }}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="snippet" aria-labelledby="set-statusline" class="mt-6">
-            <div class="mb-1.5 flex items-center justify-between gap-3 px-3">
-              <h3 id="set-statusline" class="text-2xs font-semibold text-ink-muted">{{ t('limits.setupTitle') }}</h3>
-              <span class="inline-flex items-center gap-1 text-2xs font-medium" :class="extras.limits ? 'text-success' : 'text-warning'">
-                <CircleCheck v-if="extras.limits" :size="13" aria-hidden="true" /><CircleAlert v-else :size="13" aria-hidden="true" />
-                {{ extras.limits ? t('settings.bridgeOn') : t('settings.bridgeOff') }}
-              </span>
-            </div>
-            <div class="ccm-group">
-              <div class="px-3 py-2">
-                <p class="mb-2 text-2xs leading-relaxed text-ink-faint">{{ extras.limits ? t('limits.setupActive') : t('limits.setupHint') }}</p>
-                <div class="relative">
-                  <pre class="max-h-36 overflow-auto rounded-inner bg-fill p-3 pr-11 font-mono text-2xs whitespace-pre-wrap break-all text-ink-muted">{{ snippet }}</pre>
-                  <button
-                    type="button"
-                    class="ccm-btn-plain absolute top-1.5 right-1.5"
-                    :aria-label="copied ? t('limits.copied') : t('limits.copy')"
-                    :title="copied ? t('limits.copied') : t('limits.copy')"
-                    @click="copySnippet"
-                  >
-                    <Check v-if="copied" :size="14" class="ccm-pop text-success" aria-hidden="true" /><Copy v-else :size="14" aria-hidden="true" />
-                  </button>
-                </div>
-                <p class="mt-2 text-2xs leading-relaxed text-ink-faint">{{ t('limits.chainHint') }}</p>
-              </div>
-            </div>
-          </section>
-
-          <RunSdkSettings v-if="hasRun && ui.settingsOpen" :open="ui.settingsOpen" />
-
-          <CaptureSettings v-if="hasCapture && ui.settingsOpen" :open="ui.settingsOpen" />
-
-          <AgentDataSettings v-if="hasAgentData && ui.settingsOpen" :open="ui.settingsOpen" />
-
-          <GitHubAccountsSettings v-if="hasGitHub && ui.settingsOpen" :open="ui.settingsOpen" />
-
-          <section v-if="hasGrants" aria-labelledby="set-access" class="mt-6">
-            <h3 id="set-access" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.access') }}</h3>
-            <div class="ccm-group overflow-hidden">
-              <ToggleSwitch
-                v-if="fullAccessOn !== null"
-                :model-value="fullAccessOn"
-                :label="t('settings.fullAccess')"
-                :hint="t('settings.fullAccessHint')"
-                class="px-3"
-                data-full-access
-                @update:model-value="setFullAccess"
-              />
-              <button
-                type="button"
-                class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill disabled:cursor-default"
-                :disabled="grantsForgotten"
-                data-forget-grants
-                @click="onForgetGrants"
-              >
-                <component :is="grantsForgotten ? CircleCheck : FolderX" :size="16" class="shrink-0" :class="grantsForgotten ? 'text-success' : 'text-ink-muted'" aria-hidden="true" />
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm">{{ grantsForgotten ? t('settings.forgetGrantsDone') : t('settings.forgetGrants') }}</span>
-                  <span class="mt-0.5 block text-2xs text-ink-faint">{{ t('settings.forgetGrantsHint') }}</span>
-                </span>
-              </button>
-            </div>
-          </section>
-
-          <UpdateSettings v-if="hasUpdater && ui.settingsOpen" />
-      <BackupSettings v-if="hasBackup && ui.settingsOpen" />
-
-          <section aria-labelledby="set-help" class="mt-6">
-            <h3 id="set-help" class="mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('settings.section.help') }}</h3>
-            <div class="ccm-group overflow-hidden">
-              <button
-                v-for="h in helpItems"
-                :key="h.key"
-                type="button"
-                class="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-fill"
-                @click="openFrom(h.run)"
-              >
-                <component :is="h.icon" :size="16" class="shrink-0 text-ink-muted" aria-hidden="true" />
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm">{{ h.label }}</span>
-                  <span class="mt-0.5 block text-2xs text-ink-faint">{{ h.hint }}</span>
-                </span>
-                <ChevronRight :size="14" class="shrink-0 text-ink-faint" aria-hidden="true" />
-              </button>
-            </div>
-          </section>
+          </div>
         </div>
-      </aside>
+      </div>
     </Transition>
   </Teleport>
 </template>
+
+<style>
+.ccm-set-page [data-setting-row] {
+  transition: background-color var(--ccm-dur-slow) ease-out;
+}
+.ccm-set-page .ccm-setting-flash {
+  background-color: var(--ccm-accent-soft);
+}
+</style>

@@ -225,7 +225,7 @@ function onKey(e: KeyboardEvent): void {
         <Transition name="ccm-fade">
           <g v-if="plot.avgY !== null" class="usage-avg pointer-events-none" :style="{ transform: `translateY(${plot.avgY}px)` }">
             <line :x1="PAD.left" :x2="width - PAD.right" y1="0" y2="0" class="stroke-ink-faint" stroke-width="1" stroke-dasharray="3 3" />
-            <text :x="width - PAD.right + 4" y="4" class="fill-ink-faint text-[10px] font-medium">{{ t('usageV53.avg') }}</text>
+            <text :x="width - PAD.right + 4" y="4" class="fill-ink-faint text-[11px] font-medium">{{ t('usageV53.avg') }}</text>
           </g>
         </Transition>
       </svg>

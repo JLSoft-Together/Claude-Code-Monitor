@@ -256,7 +256,7 @@ async function main() {
 
     const updatesFiles = () => { try { return fs.readdirSync(path.join(DATA, 'updates')).filter((n) => n !== 'pending.json') } catch { return [] } }
     await step('updater', async () => {
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'about'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-update-settings] [data-update-check]')`, 10000, 'updates section')
       check('no header chip before a check', !(await evaluate(`!!document.querySelector('[data-update-pill]')`)))
       await evaluate(`document.querySelector('[data-update-check]').click()`)
@@ -301,7 +301,7 @@ async function main() {
 
     await step('backup', async () => {
       await evaluate(`localStorage.setItem('ccm.github.token', '${GHP}'); localStorage.setItem('ccm.e2eNote', 'kept ${GHP} here'); localStorage.setItem('ccm.workspace.e2eTabs', JSON.stringify([{ cwd: ${JSON.stringify(DIR)} }, { cwd: 'C:\\\\nope-orrery-e2e\\\\gone' }]))`)
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'data'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-backup-settings] [data-backup-export]')`, 10000, 'backup section')
       await evaluate(`document.querySelector('[data-backup-export]').scrollIntoView(); document.querySelector('[data-backup-export]').click()`)
       await waitFor(`!!document.querySelector('[data-backup-exported]') || !!document.querySelector('[data-backup-error]')`, 15000, 'exported')

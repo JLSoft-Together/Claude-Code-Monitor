@@ -65,7 +65,7 @@ async function ready(app) {
 }
 
 async function openSettings(app) {
-  await app.evaluate(`${S}.get('ui').settingsOpen = true`)
+  await app.evaluate(`${S}.get('ui').settingsPage = 'github'; ${S}.get('ui').settingsOpen = true`)
   await app.waitFor(`!!document.querySelector('[data-github-accounts]')`, 10000, 'github section')
   await app.evaluate(`document.querySelector('[data-github-accounts]').scrollIntoView({ block: 'start' })`)
   await app.sleep(400)

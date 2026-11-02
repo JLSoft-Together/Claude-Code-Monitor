@@ -104,6 +104,7 @@ async function onAccount(choice: string): Promise<void> {
 function manageAccounts(): void {
   if (busy.value) return
   emit('close')
+  ui.settingsPage = 'github'
   ui.settingsOpen = true
 }
 

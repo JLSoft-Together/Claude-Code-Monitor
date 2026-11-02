@@ -53,6 +53,11 @@ import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
 import resourcesV76 from './resources-v76'
+import uiV79Rail from './ui-v79-rail'
+import uiV79Settings from './ui-v79-settings'
+import uiV79Monitor from './ui-v79-monitor'
+import * as uiV79Header from './ui-v79-header'
+import uiV79Pages from './ui-v79-pages'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
@@ -108,6 +113,11 @@ export default {
   ...devtoolsV75.en,
   ...promptSearchV75.en,
   ...resourcesV76.en,
+  ...uiV79Rail.en,
+  ...uiV79Settings.en,
+  ...uiV79Monitor.en,
+  ...uiV79Header.en,
+  ...uiV79Pages.en,
   ...captureV76.en,
   ...sensitiveV76.en,
   ...agentDataV76.en,
@@ -628,11 +638,6 @@ export default {
     cancelled: '{n} cancelled',
   },
   bar: {
-    label: 'Session bar',
-    collapse: 'Collapse the bar',
-    expand: 'Expand the bar',
-    dockTop: 'Move the bar to the top',
-    dockBottom: 'Move the bar to the bottom',
     details: 'Details',
   },
   keys: {
@@ -649,14 +654,13 @@ export default {
       sessionsPin: 'Pin Sessions as a column, or float it',
       activity: 'Show or hide Activity',
       activityPin: 'Pin Activity as a column, or float it',
-      bar: 'Collapse or expand the session bar',
-      barDock: 'Move the session bar to the top or bottom',
       tabs: 'Switch tab (0 = all sessions)',
       fit: 'Fit the map to the screen',
       esc: 'Close agent details, then floating panels',
       hints: 'Show or hide key hints',
       help: 'Open this list',
       palette: 'Command palette',
+      settings: 'Open Settings',
       wsNew: "New terminal (in this project's tab) or tab",
       wsSplit: 'Split the pane along its longer side',
       wsSplitRight: 'Split the pane to the right',
@@ -1101,8 +1105,8 @@ export default {
       },
       waiting: {
         title: 'Who needs you',
-        body: 'When a session stops to ask for permission or an answer, it shows up in this strip with how long it has waited. Click the name to find it on the map, the window icon to bring its terminal to the front, or the bell to snooze it for 15 minutes.',
-        absent: 'Nobody is waiting right now, so the strip is hidden. It appears here as soon as a session needs you.',
+        body: 'When a session stops to ask for permission or an answer, it moves to the first group of the Sessions column, Needs you, with how long it has waited. With the column closed, this thin strip shows the same and opens the column when clicked.',
+        absent: 'Nobody is waiting right now. A session that needs you appears at the top of the Sessions column, or in a thin strip above the map while the column is closed.',
       },
       sessions: {
         title: 'Your sessions',

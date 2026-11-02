@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellOff, Check, Clock, Code, FileDiff, FoldVertical, FolderOpen, GitBranch, LoaderCircle, StickyNote, X } from 'lucide-vue-next'
+import { BellOff, Check, FileDiff, FoldVertical, GitBranch, StickyNote, X } from 'lucide-vue-next'
 import type { OpenApp, TerminalSession } from '@ccm/shared'
-import { formatUsd } from '../lib/attention'
+import { cacheState, formatUsd } from '../lib/attention'
+import { cardActionOf, cardMenu } from '../lib/cardMenu'
 import { compactNumber, duration, fullNumber, now, relativeTime, shortPath } from '../lib/format'
+import { formatBytes, formatCpu } from '../lib/resources'
+import { folderName, projectOf } from '../lib/sidebarRows'
 import { modeMeta } from '../lib/mode'
 import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
@@ -21,6 +24,9 @@ import { waitDisplay } from '../lib/wait'
 import { useAgentsStore } from '../stores/agents'
 import { useConnectionStore } from '../stores/connection'
 import { useExtrasStore } from '../stores/extras'
+import { useFavoritesStore } from '../stores/favorites'
+import { useResourcesStore } from '../stores/resources'
+import { useSettingsStore } from '../stores/settings'
 import { SNOOZE_CHOICES, useSnoozeStore } from '../stores/snooze'
 import { useUiStore } from '../stores/ui'
 import ContextRing from './ContextRing.vue'
@@ -28,8 +34,7 @@ import SessionCardHeader from './SessionCardHeader.vue'
 import SessionCardSignals from './SessionCardSignals.vue'
 import RunBadge from './workspace/RunBadge.vue'
 import ProviderBadge from './ProviderBadge.vue'
-import StatusBadge from './StatusBadge.vue'
-import SubagentCounts from './SubagentCounts.vue'
+import SubagentBar from './SubagentBar.vue'
 import TokenCount from './TokenCount.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
@@ -41,28 +46,60 @@ const ui = useUiStore()
 const connection = useConnectionStore()
 const extras = useExtrasStore()
 const snooze = useSnoozeStore()
+const resources = useResourcesStore()
+const settings = useSettingsStore()
+const favorites = useFavoritesStore()
 const actions = useAgentActions((id) => agents.byTerminal[id] ?? [])
 const notice = actions.notice
 
-// The map node menu in its card scope; the cursor anchors it, the menu key anchors it on the card.
+// The map node menu in its card scope, with the card's own actions on top; the cursor or the ⋯ button anchors it, the menu key anchors it on the card.
 const menu = ref<{ at: DOMRect; trigger: HTMLElement | null } | null>(null)
+const header = ref<InstanceType<typeof SessionCardHeader> | null>(null)
 const mainId = computed(() => agents.mainOf(props.terminal.id)?.id)
-const menuEntries = computed(() =>
-  menu.value
-    ? nodeMenu(
-        {
-          ...actions.menuBase(props.terminal.id, mainId.value),
-          scope: 'card',
-          children: 0,
-          collapsed: false,
-          picked: 0,
-          detailsOpen: !!mainId.value && ui.selectedAgentId === mainId.value,
-        },
-        t,
-        isMac,
-      )
-    : [],
-)
+const menuInfo = computed(() => {
+  const out: { kind: 'usage' | 'cache'; label: string }[] = []
+  const r = ended.value ? undefined : resources.bySession.get(props.terminal.id)
+  if (r && r.ramBytes !== null) out.push({ kind: 'usage', label: t('resources.card', { ram: formatBytes(r.ramBytes, locale.value), cpu: formatCpu(r.cpuPct, locale.value) }) })
+  const c = cacheState(main.value, props.terminal, now.value)
+  if (c && !c.expired) out.push({ kind: 'cache', label: t('terminal.cacheWarm', { left: duration(new Date(now.value).toISOString(), c.expiresAt) ?? '' }) })
+  return out
+})
+const menuEntries = computed(() => {
+  if (!menu.value) return []
+  const term = props.terminal
+  const own = cardMenu(
+    {
+      ended: ended.value,
+      codex: codex.value,
+      pinned: settings.pinned.has(term.id),
+      starred: favorites.has(term.cwd),
+      hasCwd: !!term.cwd,
+      hasNote: !!term.note,
+      hasAlias: !!term.alias,
+      waiting: term.status === 'waiting',
+      snoozed: snooze.isSnoozed(term, now.value),
+      snoozeChoices: SNOOZE_CHOICES,
+      info: menuInfo.value,
+      originalTitle: term.title,
+      title: title.value,
+    },
+    t,
+    openApps,
+  )
+  const shared = nodeMenu(
+    {
+      ...actions.menuBase(term.id, mainId.value),
+      scope: 'card',
+      children: 0,
+      collapsed: false,
+      picked: 0,
+      detailsOpen: !!mainId.value && ui.selectedAgentId === mainId.value,
+    },
+    t,
+    isMac,
+  )
+  return [...own.head, ...(own.head.length ? [{ separator: true as const }] : []), ...shared, ...own.tail]
+})
 const CARD_KEYS = isMac ? 'Shift+F10 Meta+C' : 'Shift+F10 Control+C'
 
 /** Windows fires a native `contextmenu` after the ContextMenu / Shift+F10 keydown that already opened the menu. */
@@ -106,8 +143,26 @@ function showDetails(): void {
   ui.selectAgent(id)
 }
 
+function openMenuAt(trigger: HTMLElement): void {
+  menu.value = { at: trigger.getBoundingClientRect(), trigger }
+}
+
 function onPick(id: string): void {
-  if (!actions.run(id as NodeAction, props.terminal.id, mainId.value) && id === 'details') showDetails()
+  const term = props.terminal
+  const own = cardActionOf(id)
+  if (own) {
+    if (own === 'rename') void header.value?.rename()
+    else if (own === 'reset-name') header.value?.resetName()
+    else if (own === 'note') startNote()
+    else if (own === 'pin') settings.togglePin(term.id)
+    else if (own === 'star') connection.toggleFavorite(term.id)
+    else if (own === 'dismiss') connection.dismissEnded(term.id)
+    else if (own === 'unsnooze') snooze.clear(term.id)
+    else if (own.startsWith('open:')) open(own.slice(5) as OpenApp)
+    else if (own.startsWith('snooze:')) snooze.snooze(term, Number(own.slice(7)))
+    return
+  }
+  if (!actions.run(id as NodeAction, term.id, mainId.value) && id === 'details') showDetails()
 }
 
 const meta = computed(() => statusMeta(props.terminal.status))
@@ -156,7 +211,11 @@ const detail = computed(() => {
   }
   if (main.value?.currentTool) return t('terminal.running', { tool: main.value.currentTool })
   if (term.backgroundShell) return t('terminal.backgroundShell')
-  return null
+  return t(meta.value.labelKey)
+})
+const projectName = computed(() => {
+  const dir = projectOf(props.terminal.cwd)
+  return dir ? folderName(dir) : null
 })
 const detailKey = computed(() => {
   const term = props.terminal
@@ -229,10 +288,7 @@ const snoozedUntil = computed(() => {
   return until === null ? null : new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit', hour12: false }).format(until)
 })
 
-const openApps: { app: OpenApp; icon: typeof FolderOpen }[] = [
-  { app: 'explorer', icon: FolderOpen },
-  { app: 'vscode', icon: Code },
-]
+const openApps: OpenApp[] = ['explorer', 'vscode']
 function open(app: OpenApp): void {
   if (!connection.openFolder(props.terminal.id, app)) ui.reportOpenResult(props.terminal.id, app, 'offline')
 }
@@ -290,10 +346,16 @@ function commitNote(): void {
         </p>
       </Transition>
     </div>
-    <span class="absolute inset-y-3 left-0 w-[3px] rounded-full transition-colors" :class="meta.bar" aria-hidden="true" />
     <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-card" :class="meta.text" aria-hidden="true" />
 
-    <SessionCardHeader :terminal="terminal" @note="startNote" />
+    <SessionCardHeader ref="header" :terminal="terminal" @menu="openMenuAt">
+      <template #trailing>
+        <span v-if="age" class="shrink-0 text-2xs tabular-nums text-ink-faint" :title="age.title" data-card-age>
+          <span aria-hidden="true">{{ age.label }}</span>
+          <span class="sr-only">{{ age.title }}</span>
+        </span>
+      </template>
+    </SessionCardHeader>
 
     <form v-if="noting" class="relative z-10 mt-2 flex items-center gap-1.5" @submit.prevent="commitNote">
       <label :for="`note-${terminal.id}`" class="sr-only">{{ t('terminal.noteLabel') }}</label>
@@ -329,50 +391,31 @@ function commitNote(): void {
       <span class="min-w-0 break-words">{{ terminal.note }}</span>
     </button>
 
-    <div class="mt-1.5 flex min-w-0 items-center gap-2">
-      <span class="inline-grid shrink-0">
-        <Transition name="ccm-fade">
-          <StatusBadge :key="terminal.status" class="col-start-1 row-start-1" :status="terminal.status" />
-        </Transition>
-      </span>
+    <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-ink-muted">
       <span class="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)]">
         <Transition name="ccm-fade">
           <span
             v-if="detail"
             :key="detailKey"
-            class="col-start-1 row-start-1 inline-flex min-w-0 items-center gap-1 text-xs text-ink-muted"
+            class="col-start-1 row-start-1 inline-flex min-w-0 items-center gap-1"
+            :class="terminal.status === 'waiting' ? 'font-medium text-ink' : ''"
             :title="detail"
+            data-card-detail
           >
-            <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0" aria-hidden="true" />
+            <component :is="wait.icon" v-if="wait && wait.reason !== 'other'" :size="13" class="shrink-0 text-st-waiting" aria-hidden="true" />
             <span class="truncate tabular-nums">{{ detail }}</span>
           </span>
         </Transition>
       </span>
+      <span v-if="snoozedUntil && terminal.status === 'waiting'" class="inline-flex shrink-0 items-center gap-1" :title="t('snooze.until', { at: snoozedUntil })">
+        <BellOff :size="13" aria-hidden="true" />{{ snoozedUntil }}
+      </span>
       <RunBadge v-if="terminal.cwd && !ended" :dir="terminal.cwd" live-only class="relative z-10 shrink-0" />
-    </div>
-    <div v-if="terminal.status === 'waiting' && !ended" class="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-      <template v-if="snoozedUntil">
-        <span class="inline-flex items-center gap-1 text-ink-muted"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.until', { at: snoozedUntil }) }}</span>
-        <button type="button" class="cursor-pointer rounded px-1 font-medium text-link hover:underline" @click="snooze.clear(terminal.id)">{{ t('snooze.undo') }}</button>
-      </template>
-      <template v-else>
-        <span class="inline-flex items-center gap-1 text-ink-faint"><BellOff :size="13" aria-hidden="true" />{{ t('snooze.label') }}</span>
-        <button
-          v-for="n in SNOOZE_CHOICES"
-          :key="n"
-          type="button"
-          class="ccm-btn h-6! px-2! text-xs"
-          :aria-label="t('snooze.action', { title, n })"
-          @click="snooze.snooze(terminal, n)"
-        >
-          {{ t('snooze.minutes', { n }) }}
-        </button>
-      </template>
     </div>
     <SessionCardSignals :terminal="terminal" />
 
-    <Transition name="ccm-fade">
-      <div v-if="mode || branch || diff" class="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-card-git>
+    <div v-if="focused" class="mt-1.5 flex min-w-0 flex-col gap-1.5 border-t border-line pt-1.5" data-card-expanded>
+      <div v-if="mode || branch || diff" class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-card-git>
         <span
           v-if="mode"
           class="inline-flex shrink-0 items-center gap-1 rounded-inner px-1.5 py-px text-2xs font-medium"
@@ -393,40 +436,20 @@ function commitNote(): void {
           <span class="truncate text-ink-muted">{{ t('terminal.diffFiles', { n: diff.files }) }}<template v-if="diff.untracked">, {{ t('terminal.diffNew', { n: diff.untracked }) }}</template></span>
         </span>
       </div>
-    </Transition>
-
-    <div v-if="terminal.cwd || age" class="mt-1.5 flex min-w-0 items-center gap-2 text-2xs text-ink-faint" data-card-place>
-      <span v-if="terminal.cwd" class="min-w-0 flex-1 truncate font-mono" :title="terminal.cwd">
-        <span class="sr-only">{{ t('terminal.directory') }}: </span>{{ shortPath(terminal.cwd) }}
-      </span>
-      <span v-if="age" class="ms-auto inline-flex shrink-0 items-center gap-1 tabular-nums" :title="age.title" data-card-age>
-        <Clock :size="12" class="shrink-0" aria-hidden="true" />
-        <span aria-hidden="true">{{ age.label }}</span>
-        <span class="sr-only">{{ age.title }}</span>
-      </span>
-      <span v-if="terminal.cwd" class="relative z-10 -my-1 -me-1.5 flex shrink-0 items-center">
-        <button
-          v-for="o in openApps"
-          :key="o.app"
-          type="button"
-          class="ccm-btn-plain disabled:cursor-wait!"
-          :aria-label="t('open.action', { app: t(`open.app.${openAppKey(o.app)}`), title })"
-          :title="t('open.title', { app: t(`open.app.${openAppKey(o.app)}`) })"
-          :disabled="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app"
-          @click="open(o.app)"
-        >
-          <LoaderCircle v-if="ui.opening?.terminalId === terminal.id && ui.opening.app === o.app" :size="14" class="animate-spin" aria-hidden="true" />
-          <component :is="o.icon" v-else :size="14" aria-hidden="true" />
-        </button>
-      </span>
+      <div class="flex min-w-0 items-center gap-2 text-2xs text-ink-faint" data-card-place>
+        <span v-if="terminal.cwd" class="min-w-0 flex-1 truncate font-mono" :title="terminal.cwd">
+          <span class="sr-only">{{ t('terminal.directory') }}: </span>{{ shortPath(terminal.cwd) }}
+        </span>
+        <span v-if="terminal.compactions" class="inline-flex shrink-0 items-center gap-1" :title="t('terminal.compactionsTitle')">
+          <FoldVertical :size="12" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
+        </span>
+      </div>
     </div>
 
-    <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-xs text-ink-muted">
-      <SubagentCounts :terminal-id="terminal.id" />
-      <span v-if="terminal.compactions" class="inline-flex items-center gap-1" :title="t('terminal.compactionsTitle')">
-        <FoldVertical :size="13" aria-hidden="true" />{{ t('terminal.compactions', { n: terminal.compactions }) }}
-      </span>
-      <span v-if="tokens || cost || codexTokens || context" class="ml-auto inline-flex items-center gap-2.5 tabular-nums">
+    <div class="mt-1.5 flex min-w-0 items-center gap-2.5 text-xs text-ink-muted">
+      <span class="min-w-0 flex-1 truncate" :title="terminal.cwd">{{ projectName }}</span>
+      <SubagentBar :terminal-id="terminal.id" />
+      <span v-if="tokens || cost || codexTokens || context" class="inline-flex shrink-0 items-center gap-2.5 tabular-nums">
         <span v-if="codexTokens" class="inline-flex items-center gap-1 text-agent-codex" :title="codexTokens.title">
           <ProviderBadge variant="icon" />{{ codexTokens.label }}
         </span>

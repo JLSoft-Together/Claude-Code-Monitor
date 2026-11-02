@@ -215,7 +215,9 @@ async function run(app) {
   git('add', '-A')
   git('commit', '-q', '-m', 'edit long')
   const hashes = execFileSync('git', ['log', '--format=%h%x09%s', '--abbrev=8'], { cwd: DIR, encoding: 'utf8' }).trim().split('\n').map((l) => l.split('\t'))
-  await evaluate(`document.querySelector('${C} [data-changes-log]').click()`)
+  await evaluate(`document.querySelector('${C} [data-pane-more]').click()`)
+  await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="log"]')`, 5000, 'menu log')
+  await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="log"]').click()`)
   await waitFor(`document.querySelectorAll('[data-log-table] [data-commit]').length === 2`, 10000, 'log rows').catch(() => {})
   const openLogDiff = async (subject) => {
     await evaluate(`[...document.querySelectorAll('[data-log-table] [data-commit]')].find((r) => r.textContent.includes(${JSON.stringify(subject)})).click()`)

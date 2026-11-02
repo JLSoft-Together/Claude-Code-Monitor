@@ -20,6 +20,8 @@ const rows = computed<RankRow[]>(() =>
   }),
 )
 
+const heading = computed(() => (!usage.model && rows.value.length ? t('pagesV79.usage.topModel', { name: rows.value[0]!.label }) : t('usageV53.models')))
+
 const actionOf = (row: RankRow) => (usage.model === row.id ? t('usage.clearFilter') : t('usage.filterBy', { name: row.id }))
 
 function toggle(id: string): void {
@@ -30,7 +32,7 @@ function toggle(id: string): void {
 <template>
   <section class="flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card sm:p-5" aria-labelledby="usage-models-title">
     <div class="flex min-h-7 items-center">
-      <h3 id="usage-models-title" class="text-base font-semibold">{{ t('usageV53.models') }}</h3>
+      <h3 id="usage-models-title" class="min-w-0 truncate text-base font-semibold" :title="heading">{{ heading }}</h3>
     </div>
     <div class="mt-2 min-h-0 flex-1">
       <Transition name="ccm-fade" mode="out-in">

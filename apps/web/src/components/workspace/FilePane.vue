@@ -1395,99 +1395,6 @@ function pickHead(id: string): void {
         data-layout-mode
         data-more="layout"
       />
-      <button
-        v-if="isDart && fwpProject"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="fwpOpen"
-        :title="t('fwp.toggle')"
-        :aria-label="t('fwp.toggle')"
-        data-fwp-toggle
-        data-more="fwp"
-        @click="fwpOpen = !fwpOpen"
-      >
-        <Smartphone :size="14" aria-hidden="true" />
-      </button>
-      <button
-        v-if="isHttp"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="httpOpen"
-        :title="t('workspace.http.toggle')"
-        :aria-label="t('workspace.http.toggle')"
-        data-http-toggle
-        data-more="http"
-        @click="httpOpen = !httpOpen"
-      >
-        <Send :size="14" aria-hidden="true" />
-      </button>
-      <button
-        v-if="markdown && editing"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="mdSplit"
-        :title="t('workspace.mdSplit.toggle')"
-        :aria-label="t('workspace.mdSplit.toggle')"
-        data-md-split-toggle
-        data-more="mdSplit"
-        @click="mdSplit = !mdSplit"
-      >
-        <Columns2 :size="14" aria-hidden="true" />
-      </button>
-      <template v-if="rendered">
-        <button
-          type="button"
-          class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-          :aria-pressed="mdPreview"
-          :disabled="editing"
-          :title="mdPreview ? t('workspace.viewer.source') : t('workspace.viewer.preview')"
-          :aria-label="t('workspace.viewer.mdMode')"
-          data-more="md"
-          @click="mdPreview = !mdPreview"
-        >
-          <Eye v-if="mdPreview" :size="14" aria-hidden="true" />
-          <Code v-else :size="14" aria-hidden="true" />
-        </button>
-      </template>
-      <button
-        v-if="treeFmt"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="treeOn"
-        :disabled="editing"
-        :title="treeOn ? t('workspace.tree.code') : t('workspace.tree.toggle')"
-        :aria-label="t('workspace.tree.toggle')"
-        data-file-tree-toggle
-        data-more="tree"
-        @click="treeOn = !treeOn"
-      >
-        <Network :size="14" aria-hidden="true" />
-      </button>
-      <button
-        v-if="view?.kind === 'text'"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="wrap"
-        :disabled="!showSource"
-        :title="t('workspace.viewer.wrap')"
-        :aria-label="t('workspace.viewer.wrap')"
-        data-more="wrap"
-        @click="wrap = !wrap"
-      >
-        <TextWrap :size="14" aria-hidden="true" />
-      </button>
-      <button
-        v-if="view?.kind === 'text'"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[480px]:hidden"
-        :aria-pressed="findOpen"
-        :title="`${t('workspace.viewer.find')} (${isMac ? '⌘F' : 'Ctrl+F'})`"
-        :aria-label="t('workspace.viewer.find')"
-        data-more="find"
-        @click="editing ? editor?.openFind() : findOpen ? closeFind() : openFind()"
-      >
-        <Search :size="14" aria-hidden="true" />
-      </button>
       <template v-if="canEdit">
         <span class="mx-1 h-4 w-px shrink-0 bg-line @max-[360px]:hidden" aria-hidden="true" />
         <span v-if="saving && !quietSave" class="flex shrink-0 items-center gap-1 px-1 text-2xs text-ink-muted" role="status">
@@ -1533,38 +1440,6 @@ function pickHead(id: string): void {
           <Pencil :size="14" aria-hidden="true" /><span class="@max-[480px]:sr-only">{{ t('editor.edit') }}</span>
         </button>
       </template>
-      <span class="mx-1 h-4 w-px shrink-0 bg-line @max-[600px]:hidden" aria-hidden="true" />
-      <button
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
-        :title="copied ? t('workspace.viewer.copied') : t('workspace.viewer.copyPath')"
-        :aria-label="t('workspace.viewer.copyPath')"
-        data-more="copy"
-        @click="copyPath"
-      >
-        <Check v-if="copied" :size="14" class="text-success" aria-hidden="true" />
-        <Copy v-else :size="14" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
-        :title="isMac ? t('workspace.viewer.revealMac') : t('workspace.viewer.reveal')"
-        :aria-label="isMac ? t('workspace.viewer.revealMac') : t('workspace.viewer.reveal')"
-        data-more="reveal"
-        @click="revealPath(view?.path ?? path)"
-      >
-        <FolderOpen :size="14" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[600px]:hidden"
-        :title="t('workspace.viewer.openEditor')"
-        :aria-label="t('workspace.viewer.openEditor')"
-        data-more="openEditor"
-        @click="openInApp"
-      >
-        <SquarePen :size="14" aria-hidden="true" />
-      </button>
       <PaneMore class="@max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
       <slot name="end" />
     </div>

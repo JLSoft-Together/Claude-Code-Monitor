@@ -1,0 +1,35 @@
+## WP-6 — DONE (Devices, Extensions, Git Log CHƯA NHÌN)
+
+- Đã đổi:
+  - history/HistoryView.vue — ô tìm lên đầu không bọc thẻ; section Today/Heatmap/Tool stats thành tiêu đề + `border-t`; bảng "Ended" giữ thẻ (là bảng); empty state có nút (Mở Workspace / Xoá ô tìm).
+  - history/PromptSearchCard.vue — nút Tìm thành nút phụ (bỏ accent); ghi chú quyền riêng tư thành nút ⓘ (`data-prompt-search-privacy`, title + aria-label) cạnh ô tìm.
+  - history/TimelineChart.vue — bỏ 3 ô số viền trái màu; tiêu đề "Hôm nay" kèm 1 dòng tóm tắt; mỗi session 1 dòng: StatusIcon + tên + thanh + %; bỏ header cột và dòng % riêng; chi tiết làm/chờ nằm ở title/aria-label.
+  - history/summary.ts + summary.test.ts (mới) — `summaryLine()` thuần, 4 test.
+  - usage/UsageProjects.vue, UsageModels.vue — tiêu đề nói kết luận khi có dữ liệu ("Dùng nhiều nhất: <project>" / model), chỉ tên, không số; fallback tiêu đề cũ khi đang lọc hoặc không có dòng. usage/UsageDailyChart.vue — chữ SVG 10px -> 11px.
+  - devices/DevicesView.vue — nút accent "Thêm thiết bị" ở góc tiêu đề mở panel `DeviceConnectBar` (id `dev-add-panel`); empty state có nút; nút mở Settings đặt `settingsPage='integrations'`. devices/DevicesView.test.ts — thêm `openAdd()`, 2 test mới, assert settingsPage.
+  - extensions/ExtensionCard.vue — bỏ accent mọi nút thẻ, `h-full`, nút "Gỡ" + icon docs gom vào menu ⋯ (ContextMenu: Tài liệu, Gỡ). extensions/ExtensionsView.vue — "Thêm nguồn" là nút accent duy nhất; trạng thái chưa chọn project có nút "Chọn thư mục".
+  - workspace/log/LogRefsToolbar.vue — viết lại (CRLF giữ nguyên).
+  - i18n/ui-v79-pages.ts (mới), `pagesV79`.
+  - E2E: e2e/log.cjs (helper `refsMenuAct`, mở ⋯ rồi bấm), e2e/devices.cjs (bấm `[data-dev-add]` trước khi nhập địa chỉ).
+- Hành động cũ -> chỗ mới:
+  - History: Tổng kết ngày (giữ accent, nút duy nhất của trang) | Tìm (nút phụ, Enter vẫn chạy) | ghi chú riêng tư -> ⓘ | 3 ô Working/Waiting/Idle -> dòng tóm tắt cạnh "Hôm nay" | % riêng -> cùng dòng session | "Xem theo giờ" giữ.
+  - Usage: không mất hành động; 1 hàng chọn khoảng/metric/model/project giữ nguyên, hero 1 số + 4 số legend.
+  - Devices: nhập địa chỉ, mã ghép, Kết nối, QR, Discover, Kết nối đã nhớ, auto-connect -> panel dưới nút "Thêm thiết bị" (toggle). Hành động theo dòng/batch/emulator/5 dialog không đổi.
+  - Extensions: Cài / Thiết lập / Quản lý / Đăng nhập vẫn là nút phụ trên thẻ; Gỡ + Tài liệu -> ⋯ trên thẻ. Quyết định: thẻ đa phần (Quản lý) giữ nút hiện, không vào ⋯, để e2e `[data-ext-action=open]` còn đúng.
+  - Git Log: hiện sẵn Fetch, Update, Push, Tìm + ⋯. Vào ⋯ (menu, giữ `data-refs-action`): Nhánh mới, So sánh, Yêu thích, Chuyển tới (navigate), Xoá (vẫn qua confirm native của LogPane), Mở rộng tất cả, Thu gọn tất cả, Group by folder, Show tags (2 mục check giữ menu mở như cũ). Nút ⋯ quay spinner khi đang xoá.
+- Tiêu chí: 4/4 (có 2 dòng CHƯA KIỂM bằng mắt)
+  - ≤1 accent: History 1 (Tổng kết ngày), Usage 0, Devices 1 (header; khi panel mở, header chuyển phụ và Kết nối là accent -> luôn 1, có test), Extensions 1 (Thêm nguồn). Không thẻ lồng thẻ: History/Usage/Extensions đã xem hoặc đọc code; Devices CHƯA NHÌN. Grep `text-\[(9|10)px\]` trong phạm vi = 0.
+  - Hành động cũ còn, liệt kê ở trên.
+  - Empty có nút: Devices, Extensions (chưa chọn project), History (ended).
+  - typecheck + vitest + e2e selector: xong (e2e chưa chạy, WP-8).
+- Audit / Review: HistoryView thực tế khác khảo sát (không có thẻ "Tìm session cũ" riêng; là PromptSearchCard). Edge: không dữ liệu (summary rỗng, ẩn), nhiều session (list 1 dòng, tên truncate, cột tên min 7rem), cửa sổ hẹp (grid co, ô tìm wrap). Menu ⋯ Git Log: phím mũi tên bỏ qua mục disabled, đóng bằng Esc/Tab/click ngoài, vị trí kẹp trong viewport (menu cao ~330px).
+- Test: `npm run typecheck -w @ccm/web` -> sạch (exit 0). vitest devices+usage+history+src/i18n -> 11 file, 37 pass, 0 fail. vitest toàn web -> 596 file, 1593 pass, 0 fail. Không chạy build/E2E.
+- Nhìn: docs/qa/v79/WP-6/history.jpg, docs/qa/v79/WP-6/usage.jpg (dev 4318, đã tắt). Chuỗi `pagesV79.*` hiện raw key vì chưa nối i18n. CHƯA NHÌN: Devices, Extensions (view chỉ có ở desktop, trang trống ở trình duyệt), Git Log toolbar.
+- Hot file cần thêm (main nối): trong en.ts / vi.ts thêm `import pagesV79 from './ui-v79-pages'` và `...pagesV79.en` / `...pagesV79.vi` (cạnh các ui-v79-*). Keys dùng: pagesV79.history.{privacy,idleFor,clearSearch,openWorkspace}, pagesV79.usage.{topProject,topModel}, pagesV79.devices.add, pagesV79.ext.more.
+- Ngoài phạm vi cần main xử lý: `history.worked` / `history.waited` / `status.*` (WP-7 Việt hoá) dùng trong dòng tóm tắt. e2e/v74/v75/push/github-accounts không đổi: dùng `data-refs-action=push|fetch` vẫn hiện sẵn.
+- Index:
+  - history/summary.ts `summaryLine`; TimelineChart nay tự render tiêu đề `#timeline-title` + dòng tóm tắt.
+  - devices/DevicesView.vue `addOpen` -> DeviceConnectBar `#dev-add-panel`; extensions/ExtensionCard.vue menu ⋯ `menuEntries` (docs, remove).
+  - workspace/log/LogRefsToolbar.vue: bar = toggle, fetch, update, push, search, ⋯ (`data-refs-more`: newBranch, compare, favorite, navigate, remove, expandAll, collapseAll, view group/tags).
+- Changelog: en: Cleaner History, Usage, Devices, Extensions and Git branches toolbar: one add-device button, a daily summary line, and less-used branch actions under the ⋯ menu. / vi: Gọn lại Lịch sử, Thống kê, Thiết bị, Tiện ích và thanh nhánh Git Log: một nút thêm thiết bị, dòng tóm tắt trong ngày, các thao tác nhánh ít dùng nằm trong menu ⋯.
+- Commit message đề xuất: 🧹 Simplify History, Usage, Devices, Extensions pages and the Git Log branches toolbar

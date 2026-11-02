@@ -91,7 +91,9 @@ function fixture() {
     check('edit on disk reloads the page', true)
 
     // Device menu → iPhone frame.
-    await evaluate(`${box('browser')}.querySelector('button[aria-label="Device and zoom"]').click()`)
+    await evaluate(`${box('browser')}.querySelector('[data-pane-more]').click()`)
+    await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="device"]')`, 5000, 'more menu')
+    await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="device"]').click()`)
     await waitFor(`!!document.querySelector('[role=menu] [role=menuitemradio]')`, 5000, 'device menu')
     await shot('browser-03-device-menu')
     await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitemradio]')].find((b) => /iPhone/.test(b.textContent)).click()`)
@@ -99,7 +101,9 @@ function fixture() {
     const frame = await evaluate(`(() => { const f = ${box('browser')}.querySelector('.browser-frame'); return f.style.width + ' ' + f.style.transform })()`)
     check('iPhone frame 390 px wide, scaled to fit', /^390px translate\(-50%, -50%\) scale\(/.test(frame), frame)
     await shot('browser-04-iphone')
-    await evaluate(`${box('browser')}.querySelector('button[aria-label="Device and zoom"]').click()`)
+    await evaluate(`${box('browser')}.querySelector('[data-pane-more]').click()`)
+    await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="device"]')`, 5000, 'more menu again')
+    await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="device"]').click()`)
     await waitFor(`!!document.querySelector('[role=menu] [role=menuitemradio]')`, 5000, 'device menu again')
     await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitemradio]')].find((b) => /Responsive/.test(b.textContent)).click()`)
     await key('Escape', 'Escape', 27)
@@ -156,7 +160,7 @@ function fixture() {
 
     // Split menu on the terminal: Browser opens next to it.
     await focusShell()
-    await evaluate(`document.querySelector('[data-pane="' + ${W}.activeKey + '"] [data-pane-split]').click()`)
+    await evaluate(`document.querySelector(':is([data-pane="' + ${W}.activeKey + '"], [data-pane-of="' + ${W}.activeKey + '"]) [data-pane-split]').click()`)
     await waitFor(`!!document.querySelector('[role=menu] [role=menuitem]')`, 5000, 'split menu')
     const items = await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((b) => b.textContent.trim())`)
     check('split menu: Claude / Codex / Shell / Browser', items.length === 4 && /Browser/.test(items[3]), JSON.stringify(items))

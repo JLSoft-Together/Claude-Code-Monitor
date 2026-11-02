@@ -1,0 +1,55 @@
+## WP-2 — DONE
+- Đã đổi:
+  - components/MonitorView.vue — bỏ WaitingQueue; cột đóng thì hiện `WaitingStrip` (mới)
+  - components/WaitingStrip.vue (mới) + lib/waitingStrip.ts — dòng mỏng h-7 "Cần chủ nhân · N" + session chờ lâu nhất, bấm mở cột (`ui.panels.sessions.open = true`); N bỏ qua session đang snooze, cộng job bị chặn như banner cũ
+  - components/SessionList.vue + lib/sessionGroups.ts — nhóm Cần chủ nhân (nền `bg-st-waiting-soft`) → Đang chạy → Rảnh → Đã đóng; sort áp trong nhóm; số trong tiêu đề; nhóm rỗng bị ẩn; error/unknown gom vào Rảnh
+  - components/SessionCard.vue — thẻ 3 dòng: L1 StatusIcon + tên + chỉ báo + thời gian + ⋯; L2 việc đang chờ / tool / nhãn trạng thái (chỉ 1 lần); L3 dự án + thanh subagent + token/cost/context ring. Bỏ viền trái màu, bỏ pill trạng thái, bỏ hàng snooze, bỏ dòng RAM/CPU, dòng cache ấm. Menu chuột phải = menu cũ + mục của thẻ (lib/cardMenu.ts)
+  - components/SessionCardHeader.vue — bỏ cụm nút hover; thêm nút ⋯ (`data-card-more`, hiện khi hover / focus-within / cảm ứng); expose `rename()` / `resetName()`
+  - components/SessionCardSignals.vue — dòng RAM/CPU chỉ hiện khi "forgotten", còn lại sr-only (giữ `data-card-resources` cho E2E v76); cache chỉ hiện khi nguội
+  - components/SubagentBar.vue + lib/subagentBar.ts — thanh 3 đoạn xong / chạy / lỗi (+ phần xám khác), `role=img` + aria-label đọc số (dùng key `subs.*` có sẵn)
+  - components/ProjectStrip.vue — chip → 1 menu lọc "Tất cả dự án ▾" (AppSelect), mỗi dòng có số session + số đang chờ
+  - components/FavoritesList.vue — hộp gợi ý chỉ khi chưa có favorite, có nút X (localStorage `ccm.favHintDismissed`, try/catch); "Thêm" thành nút + (`data-fav-add`, aria-label giữ)
+  - components/MainNode.vue, SubPill.vue — viền trung tính `border-line`; chỉ node chờ chủ nhân giữ viền/ring waiting (+ `ccm-attention`); lỗi/đang chạy không tô viền
+  - components/AgentMap.vue — toolbar trên chỉ còn Sơ đồ/Văn phòng + clear picked + "Đang ẩn N"; zoom +/−/fit/reset dời xuống cụm dọc góc dưới phải (`data-map-zoom`). Toolbar chế độ Văn phòng không đổi
+  - i18n/ui-v79-monitor.ts (mới); test mới: lib/sessionGroups, subagentBar, cardMenu, waitingStrip (.test.ts)
+- Hành động cũ của thẻ → chỗ mới:
+  - Ghim / bỏ ghim, Yêu thích, Ghi chú, Đổi tên, Về tên gốc → menu chuột phải + ⋯ (đầu menu)
+  - Mở thư mục (Explorer/Finder), Mở VS Code → cùng menu (đầu menu)
+  - Nhắc sau 15 / 60 phút, Nhắc ngay (huỷ snooze) → menu: "Nhắc sau ▸ 15 phút / 60 phút" (chỉ khi đang chờ); trạng thái "đã snooze đến HH:MM" hiện inline ở L2
+  - Mở trong Workspace / Mở lại (có xác nhận khi đang chạy) / Nhảy tới cửa sổ → menu dùng chung (nodeMenu), thay cho nút trên header
+  - Xoá session đã đóng → menu ("Xoá …") ở cuối
+  - RAM/CPU, cache ấm → 2 dòng thông tin (disabled) trong menu; RAM/CPU còn trong sr-only; "forgotten" vẫn hiện trên thẻ
+  - Git row (mode, nhánh, diff), đường dẫn, số lần compact → mở rộng dưới thẻ khi thẻ được chọn (`focused`, `data-card-git` / `data-card-place` giữ nguyên)
+  - Tuổi session / giờ → L1 (`data-card-age`); spinner mở thư mục bỏ, lỗi mở vẫn hiện ở header
+  - Mở menu bằng bàn phím: Shift+F10 / phím Menu trên thẻ (không đổi) hoặc Tab tới ⋯ rồi Enter
+- Tiêu chí: 5/5 (3 mục map / typecheck / vitest kiểm được bằng code + test; "nhìn" chưa)
+  - [x] Cột mở không còn banner; cột đóng: dòng mỏng N đúng, bấm mở cột (WaitingStrip; N tính bằng hàm thuần có test)
+  - [x] Nhóm đúng trạng thái, số tiêu đề đúng, sort áp trong nhóm (test sessionGroups kể cả sort name/activity)
+  - [x] Thẻ ≤ 3 dòng khi bình thường (tín hiệu bất thường quiet/loop/denied/sensitive/conflict/compacting/cache nguội vẫn thêm dòng khi có, như cũ); mọi hành động còn; bàn phím mở được menu
+  - [x] Map: chỉ node chờ có viền màu; zoom ở góc dưới phải; toggle Sơ đồ/Văn phòng giữ
+  - [x] typecheck sạch; vitest sạch
+  - CHƯA KIỂM: hiển thị thật (bố cục L1–L3 ở độ rộng ~300px, sheet hẹp, tooltip, va chạm cụm zoom với AgentDetails/notice ở dưới) — chưa chạy dev
+- Audit / Review:
+  - Edge: 0 session (list rỗng → nhánh empty như cũ, không có nhóm); toàn rảnh → 1 nhóm "Rảnh" không nền vàng; 1 dự án → ProjectStrip tự ẩn (groups ≤ 1); lọc dự án đang chọn rồi dự án biến mất → reset như cũ; cột đóng + 0 chờ → không có dòng nào; sheet hẹp: cột đóng mặc định → strip hiện, mở sheet thì strip ẩn
+  - Thứ tự đóng băng khi hover vẫn theo `frozenOrder`; nhóm theo status sống nên thẻ đổi trạng thái khi đang hover có thể nhảy nhóm (chấp nhận, ưu tiên cho "Cần chủ nhân" lên đầu)
+  - Giữ hook: `data-session-card`, `data-terminal-id`, `data-card-compacting/denied/sensitive*/resources/notice/git/place/age`, `data-menu-id`; không E2E nào dùng các nút hover cũ (đã grep)
+  - Ghi chú: error/unknown vào nhóm Rảnh (banner cũ chỉ đếm waiting nên số "Cần chủ nhân" khớp strip); mode quyền (vd bypass) chỉ hiện khi thẻ mở rộng
+- Test:
+  - `npm run typecheck -w @ccm/web` → sạch
+  - vitest 4 file mới + `src/i18n` + `src/components` → 54 file / 177 test pass
+  - vitest toàn `apps/web` → 588 file / 1577 test pass, 0 fail
+- Nhìn: CHƯA NHÌN (không chạy dev; chưa nối i18n nên dev sẽ hiện key thô cho `monitorV79.*` tới khi main nối)
+- Hot file cần thêm:
+  - `apps/web/src/i18n/index.ts` hoặc en.ts / vi.ts: `import monitorV79 from './ui-v79-monitor'`, spread `...monitorV79.en` vào en, `...monitorV79.vi` vào vi (theo cách resources-v76 đang nối). Key dùng: monitorV79.group.{needs,running,idle,ended}, strip.{label,oldest,open}, projectAll, card.{more,status}, favHint.dismiss, zoomGroup
+- Ngoài phạm vi cần main xử lý:
+  - WP-7: nhãn `status.*` tiếng Việt (thẻ giờ hiện nhãn trạng thái ở L2 khi không có tool / lý do chờ — nên Việt hoá `status.idle` ...)
+  - OnboardingTour bước "waiting" (i18n en.ts ~dòng 1102) vẫn mô tả dải "ai cần bạn" kèm chuông / cửa sổ; nay là nhóm đầu của cột Session + dòng mỏng khi cột đóng
+  - README / What's new nếu nhắc banner Cần chủ nhân; `.code_index/web.md` cập nhật (bên dưới)
+  - WaitingQueue.vue không đổi (CompactView còn dùng); `SubagentCounts.vue` giờ chỉ SessionSummary dùng
+  - WP-8 chụp: cột đóng/mở, thẻ chờ/chạy/rảnh/đã đóng, menu ⋯, sheet hẹp, map với zoom dưới phải
+- Index:
+  - web.md: MonitorView → WaitingStrip (cột đóng) · SessionList → lib/sessionGroups.groupSessions (needs/running/idle/ended) + ProjectStrip dropdown
+  - web.md: SessionCard 3 dòng + menu = lib/cardMenu.cardMenu (head/tail) + nodeMenu; SessionCardHeader emit `menu`, expose rename/resetName; SubagentBar ← lib/subagentBar.tallySubagents
+  - web.md: AgentMap zoom cluster `data-map-zoom` bottom-right; MainNode/SubPill border-line trừ waiting
+- Changelog: en: The Session column now groups sessions by what they need (Needs you, Running, Idle), cards shrink to three lines with a ⋯ menu for the extra actions, and the Agent Map keeps colour only on nodes waiting for you. / vi: Cột Session chia nhóm theo việc cần làm (Cần chủ nhân, Đang chạy, Rảnh), thẻ gọn còn ba dòng với menu ⋯ cho các thao tác phụ, và Agent Map chỉ tô màu node đang chờ chủ nhân.
+- Commit message đề xuất: 🧹 Monitor: group sessions by need, three-line cards with a more menu, project filter dropdown and calmer Agent Map

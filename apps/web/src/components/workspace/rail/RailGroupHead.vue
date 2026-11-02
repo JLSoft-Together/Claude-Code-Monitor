@@ -5,7 +5,7 @@ import { ChevronDown, LoaderCircle, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
-import { stateWord, type RailGroup, type RailState } from '../../../lib/rail/railModel'
+import { needsUser, stateWord, type RailGroup, type RailState } from '../../../lib/rail/railModel'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import StatusIcon from '../../StatusIcon.vue'
 import TabRenameInput from '../TabRenameInput.vue'
@@ -48,7 +48,8 @@ const sweep = usePeerSweep(() => (props.group.folded ? props.group.peer : null))
 const panes = computed(() => t('workspace.railGroup.panes', { n: props.group.count }, props.group.count))
 const lit = computed(() => props.group.focused && (props.group.folded || !props.group.paneKeys.includes(workspace.activeKey ?? '')))
 const activePane = computed(() => (props.group.tabActive && props.group.paneKeys.includes(workspace.activeKey ?? '') ? workspace.activeKey : null))
-const tip = computed(() => `${props.group.title}\n${spoken.value}\n${t('workspace.railGroup.hint')}`)
+const attention = computed(() => props.group.folded && needsUser(props.group.state))
+const tip = computed(() => [props.group.title, spoken.value, elapsed.value ?? '', t('workspace.railGroup.hint')].filter(Boolean).join('\n'))
 const foldLabel = computed(() => t(props.group.folded ? 'workspace.railGroup.unfold' : 'workspace.railGroup.fold', { name: props.group.title }))
 
 const titleKey = ref(0)
@@ -69,7 +70,7 @@ watch(
 
 <template>
   <div
-    class="group/ghead relative grid h-10 min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-inner pr-1 pl-5 outline-1 -outline-offset-1 outline-transparent transition-[background-color,outline-color] duration-(--ccm-dur-base) ease-(--ease-out-quint) data-dragging:bg-fill data-drop-on:bg-accent-soft data-drop-on:outline-accent"
+    class="group/ghead relative grid min-h-7 min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-inner py-0.5 pr-1 pl-5 outline-1 -outline-offset-1 outline-transparent transition-[background-color,outline-color] duration-(--ccm-dur-base) ease-(--ease-out-quint) data-dragging:bg-fill data-drop-on:bg-accent-soft data-drop-on:outline-accent"
     :class="lit ? 'bg-accent-soft text-accent-ink' : group.tabActive ? 'text-ink hover:bg-fill' : 'text-ink-muted hover:bg-fill'"
     data-rail-group
     :data-tab-key="group.tabKey"
@@ -117,28 +118,24 @@ watch(
       <TabRenameInput :tab-key="group.tabKey" :initial="group.title" @done="(saved) => emit('renamed', group.tabKey, saved)" />
     </span>
     <span v-else class="pointer-events-none flex min-w-0 flex-col">
-      <span class="block min-w-0 transition-transform duration-(--ccm-dur-base) ease-out-quint" :class="group.folded ? '' : 'translate-y-2'">
-        <span :key="titleKey" class="block truncate rounded-[4px] text-xs font-medium" :class="titleKey ? 'ccm-highlight' : ''" data-rail-group-title>{{ group.title }}</span>
-      </span>
-      <span
-        class="flex h-4 min-w-0 items-center text-2xs font-normal transition-[opacity,translate] duration-(--ccm-dur-base) ease-out-quint"
-        :class="[group.folded ? '' : '-translate-y-1 opacity-0', TONE[group.state] ?? (lit ? 'text-accent-ink' : peer ? 'text-ink' : 'text-ink-muted')]"
-        :aria-hidden="group.folded ? undefined : 'true'"
-      >
-        <span class="relative min-w-0 overflow-hidden">
-          <Transition name="ccm-rail-word" @before-leave="unstamp">
-            <span v-if="peer" :key="`p:${line}`" class="block truncate" data-rail-group-line :data-rail-peer="group.peer?.dir"
-              ><component :is="peer.glyph" :size="12" class="mr-1 inline-block align-[-2px]" :class="peer.tone" aria-hidden="true" />{{ line }}</span
-            >
-            <span v-else :key="line" class="block truncate" data-rail-group-line>{{ line }}<span v-if="tool" class="sr-only"> ({{ word }})</span></span>
-          </Transition>
-        </span>
-        <Transition name="ccm-fade">
-          <span v-if="tail" class="shrink-0 whitespace-pre tabular-nums" data-rail-activity>{{ tail }}</span>
+      <span :key="titleKey" class="block truncate rounded-[4px] text-xs font-medium" :class="titleKey ? 'ccm-highlight' : ''" data-rail-group-title>{{ group.title }}</span>
+      <span v-if="attention" class="relative flex h-4 min-w-0 items-center overflow-hidden text-2xs font-normal" :class="TONE[group.state]">
+        <Transition name="ccm-rail-word" @before-leave="unstamp">
+          <span :key="line" class="block min-w-0 truncate" data-rail-group-line>{{ line }}</span>
         </Transition>
       </span>
+      <span v-else class="sr-only" aria-hidden="true" data-rail-group-line :data-rail-peer="peer ? group.peer?.dir : undefined">{{ line }}<template v-if="tool"> ({{ word }})</template></span>
     </span>
-    <span class="flex shrink-0 items-center gap-0.5">
+    <span class="flex shrink-0 items-center gap-1.5">
+      <span
+        v-if="!attention && (peer || tail) && group.folded"
+        class="pointer-events-none flex items-center gap-1.5 text-[11px] tabular-nums"
+        :class="lit ? 'text-accent-ink' : 'text-ink-muted'"
+        aria-hidden="true"
+      >
+        <component :is="peer.glyph" v-if="peer" :size="12" :class="peer.tone" />
+        <span v-if="tail" class="whitespace-pre" data-rail-activity>{{ tail }}</span>
+      </span>
       <span class="pointer-events-none relative inline-flex size-3 shrink-0 items-center justify-center" :data-rail-group-state="group.state" data-rail-group-badge>
         <Transition name="ccm-rail-word">
           <LoaderCircle v-if="group.state === 'starting'" key="starting" :size="11" class="ccm-spin text-ink-faint" aria-hidden="true" />

@@ -54,6 +54,11 @@ import stringsV74 from './strings-v74'
 import libsV74 from './libs-v74'
 import hooksV74 from './hooks-v74'
 import resourcesV76 from './resources-v76'
+import uiV79Rail from './ui-v79-rail'
+import uiV79Settings from './ui-v79-settings'
+import uiV79Monitor from './ui-v79-monitor'
+import * as uiV79Header from './ui-v79-header'
+import uiV79Pages from './ui-v79-pages'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
@@ -109,6 +114,11 @@ const vi: typeof en = {
   ...devtoolsV75.vi,
   ...promptSearchV75.vi,
   ...resourcesV76.vi,
+  ...uiV79Rail.vi,
+  ...uiV79Settings.vi,
+  ...uiV79Monitor.vi,
+  ...uiV79Header.vi,
+  ...uiV79Pages.vi,
   ...captureV76.vi,
   ...sensitiveV76.vi,
   ...agentDataV76.vi,
@@ -341,20 +351,20 @@ const vi: typeof en = {
     sessions: 'Session',
     subagents: 'Subagent',
     subagentsRunning: '{running} đang chạy / {total}',
-    working: 'Working',
-    waiting: 'Waiting',
-    errors: 'Error',
+    working: 'Đang chạy',
+    waiting: 'Đang chờ',
+    errors: 'Lỗi',
     liveTokens: 'Token của session đang chạy',
   },
   status: {
-    working: 'Working',
-    waiting: 'Waiting',
-    idle: 'Idle',
+    working: 'Đang chạy',
+    waiting: 'Đang chờ',
+    idle: 'Rảnh',
     stale: 'Đã đóng',
-    completed: 'Completed',
-    error: 'Error',
-    cancelled: 'Cancelled',
-    unknown: 'Unknown',
+    completed: 'Xong',
+    error: 'Lỗi',
+    cancelled: 'Đã huỷ',
+    unknown: 'Không rõ',
   },
   tabs: {
     label: 'Tab session',
@@ -629,11 +639,6 @@ const vi: typeof en = {
     cancelled: '{n} đã huỷ',
   },
   bar: {
-    label: 'Thanh session',
-    collapse: 'Thu gọn thanh',
-    expand: 'Mở rộng thanh',
-    dockTop: 'Chuyển thanh lên trên',
-    dockBottom: 'Chuyển thanh xuống đáy',
     details: 'Chi tiết',
   },
   keys: {
@@ -650,14 +655,13 @@ const vi: typeof en = {
       sessionsPin: 'Ghim Sessions thành cột hoặc cho nổi',
       activity: 'Hiện/ẩn Hoạt động',
       activityPin: 'Ghim Hoạt động thành cột hoặc cho nổi',
-      bar: 'Thu gọn/mở rộng thanh session',
-      barDock: 'Chuyển thanh session lên trên/xuống đáy',
       tabs: 'Chuyển tab (0 = tất cả)',
       fit: 'Vừa map vào màn hình',
       esc: 'Đóng chi tiết agent, rồi tới panel nổi',
       hints: 'Hiện/ẩn gợi ý phím',
       help: 'Mở danh sách này',
       palette: 'Bảng lệnh',
+      settings: 'Mở cài đặt',
       wsNew: 'Terminal mới (trong tab của project) hoặc tab mới',
       wsSplit: 'Chia đôi pane theo cạnh dài hơn',
       wsSplitRight: 'Chia pane sang phải',
@@ -1102,8 +1106,8 @@ const vi: typeof en = {
       },
       waiting: {
         title: 'Session đang cần chủ nhân',
-        body: 'Khi một session dừng lại để xin quyền hoặc hỏi ý, nó hiện ở dải này kèm thời gian đã chờ. Bấm tên để tìm trên Agent Map, bấm biểu tượng cửa sổ để đưa terminal lên trước, bấm chuông để hoãn nhắc 15 phút.',
-        absent: 'Hiện chưa có session nào chờ nên dải này đang ẩn. Có session cần chủ nhân là nó hiện ra ngay đây.',
+        body: 'Khi một session dừng lại để xin quyền hoặc hỏi ý, nó lên nhóm đầu của cột Session, Cần chủ nhân, kèm thời gian đã chờ. Khi cột đóng, dải mỏng này hiện cùng thông tin, bấm vào để mở cột.',
+        absent: 'Hiện chưa có session nào chờ. Có session cần chủ nhân là nó hiện ở đầu cột Session, hoặc ở dải mỏng phía trên map khi cột đóng.',
       },
       sessions: {
         title: 'Danh sách session',

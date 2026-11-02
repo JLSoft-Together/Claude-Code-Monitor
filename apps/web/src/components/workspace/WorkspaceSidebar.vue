@@ -2,7 +2,7 @@
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PtyPreset } from '@ccm/shared'
-import { ChevronsDownUp, FolderPlus, LoaderCircle } from 'lucide-vue-next'
+import { ChevronsDownUp, LoaderCircle, Minus, Plus, Search, X } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
 import { useCompact } from '../../composables/useCompact'
 import { useOpenProject } from '../../composables/useOpenProject'
@@ -19,7 +19,8 @@ import { hasBuildClean } from '../../lib/buildClean'
 import { hasCtxSources } from '../../lib/ctxSources'
 import { hasLayouts, hasScripts, listLayouts, type SavedLayout } from '../../lib/projects'
 import type { RailDragSource } from '../../lib/rail/railDrag'
-import { rowLines, tabStopOf, type RailCheckout, type RailCluster, type RailGroup, type RailRow } from '../../lib/rail/railModel'
+import { isSolo, rowLines, tabStopOf, type RailCheckout, type RailCluster, type RailGroup, type RailRow } from '../../lib/rail/railModel'
+import { buildSections, railMoveIndexes } from '../../lib/rail/railView'
 import { emptyMenu, groupMenu, isMenuKey, projectMenu as buildProjectMenu, rowMenu } from '../../lib/rail/railMenu'
 import { leaves, type SplitDir } from '../../lib/splitLayout'
 import { useRunStore } from '../../stores/run'
@@ -100,7 +101,22 @@ watch(activeClusterKey, (key, before) => {
   if (autoCollapse.value && key && key !== before) collapseOthers()
 })
 
+// A project with one pane starts folded on its header; opening it is not remembered across sessions.
+const soloOpen = ref<Set<string>>(new Set())
+const isShut = (c: RailCluster): boolean => (isSolo(c) ? !soloOpen.value.has(c.key) : collapsed.value.has(c.key))
+const isShutKey = (key: string): boolean => {
+  const c = rail.clusters.value.find((x) => x.key === key)
+  return c ? isShut(c) : collapsed.value.has(key)
+}
+
 function toggle(c: RailCluster, open?: boolean): void {
+  if (isSolo(c)) {
+    const next = new Set(soloOpen.value)
+    if (open ?? !next.has(c.key)) next.add(c.key)
+    else next.delete(c.key)
+    soloOpen.value = next
+    return
+  }
   const next = new Set(collapsed.value)
   const shut = open === undefined ? !next.has(c.key) : !open
   if (shut) next.add(c.key)
@@ -108,8 +124,79 @@ function toggle(c: RailCluster, open?: boolean): void {
   collapsed.value = next
 }
 
+const nameOf = (c: RailCluster): string => (c.key === 'home' ? t('workspace.side.home') : c.name)
+
+const OTHERS_KEY = 'ccm.rail.othersOpen'
+const othersOpen = ref(readOthersOpen())
+function readOthersOpen(): boolean {
+  try {
+    return localStorage.getItem(OTHERS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function toggleOthers(): void {
+  othersOpen.value = !othersOpen.value
+  try {
+    localStorage.setItem(OTHERS_KEY, othersOpen.value ? '1' : '0')
+  } catch {
+    // preference only
+  }
+}
+
+const query = ref('')
+const filtering = computed(() => query.value.trim() !== '')
+const sections = computed(() => buildSections(clusters.value, query.value, nameOf))
+/** A filter opens the remembered projects too: a match must never hide behind "N more". */
+const othersShown = computed(() => filtering.value || othersOpen.value)
+const shown = computed<RailCluster[]>(() => {
+  if (props.only) return clusters.value
+  const s = sections.value
+  return [...s.agents, ...s.opened, ...(othersShown.value ? s.others : [])]
+})
+
+type ListItem = { kind: 'label'; key: string; text: string } | { kind: 'cluster'; key: string; cluster: RailCluster; index: number } | { kind: 'more'; key: string; n: number }
+const listItems = computed<ListItem[]>(() => {
+  const s = sections.value
+  const out: ListItem[] = []
+  let index = 0
+  const add = (list: RailCluster[]): void => {
+    for (const cluster of list) out.push({ kind: 'cluster', key: cluster.key, cluster, index: index++ })
+  }
+  if (props.only) {
+    add(clusters.value)
+    return out
+  }
+  const labels = s.agents.length > 0 && s.opened.length > 0
+  if (labels) out.push({ kind: 'label', key: 'label:agents', text: t('railV79.agents') })
+  add(s.agents)
+  if (labels) out.push({ kind: 'label', key: 'label:opened', text: t('railV79.opened') })
+  add(s.opened)
+  if (s.others.length && !filtering.value) out.push({ kind: 'more', key: 'more:others', n: s.others.length })
+  if (othersShown.value) add(s.others)
+  return out
+})
+
+const filterEl = ref<HTMLInputElement | null>(null)
+function clearFilter(): void {
+  query.value = ''
+  filterEl.value?.focus()
+}
+function onFilterKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && query.value) {
+    e.preventDefault()
+    e.stopPropagation()
+    query.value = ''
+  } else if (e.key === 'ArrowDown') {
+    const first = [...(list.value?.querySelectorAll<HTMLElement>('[data-side-item]') ?? [])].find((n) => n.offsetParent && !n.closest('[inert]'))
+    if (!first) return
+    e.preventDefault()
+    first.focus()
+  }
+}
+
 const lastFocus = ref<string | null>(null)
-const tabStop = computed(() => tabStopOf(clusters.value, (k) => collapsed.value.has(k), lastFocus.value))
+const tabStop = computed(() => tabStopOf(shown.value, isShutKey, lastFocus.value))
 provide(RAIL_TAB_STOP, (id) => tabStop.value === id)
 
 function onFocusIn(e: FocusEvent): void {
@@ -117,7 +204,8 @@ function onFocusIn(e: FocusEvent): void {
   if (id) lastFocus.value = id
 }
 
-const nameOf = (c: RailCluster): string => (c.key === 'home' ? t('workspace.side.home') : c.name)
+/** A filtered cluster only lists its matching rows; actions still act on the whole project. */
+const fullOf = (c: RailCluster): RailCluster => rail.clusters.value.find((x) => x.key === c.key) ?? c
 /** Folder the header acts on: the active checkout, else the main one (a worktree tab never gets the main checkout's root). */
 const headDir = (c: RailCluster): string | null => (c.checkouts.find((k) => k.active) ?? c.checkouts[0])?.path ?? c.root
 
@@ -155,8 +243,12 @@ function forget(c: RailCluster): void {
 
 const list = ref<HTMLElement | null>(null)
 const navEl = ref<HTMLElement | null>(null)
+function moveShown(from: number, to: number): void {
+  const at = railMoveIndexes(shown.value.map((c) => c.key), rail.clusters.value.map((c) => c.key), from, to)
+  if (at) rail.move(at[0], at[1])
+}
 const drag = useClusterDrag(list, (from, to) => {
-  if (!props.only) rail.move(from, to)
+  if (!props.only) moveShown(from, to)
 })
 const announce = ref('')
 
@@ -208,8 +300,8 @@ function onRailDrop(src: RailDragSource, drop: RailDrop): void {
 const renaming = ref<string | null>(null)
 
 function startRename(tabKey: string): void {
-  const c = clusters.value.find((x) => x.tabKeys.includes(tabKey))
-  if (c && collapsed.value.has(c.key)) toggle(c, true)
+  const c = rail.clusters.value.find((x) => x.tabKeys.includes(tabKey))
+  if (c && isShut(c)) toggle(c, true)
   renaming.value = tabKey
 }
 
@@ -237,15 +329,14 @@ async function moveBy(head: HTMLElement, step: number): Promise<void> {
 }
 
 async function moveCluster(key: string, step: number): Promise<void> {
-  const all = rail.clusters.value
-  const from = all.findIndex((c) => c.key === key)
+  const from = shown.value.findIndex((c) => c.key === key)
   const to = from + step
-  if (from < 0 || to < 0 || to >= all.length) return
-  rail.move(from, to)
+  if (from < 0 || to < 0 || to >= shown.value.length) return
+  moveShown(from, to)
   await nextTick()
-  const moved = rail.clusters.value.find((c) => c.key === key)
+  const moved = shown.value.find((c) => c.key === key)
   list.value?.querySelector<HTMLElement>(`[data-side-head][data-order-key="${CSS.escape(key)}"]`)?.focus()
-  if (moved) announce.value = t('workspace.rail.moved', { name: nameOf(moved), n: to + 1 })
+  if (moved) announce.value = t('workspace.rail.moved', { name: nameOf(moved), n: shown.value.findIndex((c) => c.key === key) + 1 })
 }
 
 const ui = useUiStore()
@@ -279,7 +370,8 @@ const echo = (): boolean => !!ctxMenu.value && performance.now() - keyMenuAt < K
 const cursorAt = (e: MouseEvent): DOMRect => new DOMRect(e.clientX, e.clientY, 0, 0)
 
 // Layouts and Run detection are async: fetched before the menu shows so its height never changes once measured.
-async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: DOMRect, trigger: HTMLElement | null): Promise<void> {
+async function showProjectMenu(shownCluster: RailCluster, k: RailCheckout | undefined, at: DOMRect, trigger: HTMLElement | null): Promise<void> {
+  const c = fullOf(shownCluster)
   const seq = ++menuSeq
   const dir = k?.path ?? headDir(c)
   const settle = <T,>(p: Promise<T>, fallback: T): Promise<T> => Promise.race([p.catch(() => fallback), new Promise<T>((r) => setTimeout(() => r(fallback), 400))])
@@ -288,7 +380,7 @@ async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: 
     hasRun && dir && !run.detected(dir) ? settle(run.detect(dir), null) : Promise.resolve(null),
   ])
   if (seq !== menuSeq) return
-  const all = rail.clusters.value
+  const all = shown.value
   const at_ = all.findIndex((x) => x.key === c.key)
   const anchor = anchorOf(k ?? c.checkouts.find((x) => x.active) ?? c.checkouts[0])
   const entries = buildProjectMenu(
@@ -310,7 +402,7 @@ async function showProjectMenu(c: RailCluster, k: RailCheckout | undefined, at: 
       reveal: hasReveal,
       canUp: at_ > 0,
       canDown: at_ >= 0 && at_ < all.length - 1,
-      collapsed: collapsed.value.has(c.key),
+      collapsed: isShut(c),
     },
     t,
   )
@@ -520,7 +612,7 @@ const groupOf = (cluster: RailCluster, el: HTMLElement): RailGroup | undefined =
   cluster.checkouts.flatMap((k) => k.groups).find((g) => g.key === el.dataset.groupKey)
 
 function showEmptyMenu(e: MouseEvent): void {
-  if (props.only || (e.target as Element).closest('[data-group], [data-rail-open-project]')) return
+  if (props.only || (e.target as Element).closest('[data-group], [data-rail-open-project], [data-rail-filter]')) return
   e.preventDefault()
   if (echo()) return
   ++menuSeq
@@ -535,7 +627,10 @@ function showEmptyMenu(e: MouseEvent): void {
       if (id === 'open-project') void pickProjectFolder()
       else if (id === 'collapse-others') collapseOthers()
       else if (id === 'auto-collapse') setAutoCollapse(!autoCollapse.value)
-      else collapsed.value = id === 'collapse-all' ? new Set([...collapsed.value, ...clusters.value.map((c) => c.key)]) : new Set()
+      else {
+        collapsed.value = id === 'collapse-all' ? new Set([...collapsed.value, ...clusters.value.map((c) => c.key)]) : new Set()
+        soloOpen.value = id === 'collapse-all' ? new Set() : new Set(clusters.value.filter(isSolo).map((c) => c.key))
+      }
     },
   }
 }
@@ -559,7 +654,7 @@ function onRowMenu(row: RailRow, e: MouseEvent): void {
 
 /** Keyboard: menu under the focused header / checkout line / row. */
 function openMenuFromKey(el: HTMLElement): void {
-  const cluster = clusters.value.find((c) => c.key === el.closest<HTMLElement>('[data-group]')?.dataset.group)
+  const cluster = shown.value.find((c) => c.key === el.closest<HTMLElement>('[data-group]')?.dataset.group)
   if (!cluster) return
   const r = el.getBoundingClientRect()
   const at = new DOMRect(r.left + 24, r.bottom, 0, 0)
@@ -602,7 +697,7 @@ function onKey(e: KeyboardEvent): void {
   }
   const items = [...((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-side-item]'))].filter((n) => n.offsetParent && !n.closest('[inert]'))
   const at = items.indexOf(el)
-  const cluster = clusters.value.find((c) => c.key === el.closest<HTMLElement>('[data-group]')?.dataset.group)
+  const cluster = shown.value.find((c) => c.key === el.closest<HTMLElement>('[data-group]')?.dataset.group)
   const group = cluster && el.hasAttribute('data-side-group') ? groupOf(cluster, el) : undefined
   const section = el.closest('[data-group]')
   const memberOf = el.closest<HTMLElement>('[data-rail-member]')?.dataset.railMember
@@ -618,7 +713,7 @@ function onKey(e: KeyboardEvent): void {
     else if (memberOf) next = section?.querySelector<HTMLElement>(`[data-side-group][data-tab-key="${CSS.escape(memberOf)}"]`) ?? undefined
     else next = section?.querySelector<HTMLElement>('[data-side-head]') ?? undefined
   } else if (e.key === 'ArrowRight' && cluster && isHeader) {
-    if (collapsed.value.has(cluster.key)) toggle(cluster, true)
+    if (isShut(cluster)) toggle(cluster, true)
     else if (after?.closest('[data-group]') === section) next = after
   } else if (e.key === 'ArrowRight' && group) {
     if (group.folded) workspace.setFolded(group.tabKey, false)
@@ -632,13 +727,15 @@ function onKey(e: KeyboardEvent): void {
 const newMenu = ref<{ anchor: DOMRect; cluster: RailCluster; dir: string | null; trigger: HTMLElement } | null>(null)
 const projectMenu = ref<{ anchor: DOMRect; cluster: RailCluster; dir: string; trigger: HTMLElement } | null>(null)
 
-function openNew(c: RailCluster, e: MouseEvent): void {
+function openNew(shownCluster: RailCluster, e: MouseEvent): void {
+  const c = fullOf(shownCluster)
   const trigger = e.currentTarget as HTMLElement
   const dir = headDir(c)
   newMenu.value = newMenu.value?.cluster.key === c.key || (!dir && c.key !== 'home') ? null : { anchor: trigger.getBoundingClientRect(), cluster: c, dir, trigger }
 }
 
-function openProject(c: RailCluster, e: MouseEvent): void {
+function openProject(shownCluster: RailCluster, e: MouseEvent): void {
+  const c = fullOf(shownCluster)
   const trigger = e.currentTarget as HTMLElement
   const dir = headDir(c)
   projectMenu.value = projectMenu.value?.cluster.key === c.key || !dir ? null : { anchor: trigger.getBoundingClientRect(), cluster: c, dir, trigger }
@@ -664,19 +761,45 @@ function pickNew(choice: SplitChoice): void {
     @pointerdown="onPointerDown"
     @contextmenu="showEmptyMenu"
   >
-    <div v-if="!only && (openable || clusters.length > 1)" class="flex shrink-0 items-center gap-1">
+    <div v-if="!only && (openable || clusters.length > 0)" class="flex shrink-0 items-center gap-1">
+    <div v-if="clusters.length > 0" class="relative min-w-0 flex-1" data-rail-filter>
+      <Search :size="13" class="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
+      <input
+        ref="filterEl"
+        v-model="query"
+        type="text"
+        class="ccm-field w-full min-w-0 pr-7 pl-7"
+        :placeholder="t('railV79.filter')"
+        :aria-label="t('railV79.filterLabel')"
+        spellcheck="false"
+        autocomplete="off"
+        data-rail-filter-input
+        @keydown="onFilterKey"
+      />
+      <button
+        v-if="query"
+        type="button"
+        class="absolute top-1/2 right-1 inline-flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-[5px] text-ink-faint hover:bg-fill-strong hover:text-ink"
+        :title="t('railV79.filterClear')"
+        :aria-label="t('railV79.filterClear')"
+        data-rail-filter-clear
+        @click="clearFilter"
+      >
+        <X :size="12" aria-hidden="true" />
+      </button>
+    </div>
     <button
       v-if="openable"
       type="button"
-      class="inline-flex h-8 min-w-0 flex-1 shrink-0 cursor-pointer items-center gap-2 rounded-inner border border-dashed border-line px-2 text-left text-xs text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink disabled:cursor-default disabled:text-ink-faint"
-      :title="t('workspace.rail.openProjectHint')"
+      class="ccm-btn-plain inline-flex size-8 shrink-0 items-center justify-center rounded-inner text-ink-muted disabled:text-ink-faint"
+      :title="t('workspace.rail.openProject')"
+      :aria-label="t('workspace.rail.openProject')"
       :disabled="picking"
       data-rail-open-project
       @click="pickProjectFolder"
     >
-      <LoaderCircle v-if="picking" :size="14" class="ccm-spin shrink-0" aria-hidden="true" />
-      <FolderPlus v-else :size="14" class="shrink-0" aria-hidden="true" />
-      <span class="min-w-0 truncate">{{ t('workspace.rail.openProject') }}</span>
+      <LoaderCircle v-if="picking" :size="14" class="ccm-spin" aria-hidden="true" />
+      <Plus v-else :size="15" aria-hidden="true" />
     </button>
     <button
       v-if="clusters.length > 1"
@@ -701,35 +824,56 @@ function pickNew(choice: SplitChoice): void {
       @before-leave="pinLeaving"
       @leave="onClusterLeave"
     >
-      <RailClusterView
-        v-for="(c, ci) in clusters"
-        :key="c.key"
-        :cluster="c"
-        :index="ci"
-        :collapsed="collapsed.has(c.key)"
-        :narrow="narrow"
-        :new-open="newMenu?.cluster.key === c.key"
-        :menu-open="projectMenu?.cluster.key === c.key"
-        :renaming="renaming"
-        @toggle="(open) => toggle(c, open)"
-        @focus="(key) => workspace.activate(key)"
-        @close="closeRow"
-        @activate-group="activateGroup"
-        @fold="(g, folded) => workspace.setFolded(g.tabKey, folded)"
-        @close-group="closeGroup"
-        @rename="startRename"
-        @renamed="onRenamed"
-        @context-group="onGroupMenu"
-        @new="(e) => openNew(c, e)"
-        @menu="(e) => openProject(c, e)"
-        @forget="forget(c)"
-        @checkout="openCheckout"
-        @context-head="(e) => onHeadMenu(c, e)"
-        @context-checkout="(k, e) => onCheckoutMenu(c, k, e)"
-        @context-row="onRowMenu"
-      />
+      <template v-for="item in listItems" :key="item.key">
+        <RailClusterView
+          v-if="item.kind === 'cluster'"
+          :key="item.key"
+          :cluster="item.cluster"
+          :index="item.index"
+          :collapsed="!filtering && isShut(item.cluster)"
+          :narrow="narrow"
+          :new-open="newMenu?.cluster.key === item.cluster.key"
+          :menu-open="projectMenu?.cluster.key === item.cluster.key"
+          :renaming="renaming"
+          @toggle="(open) => toggle(item.cluster, open)"
+          @focus="(key) => workspace.activate(key)"
+          @close="closeRow"
+          @activate-group="activateGroup"
+          @fold="(g, folded) => workspace.setFolded(g.tabKey, folded)"
+          @close-group="closeGroup"
+          @rename="startRename"
+          @renamed="onRenamed"
+          @context-group="onGroupMenu"
+          @new="(e) => openNew(item.cluster, e)"
+          @menu="(e) => openProject(item.cluster, e)"
+          @forget="forget(item.cluster)"
+          @checkout="openCheckout"
+          @context-head="(e) => onHeadMenu(item.cluster, e)"
+          @context-checkout="(k, e) => onCheckoutMenu(item.cluster, k, e)"
+          @context-row="onRowMenu"
+        />
+        <p v-else-if="item.kind === 'label'" :key="item.key" class="px-1.5 pt-1 text-2xs font-medium text-ink-faint" role="presentation" data-rail-label>{{ item.text }}</p>
+        <button
+          v-else
+          :key="item.key"
+          type="button"
+          data-side-item
+          data-rail-more
+          role="treeitem"
+          aria-level="1"
+          :aria-expanded="othersOpen"
+          tabindex="-1"
+          class="flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pl-1 text-left text-xs text-ink-faint hover:bg-fill hover:text-ink"
+          @click="toggleOthers"
+        >
+          <Minus v-if="othersOpen" :size="12" class="shrink-0" aria-hidden="true" />
+          <Plus v-else :size="12" class="shrink-0" aria-hidden="true" />
+          <span class="min-w-0 truncate">{{ t(othersOpen ? 'railV79.othersHide' : 'railV79.others', { n: item.n }, item.n) }}</span>
+        </button>
+      </template>
     </TransitionGroup>
     </div>
+    <p v-if="filtering && !shown.length" class="shrink-0 px-2 py-1 text-2xs text-ink-muted" role="status" data-rail-filter-empty>{{ t('railV79.noMatch', { q: query.trim() }) }}</p>
     <p v-if="status" class="shrink-0 truncate px-1 text-2xs text-ink-muted" aria-hidden="true" data-rail-status>{{ status }}</p>
     <span class="sr-only" aria-live="polite">{{ announce }}</span>
     <ContextMenu

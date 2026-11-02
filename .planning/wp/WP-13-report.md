@@ -1,0 +1,6 @@
+## WP-13: XONG
+- Script: apps/desktop/e2e/readme-shots.cjs (không thêm vào run.cjs). Chạy: `CCM_SHOTS_DIR=<thư mục raw> node apps/desktop/e2e/readme-shots.cjs`, dev build, DBG 9444 / PORT 4399, không đụng 4317. Dữ liệu dựng dưới F:\orrery-demo (ngoài repo, chưa xoá được vì hệ thống chặn rm: chủ nhân xoá tay thư mục F:\orrery-demo nếu muốn).
+- Ảnh (docs/screenshots, cùng tên, 1440x900, PNG palette 128 màu, vi + dark): monitor.png 64 KB, workspace.png 42 KB, changes.png 40 KB, run-pane.png 31 KB, whats-new.png 71 KB. Cả 5 đã Read: không đen/trống, chữ đọc được. Ảnh gốc chưa nén nằm ở scratchpad/raw.
+- Nội dung: Monitor 6 session, nhóm "Cần chủ nhân" (2) + Đang chạy + Rảnh, Agent Map; Workspace rail 4 dự án, split shell (git log/status có output) + cart.ts (gutter diff) + Explorer có M/U; Changes cart.ts diff inline + cart.test.ts + discounts.ts untracked; Run pane Flutter fake: build fail, lỗi main.dart:5:3 đỏ, chip "1 cần bạn"; What's new mở mục 3.0.0.
+- Che: không lộ user Windows. Mọi đường dẫn là F:\orrery-demo\... hoặc D:\work\demo\... (fixture); fake SDK không hiện; thiết bị là emulator-5554 giả.
+- Ghi chú: Changes pane hiện dạng tab riêng (zoom) trong cùng nhóm acme-shop; ảnh cũ chỉ có 1 dự án trong rail, ảnh mới 4 dự án.

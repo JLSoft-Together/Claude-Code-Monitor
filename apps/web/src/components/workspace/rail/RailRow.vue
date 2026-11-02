@@ -5,7 +5,7 @@ import { LoaderCircle, Network, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
-import { isBusyState, peerSlot, rowId, rowLines, stateWord, type RailRow, type RailState } from '../../../lib/rail/railModel'
+import { isBusyState, needsUser, peerSlot, RAIL_BADGE, rowId, rowLines, stateWord, type RailRow, type RailState } from '../../../lib/rail/railModel'
 import { waitDisplay } from '../../../lib/wait'
 import StatusIcon from '../../StatusIcon.vue'
 import PaneIcon from '../PaneIcon.vue'
@@ -57,7 +57,8 @@ const spoken = computed(() => {
   return slot.value === 'badge' && peer.value ? `${base}, ${peer.value.label}` : base
 })
 const label = computed(() => [t('workspace.rail.rowLabel', { first: lines.value.first, second: spoken.value }), coordinating.value?.label].filter(Boolean).join(', '))
-const tip = computed(() => [...new Set([lines.value.first, spoken.value, diffTitle.value, ...relations.value].filter(Boolean))].join('\n'))
+const attention = computed(() => needsUser(props.row.state))
+const tip = computed(() => [...new Set([lines.value.first, spoken.value, elapsed.value ?? '', diffTitle.value, ...relations.value].filter(Boolean))].join('\n'))
 const tone = computed(() =>
   props.row.state === 'failed'
     ? 'text-st-error'
@@ -72,8 +73,7 @@ const tone = computed(() =>
 const sweep = usePeerSweep(() => props.row.peer)
 const busy = computed(() => isBusyState(props.row.state))
 
-// StatusIcon statuses; idle draws no badge, starting a spinner.
-const BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', parked: 'stale' }
+const BADGE = RAIL_BADGE
 const FLASH: Partial<Record<RailState, string>> = { asked: 'text-st-waiting', done: 'text-st-done', failed: 'text-st-error' }
 
 const flashKey = ref(0)
@@ -96,7 +96,7 @@ const unstamp = (el: Element): void => el.removeAttribute('data-rail-second')
 
 <template>
   <div
-    class="group/row relative grid min-h-10 grid-cols-[16px_minmax(0,1fr)_24px] items-center gap-x-2 rounded-inner py-1 pr-0.5 outline-1 -outline-offset-1 outline-transparent transition-[background-color,outline-color] duration-(--ccm-dur-fast) data-dragging:bg-fill data-drop-on:bg-accent-soft"
+    class="group/row relative grid min-h-7 grid-cols-[16px_minmax(0,1fr)_auto_24px] items-center gap-x-2 rounded-inner py-0.5 pr-0.5 outline-1 -outline-offset-1 outline-transparent transition-[background-color,outline-color] duration-(--ccm-dur-fast) data-dragging:bg-fill data-drop-on:bg-accent-soft"
     :class="[member ? 'pl-9' : 'pl-5 data-drop-on:outline-accent', row.focused ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-fill']"
     data-rail-row
     :data-rail-member="member ? row.tabKey : undefined"
@@ -157,35 +157,32 @@ const unstamp = (el: Element): void => el.removeAttribute('data-rail-second')
         data-rail-first
         >{{ lines.first }}</span
       >
-      <span class="flex h-4 min-w-0 flex-wrap items-center overflow-hidden text-2xs" :class="tone">
-        <span class="flex min-w-[min(100%,14ch)] flex-1 basis-0 items-center">
-          <span class="relative min-w-0 overflow-hidden">
-            <Transition name="ccm-rail-word" @before-leave="unstamp">
-              <span v-if="peerLine" :key="lines.second" class="block truncate" data-rail-second :data-rail-peer="row.peer?.dir"
-                >{{ peerPrefix }}<component :is="peerLine.glyph" :size="12" class="mr-1 inline-block align-[-2px]" :class="peerLine.tone" aria-hidden="true" />{{
-                  peerLine.text
-                }}</span
-              >
-              <span v-else :key="lines.second" class="block truncate" data-rail-second
-                >{{ lines.second }}<span v-if="tool" class="sr-only"> ({{ word }})</span></span
-              >
-            </Transition>
-          </span>
-          <Transition name="ccm-fade">
-            <span v-if="tail" class="shrink-0 whitespace-pre tabular-nums" data-rail-activity>{{ tail }}</span>
-          </Transition>
-        </span>
-        <Transition name="ccm-fade">
-          <span v-if="diff" class="shrink-0 pl-1.5 tabular-nums" aria-hidden="true" data-rail-diff
-            ><span class="text-diff-add">+{{ diff.insertions }}</span> <span class="text-diff-del">−{{ diff.deletions }}</span></span
-          >
-        </Transition>
-        <Transition name="ccm-fade">
-          <span v-if="coordinating" class="inline-flex shrink-0 items-center pl-1.5 text-ink-faint" aria-hidden="true" :data-rail-coordinating="coordinating.n"
-            ><Network :size="10"
-          /></span>
+      <span v-if="attention" class="relative flex h-4 min-w-0 items-center overflow-hidden text-2xs" :class="tone">
+        <Transition name="ccm-rail-word" @before-leave="unstamp">
+          <span :key="lines.second" class="block min-w-0 truncate" data-rail-second>{{ lines.second }}</span>
         </Transition>
       </span>
+      <span v-else class="sr-only" aria-hidden="true" data-rail-second :data-rail-peer="peerLine ? row.peer?.dir : undefined"
+        >{{ peerLine ? peerPrefix + peerLine.text : lines.second }}<template v-if="tool"> ({{ word }})</template></span
+      >
+    </span>
+    <span class="pointer-events-none flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums" :class="tone">
+      <Transition name="ccm-fade">
+        <component :is="peerLine.glyph" v-if="peerLine && !attention" :size="12" :class="peerLine.tone" aria-hidden="true" data-rail-peer-glyph />
+      </Transition>
+      <Transition name="ccm-fade">
+        <span v-if="tail" class="whitespace-pre" data-rail-activity>{{ tail }}</span>
+      </Transition>
+      <Transition name="ccm-fade">
+        <span v-if="diff" aria-hidden="true" data-rail-diff
+          ><span class="text-diff-add">+{{ diff.insertions }}</span> <span class="text-diff-del">−{{ diff.deletions }}</span></span
+        >
+      </Transition>
+      <Transition name="ccm-fade">
+        <span v-if="coordinating" class="inline-flex items-center text-ink-faint" aria-hidden="true" :data-rail-coordinating="coordinating.n"
+          ><Network :size="11"
+        /></span>
+      </Transition>
     </span>
     <button
       type="button"

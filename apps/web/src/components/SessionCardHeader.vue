@@ -1,75 +1,48 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AppWindow, Check, Info, LoaderCircle, Pencil, Pin, RotateCcw, SquareTerminal, Star, StickyNote, Trash2, TriangleAlert, X } from 'lucide-vue-next'
+import { Check, Ellipsis, Info, Pin, SquareTerminal, Star, TriangleAlert, X } from 'lucide-vue-next'
 import type { TerminalSession } from '@ccm/shared'
 import { openAppKey } from '../lib/platform'
-import { useBump } from '../composables/useBump'
 import { useInlineEdit } from '../composables/useInlineEdit'
 import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
 import { isCodex } from '../lib/provider'
+import { statusMeta } from '../lib/status'
 import { displayTitle, isAutoNamed } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import ProviderBadge from './ProviderBadge.vue'
+import StatusIcon from './StatusIcon.vue'
 
 const props = defineProps<{ terminal: TerminalSession }>()
-const emit = defineEmits<{ note: [] }>()
+const emit = defineEmits<{ menu: [trigger: HTMLElement] }>()
 
 const { t } = useI18n()
 const ui = useUiStore()
 const connection = useConnectionStore()
 const favorites = useFavoritesStore()
 const settings = useSettingsStore()
+const reveal = useRevealInWorkspace()
 
 const ended = computed(() => props.terminal.status === 'stale')
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
 const codex = computed(() => isCodex(props.terminal))
 const autoNamed = computed(() => !codex.value && isAutoNamed(props.terminal))
+const statusText = computed(() => t(statusMeta(props.terminal.status).labelKey))
 
 const starred = computed(() => favorites.has(props.terminal.cwd))
-const starLabel = computed(() => t(starred.value ? 'favorites.unstar' : 'favorites.star'))
 const pinned = computed(() => settings.pinned.has(props.terminal.id))
-const pinLabel = computed(() => t(pinned.value ? 'terminal.unpin' : 'terminal.pin'))
-const pinBump = useBump(() => pinned.value)
-const starBump = useBump(() => starred.value)
-
-const jumping = computed(() => ui.focusingWindow === props.terminal.id)
-const jumpError = computed(() => (ui.windowResult?.terminalId === props.terminal.id && ui.windowResult.result !== 'ok' ? ui.windowResult : null))
-const canJump = computed(() => !ended.value && !!props.terminal.processId)
-function jump(): void {
-  if (!connection.focusWindow(props.terminal.id)) ui.reportWindowResult(props.terminal.id, 'offline')
-}
-const reveal = useRevealInWorkspace()
 const pane = computed(() => reveal.paneOf(props.terminal.id))
-const canReopen = computed(() => reveal.canReopen(props.terminal))
-const confirmReopen = ref(false)
 
-function showInWorkspace(): void {
-  reveal.show(props.terminal.id)
-}
-
-// Two live instances on one session would both append to the same transcript, so a running one needs a yes first.
-function reopen(force = false): void {
-  if (!canReopen.value) return
-  if (!ended.value && !force) {
-    confirmReopen.value = true
-    return
-  }
-  confirmReopen.value = false
-  reveal.reopen(props.terminal)
-}
-
-const busy = computed(() => jumping.value || confirmReopen.value)
+const jumpError = computed(() => (ui.windowResult?.terminalId === props.terminal.id && ui.windowResult.result !== 'ok' ? ui.windowResult : null))
+const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))
 const titleTip = computed(() =>
   props.terminal.alias ? [title.value, t('terminal.originalName', { title: props.terminal.title })].join('\n') : title.value,
 )
 const renameTip = computed(() => (autoNamed.value ? [t('terminal.rename'), t('terminal.nameHintLong')].join('\n') : t('terminal.rename')))
-
-const openError = computed(() => (ui.openResult?.terminalId === props.terminal.id ? ui.openResult : null))
 
 const versionWarning = computed(() => {
   const supported = connection.supportedClaudeVersion
@@ -85,9 +58,10 @@ function saveAlias(value: string): boolean {
   return (alias ?? undefined) === props.terminal.alias || connection.setAlias(props.terminal.id, alias)
 }
 
-function clearAlias(): void {
-  connection.setAlias(props.terminal.id, null)
-}
+defineExpose({
+  rename: () => start(title.value, true),
+  resetName: () => connection.setAlias(props.terminal.id, null),
+})
 </script>
 
 <template>
@@ -101,6 +75,7 @@ function clearAlias(): void {
       class="ccm-field min-w-0 flex-1 text-sm! font-semibold"
       :aria-invalid="saveFailed"
       :aria-describedby="saveFailed ? `alias-err-${terminal.id}` : undefined"
+      :title="renameTip"
       @keydown.esc.prevent="cancel"
     />
     <button type="submit" class="ccm-btn ccm-btn-primary w-7 px-0!" :aria-label="t('terminal.renameSave')">
@@ -115,6 +90,11 @@ function clearAlias(): void {
   </p>
 
   <div v-if="!editing" class="flex min-w-0 items-center gap-1.5">
+    <span class="inline-flex shrink-0 items-center" role="img" :aria-label="t('monitorV79.card.status', { status: statusText })" :title="statusText">
+      <Transition name="ccm-fade" mode="out-in">
+        <StatusIcon :key="terminal.status" :status="terminal.status" :size="15" />
+      </Transition>
+    </span>
     <button
       type="button"
       class="min-w-0 flex-1 cursor-pointer truncate text-left text-base font-semibold after:absolute after:inset-0 after:rounded-card after:content-['']"
@@ -125,123 +105,10 @@ function clearAlias(): void {
     >
       {{ title }}
     </button>
-    <span class="relative flex shrink-0 items-center gap-1 self-stretch" data-card-state>
-      <Transition name="ccm-fade">
-        <SquareTerminal v-if="pane" :size="13" class="text-accent-ink" aria-hidden="true" />
-      </Transition>
-      <Transition name="ccm-fade">
-        <Pin v-if="pinned && !ended" :size="13" fill="currentColor" class="text-accent-ink" aria-hidden="true" />
-      </Transition>
-      <Transition name="ccm-fade">
-        <Star v-if="starred && terminal.cwd && !codex" :size="13" fill="currentColor" class="text-favorite" aria-hidden="true" />
-      </Transition>
-      <span
-        role="group"
-        :aria-label="t('sessionV53.actions')"
-        class="absolute top-1/2 right-0 z-10 flex -translate-y-1/2 items-center bg-surface pl-1 transition-opacity duration-(--ccm-dur-fast) ease-out-quint"
-        :class="busy ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100'"
-        data-card-actions
-      >
-        <button
-          v-if="terminal.alias"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :aria-label="t('terminal.renameReset', { title: terminal.title })"
-          :title="t('terminal.renameReset', { title: terminal.title })"
-          @click="clearAlias"
-        >
-          <RotateCcw :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-if="pane"
-          type="button"
-          class="ccm-btn-plain shrink-0 text-accent-ink!"
-          :aria-label="t('workspace.reopen.show')"
-          :title="t('workspace.reopen.show')"
-          @click="showInWorkspace"
-        >
-          <SquareTerminal :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-else-if="canReopen"
-          type="button"
-          class="ccm-btn-plain shrink-0 hover:text-accent-ink!"
-          :aria-label="t('workspace.reopen.action')"
-          :title="t('workspace.reopen.action')"
-          :aria-expanded="confirmReopen"
-          @click="reopen()"
-        >
-          <SquareTerminal :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-if="canJump && !pane"
-          type="button"
-          class="ccm-btn-plain shrink-0 hover:text-accent-ink! disabled:cursor-wait!"
-          :aria-label="t('terminal.jump', { title })"
-          :title="t('terminal.jumpTitle')"
-          :disabled="jumping"
-          @click="jump"
-        >
-          <LoaderCircle v-if="jumping" :size="15" class="animate-spin" aria-hidden="true" />
-          <AppWindow v-else :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-if="!ended"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :class="pinned ? 'text-accent-ink!' : ''"
-          :aria-label="pinLabel"
-          :aria-pressed="pinned"
-          :title="pinLabel"
-          @click="settings.togglePin(terminal.id)"
-        >
-          <Pin :key="pinBump" :size="15" :fill="pinned ? 'currentColor' : 'none'" :class="pinBump ? 'ccm-pop' : ''" aria-hidden="true" />
-        </button>
-        <button
-          v-if="terminal.cwd && !codex"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :class="starred ? 'text-favorite!' : ''"
-          :aria-label="starLabel"
-          :aria-pressed="starred"
-          :title="starLabel"
-          @click="connection.toggleFavorite(terminal.id)"
-        >
-          <Star :key="starBump" :size="15" :fill="starred ? 'currentColor' : 'none'" :class="starBump ? 'ccm-pop' : ''" aria-hidden="true" />
-        </button>
-        <button
-          v-if="!codex"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :class="terminal.note ? 'text-accent-ink!' : ''"
-          :aria-label="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-          :title="t(terminal.note ? 'terminal.noteEdit' : 'terminal.noteAdd')"
-          @click="emit('note')"
-        >
-          <StickyNote :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-if="!codex"
-          type="button"
-          class="ccm-btn-plain shrink-0"
-          :aria-label="t('terminal.rename')"
-          :aria-describedby="autoNamed ? `name-hint-${terminal.id}` : undefined"
-          :title="renameTip"
-          @click="start(title, true)"
-        >
-          <Pencil :size="15" aria-hidden="true" />
-        </button>
-        <button
-          v-if="ended"
-          type="button"
-          class="ccm-btn-plain shrink-0 hover:text-st-error!"
-          :aria-label="t('terminal.dismiss', { title })"
-          :title="t('terminal.dismiss', { title })"
-          @click="connection.dismissEnded(terminal.id)"
-        >
-          <Trash2 :size="15" aria-hidden="true" />
-        </button>
-      </span>
+    <span class="flex shrink-0 items-center gap-1" data-card-state>
+      <SquareTerminal v-if="pane" :size="13" class="text-accent-ink" aria-hidden="true" />
+      <Pin v-if="pinned && !ended" :size="13" fill="currentColor" class="text-accent-ink" aria-hidden="true" />
+      <Star v-if="starred && terminal.cwd && !codex" :size="13" fill="currentColor" class="text-favorite" aria-hidden="true" />
     </span>
     <ProviderBadge v-if="codex" :mode="terminal.entrypoint" />
     <span
@@ -254,6 +121,18 @@ function clearAlias(): void {
     <span v-if="versionWarning" class="shrink-0 text-warning" :title="versionWarning" role="img" :aria-label="versionWarning">
       <TriangleAlert :size="15" aria-hidden="true" />
     </span>
+    <slot name="trailing" />
+    <button
+      type="button"
+      class="ccm-btn-plain relative z-10 -my-1 -me-1.5 shrink-0 opacity-0 transition-opacity duration-(--ccm-dur-fast) ease-out-quint group-hover/card:opacity-100 group-focus-within/card:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+      :aria-label="t('monitorV79.card.more', { title })"
+      :title="t('monitorV79.card.more', { title })"
+      aria-haspopup="menu"
+      data-card-more
+      @click="emit('menu', $event.currentTarget as HTMLElement)"
+    >
+      <Ellipsis :size="16" aria-hidden="true" />
+    </button>
   </div>
   <span v-if="!editing && autoNamed" :id="`name-hint-${terminal.id}`" class="sr-only">{{ t('terminal.nameHintLong') }}</span>
   <p v-if="jumpError?.result === 'appOnly'" role="status" class="ccm-enter relative z-10 mt-1 inline-flex items-center gap-1 text-2xs text-ink-muted">
@@ -265,11 +144,4 @@ function clearAlias(): void {
   <p v-if="openError" role="alert" class="ccm-enter relative z-10 mt-1 text-2xs text-st-error">
     {{ t(`open.error.${openError.result}`, { app: t(`open.app.${openAppKey(openError.app)}`) }) }}
   </p>
-  <div v-if="confirmReopen" class="relative z-10 mt-2 flex flex-col gap-2 rounded-inner bg-warning-soft p-2.5 text-xs text-ink" role="alertdialog" :aria-label="t('workspace.reopen.action')">
-    <p class="flex gap-1.5"><TriangleAlert :size="14" class="mt-px shrink-0 text-warning" aria-hidden="true" />{{ t('workspace.reopen.liveWarning') }}</p>
-    <div class="flex justify-end gap-1.5">
-      <button type="button" class="ccm-btn h-7" @click="confirmReopen = false">{{ t('workspace.reopen.cancel') }}</button>
-      <button type="button" class="ccm-btn ccm-btn-primary h-7" @click="reopen(true)">{{ t('workspace.reopen.confirm') }}</button>
-    </div>
-  </div>
 </template>

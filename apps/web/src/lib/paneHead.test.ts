@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MenuEntry } from './menu'
-import { isHeadBlank, isShownIn, moreKey, overflowEntries, processChip, STATE_BADGE, suggestCompact, zoomKeys } from './paneHead'
+import { headMode, isHeadBlank, isShownIn, moreKey, overflowEntries, processChip, STATE_BADGE, statusWordShown, suggestCompact, zoomKeys } from './paneHead'
 
 describe('STATE_BADGE', () => {
   it('draws the rail words with the rail glyphs', () => {
@@ -129,5 +129,21 @@ describe('isHeadBlank', () => {
     document.body.append(wrap)
     expect(isHeadBlank(h.querySelector('[data-name]'), h)).toBe(true)
     wrap.remove()
+  })
+})
+
+describe('headMode', () => {
+  it('lends the header to the tab bar only for one unzoomed pane', () => {
+    expect(headMode(false, false)).toBe('bar')
+    expect(headMode(true, false)).toBe('thin')
+    expect(headMode(false, true)).toBe('thin')
+    expect(headMode(true, true)).toBe('thin')
+  })
+})
+
+describe('statusWordShown', () => {
+  it('speaks only when the owner must act or the run is over', () => {
+    for (const s of ['asked', 'failed', 'ended'] as const) expect(statusWordShown(s)).toBe(true)
+    for (const s of ['working', 'subagents', 'done', 'starting', 'idle', 'parked'] as const) expect(statusWordShown(s)).toBe(false)
   })
 })

@@ -126,13 +126,13 @@ const statusText = computed(() => {
       <button v-if="search.running" type="button" class="ccm-btn h-7 gap-1 text-xs" data-prompt-search-cancel @click="connection.cancelPromptSearch()">
         <X :size="12" aria-hidden="true" />{{ t('promptSearch.cancel') }}
       </button>
-      <button v-else type="submit" class="ccm-btn ccm-btn-primary h-7 gap-1 text-xs" :disabled="!search.query.trim()" data-prompt-search-go>
+      <button v-else type="submit" class="ccm-btn h-7 gap-1 text-xs" :disabled="!search.query.trim()" data-prompt-search-go>
         <Search :size="12" aria-hidden="true" />{{ t('promptSearch.search') }}
       </button>
+      <button type="button" class="ccm-btn-plain size-7 shrink-0 p-0!" :title="t('promptSearch.privacy')" :aria-label="`${t('pagesV79.history.privacy')}: ${t('promptSearch.privacy')}`" data-prompt-search-privacy>
+        <ShieldCheck :size="14" aria-hidden="true" />
+      </button>
     </form>
-    <p class="flex items-start gap-1.5 text-2xs text-ink-muted">
-      <ShieldCheck :size="12" class="mt-px shrink-0" aria-hidden="true" />{{ t('promptSearch.privacy') }}
-    </p>
 
     <div v-if="search.phase !== 'idle'" class="flex flex-col gap-1.5" role="status" aria-live="polite" data-prompt-search-status :data-state="search.phase">
       <p class="flex items-center gap-1.5 text-xs" :class="search.phase === 'failed' ? 'text-warning' : 'text-ink-muted'">

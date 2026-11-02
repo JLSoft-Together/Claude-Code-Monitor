@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert, RefreshCw, Settings2, Smartphone, Trash2, Unplug, X } from 'lucide-vue-next'
+import { CircleAlert, Plus, RefreshCw, Settings2, Smartphone, Trash2, Unplug, X } from 'lucide-vue-next'
 import type { AdbDevice } from '@ccm/shared'
 import { useDevicesStore } from '../../stores/devices'
 import { useUiStore } from '../../stores/ui'
@@ -34,10 +34,16 @@ const testFor = ref<AdbDevice | null>(null)
 const dataFor = ref<AdbDevice | null>(null)
 const perfFor = ref<AdbDevice | null>(null)
 const filesFor = ref<AdbDevice | null>(null)
+const addOpen = ref(false)
 
 function batch(fn: () => Promise<void>): void {
   store.lastError = null
   void fn()
+}
+
+function openIntegrations(): void {
+  ui.settingsPage = 'integrations'
+  ui.settingsOpen = true
 }
 
 onMounted(() => void store.open().catch(() => undefined))
@@ -53,21 +59,35 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
 
 <template>
   <main class="mx-auto w-full max-w-[1560px] flex-1 px-4 py-5 sm:px-6 sm:py-6" data-devices>
-    <div class="min-w-0">
-      <h2 class="text-2xl font-semibold tracking-tight">{{ t('devices.title') }}</h2>
-      <p class="mt-1 max-w-[80ch] text-sm text-ink-muted">{{ t('devices.subtitle') }}</p>
+    <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+      <div class="min-w-0">
+        <h2 class="text-2xl font-semibold tracking-tight">{{ t('devices.title') }}</h2>
+        <p class="mt-1 max-w-[80ch] text-sm text-ink-muted">{{ t('devices.subtitle') }}</p>
+      </div>
+      <button
+        v-if="store.adbFound"
+        type="button"
+        class="ccm-btn"
+        :class="addOpen ? '' : 'ccm-btn-primary'"
+        :aria-expanded="addOpen"
+        aria-controls="dev-add-panel"
+        data-dev-add
+        @click="addOpen = !addOpen"
+      >
+        <Plus :size="14" aria-hidden="true" />{{ t('pagesV79.devices.add') }}
+      </button>
     </div>
 
     <div v-if="!store.adbFound" class="mt-5 flex flex-wrap items-start gap-x-3 gap-y-2 rounded-card bg-warning-soft px-4 py-3" role="alert" data-dev-noadb>
       <CircleAlert :size="16" class="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
       <p class="min-w-0 flex-1 basis-60 text-sm">{{ t('devices.empty.noAdb') }}</p>
-      <button type="button" class="ccm-btn shrink-0" @click="ui.settingsOpen = true">
+      <button type="button" class="ccm-btn shrink-0" @click="openIntegrations">
         <Settings2 :size="14" aria-hidden="true" />{{ t('devices.empty.openSettings') }}
       </button>
     </div>
 
     <template v-else>
-      <DeviceConnectBar class="mt-5" />
+      <DeviceConnectBar v-if="addOpen" id="dev-add-panel" class="mt-5 rounded-card border border-line p-3" />
 
       <div v-if="store.lastError" class="mt-3 flex items-start gap-1.5 text-xs text-warning" role="alert" data-dev-error>
         <CircleAlert :size="14" class="mt-px shrink-0" aria-hidden="true" />
@@ -126,6 +146,9 @@ onBeforeUnmount(() => void store.close().catch(() => undefined))
         <div v-if="!store.devices.length" class="mt-4 flex flex-col items-center gap-2 rounded-card bg-surface px-4 py-10 text-center shadow-card" data-dev-empty>
           <Smartphone :size="22" class="text-ink-faint" aria-hidden="true" />
           <p class="text-sm text-ink-muted">{{ t('devices.empty.none') }}</p>
+          <button v-if="!addOpen" type="button" class="ccm-btn mt-1" data-dev-empty-add @click="addOpen = true">
+            <Plus :size="14" aria-hidden="true" />{{ t('pagesV79.devices.add') }}
+          </button>
         </div>
 
         <section v-else class="mt-4" :aria-label="t('devices.list')">

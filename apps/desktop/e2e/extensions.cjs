@@ -18,7 +18,12 @@ async function main() {
     await sleep(1500)
     await waitFor(`!!${S}.get('ui')`, 20000, 'reloaded')
 
-    check('Extensions tab in the header', await evaluate(`[...document.querySelectorAll('[role="tab"]')].some(t => /Extensions|Mở rộng/.test(t.textContent))`))
+    // v79: secondary views (Extensions included) sit under the header's ⋯ menu; a tab shows only while that view is open.
+    await evaluate(`document.querySelector('[data-more-views]').click()`)
+    await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="extensions"]')`, 5000, 'views menu')
+    check('Extensions entry in the header ⋯ menu', true)
+    await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="extensions"]').click()`)
+    await waitFor(`${S}.get('ui').view === 'extensions'`, 5000, 'view switched')
     await evaluate(`${S}.get('ui').setView('extensions')`)
     await waitFor(`!!document.querySelector('[data-extensions]')`, 15000, 'view')
     await waitFor(`!${S}.get('extensions').loading`, 60000, 'status')

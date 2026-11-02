@@ -2,31 +2,30 @@
 import ArtImage from './ArtImage.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChartColumnBig, CircleArrowDown, Ellipsis, History, Inbox, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal } from 'lucide-vue-next'
+import { Activity, ChartColumnBig, CircleArrowDown, Ellipsis, GraduationCap, History, Inbox, Keyboard, Maximize2, Minimize2, Puzzle, Search, Smartphone, SquareTerminal, SunDim } from 'lucide-vue-next'
+import { leaves } from '../lib/splitLayout'
+import { useSettingsStore } from '../stores/settings'
+import { useWorkspaceStore } from '../stores/workspace'
 import { hasExtensions, hasTerminals, titleBar } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
-import { now, relativeTime } from '../lib/format'
 import type { MenuEntry, Rect } from '../lib/menu'
 import { isMac } from '../lib/platform'
 import { formatKeys } from '../lib/shortcuts'
 import { useConnectionStore } from '../stores/connection'
-import { useExtrasStore } from '../stores/extras'
 import { useInboxStore } from '../stores/inbox'
 import { useUpdateStore } from '../stores/update'
 import { useUiStore, type View } from '../stores/ui'
-import PlanLimits from './PlanLimits.vue'
-import ResourcesButton from './ResourcesButton.vue'
-import KeepAwakeBadge from './KeepAwakeBadge.vue'
-import DiskBadge from './DiskBadge.vue'
+import HeaderStatusPopover from './HeaderStatusPopover.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
 const InboxPanel = defineAsyncComponent(() => import('./inbox/InboxPanel.vue'))
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const connection = useConnectionStore()
-const extras = useExtrasStore()
 const ui = useUiStore()
+const settings = useSettingsStore()
+const workspace = useWorkspaceStore()
 const inbox = useInboxStore()
 const update = useUpdateStore()
 const updateVersion = computed(() => update.state?.release?.version ?? '')
@@ -54,37 +53,27 @@ const tabs = computed(() => {
 })
 const activeIndex = computed(() => tabs.value.findIndex((x) => x.id === ui.view))
 
-const connectionView = computed(() => {
-  switch (connection.state) {
-    case 'connected':
-      return { label: t('connection.connected'), glyph: 'live', cls: 'text-success' }
-    case 'reconnecting':
-      return { label: t('connection.reconnecting'), glyph: 'half', cls: 'text-warning' }
-    case 'connecting':
-      return { label: t('connection.connecting'), glyph: 'half', cls: 'text-st-idle' }
-    default:
-      return { label: t('connection.disconnected'), glyph: 'ring', cls: 'text-st-error' }
-  }
-})
-
-const lastUpdate = computed(() => {
-  const ago = relativeTime(connection.lastEventAt, locale.value, now.value)
-  return ago ? t('connection.lastUpdate', { ago }) : t('connection.never')
-})
-const connectionTitle = computed(() =>
-  connection.state !== 'connected' && connection.hasData ? t('connection.stale') : `${connectionView.value.label}. ${lastUpdate.value}`,
-)
-
-const showClaudeLimits = computed(() => !!(extras.limits?.fiveHour || extras.limits?.sevenDay))
-const showCodexLimits = computed(() => !!(extras.codexLimits?.fiveHour || extras.codexLimits?.sevenDay))
-
 const barClass = computed(() => (titleBar === 'mac' ? 'pl-[84px]' : 'pl-3'))
 const barStyle = computed(() => (titleBar === 'overlay' ? { paddingRight: 'max(0.5rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 0.5rem))' } : { paddingRight: '0.5rem' }))
 
 const moreBtn = ref<HTMLButtonElement | null>(null)
 const moreAt = ref<Rect | null>(null)
 let moreClosedAt = 0
-const moreEntries = computed<MenuEntry[]>(() => secondary.value.map((v) => ({ id: v.id, label: v.label, icon: v.icon })))
+const COMPACT_ID = 'compact'
+const DIM_ID = 'dim'
+const KEYS_ID = 'shortcuts'
+const TOUR_ID = 'tour'
+const splitTab = computed(() => ui.view === 'workspace' && !!workspace.activeTab && leaves(workspace.activeTab.root).length > 1)
+const moreEntries = computed<MenuEntry[]>(() => {
+  const views: MenuEntry[] = ui.compact ? [] : secondary.value.map((v) => ({ id: v.id, label: v.label, icon: v.icon }))
+  const toggle: MenuEntry = { id: COMPACT_ID, label: ui.compact ? t('compact.exit') : t('compact.enter'), icon: ui.compact ? Maximize2 : Minimize2, hint: ui.compact ? t('compact.exitTitle') : t('compact.enterTitle') }
+  const dim: MenuEntry[] = splitTab.value ? [{ id: DIM_ID, label: t(settings.dimInactive ? 'workspace.dim.toggleOn' : 'workspace.dim.toggle'), icon: SunDim, hint: t('workspace.dim.hint') }] : []
+  const help: MenuEntry[] = [
+    { id: KEYS_ID, label: t('wsHelp.shortcuts'), icon: Keyboard },
+    ...(ui.view === 'workspace' ? [{ id: TOUR_ID, label: t('wsHelp.tour'), icon: GraduationCap }] : []),
+  ]
+  return [...views, ...(views.length ? [{ separator: true as const }] : []), ...dim, toggle, { separator: true }, ...help]
+})
 function closeMore(): void {
   moreAt.value = null
   moreClosedAt = performance.now()
@@ -96,6 +85,10 @@ function toggleMore(): void {
   if (r) moreAt.value = { left: r.left, right: r.right, top: r.top, bottom: r.bottom + 4 }
 }
 function pickMore(id: string): void {
+  if (id === COMPACT_ID) return ui.toggleCompact()
+  if (id === DIM_ID) return void (settings.dimInactive = !settings.dimInactive)
+  if (id === KEYS_ID) return void (ui.shortcutsOpen = true)
+  if (id === TOUR_ID) return void (ui.tourOpen = 'workspace')
   ui.setView(id as View)
 }
 
@@ -144,11 +137,11 @@ function onTabKey(e: KeyboardEvent): void {
       </div>
 
       <button
-        v-if="!ui.compact && secondary.length"
         ref="moreBtn"
         type="button"
         class="ccm-btn-plain size-7 justify-center p-0"
-        data-tour="more-views"
+        data-tour="compact"
+        data-more-views
         :aria-label="t('nav.more')"
         :title="t('nav.more')"
         aria-haspopup="menu"
@@ -159,29 +152,6 @@ function onTabKey(e: KeyboardEvent): void {
       </button>
 
       <div class="h-full min-w-4 flex-1" aria-hidden="true" />
-
-      <div v-if="showClaudeLimits || showCodexLimits" data-tour="limits" class="hidden min-w-0 items-center gap-0.5 sm:flex">
-        <PlanLimits v-if="showClaudeLimits" compact />
-        <PlanLimits v-if="showCodexLimits" provider="codex" compact />
-      </div>
-
-      <span
-        class="inline-flex size-7 shrink-0 items-center justify-center"
-        :class="connectionView.cls"
-        role="status"
-        aria-live="polite"
-        :aria-label="connectionView.label"
-        :title="connectionTitle"
-      >
-        <span v-if="connectionView.glyph === 'live'" class="relative flex size-2">
-          <span class="absolute inset-0 rounded-full bg-current opacity-0 motion-safe:animate-ping motion-safe:[animation-iteration-count:3]" />
-          <span class="relative size-2 rounded-full bg-current" />
-        </span>
-        <svg v-else width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8" />
-          <path v-if="connectionView.glyph === 'half'" d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" />
-        </svg>
-      </span>
 
       <div class="flex shrink-0 items-center gap-0.5">
         <button
@@ -197,9 +167,7 @@ function onTabKey(e: KeyboardEvent): void {
           <CircleArrowDown :size="14" aria-hidden="true" />
           <span class="hidden tabular-nums sm:inline">{{ t('update.pill', { version: updateVersion }) }}</span>
         </button>
-        <KeepAwakeBadge v-if="!ui.compact" />
-        <DiskBadge v-if="!ui.compact" />
-        <ResourcesButton v-if="!ui.compact" />
+        <HeaderStatusPopover />
         <button
           ref="inboxBtn"
           type="button"
@@ -214,23 +182,11 @@ function onTabKey(e: KeyboardEvent): void {
           <Inbox :size="15" aria-hidden="true" />
           <span
             v-if="inboxCount"
-            class="absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-st-waiting px-0.5 text-[9px] leading-none font-semibold text-on-accent tabular-nums"
+            class="absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-st-waiting px-0.5 text-[11px] leading-none font-semibold text-on-accent tabular-nums"
             aria-hidden="true"
             data-inbox-badge
             >{{ inboxCount > 99 ? '99+' : inboxCount }}</span
           >
-        </button>
-        <button
-          type="button"
-          class="ccm-btn-plain text-xs font-medium"
-          :aria-label="ui.compact ? t('compact.exit') : t('compact.enter')"
-          :title="ui.compact ? t('compact.exitTitle') : t('compact.enterTitle')"
-          :aria-pressed="ui.compact"
-          data-tour="compact"
-          @click="ui.toggleCompact()"
-        >
-          <Maximize2 v-if="ui.compact" :size="15" aria-hidden="true" />
-          <Minimize2 v-else :size="15" aria-hidden="true" />
         </button>
         <button
           type="button"

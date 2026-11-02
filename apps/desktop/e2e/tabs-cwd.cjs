@@ -58,7 +58,7 @@ async function phaseOne(app) {
 
   // Split a browser next to the shell: the tab keeps naming the shell, the badge counts 2.
   const shellKey = await evaluate(`${W}.panes[0].key`)
-  await evaluate(`document.querySelector('[data-pane="${shellKey}"] [data-pane-split]').click()`)
+  await evaluate(`document.querySelector(':is([data-pane="${shellKey}"], [data-pane-of="${shellKey}"]) [data-pane-split]').click()`)
   await waitFor(`!!document.querySelector('[role=menu] [role=menuitem]')`, 5000, 'split menu')
   await evaluate(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((b) => /Browser/.test(b.textContent)).click()`)
   await waitFor(`${W}.panes.some((p) => p.kind === 'browser') && ${W}.activeKey !== '${shellKey}'`, 5000, 'browser split')
@@ -86,7 +86,7 @@ async function phaseOne(app) {
   check('start folder unchanged (pane.cwd)', (await evaluate(`${W}.panes[0].cwd`)).toLowerCase() === DIR.toLowerCase())
   await waitFor(`${W}.panes[0].branch === 'side'`, 10000, 'branch side').catch(() => {})
   check('branch chip follows cd', (await evaluate(`${W}.panes[0].branch`)) === 'side', await evaluate(`${W}.panes[0].branch`))
-  check('header path shows the new folder', /other/.test(await evaluate(`document.querySelector('[data-pane="${shellKey}"] [data-cwd]')?.textContent ?? ''`)))
+  check('header name tooltip shows the new folder', /other/.test(await evaluate(`document.querySelector('[data-pane="${shellKey}"] [data-pane-name]')?.title ?? ''`)))
 
   // Relative path printed after cd → Ctrl+click resolves against `other`, not the start folder.
   await type(`cls; 1..60 | % { 'src/y.ts:2' }`)
@@ -133,7 +133,7 @@ async function phaseTwo(app, last) {
   await shot('fix-03-restored-allowed')
 
   // Settings → Forget allowed folders empties the file.
-  await evaluate(`${S}.get('ui').settingsOpen = true`)
+  await evaluate(`${S}.get('ui').settingsPage = 'access'; ${S}.get('ui').settingsOpen = true`)
   await waitFor(`!!document.querySelector('[data-forget-grants]')`, 5000, 'forget row')
   await shot('fix-04-settings-forget')
   await evaluate(`document.querySelector('[data-forget-grants]').click()`)

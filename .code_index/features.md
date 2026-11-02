@@ -9,7 +9,8 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Theo dõi session Claude Code realtime** (v1) — process, transcript, trạng thái, tên terminal; snapshot rồi chỉ gửi event tăng dần · `apps/collector/src/monitor.ts`
 - **Session card** — tên tự đặt / đổi tên, ghi chú, ghim, context %, đếm token, hành động hover, Shift+F10 · `apps/web/src/components/SessionCard.vue`
 - **Danh sách session** — sắp xếp (ghim trước, thứ tự đóng băng khi trỏ chuột), Xoá session đã kết thúc · `apps/web/src/components/SessionList.vue`
-- **Hàng đợi chờ chủ nhân** (WaitingQueue) — session đang chờ duyệt / hỏi, nhảy tới ngay · `apps/web/src/components/WaitingQueue.vue`
+- **Dải chờ chủ nhân** (v79, WaitingStrip) — khi cột Session đóng: một dòng "Cần chủ nhân · N" + session chờ lâu nhất, bấm để mở cột · `apps/web/src/components/WaitingStrip.vue`
+- **Nhóm session theo việc cần làm** (v79) — Cần chủ nhân → Đang chạy → Rảnh → Đã đóng; thẻ 3 dòng, menu ⋯ trên thẻ · `apps/web/src/lib/sessionGroups.ts`, `apps/web/src/components/SessionCard.vue`
 - **Lọc theo project** (v66) — dải project, lọc danh sách session theo repo đang live · `apps/web/src/components/ProjectStrip.vue`
 - **Yêu thích** — thêm / đổi tên / sắp xếp thư mục yêu thích, tối đa 50 · `apps/collector/src/favorites.ts`
 - **Mở thư mục / nhảy tới terminal** — mở folder ở Explorer / Finder / VS Code; focus cửa sổ terminal chứa session · `apps/collector/src/opener.ts`, `apps/collector/src/focus.ts`
@@ -19,7 +20,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Cảnh báo kẹt / vòng lặp lỗi / cache nguội** — gắn cờ session stuck, lặp lỗi, cache hết hạn · `apps/web/src/lib/attention.ts`
 - **Xung đột file giữa session** — cảnh báo hai session sửa cùng file · `apps/web/src/lib/conflicts.ts`
 - **Tin nhắn giữa main agent** (v54) — hiệu ứng gửi / nhận giữa hai session, cạnh peer · `apps/collector/src/peers.ts`
-- **Thanh tiến độ hạn mức (PlanLimits)** — còn bao nhiêu quota, dự báo, delta · `apps/web/src/components/PlanLimits.vue`
+- **Thanh tiến độ hạn mức (PlanLimits)** — còn bao nhiêu quota, dự báo, delta (v79 trong popover trạng thái header) · `apps/web/src/components/PlanLimits.vue`
 - **Thống kê nhanh (MetricsStrip)** — ô số liệu: thời gian phản hồi, chi phí hôm nay / ngân sách · `apps/web/src/components/MetricsStrip.vue`
 - **Tóm tắt "đi vắng" (AwaySummary)** — việc đã xong khi chủ nhân không có mặt · `apps/web/src/components/AwaySummary.vue`
 - **Ghi chú session** (v9) — `Monitor.setNote` · `apps/collector/src/store.ts`
@@ -58,6 +59,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Usage index bền vững** — quét mọi `projects/**/*.jsonl`, lưu `usage-index.json`, chỉ đếm số, không lưu nội dung · `apps/collector/src/usage.ts`
 - **Dự báo hạn mức** — hồi quy bình phương tối thiểu, `limit-history.json` · `apps/collector/src/forecast.ts`
 - **Tab History** — bảng tổng, timeline trạng thái theo giờ · `apps/web/src/components/history/HistoryView.vue`
+- **Dòng tóm tắt hôm nay** (v79) — một dòng trên timeline: số session đang làm / chờ · `apps/web/src/components/history/summary.ts`
 - **Tìm session cũ theo prompt + Resume** (v75) — quét transcript khi bấm, che secret, Resume trong pane / mở thư mục / chép id · `apps/web/src/components/history/PromptSearchCard.vue`, `apps/collector/src/prompt-search.ts`
 - **Lịch sử session đã kết thúc** — tối đa 1000 session · `apps/collector/src/history.ts`
 - **Heatmap giờ × ngày** (2026-10-29) — 28 ngày, `heatmap.get` · `apps/web/src/components/history/HeatmapChart.vue`
@@ -75,7 +77,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Thông báo trình duyệt / tiếng chuông / tiêu đề tab nhấp nháy** — chỉ khi cửa sổ ẩn · `apps/web/src/composables/useNotifications.ts`
 - **Nhắc nghỉ giải lao** — toast nhắc sau một khoảng thời gian · `apps/web/src/composables/useBreakReminder.ts`
 - **Link từ toast** — hoãn (snooze), focus session, mở pane · `apps/desktop/src/main.ts`
-- **Cài đặt thông báo** — từng loại, âm thanh, giờ yên lặng · `apps/web/src/components/SettingsMenu.vue`
+- **Cài đặt thông báo** — từng loại, âm thanh, giờ yên lặng · `apps/web/src/components/settings/SettingsNotify.vue`
 - **Process agent + bỏ quên** (v76) — RAM / CPU cây session, shell / dev server, daemon Gradle / Kotlin / Dart, emulator, mồ côi; nhàn rỗi ≥ ngưỡng (Settings, mặc định 60 phút) → toast `idle` gộp · `apps/collector/src/resources/`
 - **Thẻ Tài nguyên + bản đồ cổng** (v76) — Session / Server / Daemon & emulator / Cổng, lọc bỏ quên, Tắt từng dòng / tất cả (confirm native, pane → đóng pane), Mở `localhost:<port>` trong Browser, badge ở header / rail / cạnh Mission Control, báo đụng cổng · `apps/web/src/components/ResourcesDialog.vue`, `apps/collector/src/resources/ports.ts`, `apps/desktop/src/resources/kill.ts`
 - **Canh file / lệnh nhạy cảm** (v76) — Edit / Write file bí mật (.env, keystore, …), file ngoài project, git push -f / reset --hard / clean -fd, rm -rf / del /s / Remove-Item ngoài project, adb uninstall, DROP TABLE → badge card (bấm mở danh sách từng lần) + toast `sensitive`; Mở file / Mở diff / Bỏ qua theo project; Cài đặt nhóm, mẫu riêng, danh sách bỏ qua; chỉ cảnh báo · `apps/collector/src/sensitive/`, `apps/web/src/components/SensitiveSettings.vue`
@@ -89,7 +91,8 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Chia pane, tab, đổi tên tab, nhóm tab** (v18, v50) — cây chia nhị phân · `apps/web/src/lib/splitLayout.ts`
 - **Kéo thả pane / tab** (v48) — vùng thả trên pane · `apps/web/src/composables/usePaneDrag.ts`
 - **Phóng to pane, hoàn tác đóng pane** (v52) — `Tab.zoom`, `closedStack`, UndoToast · `apps/web/src/components/workspace/UndoToast.vue`
-- **Làm mờ pane không hoạt động** (v52) — DimToggle · `apps/web/src/components/workspace/DimToggle.vue`
+- **Header pane trên thanh tab** (v79) — pane đứng một mình đưa header lên thanh tab, việc phụ nằm trong ⋯ · `apps/web/src/components/workspace/TermPane.vue`, `apps/web/src/lib/paneHead.ts`
+- **Làm mờ pane không hoạt động** (v52; v79 nằm trong menu ⋯ của thanh tab) — `apps/web/src/components/workspace/WorkspaceView.vue`
 - **Dust hiệu ứng khi đóng pane** (v50, tùy chọn) — `apps/web/src/lib/dust.ts`
 - **Khôi phục workspace, chọn project để chạy** (v64) — pane ngủ "parked" · `apps/web/src/components/workspace/RestorePicker.vue`
 - **Khôi phục sau khởi động lại** (v77) — Hỏi / Tự mở lại / Không làm gì, báo thoát bất thường, shell về thư mục đã cd, gợi ý chạy cùng Windows · `apps/web/src/lib/workspaceRestore.ts`, `apps/desktop/src/restore/runState.ts`
@@ -111,6 +114,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 ## Rail, dự án & Mission Control
 
 - **Rail nhóm dự án** (v38) — cụm, checkout, hàng pane, nhãn trạng thái · `apps/web/src/lib/rail/railModel.ts`
+- **Lọc rail, nhóm Đang có agent / Đã mở** (v79) — ô lọc, nút mở project dạng icon, một dòng cho mỗi session · `apps/web/src/lib/rail/railView.ts`, `apps/web/src/components/workspace/WorkspaceSidebar.vue`
 - **Sắp xếp và kéo rail** — kéo nhóm dự án, Alt+↑/↓ · `apps/web/src/composables/useRailDrag.ts`
 - **Menu rail** (v43) — mở, đóng, menu project · `apps/web/src/lib/rail/railMenu.ts`
 - **Bố cục đã lưu theo project** (v24) — tối đa 20 mỗi project, một bố cục tự mở khi khởi động · `apps/desktop/src/layouts.ts`
@@ -161,6 +165,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Turn review + checkpoint theo lượt** (v68, 2.4.0) — giữ hoặc bỏ từng đoạn của lượt · `apps/desktop/src/preview/checkpoints.ts`
 - **Xử lý xung đột gộp từng khối** (v69) — ours / theirs / both / edit · `apps/web/src/components/workspace/ConflictView.vue`
 - **Git Log có đồ thị commit** (v30, v36) — nhánh, tag, tìm, diff · `apps/web/src/components/workspace/log/LogPane.vue`
+- **Thanh nhánh Git Log gọn** (v79) — nút chính + ⋯ (nhánh mới, so sánh, yêu thích, xoá, gom nhóm) · `apps/web/src/components/workspace/log/LogRefsToolbar.vue`
 - **Thanh Branches của Log** (v36) — tạo, fast-forward, fetch, xoá nhánh (xoá có xác nhận) · `apps/desktop/src/preview/branches.ts`
 - **Push trong app** (v54) — xem trước, ahead / behind, chọn tài khoản · `apps/web/src/components/workspace/log/PushDialog.vue`
 - **Bảo vệ git bằng xác nhận gốc** — xoá nhánh, merge, restore cần xác nhận · `apps/desktop/src/main.ts`
@@ -194,6 +199,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 ## Devices (Android / adb)
 
 - **Kết nối thiết bị USB và Wi-Fi** (v61) — mã ghép, QR, mDNS, nhớ thiết bị, tự kết nối · `apps/web/src/components/devices/DevicesView.vue`
+- **Thêm thiết bị** (v79) — nút accent ở tiêu đề mở panel ghép / kết nối · `apps/web/src/components/devices/DevicesView.vue`
 - **Chuyển USB sang Wi-Fi** — `apps/desktop/src/devices/manager.ts`
 - **Chụp màn hình thiết bị** (2.4.0, v72) — gửi vào agent đính kèm · `apps/web/src/components/devices/DeviceCaptureDialog.vue`
 - **Soi view tree** — id, chữ, khung trên ảnh chụp, tìm trong file · `apps/desktop/src/devices/uiDump.ts`
@@ -245,7 +251,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 
 - **Theo dõi lượt chạy Codex** (v16) — hiện dưới agent Claude đã gọi nó · `apps/collector/src/codex/monitor.ts`
 - **Liên kết Codex với Claude** — `apps/collector/src/codex/link.ts`
-- **Hạn mức Codex** — hiện trong chip PlanLimits · `apps/collector/src/codex/monitor.ts`
+- **Hạn mức Codex** — hiện trong popover trạng thái header (PlanLimits) · `apps/collector/src/codex/monitor.ts`
 
 ## Desktop shell (tray, deep link, MCP orrery)
 
@@ -255,6 +261,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **MCP server `orrery`** (v49) — tool `open_session`, token theo pane · `apps/desktop/src/pty/mcp.ts`
 - **Khởi động cùng Windows** (login item) — `ccm:login-item` · `apps/desktop/src/main.ts`
 - **Giữ máy thức khi agent chạy** (v76) — chặn ngủ (không chặn tắt màn hình) khi có session / subagent / job nền đang chạy + 2 phút; Tắt / Khi agent chạy / Chỉ khi cắm sạc; huy hiệu cốc cà phê ở header · `apps/desktop/src/power/awake.ts`, `apps/web/src/components/KeepAwakeBadge.vue`
+- **Popover trạng thái trên header** (v79) — hạn mức, giữ máy thức, ổ đĩa, tài nguyên, collector gom một nút · `apps/web/src/components/HeaderStatusPopover.vue`
 - **Status line bridge** — cài script, sao lưu `settings.json` trước khi ghi · `apps/desktop/src/statusline.ts`
 - **Chép / lưu log chẩn đoán** — gom log đã che bí mật · `apps/desktop/src/main.ts` (`logReport`)
 - **Nhật ký đã che bí mật** — một bộ luật chung `maskSecrets` / `createLogMasker` · `packages/shared/src/secretMask.ts`
@@ -279,5 +286,5 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Chế độ sáng / tối** — nhớ lựa chọn, tuỳ chọn trong Cài đặt · `apps/web/src/stores/settings.ts`
 - **Bộ nút điều khiển chung** (ToggleSwitch, SegmentedControl, ContextMenu) — `apps/web/src/components/ui/SegmentedControl.vue`
 - **Chuyển động có thể tắt** (reduced motion) — `apps/web/src/lib/motion.ts`
-- **Thanh bên Cài đặt (sheet phải)** — `apps/web/src/components/SettingsMenu.vue`
+- **Cửa sổ Cài đặt** (v79) — sidebar 9 trang + ô tìm, bảng chọn sự kiện báo bằng cảnh báo hệ thống / thông báo, Ctrl+, · `apps/web/src/components/SettingsMenu.vue`, `apps/web/src/components/settings/index.ts`
 - **Sao lưu / chuyển cấu hình** (v74) — xuất một file JSON (ccm.* localStorage + file cấu hình trong data dir, không token), nhập có xem trước theo mục, cờ đường dẫn không có, tự sao lưu trước khi cài update (giữ 3) · `apps/desktop/src/backup/service.ts`, `apps/web/src/components/BackupSettings.vue`

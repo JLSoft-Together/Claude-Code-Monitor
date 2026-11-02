@@ -54,7 +54,10 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     await sleep(500)
     const st = await evaluate(`${S}.get('workspace').panes[0].state`)
     check('pane notices stolen socket', st === 'error', st)
-    await evaluate(`[...document.querySelectorAll('button')].find(b=>/Reconnect|Kết nối lại/.test(b.title))?.click()`)
+    // v79: Reconnect lives in the pane's ⋯ menu ("restart" entry).
+    await evaluate(`document.querySelector('[data-pane-more]')?.click()`)
+    await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="restart"]')`, 5000, 'restart entry')
+    await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="restart"]').click()`)
     await waitFor(`${S}.get('workspace').panes[0]?.state === 'running'`, 10000, 'reconnected')
     check('reconnect', true)
 
@@ -74,7 +77,7 @@ const check = (name, ok, extra = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} 
     check('claude pane linked to monitor terminal', !!linked, String(linked))
     await sleep(2000)
     await shot('03-claude')
-    const header = await evaluate(`document.querySelectorAll('section header')[1]?.innerText`)
+    const header = await evaluate(`document.querySelector('[data-pane-of="' + ${S}.get('workspace').panes[1].key + '"]')?.innerText`)
     check('pane header shows session status', !!header && /Working|Waiting|Idle|Ready|Đang|Chờ|Rảnh|Sẵn sàng/i.test(header), JSON.stringify(header))
 
     // Browser-style "+": icon only (v25), the accessible name says what it makes.

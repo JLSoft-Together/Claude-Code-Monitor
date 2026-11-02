@@ -45,16 +45,22 @@ async function boot(app) {
     // Reopen guard: a live external session asks first and never opens on Cancel.
     await app.evaluate(`${S}.get('ui').setView('monitor')`)
     await app.sleep(1500)
-    const reopenBtn = await app.evaluate(`!![...document.querySelectorAll('button')].find(b => b.title === 'Open in Orrery')`)
+    // v79: the card's Open in Orrery button moved into its ⋯ menu.
+    const openCardMenu = `document.querySelector('[data-card-more]')?.click()`
+    await app.evaluate(openCardMenu)
+    await app.sleep(300)
+    const reopenBtn = await app.evaluate(`!!document.querySelector('[data-context-menu] [data-menu-id="reopen"]')`)
     check('reopen button on external session', reopenBtn)
     if (reopenBtn) {
       const panesBefore = await app.evaluate(`${W}.panes.length`)
-      await app.evaluate(`[...document.querySelectorAll('button')].find(b => b.title === 'Open in Orrery').click()`)
+      await app.evaluate(`document.querySelector('[data-context-menu] [data-menu-id="reopen"]').click()`)
       await app.sleep(300)
-      const warn = await app.evaluate(`document.querySelector('[role=alertdialog]')?.innerText ?? ''`)
+      // v79: the two-writer warning is the hint of the "Open anyway" child in the card menu, not a dialog.
+      const warn = await app.evaluate(`document.querySelector('[data-menu-id="reopen-confirm"]')?.title ?? ('no submenu: ' + [...document.querySelectorAll('[data-menu-id]')].map((m) => m.dataset.menuId).join())`)
       check('live session shows two-writer warning', /still running/i.test(warn), warn.slice(0, 80))
       await app.shot('p5-02-reopen-warning')
-      await app.evaluate(`[...document.querySelectorAll('[role=alertdialog] button')].find(b => b.textContent.trim() === 'Cancel').click()`)
+      await app.key('Escape', 'Escape', 27)
+      await app.key('Escape', 'Escape', 27)
       await app.sleep(300)
       check('cancel opens nothing', (await app.evaluate(`${W}.panes.length`)) === panesBefore && (await app.evaluate(`${S}.get('ui').view`)) === 'monitor')
     }

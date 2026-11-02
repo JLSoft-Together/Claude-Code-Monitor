@@ -32,6 +32,14 @@ export function suggestCompact(pct: number | null | undefined, state: string | n
 
 export const zoomKeys = (mac: boolean): string => (mac ? '⌘⇧↩' : 'Ctrl+Shift+Enter')
 
+export type HeadMode = 'bar' | 'thin'
+
+// A lone, unzoomed pane lends its header to the tab bar; with several panes (or one zoomed) each keeps a thin header.
+export const headMode = (multi: boolean, zoomed: boolean): HeadMode => (multi || zoomed ? 'thin' : 'bar')
+
+// The status word is spoken only when the owner has to act or the run is over; otherwise the icon (and its tooltip) carries it.
+export const statusWordShown = (state: RailState): boolean => state === 'asked' || state === 'failed' || state === 'ended'
+
 const ACTIVE =
   'button, a, input, select, textarea, label, [role=button], [role=group], [role=radiogroup], [role=search], [role=menu], [role=menuitem], [contenteditable], [data-pane-chip]'
 

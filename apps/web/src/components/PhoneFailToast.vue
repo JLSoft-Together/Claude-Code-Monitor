@@ -18,6 +18,7 @@ onBeforeUnmount(off)
 
 function openSettings(): void {
   error.value = null
+  ui.settingsPage = 'notify'
   ui.settingsOpen = true
 }
 </script>

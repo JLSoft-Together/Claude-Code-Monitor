@@ -43,7 +43,7 @@ const elapsed = computed(() => {
 const edge = computed(() => {
   const s = agent.value?.status
   if (selected.value) return 'border-focus ring-2 ring-focus'
-  if (s === 'working' || s === 'waiting' || s === 'error') return meta.value.border
+  if (s === 'waiting') return meta.value.border
   return 'border-line'
 })
 

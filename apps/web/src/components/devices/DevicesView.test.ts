@@ -118,6 +118,9 @@ async function mountWith(snap: DevSnapshot) {
 }
 
 const row = (id: string) => w!.get(`[data-dev-row="${id}"]`)
+const openAdd = async () => {
+  await w!.get('[data-dev-add]').trigger('click')
+}
 const actions = (id: string) => row(id).findAll('[data-dev-action]').map((b) => b.attributes('data-dev-action'))
 
 beforeEach(() => {
@@ -173,6 +176,7 @@ describe('Devices view', () => {
   it('connect button calls pair when a code is filled', async () => {
     api.devPair.mockResolvedValue({ ok: true, detail: 'paired' })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-address]').setValue('192.168.1.5:37000')
     await w!.get('[data-dev-pair-toggle]').trigger('click')
     await w!.get('[data-dev-code]').setValue('123456')
@@ -186,6 +190,7 @@ describe('Devices view', () => {
 
   it('a partial pairing code disables Connect and asks for all 6 digits', async () => {
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-address]').setValue('192.168.1.5:37000')
     await w!.get('[data-dev-pair-toggle]').trigger('click')
     expect(w!.find('[data-dev-code-hint]').exists()).toBe(false)
@@ -204,6 +209,7 @@ describe('Devices view', () => {
   it('connect button calls connect without a code', async () => {
     api.devConnect.mockResolvedValue({ ok: true })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-address]').setValue('192.168.1.5:5555')
     await w!.get('[data-dev-connect]').trigger('click')
     await flushPromises()
@@ -463,6 +469,7 @@ describe('Devices view', () => {
   it('shows the error under the bar', async () => {
     api.devConnect.mockResolvedValue({ ok: false, error: 'connect-failed', detail: 'failed to connect' })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-address]').setValue('192.168.1.5:5555')
     await w!.get('[data-dev-connect]').trigger('click')
     await flushPromises()
@@ -471,14 +478,31 @@ describe('Devices view', () => {
     expect(err.text()).toContain('failed to connect')
   })
 
-  it('shows the empty hint without devices', async () => {
+  it('shows the empty hint without devices, with a button that opens the add panel', async () => {
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
     expect(w!.get('[data-dev-empty]').text()).toContain(t('devices.empty.none'))
+    expect(w!.find('[data-dev-bar]').exists()).toBe(false)
+    await w!.get('[data-dev-empty-add]').trigger('click')
+    expect(w!.find('[data-dev-bar]').exists()).toBe(true)
+    expect(w!.find('[data-dev-empty-add]').exists()).toBe(false)
+  })
+
+  it('keeps the connect paths behind one Add device button and only one accent button visible', async () => {
+    await mountWith({ adb: '/adb', devices: [dev('R58M')], autoConnect: true })
+    expect(w!.find('[data-dev-address]').exists()).toBe(false)
+    expect(w!.get('[data-dev-add]').classes()).toContain('ccm-btn-primary')
+    await openAdd()
+    for (const sel of ['[data-dev-address]', '[data-dev-pair-toggle]', '[data-dev-qr]', '[data-dev-discover]', '[data-dev-remembered]']) expect(w!.find(sel).exists()).toBe(true)
+    expect(w!.get('[data-dev-add]').classes()).not.toContain('ccm-btn-primary')
+    expect(w!.findAll('.ccm-btn-primary')).toHaveLength(1)
+    await openAdd()
+    expect(w!.find('[data-dev-bar]').exists()).toBe(false)
   })
 
   it('qr popover renders the code and cancels on close', async () => {
     api.devQrStart.mockResolvedValue({ id: 'q1', payload: 'WIFI:T:ADB;S:orrery-0a1b2c3d;P:123456;;' })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-qr]').trigger('click')
     await flushPromises()
     await new Promise((r) => setTimeout(r, 0))
@@ -494,6 +518,7 @@ describe('Devices view', () => {
   it('qr popover shows why the start failed', async () => {
     api.devQrStart.mockResolvedValue({ ok: false, error: 'mdns-unavailable' })
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-qr]').trigger('click')
     await flushPromises()
     const status = w!.get('[data-dev-qr-status]').text()
@@ -505,6 +530,7 @@ describe('Devices view', () => {
     let resolve!: (v: unknown) => void
     api.devQrStart.mockReturnValue(new Promise((r) => (resolve = r)))
     await mountWith({ adb: '/adb', devices: [], autoConnect: true })
+    await openAdd()
     await w!.get('[data-dev-qr]').trigger('click')
     await w!.get('[data-dev-qr-popover]').trigger('keydown', { key: 'Escape' })
     expect(w!.find('[data-dev-qr-popover]').exists()).toBe(false)
@@ -520,6 +546,7 @@ describe('Devices view', () => {
     await w!.get('[data-dev-noadb] button').trigger('click')
     const ui = useUiStore()
     expect(ui.settingsOpen).toBe(true)
+    expect(ui.settingsPage).toBe('integrations')
     await flushPromises()
     expect(api.devSnapshot).toHaveBeenCalledTimes(1)
     api.devHold.mockClear()

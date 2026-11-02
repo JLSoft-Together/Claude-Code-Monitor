@@ -208,7 +208,7 @@ onBeforeUnmount(() => stop?.())
         :style="frame"
         :class="[
           resizing ? 'border-focus' : '',
-          selected ? 'border-focus ring-2 ring-focus' : attention ? 'border-st-waiting' : agent.status === 'error' ? 'border-st-error' : 'border-line',
+          selected ? 'border-focus ring-2 ring-focus' : attention ? 'border-st-waiting' : 'border-line',
           attention && !selected ? 'ccm-attention' : '',
           dimmed ? 'opacity-30' : '',
           picked ? 'outline-2 outline-offset-4 outline-focus outline-dashed' : '',
@@ -241,7 +241,6 @@ onBeforeUnmount(() => stop?.())
             {{ title }}
           </span>
           <ProviderBadge v-if="codex" :mode="terminal?.entrypoint ?? agent.type" variant="short" />
-          <span :key="agent.status" class="ccm-swap-in shrink-0 rounded-full px-2 py-px text-2xs font-semibold" :class="[meta.soft, meta.text]">{{ t(meta.labelKey) }}</span>
         </div>
         <div class="flex min-w-0 items-center gap-2 text-xs">
           <span v-if="model" class="nodrag min-w-0 flex-1 cursor-text truncate text-ink-muted select-text" :title="modelTitle">

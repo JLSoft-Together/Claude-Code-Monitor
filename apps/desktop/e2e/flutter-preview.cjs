@@ -80,13 +80,23 @@ async function run(app) {
   await evaluate(`${W}.openFile(${JSON.stringify(path.join(DIR, 'README.md'))})`)
   await waitFor(`!!document.querySelector('[data-kind=file] [data-file-show-diff], [data-kind=file] [role=document]')`, 8000, 'readme').catch(() => {})
   await sleep(500)
-  check('no toggle on a non-Dart file', await evaluate(`!document.querySelector('[data-fwp-toggle]')`))
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
+  await sleep(200)
+  check('no toggle on a non-Dart file', await evaluate(`!document.querySelector('[data-context-menu] [data-menu-id="fwp"]')`))
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
 
   await evaluate(`${W}.openFile(${JSON.stringify(A)})`)
-  await waitFor(`!!document.querySelector('[data-fwp-toggle]')`, 8000, 'toggle').catch(() => {})
-  check('a .dart file of a Flutter project shows the toggle', await evaluate(`!!document.querySelector('[data-fwp-toggle]')`))
+  await waitFor(`!!document.querySelector('[data-kind=file] [data-pane-more]')`, 8000, 'more menu').catch(() => {})
+  await sleep(800)
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
+  await sleep(200)
+  check('a .dart file of a Flutter project shows the toggle in the more menu', await evaluate(`!!document.querySelector('[data-context-menu] [data-menu-id="fwp"]')`))
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
   check('panel stays closed until toggled', await evaluate(`!document.querySelector('[data-fwp-panel]')`))
-  await evaluate(`document.querySelector('[data-fwp-toggle]').click()`)
+  await sleep(300) // the ⋯ button ignores a click within 250 ms of its menu closing
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
+  await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="fwp"]')`, 5000, 'menu fwp')
+  await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="fwp"]').click()`)
   await waitFor(`${entries}.length === 4`, 10000, 'entries').catch(() => {})
   const list = await evaluate(entries)
   check('panel lists this file first (classes too), then other @Preview only', JSON.stringify(list) === JSON.stringify(['lib/a.dart#primaryButton', 'lib/a.dart#needsTitle', 'lib/a.dart#Banner2', 'lib/widgets/card.dart#InfoCard']), JSON.stringify(list))
@@ -95,7 +105,7 @@ async function run(app) {
   check('entry with required params is disabled with its reason', await evaluate(`(() => { const b = document.querySelector('[data-fwp-entry="lib/a.dart#needsTitle"]'); return b.disabled && !!b.querySelector('[data-fwp-skipped]') })()`))
   check('label from name:', await evaluate(`document.querySelector('[data-fwp-entry="lib/a.dart#primaryButton"]').textContent.includes('Primary button')`))
   check('status shows icon + text', await evaluate(`(() => { const s = document.querySelector('[data-fwp-state]'); return !!s.querySelector('svg') && s.textContent.trim().length > 0 })()`))
-  check('toggle state persists', await evaluate(`localStorage.getItem('ccm.fwp.open') === '1' && document.querySelector('[data-fwp-toggle]').getAttribute('aria-pressed') === 'true'`))
+  check('toggle state persists', await evaluate(`localStorage.getItem('ccm.fwp.open') === '1'`))
 
   await evaluate(`document.querySelector('[data-fwp-entry="lib/a.dart#primaryButton"]').click()`)
   await sleep(400)
@@ -115,7 +125,10 @@ async function run(app) {
   await waitFor(`${entries}.includes('lib/a.dart#added')`, 8000, 'rescan on save').catch(() => {})
   check('saving the file rescans the list', await evaluate(`${entries}.includes('lib/a.dart#added')`))
 
-  await evaluate(`document.querySelector('[data-fwp-toggle]').click()`)
+  await sleep(300) // the ⋯ button ignores a click within 250 ms of its menu closing
+  await evaluate(`[...document.querySelectorAll('[data-kind=file] [data-pane-more]')].filter((b) => b.offsetParent).at(-1).click()`)
+  await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id="fwp"]')`, 5000, 'menu fwp')
+  await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="fwp"]').click()`)
   await sleep(300)
   check('toggle closes the panel', await evaluate(`!document.querySelector('[data-fwp-panel]')`))
 }

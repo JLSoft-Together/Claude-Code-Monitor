@@ -59,10 +59,10 @@ async function main() {
     check('"Don\'t show tips" persists', await evaluate(`JSON.parse(localStorage.getItem('ccm.tips')).off === true && !document.querySelector('[data-shortcut-tip]')`))
 
     // Help menu → shortcuts list.
-    await click('[data-tour="ws-help"]')
-    await waitFor(`!!document.querySelector('[data-menu=shortcuts]')`, 3000, 'help menu')
-    check('help menu: shortcuts + guide', await evaluate(`!!document.querySelector('[data-menu=tour]')`))
-    await evaluate(`document.querySelector('[data-menu=shortcuts]').click()`)
+    await click('[data-more-views]')
+    await waitFor(`!!document.querySelector('[data-context-menu] [data-menu-id=shortcuts]')`, 3000, 'help menu')
+    check('help menu: shortcuts + guide', await evaluate(`!!document.querySelector('[data-context-menu] [data-menu-id=tour]')`))
+    await evaluate(`document.querySelector('[data-context-menu] [data-menu-id=shortcuts]').click()`)
     check('shortcuts dialog opens from the workspace', !!(await waitFor(`${S}.get('ui').shortcutsOpen`, 3000, 'shortcuts').catch(() => false)))
     await sleep(300); await shot('v25-04-shortcuts')
     await evaluate(`${S}.get('ui').shortcutsOpen = false`)
@@ -75,7 +75,7 @@ async function main() {
       check(`theme ${id}`, st.theme === id && st.dark === (mode === 'dark') && /^#/.test(st.surface) && st.soft.startsWith('color-mix'), JSON.stringify(st))
       await shot(`v25-05-theme-${id}`)
     }
-    await evaluate(`${S}.get('ui').settingsOpen = true`)
+    await evaluate(`${S}.get('ui').settingsPage = 'appearance'; ${S}.get('ui').settingsOpen = true`)
     await sleep(500); await shot('v25-06-settings-themes')
     await evaluate(`${S}.get('ui').settingsOpen = false`)
     await evaluate(`${S}.get('settings').setTheme('dark')`)
@@ -130,6 +130,9 @@ async function main() {
     }
     const dropped = await waitFor(`(() => { const l = ${A}.list(${JSON.stringify(claudeKey)}); return l.length === 2 && l.every(a => a.state === 'inserted' && a.seen) && l.map(a => a.token).join(' ') })()`, 20000, 'dropped items in prompt').catch(() => null)
     check('drop: @package.json + [Image #N] in the prompt, named', !!dropped && dropped.includes('@package.json') && /\[Image #\d+\]/.test(dropped), String(dropped ?? (await evaluate(`JSON.stringify(${A}.list(${JSON.stringify(claudeKey)}))`))))
+    // v79: the Attach toggle moved into the pane's ⋯ menu; open the panel through the store like that entry does.
+    await evaluate(`${A}.open[${JSON.stringify(claudeKey)}] || ${A}.toggle(${JSON.stringify(claudeKey)}, true)`)
+    await sleep(400)
     check('panel shows file names', await evaluate(`(() => { const t = document.querySelector('${pane} [data-attachments]')?.textContent ?? ''; return t.includes('package.json') && t.includes('ccm-256.png') })()`))
     await shot('v25-08-attach-drop')
 

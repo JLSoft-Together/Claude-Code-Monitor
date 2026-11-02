@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue'
 import { pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
-import { Check, FolderOpen, FolderPlus, GripVertical, History, LoaderCircle, Pencil, SquareTerminal, Star, X } from 'lucide-vue-next'
+import { Check, FolderOpen, FolderPlus, GripVertical, History, LoaderCircle, Pencil, Plus, SquareTerminal, Star, X } from 'lucide-vue-next'
 import type { Favorite, LaunchMode } from '@ccm/shared'
 import { shortPath } from '../lib/format'
 import { useConnectionStore } from '../stores/connection'
@@ -15,6 +15,24 @@ const { t } = useI18n()
 const favorites = useFavoritesStore()
 const terminals = useTerminalsStore()
 const connection = useConnectionStore()
+
+const HINT_KEY = 'ccm.favHintDismissed'
+function readHintDismissed(): boolean {
+  try {
+    return localStorage.getItem(HINT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const hintDismissed = ref(readHintDismissed())
+function dismissHint(): void {
+  hintDismissed.value = true
+  try {
+    localStorage.setItem(HINT_KEY, '1')
+  } catch {
+    return
+  }
+}
 
 const sent = ref<string | null>(null)
 const failed = ref<string | null>(null)
@@ -263,11 +281,13 @@ const actionCls =
       <button
         v-if="!adding"
         type="button"
-        class="ccm-btn-plain -my-1 gap-1! px-2! text-xs font-medium hover:text-accent-ink!"
+        class="ccm-btn-plain -my-1 -me-1 hover:text-accent-ink!"
         :title="t('favorites.addTitle')"
+        :aria-label="t('favorites.addTitle')"
+        data-fav-add
         @click="openAdd"
       >
-        <FolderPlus :size="14" aria-hidden="true" />{{ t('favorites.add') }}
+        <Plus :size="15" aria-hidden="true" />
       </button>
     </div>
 
@@ -332,8 +352,15 @@ const actionCls =
       </form>
     </Transition>
 
-    <p v-if="!favorites.list.length && !adding" class="rounded-card border border-dashed border-line-strong px-3 py-2.5 text-xs text-ink-muted">
-      {{ t('favorites.empty') }}
+    <p
+      v-if="!favorites.list.length && !adding && !hintDismissed"
+      class="flex items-start gap-2 rounded-card border border-dashed border-line-strong py-2 pr-1.5 pl-3 text-xs text-ink-muted"
+      data-fav-hint
+    >
+      <span class="min-w-0 flex-1 pt-0.5">{{ t('favorites.empty') }}</span>
+      <button type="button" class="ccm-btn-plain -my-0.5 shrink-0" :aria-label="t('monitorV79.favHint.dismiss')" :title="t('monitorV79.favHint.dismiss')" @click="dismissHint">
+        <X :size="14" aria-hidden="true" />
+      </button>
     </p>
 
     <p class="sr-only" aria-live="polite">{{ announce }}</p>

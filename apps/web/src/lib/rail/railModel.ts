@@ -191,12 +191,22 @@ export function rowLines(row: Pick<RailRow, 'kind' | 'agent' | 'task' | 'ordinal
   return row.twin ? { first: `${lines.first} ${row.twin}`, second: lines.second } : lines
 }
 
-export function showsCheckouts(cluster: Pick<RailCluster, 'checkouts' | 'live'>): boolean {
+/** A lone checkout needs no line of its own: its branch rides on the project header, and a remembered project opens from the header. */
+export function showsCheckouts(cluster: Pick<RailCluster, 'checkouts'>): boolean {
   const k = cluster.checkouts
-  return k.some((c) => c.path) && (k.length > 1 || !cluster.live || k.some((c) => c.branch || c.tag === 'worktree'))
+  return k.some((c) => c.path) && (k.length > 1 || k.some((c) => c.tag === 'worktree'))
 }
 
-export const headId = (clusterKey: string): string => `head:${clusterKey}`
+/** One live project with one pane: its header carries the pane's state and a click focuses it; the row shows only when expanded. */
+export function isSolo(cluster: Pick<RailCluster, 'live' | 'checkouts'>): boolean {
+  const k = cluster.checkouts
+  return cluster.live && !showsCheckouts(cluster) && k.length === 1 && k[0]!.rows.length === 1 && k[0]!.groups.length === 0
+}
+
+/** StatusIcon statuses; idle draws no badge, starting a spinner. */
+export const RAIL_BADGE: Partial<Record<RailState, string>> = { failed: 'error', asked: 'waiting', working: 'working', subagents: 'working', done: 'completed', ended: 'completed', parked: 'stale' }
+
+export const headId =(clusterKey: string): string => `head:${clusterKey}`
 export const checkoutId = (clusterKey: string, checkoutKey: string): string => `co:${clusterKey}|${checkoutKey}`
 export const rowId = (rowKey: string): string => `row:${rowKey}`
 

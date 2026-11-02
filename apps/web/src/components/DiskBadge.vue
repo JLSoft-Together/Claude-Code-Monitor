@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleCheck, FolderOpen, HardDrive, RefreshCw, TriangleAlert, OctagonAlert, X } from 'lucide-vue-next'
+import { CircleCheck, FolderOpen, RefreshCw, TriangleAlert, OctagonAlert, X } from 'lucide-vue-next'
 import type { DiskDrive, DiskLevel } from '@ccm/shared'
-import { hasBuildClean, hasDisk, uniqueDirs } from '../lib/buildClean'
+import { hasBuildClean, uniqueDirs } from '../lib/buildClean'
 import { hasAgentData } from '../lib/agentData'
 import { formatBytes } from '../lib/resources'
 import { useDiskStore } from '../stores/disk'
 import { useUiStore } from '../stores/ui'
 import { isTerm, useWorkspaceStore, workCwd } from '../stores/workspace'
 
-/** Header badge (v77 R9): shown only while a watched drive is low; the popover lists the drives and ways to free space. */
+/** Drives popover (v77 R9, v79): opened from the header status popover (`disk.open`), anchored under `anchor`. */
+const props = defineProps<{ anchor: HTMLElement | null }>()
 const { t, locale } = useI18n()
 const disk = useDiskStore()
 const ui = useUiStore()
@@ -24,16 +25,11 @@ watch(
   { immediate: true },
 )
 
-const btn = ref<HTMLElement | null>(null)
 const pop = ref<HTMLElement | null>(null)
-const anchor = ref<DOMRect | null>(null)
+const anchorRect = ref<DOMRect | null>(null)
 const refreshing = ref(false)
 
-const low = computed(() => disk.low)
-const first = computed(() => low.value[0] ?? null)
 const gb = (b: number): string => formatBytes(b, locale.value)
-const text = computed(() => (low.value.length > 1 ? t('disk.badgeMany', { n: low.value.length }) : first.value ? t('disk.badge', { label: first.value.label }) : ''))
-const tip = computed(() => low.value.map((d) => t('disk.tip', { label: d.label, free: gb(d.freeBytes), total: gb(d.totalBytes) })).join('\n'))
 
 const LEVEL_ICON: Record<DiskLevel, typeof CircleCheck> = { ok: CircleCheck, warn: TriangleAlert, danger: OctagonAlert }
 const LEVEL_TEXT: Record<DiskLevel, string> = { ok: 'text-success', warn: 'text-warning', danger: 'text-st-error' }
@@ -43,22 +39,24 @@ const measuredAt = computed(() => (disk.state?.at ? new Date(disk.state.at).toLo
 
 const WIDTH = 340
 const style = computed(() => {
-  const a = anchor.value
+  const a = anchorRect.value
   if (!a) return {}
   const left = Math.max(12, Math.min(a.right - WIDTH, window.innerWidth - WIDTH - 12))
   return { left: `${left}px`, top: `${a.bottom + 6}px`, width: `${Math.min(WIDTH, window.innerWidth - 24)}px`, '--ccm-origin': 'top right' }
 })
 
-function toggle(): void {
-  if (disk.open) return close()
-  anchor.value = btn.value?.getBoundingClientRect() ?? null
-  disk.open = true
-  void nextTick(() => pop.value?.querySelector<HTMLElement>('button')?.focus())
-}
+watch(
+  () => disk.open,
+  (open) => {
+    if (!open) return
+    anchorRect.value = props.anchor?.getBoundingClientRect() ?? null
+    void nextTick(() => pop.value?.querySelector<HTMLElement>('button')?.focus())
+  },
+)
 
 function close(refocus = true): void {
   disk.open = false
-  if (refocus) btn.value?.focus()
+  if (refocus) props.anchor?.focus()
 }
 
 async function refresh(): Promise<void> {
@@ -74,6 +72,7 @@ function cleanBuild(): void {
 
 async function agentData(): Promise<void> {
   close(false)
+  ui.settingsPage = 'notify'
   ui.settingsOpen = true
   await nextTick()
   document.querySelector('[data-agentdata]')?.scrollIntoView({ block: 'start' })
@@ -81,7 +80,7 @@ async function agentData(): Promise<void> {
 
 function onOutside(e: PointerEvent): void {
   const target = e.target as Node
-  if (disk.open && !pop.value?.contains(target) && !btn.value?.contains(target)) close(false)
+  if (disk.open && !pop.value?.contains(target)) close(false)
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -102,25 +101,9 @@ watch(
 </script>
 
 <template>
-  <button
-    v-if="hasDisk && disk.worst"
-    ref="btn"
-    type="button"
-    class="ccm-btn-plain mr-1 h-6 gap-1 rounded-full bg-fill px-2 text-xs font-medium"
-    :class="disk.worst === 'danger' ? 'text-st-error' : 'text-warning'"
-    :title="tip"
-    :aria-label="`${text}. ${tip}`"
-    aria-haspopup="dialog"
-    :aria-expanded="disk.open"
-    :data-disk-badge="disk.worst"
-    @click="toggle"
-  >
-    <HardDrive :size="14" aria-hidden="true" />
-    <span class="hidden tabular-nums lg:inline">{{ text }}</span>
-  </button>
   <Teleport to="body">
     <div
-      v-if="disk.open && anchor"
+      v-if="disk.open && anchorRect"
       ref="pop"
       class="ccm-menu ccm-pop fixed z-50 flex max-h-[min(70vh,520px)] flex-col p-0"
       :style="style"

@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, nextTick, ref, watch } from 'vue'
 import { reducedMotion, pinLeaving } from '../lib/motion'
 import { useI18n } from 'vue-i18n'
-import { ArrowDownUp, Trash2 } from 'lucide-vue-next'
+import { ArrowDownUp, Hand, Trash2 } from 'lucide-vue-next'
 import { readSessionSort, saveSessionSort, SESSION_SORTS, sortSessions } from '../lib/sessionSort'
 import { useConnectionStore } from '../stores/connection'
 import { useTerminalsStore } from '../stores/terminals'
@@ -14,6 +14,7 @@ import LottieArt from './LottieArt.vue'
 import PanelHeader from './PanelHeader.vue'
 import ProjectStrip from './ProjectStrip.vue'
 import { projectGroups, sameGroups, type ProjectGroup } from '../lib/projectGroups'
+import { groupSessions, sameSessionGroups, type SessionGroup } from '../lib/sessionGroups'
 import SessionCard from './SessionCard.vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -48,10 +49,10 @@ const filterIds = computed(() => {
 watch(groups, (gs) => {
   if (projectFilter.value && !gs.some((g) => g.key === projectFilter.value)) projectFilter.value = null
 })
-const sortedIds = computed<string[]>((prev) => {
+const sessionGroups = computed<SessionGroup[]>((prev) => {
   const keep = filterIds.value
-  const next = sorted.value.filter((x) => !keep || keep.has(x.id)).map((x) => x.id)
-  return prev?.length === next.length && next.every((id, i) => id === prev[i]) ? prev : next
+  const next = groupSessions(sorted.value.filter((x) => !keep || keep.has(x.id)))
+  return sameSessionGroups(prev, next) ? prev! : next
 })
 const CardById = defineComponent({
   props: { id: { type: String, required: true } },
@@ -86,7 +87,7 @@ function onFocusOut(e: FocusEvent): void {
   const list = e.currentTarget as HTMLElement
   if (!list.contains(e.relatedTarget as Node | null) && !list.matches(':hover')) freeze(false)
 }
-const listEl = ref<{ $el: HTMLElement } | null>(null)
+const listEl = ref<HTMLElement | null>(null)
 watch(
   () => ui.revealRequest,
   async () => {
@@ -95,7 +96,7 @@ watch(
       projectFilter.value = null
       await nextTick()
     }
-    const root = listEl.value?.$el
+    const root = listEl.value
     if (!id || !root || ui.isCollapsed('sessions')) return
     const item = [...root.querySelectorAll<HTMLElement>('[data-terminal-id]')].find((el) => el.dataset.terminalId === id)
     const smooth = !reducedMotion()
@@ -112,8 +113,8 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
     <div id="sessions-body" class="ccm-scroll -m-1 min-h-0 flex-1 overflow-y-auto p-1">
     <FavoritesList />
     <JobsList />
-    <ProjectStrip v-if="connection.hasData" v-model="projectFilter" :groups="groups" />
     <div v-if="connection.hasData && terminals.list.length > 1" class="mb-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+      <ProjectStrip v-model="projectFilter" :groups="groups" />
       <AppSelect v-model="sortBy" :options="sortOptions" :label="t('sessions.sortLabel')" :icon="ArrowDownUp" size="sm" />
       <button
         v-if="endedCount > 0"
@@ -156,21 +157,37 @@ const endedCount = computed(() => terminals.list.length - terminals.live.length)
       <p class="text-xs text-ink-muted">{{ t('sessions.emptyHint') }}</p>
     </div>
 
-    <TransitionGroup
+    <div
       v-else
       ref="listEl"
-      tag="ul"
-      name="ccm-list" @before-leave="pinLeaving"
-      class="relative grid grid-cols-1 gap-2.5"
+      class="flex flex-col gap-3"
       @pointerenter="freeze(true)"
       @pointerleave="onPointerLeave"
       @focusin="freeze(true)"
       @focusout="onFocusOut"
     >
-      <li v-for="id in sortedIds" :key="id" :data-terminal-id="id">
-        <CardById :id="id" />
-      </li>
-    </TransitionGroup>
+      <section
+        v-for="g in sessionGroups"
+        :key="g.key"
+        :aria-labelledby="`session-group-${g.key}`"
+        :data-session-group="g.key"
+        :class="g.key === 'needs' ? 'rounded-card bg-st-waiting-soft p-2' : ''"
+      >
+        <h3
+          :id="`session-group-${g.key}`"
+          class="mb-1.5 flex items-center gap-1.5 px-0.5 text-xs font-semibold"
+          :class="g.key === 'needs' ? 'text-st-waiting' : 'text-ink-muted'"
+        >
+          <Hand v-if="g.key === 'needs'" :size="14" aria-hidden="true" />{{ t(`monitorV79.group.${g.key}`) }}
+          <span class="font-normal tabular-nums" :class="g.key === 'needs' ? '' : 'text-ink-faint'" data-group-count>{{ g.ids.length }}</span>
+        </h3>
+        <TransitionGroup tag="ul" name="ccm-list" class="relative grid grid-cols-1 gap-2.5" @before-leave="pinLeaving">
+          <li v-for="id in g.ids" :key="id" :data-terminal-id="id">
+            <CardById :id="id" />
+          </li>
+        </TransitionGroup>
+      </section>
+    </div>
     </div>
   </section>
 </template>

@@ -5,6 +5,7 @@ import { ChevronRight, Sparkles, X } from 'lucide-vue-next'
 import { APP_VERSION, CHANGELOG, markSeen, seenVersion, shouldShowWhatsNew, type Release } from '../lib/changelog'
 import { hasTerminals } from '../lib/desktop'
 import { retireOverlay } from '../lib/motion'
+import { canOfferWhatsNew, tourShownThisSession } from '../lib/onboardingGate'
 import { tourDone, tourFor } from '../lib/tour'
 import { useUiStore } from '../stores/ui'
 
@@ -78,14 +79,22 @@ function tourDue(): boolean {
   const id = tourFor(ui.view, hasTerminals)
   return !!id && !tourDone(id)
 }
-const blocked = (): boolean => ui.whatsNewOpen || ui.setupOpen || !!ui.tourOpen || tourDue()
+const allowed = (): boolean =>
+  canOfferWhatsNew({
+    due: shouldShowWhatsNew(seenVersion(), APP_VERSION),
+    whatsNewOpen: ui.whatsNewOpen,
+    setupOpen: ui.setupOpen,
+    tourOpen: !!ui.tourOpen,
+    tourDue: tourDue(),
+    tourShownThisSession: tourShownThisSession(),
+  })
 let offered = false
 let timer = 0
 function offer(): void {
   window.clearTimeout(timer)
   if (offered || !shouldShowWhatsNew(seenVersion(), APP_VERSION)) return
   timer = window.setTimeout(() => {
-    if (offered || blocked()) return
+    if (offered || !allowed()) return
     offered = true
     ui.whatsNewOpen = true
   }, 1200)

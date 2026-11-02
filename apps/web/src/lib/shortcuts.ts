@@ -23,6 +23,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'hints', keys: ['H'], group: 'help' },
   { id: 'help', keys: ['?'], group: 'help' },
   { id: 'palette', keys: ['Mod', 'K'], group: 'help' },
+  { id: 'settings', keys: ['Mod', ','], group: 'help' },
 ]
 
 /** Workspace chords, mirroring `workspaceAction` in lib/workspaceKeys.ts (they work even while a terminal has focus). */

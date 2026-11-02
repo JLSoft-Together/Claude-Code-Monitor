@@ -29,7 +29,7 @@ export const WORKSPACE_TOUR_STEPS: TourStep[] = [
   { id: 'pane', target: 'ws-pane', absent: true },
   { id: 'sidebar', target: 'ws-sidebar', absent: true },
   { id: 'attach', target: 'ws-attach', absent: true },
-  { id: 'keys', target: 'ws-help', absent: true },
+  { id: 'keys', target: 'compact' },
 ]
 
 export type TourId = 'monitor' | 'workspace'

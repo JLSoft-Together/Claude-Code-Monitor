@@ -122,7 +122,7 @@ async function phaseA(app) {
   })
 
   await step(app, 'settings', async () => {
-    await evaluate(`${UI}.settingsOpen = true`)
+    await evaluate(`${UI}.settingsPage = 'general'; ${UI}.settingsOpen = true`)
     await waitFor(`!!document.querySelector('[data-setting="restore-mode"]')`, 8000, 'restore mode row')
     const opts = await evaluate(`[...document.querySelectorAll('[data-setting="restore-mode"] [role=radio]')].map((b) => b.textContent.trim() + (b.getAttribute('aria-checked') === 'true' ? '*' : '')).join('|')`)
     check('Settings › Startup: "When the app opens" Ask* / Reopen / Do nothing', opts === 'Ask*|Reopen|Do nothing', opts)
@@ -152,7 +152,7 @@ async function phaseB(app) {
     check('deleted folder falls back to the start folder', cwds.some((c) => same(c, TWO)) && !cwds.some((c) => same(c, GONE)), JSON.stringify(cwds))
   })
   await step(app, 'set reopen', async () => {
-    await evaluate(`${UI}.settingsOpen = true`)
+    await evaluate(`${UI}.settingsPage = 'general'; ${UI}.settingsOpen = true`)
     await waitFor(`!!document.querySelector('[data-setting="restore-mode"]')`, 8000, 'restore mode row')
     await evaluate(`[...document.querySelectorAll('[data-setting="restore-mode"] [role=radio]')].find((b) => b.textContent.trim() === 'Reopen').click()`)
     await waitFor(`localStorage.getItem('ccm.workspace.restoreMode') === 'auto'`, 3000, 'mode stored')

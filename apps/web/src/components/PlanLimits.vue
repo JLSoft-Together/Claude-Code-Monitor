@@ -8,7 +8,7 @@ import { retireOverlay } from '../lib/motion'
 import { useExtrasStore } from '../stores/extras'
 import { useCountUp } from '../composables/useCountUp'
 
-const props = withDefaults(defineProps<{ provider?: Provider; compact?: boolean }>(), { provider: 'claude', compact: false })
+const props = withDefaults(defineProps<{ provider?: Provider; compact?: boolean; list?: boolean }>(), { provider: 'claude', compact: false, list: false })
 const { t, locale } = useI18n()
 const extras = useExtrasStore()
 const codex = computed(() => props.provider === 'codex')
@@ -131,8 +131,26 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="windows.length" ref="root" class="relative flex">
+    <div v-if="list" class="w-full" :data-limits-list="provider">
+      <p class="flex items-center gap-1.5 text-xs font-semibold text-ink">
+        <component :is="codex ? Hexagon : Asterisk" :size="13" :stroke-width="2.25" :class="codex ? 'text-agent-codex' : 'text-agent-claude-ink'" aria-hidden="true" />{{ t(codex ? 'provider.codex' : 'provider.claude') }}
+        <span v-if="stale" class="ml-auto text-2xs font-normal text-ink-faint">{{ t('limits.staleNote') }}</span>
+      </p>
+      <div v-for="w in windows" :key="w.key" class="mt-2 grid grid-cols-[3.5rem_1fr_auto] items-center gap-x-2 gap-y-0.5" :data-limit-row="w.key">
+        <span class="text-2xs text-ink-muted">{{ t(`limits.${w.key}`) }}</span>
+        <span class="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden="true">
+          <span class="block h-full origin-left rounded-full" :class="tone(w.level).bar" :style="{ transform: `scaleX(${Math.min(100, w.pct) / 100})` }" />
+        </span>
+        <span class="inline-flex items-center justify-end gap-0.5 text-xs font-semibold tabular" :class="tone(w.level).text">
+          <component :is="LEVEL[w.level].icon" v-if="w.level !== 'ok'" :size="11" aria-hidden="true" />{{ t('headerV79.left', { pct: w.left }) }}
+        </span>
+        <span class="col-span-3 inline-flex items-center gap-1 text-2xs text-ink-faint tabular" :title="w.resetsIn ? t('limits.resetsIn', { in: w.resetsIn }) : undefined">
+          <RotateCcw :size="10" aria-hidden="true" />{{ w.resetAt ? `${w.resetAt} (${w.resetsIn})` : '—' }}
+        </span>
+      </div>
+    </div>
     <button
-      v-if="compact"
+      v-else-if="compact"
       ref="trigger"
       type="button"
       class="flex h-7 cursor-pointer items-center gap-2 rounded-control px-2 text-left transition-colors hover:bg-fill"

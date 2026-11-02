@@ -29,7 +29,7 @@ const CTRL = 2, SHIFT = 8
     await evaluate(`${W}.open('shell', ${JSON.stringify(REPO)}, undefined, { tab: true })`)
     await waitFor(`${W}.panes.length === 3 && ${W}.panes.every(p => p.state === 'running')`, 25000, 'three shells')
     await sleep(800)
-    const groups = await evaluate(`[...document.querySelectorAll('nav[aria-label=Projects] section h3')].map(h => h.textContent.trim())`)
+    const groups = await evaluate(`[...document.querySelectorAll('nav[aria-label=Projects] section h3 [data-rail-name]')].map(h => h.textContent.trim())`)
     check('sidebar groups by project', JSON.stringify(groups) === JSON.stringify([require('node:path').basename(REPO), require('node:path').basename(require('node:os').homedir())]), JSON.stringify(groups))
     const rows = await evaluate(`document.querySelectorAll('nav[aria-label=Projects] [data-side-row]').length`)
     check('sidebar lists every pane', rows === 3, String(rows))
@@ -59,7 +59,7 @@ const CTRL = 2, SHIFT = 8
     check('Ctrl+Shift+A jumps to waiting pane and clears it', await evaluate(`${W}.activeKey === ${W}.panes[0].key && !${W}.panes[0].attention`))
 
     // Close: linked agent pane asks first; plain shell closes at once.
-    await evaluate(`[...document.querySelectorAll('section[aria-label] button')].filter(b => b.offsetParent && b.title === 'Close terminal')[0].click()`)
+    await evaluate(`[...document.querySelectorAll('[data-pane-head] [data-pane-close]')].filter(b => b.offsetParent)[0].click()`)
     await sleep(400)
     const dialog = await evaluate(`document.querySelector('[role=alertdialog][aria-modal]')?.innerText.replace(/\\s+/g, ' ') ?? null`)
     check('busy pane asks before closing, names the agent', !!dialog && /fix login bug/.test(dialog), String(dialog))

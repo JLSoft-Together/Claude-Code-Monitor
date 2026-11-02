@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const props = defineProps<{ modelValue: boolean; label: string; hint?: string; disabled?: boolean }>()
+import InfoHint from './settings/InfoHint.vue'
+
+const props = defineProps<{ modelValue: boolean; label: string; hint?: string; info?: string; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
 function flip(): void {
@@ -10,7 +12,11 @@ function flip(): void {
 <template>
   <div class="flex items-center gap-3 py-2" :class="disabled ? 'opacity-50' : ''">
     <div class="min-w-0 flex-1">
-      <p class="text-sm text-ink" @click="flip">{{ label }}</p>
+      <div v-if="info" class="flex items-center gap-1.5">
+        <p class="text-sm text-ink" @click="flip">{{ label }}</p>
+        <InfoHint :text="info" :what="label" />
+      </div>
+      <p v-else class="text-sm text-ink" @click="flip">{{ label }}</p>
       <p v-if="hint" class="mt-0.5 text-2xs text-ink-faint">{{ hint }}</p>
     </div>
     <button

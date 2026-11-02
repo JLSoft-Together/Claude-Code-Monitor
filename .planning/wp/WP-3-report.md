@@ -1,0 +1,41 @@
+## WP-3 — DONE
+- Đã đổi:
+  - `apps/web/src/lib/rail/railView.ts` (MỚI) — hàm thuần: `hasAgentWork`, `filterCluster`, `buildSections` (agents / opened / others + lọc), `railMoveIndexes` (ánh xạ thả kéo từ thứ tự hiển thị về thứ tự rail gốc).
+  - `apps/web/src/lib/rail/railView.test.ts` (MỚI) — 13 test.
+  - `apps/web/src/lib/rail/railModel.ts` — `showsCheckouts` giờ chỉ true khi >1 checkout hoặc có worktree (checkout đơn lẻ không còn dòng riêng, kể cả dự án nhớ).
+  - `apps/web/src/lib/rail/rail.test.ts` — sửa kỳ vọng `old` (dự án nhớ) thành false.
+  - `components/workspace/rail/RailRow.vue` — 1 dòng, min-h-7; tail (time, diff `+x −y`, glyph peer, coordinating) canh phải 11px; dòng 2 chỉ khi asked/failed; còn lại thành `sr-only aria-hidden data-rail-second` + tooltip (thêm elapsed) + aria-label cũ.
+  - `rail/RailGroupHead.vue` — min-h-7 (bỏ h-10 + hiệu ứng translate); dòng 2 chỉ khi folded và asked/failed; state/tool/time khi folded đưa sang tail phải; còn lại tooltip + sr-only.
+  - `rail/RailClusterView.vue` — head h-7, nhánh git canh phải cùng dòng (`data-rail-branch`); checkout lines chỉ khi nhiều checkout/worktree; dự án nhớ 1 checkout: bấm head = mở thư mục (trước đây bấm dòng checkout), không chevron.
+  - `components/workspace/WorkspaceSidebar.vue` — header: ô lọc (`data-rail-filter-input`, Esc xoá, ↓ nhảy vào list, nút X) + nút (+) icon "Mở project (Ctrl+Alt+P)" + collapse-others; nhóm "Đang có agent" / "Đã mở" (nhãn chỉ hiện khi cả hai nhóm có dự án) + dòng `data-rail-more` "N dự án khác" (localStorage `ccm.rail.othersOpen`, try/catch); lọc tự mở nhóm others và bỏ trạng thái fold; "không khớp" hiện status; drag/Alt+↑↓/menu canUp-canDown dùng danh sách hiển thị; menu/new/project luôn tác động lên cụm đầy đủ (không phải bản đã lọc).
+  - `apps/web/src/i18n/ui-v79-rail.ts` (MỚI, `export default { en, vi }`, key `railV79`).
+  - E2E: `apps/desktop/e2e/tier2.cjs` (row cao 28–32px thay ≥40), `apps/desktop/e2e/rail.cjs` (nút Open Project kiểm qua aria-label vì chỉ còn icon).
+  - RailColumn.vue: không đổi (không có text 9/10px; hành vi giữ nguyên).
+- Thông tin/hành động cũ → chỗ mới:
+  - Dòng 2 "Claude · Đang chạy · 2 subagent · 6m 05s" / "Sẵn sàng": tooltip hàng (title) + aria-label + sr-only `data-rail-second`; time còn hiện ở tail phải; CHỈ hiện dòng 2 khi chờ chủ nhân/lỗi.
+  - Dòng peer ("message từ …"): glyph peer ở tail + tooltip + sr-only (`data-rail-peer` giữ trên span sr-only).
+  - Dòng "⑂ master" riêng: cùng dòng với tên dự án, canh phải.
+  - Dòng checkout của dự án nhớ (mở lại): bấm tên dự án trong "N dự án khác".
+  - Nút dashed "Mở Project": icon (+) đầu rail, nhãn aria "Open Project", tooltip có phím.
+- Tiêu chí: 5/5 (ảnh thật CHƯA NHÌN)
+  - [x] Rail ≤ ~60% dòng cũ: ước lượng 14 dự án, 3 có session: cũ ≈ 14×(32+24)+rows 40px; mới ≈ 3 head 28 + rows 28 + 1 dòng "11 dự án khác" → ~30-35%. Dự án có agent lên đầu (`buildSections`, test).
+  - [x] Dòng 2 đọc được qua tooltip + SR; asked/failed vẫn 2 dòng.
+  - [x] Kéo thả (mapping qua `railMoveIndexes`, test), X hover, menu dự án, "new in", RunBadge, needs, peer badge giữ nguyên code.
+  - [x] Lọc + Esc; handler phím rail chỉ xử lý khi focus ở `[data-side-item]` nên không đụng ô nhập; ArrowDown từ ô lọc vào list.
+  - [x] typecheck sạch; vitest src/lib/rail + src/i18n pass; e2e selector đã sửa.
+- Audit / Review:
+  - Edge: 0 dự án (không ô lọc; còn nút +); tất cả đóng (chỉ dòng "N dự án khác"; mở ra bấm head để mở); nhiều worktree (liệt kê mỗi checkout 1 dòng h-6); rail hẹp 264 (branch max 45%, truncate; tail shrink-0 ~80px); lọc rỗng (thông báo `data-rail-filter-empty`); kéo thả giữa nhóm (mapping theo key; kéo qua ranh nhóm đổi thứ tự gốc nhưng hiển thị vẫn theo nhóm — dự án tự quay về nhóm theo trạng thái agent).
+  - Rủi ro: dự án nhảy giữa "Đang có agent" và "Đã mở" khi agent bắt đầu/kết thúc (đúng yêu cầu, có transition ccm-list); dòng "more" là treeitem tabindex -1 (tới được bằng mũi tên, không phải tab stop).
+  - Nút (+) dùng tooltip "Mở project (Ctrl+Alt+P)" theo brief, nhưng Ctrl+Alt+P thực ra mở Go to project (không phải chọn thư mục) — main cân nhắc đổi chữ.
+  - Chưa wire i18n nên hiện tại t('railV79.*') hiển thị key tới khi main nối file.
+- Test: `npm run typecheck -w @ccm/web` → sạch. `npx vitest run src/lib/rail src/i18n` → 43 files, 127 tests, 127 pass, 0 fail (gồm railView.test.ts 13 test mới).
+- Nhìn: CHƯA NHÌN: WP-8 chụp
+- Hot file cần thêm:
+  - `apps/web/src/i18n/index.ts` (hoặc nơi import resources-v76): `import uiV79Rail from './ui-v79-rail'` và spread `...uiV79Rail.en` / `...uiV79Rail.vi` cùng chỗ với resources-v76 (key top-level `railV79`).
+- Ngoài phạm vi cần main xử lý: `RunProjectMark.vue` còn `text-[9px]` (không thuộc rail, dùng ở RunPane/ExplorerTree); `lib/rail/railModel.ts` (thay `showsCheckouts`) nằm ngoài danh sách phạm vi chữ nhưng là logic rail thuần, đã cập nhật test.
+- Index:
+  - `lib/rail/railView.ts`: `buildSections` / `filterCluster` / `hasAgentWork` / `railMoveIndexes`; `WorkspaceSidebar.vue` dùng `sections` → `listItems`, `shown` là thứ tự hiển thị.
+  - `railModel.ts` `showsCheckouts`: lone checkout không có dòng riêng; branch ở head (`RailClusterView` `headBranch`), dự án nhớ mở từ head (`opener`).
+  - Rail row: 1 dòng, dòng 2 chỉ `attention` (asked/failed); `data-rail-second` luôn có trong DOM (sr-only khi không chú ý).
+- Changelog: en: Workspace rail is more compact: one line per session, projects with running agents first, a filter box and an Open project icon. / vi: Thanh bên Workspace gọn hơn: mỗi phiên một dòng, dự án đang có agent lên đầu, có ô lọc và nút mở project dạng icon.
+- Commit message đề xuất: 📐 Compact Workspace rail with one-line rows, agent-first project sections, filter box and icon open button

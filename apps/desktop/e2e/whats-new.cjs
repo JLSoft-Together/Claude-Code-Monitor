@@ -25,6 +25,7 @@ const expandedOf = (v) => `${header(v)}?.getAttribute('aria-expanded')`
     let maxVisible = 0
     const order = []
     const end = Date.now() + 45000
+    let quietSince = 0
     while (Date.now() < end) {
       const st = await evaluate(`JSON.stringify({ n: ${visibleDialogs}, setup: ${UI}.setupOpen, tour: ${UI}.tourOpen, wn: ${UI}.whatsNewOpen, wnEl: !!${DLG} })`).then(JSON.parse)
       maxVisible = Math.max(maxVisible, st.n)
@@ -32,12 +33,18 @@ const expandedOf = (v) => `${header(v)}?.getAttribute('aria-expanded')`
       if (now && order.at(-1) !== now) order.push(now)
       if (st.wn && st.wnEl) break
       if (st.n === 1 && (st.setup || st.tour)) {
+        quietSince = 0
         await sleep(400)
         await esc()
         await sleep(600)
-      } else await sleep(250)
+      } else {
+        if (order.includes('tour') && !st.tour && !st.setup && !quietSince) quietSince = Date.now()
+        if (quietSince && Date.now() - quietSince > 4000) break
+        await sleep(250)
+      }
     }
-    check('fresh install: What\'s new comes last', order.at(-1) === 'whatsNew' && order.indexOf('whatsNew') === order.length - 1 && order.includes('tour'), order.join(' → '))
+    check('fresh install: only the guide shows, What\'s new waits for the next start', order.includes('tour') && !order.includes('whatsNew'), order.join(' → '))
+    check('fresh install: What\'s new stays unseen for next time', await evaluate(`localStorage.getItem('ccm.whatsNew.seen') === null`))
     check('fresh install: never two dialogs at once', maxVisible <= 1, `max ${maxVisible}`)
     await esc()
     await waitFor(`!${DLG}`, 5000, 'closed after fresh install').catch(() => {})
@@ -88,7 +95,7 @@ const expandedOf = (v) => `${header(v)}?.getAttribute('aria-expanded')`
     check('reload: does not open again', await evaluate(`!${DLG} && !${UI}.whatsNewOpen`))
 
     // (b) Settings → What's new.
-    await evaluate(`${UI}.settingsOpen = true`)
+    await evaluate(`${UI}.settingsPage = 'about'; ${UI}.settingsOpen = true`)
     await waitFor(`[...document.querySelectorAll('section[aria-labelledby="set-help"] button')].some((b) => /What's new/.test(b.textContent))`, 8000, 'settings help row')
     await evaluate(`[...document.querySelectorAll('section[aria-labelledby="set-help"] button')].find((b) => /What's new/.test(b.textContent)).click()`)
     await waitFor(`!!${DLG}`, 5000, 'opened from Settings').catch(() => {})

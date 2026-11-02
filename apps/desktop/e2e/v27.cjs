@@ -45,7 +45,7 @@ async function main() {
     check('bundled fonts load locally', !!loaded)
     check('picks persist', await evaluate(`localStorage.getItem('ccm.font.code') === 'jetbrains-mono' && localStorage.getItem('ccm.font.ui') === 'inter'`))
 
-    await evaluate(`${S}.get('ui').settingsOpen = true`)
+    await evaluate(`${S}.get('ui').settingsPage = 'appearance'; ${S}.get('ui').settingsOpen = true`)
     await sleep(500)
     await evaluate(`document.querySelector('[data-font-picker=code]').click()`)
     await sleep(300)

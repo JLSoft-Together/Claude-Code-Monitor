@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, ArrowRight, Bug, Check, ExternalLink, FolderOpen, Globe, MonitorSmartphone, RotateCw, Send, X, Zap, ZapOff } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Bug, Check, ExternalLink, FolderOpen, Globe, MonitorSmartphone, RotateCw, Send, X, Zap } from 'lucide-vue-next'
 import type { HandoffAction } from '../../lib/agentHandoff'
 import type { DeviceId } from '../../lib/browserDevices'
 import type { MenuEntry } from '../../lib/menu'
@@ -227,20 +227,6 @@ defineExpose({ handoffButton: handoffFocus })
       </span>
     </form>
 
-    <button
-      ref="deviceButton"
-      type="button"
-      class="ccm-btn-plain shrink-0 gap-1 text-xs @max-[440px]:hidden"
-      :title="t('workspace.browser.deviceMenu')"
-      :aria-label="t('workspace.browser.deviceMenu')"
-      aria-haspopup="menu"
-      :aria-expanded="!!deviceAnchor"
-      data-more="device"
-      @click="toggleDevices()"
-    >
-      <MonitorSmartphone :size="15" aria-hidden="true" />
-      <span v-if="zoom !== 100" class="tabular">{{ zoom }}%</span>
-    </button>
     <DeviceMenu
       v-if="deviceAnchor"
       :anchor="deviceAnchor"
@@ -254,50 +240,7 @@ defineExpose({ handoffButton: handoffFocus })
       @close="deviceAnchor = null"
     />
     <button
-      v-if="liveAvailable"
-      type="button"
-      class="ccm-btn-plain shrink-0 @max-[440px]:hidden"
-      :aria-pressed="live"
-      :title="live ? t('workspace.browser.liveReloadOn') : t('workspace.browser.liveReloadOff')"
-      :aria-label="t('workspace.browser.liveReload')"
-      data-more="live"
-      @click="emit('live')"
-    >
-      <Zap v-if="live" :size="14" aria-hidden="true" />
-      <ZapOff v-else :size="14" aria-hidden="true" />
-    </button>
-    <button
-      type="button"
-      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
-      :title="t('workspace.browser.openFile')"
-      :aria-label="t('workspace.browser.openFile')"
-      data-more="openFile"
-      @click="emit('openFile')"
-    >
-      <FolderOpen :size="14" aria-hidden="true" />
-    </button>
-    <button
-      type="button"
-      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
-      :title="t('workspace.browser.openExternal')"
-      :aria-label="t('workspace.browser.openExternal')"
-      data-more="external"
-      @click="emit('external')"
-    >
-      <ExternalLink :size="14" aria-hidden="true" />
-    </button>
-    <button
-      type="button"
-      class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
-      :title="t('workspace.browser.devtools')"
-      :aria-label="t('workspace.browser.devtools')"
-      data-more="devtools"
-      @click="emit('devtools')"
-    >
-      <Bug :size="14" aria-hidden="true" />
-    </button>
-    <button
-      v-if="canHandoff"
+      v-if="canHandoff && (consoleCount || picking)"
       ref="handoffButton"
       type="button"
       class="ccm-btn-plain shrink-0 gap-1 text-xs @max-[340px]:hidden"
@@ -320,7 +263,7 @@ defineExpose({ handoffButton: handoffFocus })
       @pick="pickHandoff"
       @close="handoffAnchor = null"
     />
-    <PaneMore class="hidden @max-[560px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
+    <PaneMore class="@max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
     <slot name="end" />
   </div>
 </template>

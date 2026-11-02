@@ -18,6 +18,7 @@ import {
   rowId,
   rowLines,
   runState,
+  isSolo,
   showsCheckouts,
   stateWord,
   tabStopOf,
@@ -442,7 +443,7 @@ describe('tree tab stop', () => {
 })
 
 describe('checkout lines', () => {
-  it('skip a lone plain folder but show branches, worktrees and remembered projects', () => {
+  it('skip a lone checkout (plain folder, branch or remembered project) but list several or a worktree', () => {
     const ws = useWorkspaceStore()
     ws.open('shell', 'D:\\notes', undefined, { tab: true })
     ws.open('claude', 'C:\\work\\app', undefined, { tab: true })
@@ -451,7 +452,25 @@ describe('checkout lines', () => {
     expect(rail.map((c) => [c.name, showsCheckouts(c)])).toEqual([
       ['notes', false],
       ['app', true],
-      ['old', true],
+      ['old', false],
+    ])
+  })
+})
+
+describe('solo projects', () => {
+  it('are live projects with one pane in one checkout; a split, a second tab, a worktree or a remembered project is not', () => {
+    const ws = useWorkspaceStore()
+    ws.open('claude', 'C:\\work\\one', undefined, { tab: true })
+    const two = ws.open('claude', 'C:\\work\\two', undefined, { tab: true })
+    ws.split(two.key, 'row')
+    ws.open('claude', 'C:\\work\\three', undefined, { tab: true })
+    ws.open('claude', 'C:\\work\\three', undefined, { tab: true })
+    const rail = buildRail(input({ history: ['E:\\old'] }))
+    expect(rail.map((c) => [c.name, isSolo(c)])).toEqual([
+      ['one', true],
+      ['two', false],
+      ['three', false],
+      ['old', false],
     ])
   })
 })

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { TourId } from '../lib/tour'
+import type { SettingsPage } from '../components/settings'
 import type { DevTool } from '../lib/devTools'
 import { ref, watch } from 'vue'
 import type { FocusWindowResult, OpenApp, OpenResult, TerminalApp } from '@ccm/shared'
@@ -70,7 +71,6 @@ export interface PanelState {
   open: boolean
   pinned: boolean
 }
-export type BarDock = 'top' | 'bottom'
 
 function initialPanels(): Record<Panel, PanelState> {
   const out: Record<Panel, PanelState> = { sessions: { open: false, pinned: true }, activity: { open: false, pinned: false } }
@@ -86,15 +86,6 @@ function initialPanels(): Record<Panel, PanelState> {
     return out
   }
   return out
-}
-
-function initialBar(): { dock: BarDock; min: boolean } {
-  try {
-    const raw = JSON.parse(localStorage.getItem('ccm.bar') ?? '{}') as { dock?: unknown; min?: unknown }
-    return { dock: raw.dock === 'top' ? 'top' : 'bottom', min: raw.min === true }
-  } catch {
-    return { dock: 'bottom', min: false }
-  }
 }
 
 export type PanelSize = 'sessions' | 'activity' | 'activityHeight'
@@ -178,9 +169,6 @@ export const useUiStore = defineStore('ui', () => {
   const narrowQuery = typeof window !== 'undefined' ? window.matchMedia?.('(max-width: 767px)') : undefined
   const narrow = ref(narrowQuery?.matches ?? false)
   narrowQuery?.addEventListener('change', (e) => (narrow.value = e.matches))
-  const savedBar = initialBar()
-  const barDock = ref<BarDock>(savedBar.dock)
-  const barMin = ref(savedBar.min)
   const fitRequest = ref(0)
   const shortcutsOpen = ref(false)
   const keyPress = ref<{ keys: string; n: number } | null>(null)
@@ -254,6 +242,8 @@ export const useUiStore = defineStore('ui', () => {
   /** What's new (WhatsNewDialog.vue): opens once per app version, after quick setup and the view's guide. */
   const whatsNewOpen = ref(false)
   const settingsOpen = ref(false)
+  /** Page Settings should show next (SettingsMenu consumes it); null = the last page visited. */
+  const settingsPage = ref<SettingsPage | null>(null)
   const breakDue = ref<{ at: number; minutes: number } | null>(null)
   const focusingWindow = ref<string | null>(null)
   const windowResult = ref<{ terminalId: string; result: WindowResult } | null>(null)
@@ -320,14 +310,6 @@ export const useUiStore = defineStore('ui', () => {
     { deep: true },
   )
 
-  watch([barDock, barMin], ([dock, min]) => {
-    try {
-      localStorage.setItem('ccm.bar', JSON.stringify({ dock, min }))
-    } catch {
-      return
-    }
-  })
-
   function setPanelSize(key: PanelSize, px: number): void {
     panelSize.value = { ...panelSize.value, [key]: clampPanel(key, px) }
   }
@@ -367,14 +349,6 @@ export const useUiStore = defineStore('ui', () => {
       }
     }
     return closed
-  }
-
-  function toggleBar(): void {
-    barMin.value = !barMin.value
-  }
-
-  function toggleBarDock(): void {
-    barDock.value = barDock.value === 'top' ? 'bottom' : 'top'
   }
 
   function requestFit(): void {
@@ -487,10 +461,6 @@ export const useUiStore = defineStore('ui', () => {
     togglePanel,
     togglePanelPin,
     closeFloating,
-    barDock,
-    barMin,
-    toggleBar,
-    toggleBarDock,
     fitRequest,
     requestFit,
     shortcutsOpen,
@@ -534,6 +504,7 @@ export const useUiStore = defineStore('ui', () => {
     setupOpen,
     whatsNewOpen,
     settingsOpen,
+    settingsPage,
     breakDue,
     openRecap,
     focusingWindow,

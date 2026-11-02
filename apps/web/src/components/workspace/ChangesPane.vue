@@ -691,18 +691,6 @@ function pickHead(id: string): void {
         <span class="truncate">{{ branch }}</span>
       </span>
       <span class="min-w-0 flex-1" />
-      <button
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[440px]:hidden"
-        :aria-pressed="treeMode"
-        :title="`${t('workspace.diff.listMode')}: ${treeMode ? t('workspace.diff.tree') : t('workspace.diff.flat')}`"
-        :aria-label="t('workspace.diff.tree')"
-        data-changes-tree
-        data-more="tree"
-        @click="treeMode = !treeMode"
-      >
-        <ListTree :size="14" aria-hidden="true" />
-      </button>
       <div class="flex shrink-0 rounded-inner bg-fill p-0.5 @max-[440px]:hidden" role="radiogroup" :aria-label="t('workspace.changes.layout')" data-more="layout">
         <button
           v-for="v in ['inline', 'split'] as const"
@@ -833,29 +821,7 @@ function pickHead(id: string): void {
           </div>
         </Transition>
       </div>
-      <button
-        v-if="hasLog && repoRoot"
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
-        :title="t('workspace.log.open')"
-        :aria-label="t('workspace.log.open')"
-        data-changes-log
-        data-more="log"
-        @click="emit('log', repoRoot)"
-      >
-        <GitGraph :size="14" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="ccm-btn-plain shrink-0 @max-[560px]:hidden"
-        :title="t('workspace.changes.refresh')"
-        :aria-label="t('workspace.changes.refresh')"
-        data-more="refresh"
-        @click="loadStatus"
-      >
-        <RotateCw :size="14" aria-hidden="true" />
-      </button>
-      <PaneMore class="hidden @max-[560px]:inline-flex @max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
+      <PaneMore class="@max-[300px]:min-w-6 @max-[300px]:px-1" :entries="headMore" :label="t('workspace.paneHead.more')" @pick="pickHead" />
       <slot name="end" />
     </div>
 

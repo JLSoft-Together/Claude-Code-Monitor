@@ -72,7 +72,7 @@ async function run(app) {
   const file = flow?.file ?? ''
   check('flow starts in "writing" with a .planning/HANDOFF file', flow?.step === 'writing' && /\.planning[\\/]HANDOFF-\d{4}-\d{2}-\d{2}-\d{4}\.md$/.test(file), file)
   check('handoff prompt sent (prefill consumed)', await evaluate(`!${W}.panes.find((p) => p.key === '${pane}').prefill`))
-  check('pane header shows "writing" chip', await evaluate(`!!document.querySelector('[data-pane="${pane}"] [data-compact-step="writing"]')`))
+  check('pane header shows "writing" chip', await evaluate(`!!document.querySelector(':is([data-pane="${pane}"], [data-pane-of="${pane}"]) [data-compact-step="writing"]')`))
   let sent = ''
   for (let i = 0; i < 15 && !/CommandNotFoundException|not recognized/i.test(sent); i++) {
     await sleep(1000)
@@ -84,8 +84,8 @@ async function run(app) {
   await fake({ status: 'working' })
   await sleep(400)
   await fake({ status: 'idle' })
-  await waitFor(`!!document.querySelector('[data-pane="${pane}"] [data-compact-step="missing"]')`, 5000, 'missing chip').catch(() => {})
-  check('idle without the file: waits and says no handoff yet', await evaluate(`${W}.panes.find((p) => p.key === '${pane}').compact?.step === 'writing' && !!document.querySelector('[data-pane="${pane}"] [data-compact-step="missing"]')`))
+  await waitFor(`!!document.querySelector(':is([data-pane="${pane}"], [data-pane-of="${pane}"]) [data-compact-step="missing"]')`, 5000, 'missing chip').catch(() => {})
+  check('idle without the file: waits and says no handoff yet', await evaluate(`${W}.panes.find((p) => p.key === '${pane}').compact?.step === 'writing' && !!document.querySelector(':is([data-pane="${pane}"], [data-pane-of="${pane}"]) [data-compact-step="missing"]')`))
 
   await fake({ status: 'working' })
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -94,7 +94,7 @@ async function run(app) {
   await fake({ status: 'idle' })
   await waitFor(`${W}.panes.find((p) => p.key === '${pane}').compact?.step === 'compact'`, 6000, 'compact step').catch(() => {})
   check('file written + idle: step "compact"', await evaluate(`${W}.panes.find((p) => p.key === '${pane}').compact?.step === 'compact'`))
-  check('chip says the handoff is ready', await evaluate(`!!document.querySelector('[data-pane="${pane}"] [data-compact-step="compact"]')`))
+  check('chip says the handoff is ready', await evaluate(`!!document.querySelector(':is([data-pane="${pane}"], [data-pane-of="${pane}"]) [data-compact-step="compact"]')`))
   await sleep(800)
   check('/compact typed into the input, not submitted', /\/compact\s*$/.test((await output()).trimEnd()), '')
   await shot('v51-03-compact-typed')
@@ -106,7 +106,7 @@ async function run(app) {
   const after = await output()
   const tail = after.trimEnd().split('\n').slice(-3).join('')
   check('resume line prefilled at the prompt (after /compact), not submitted', /\/compact\s*Read\b/.test(tail.replace(/\s+/g, ' ')) && /continue\.$/.test(tail), tail.slice(-160))
-  check('chip cleared', await evaluate(`!document.querySelector('[data-pane="${pane}"] [data-compact-step]')`))
+  check('chip cleared', await evaluate(`!document.querySelector(':is([data-pane="${pane}"], [data-pane-of="${pane}"]) [data-compact-step]')`))
   await shot('v51-04-resume')
 
   await rowMenu()

@@ -209,13 +209,14 @@ async function main() {
       check('postgres :5432 listed as outside port', (r.outside ?? []).some((o) => o.pid === 50030 && o.ports[0].port === 5432), JSON.stringify(r.outside))
       check('totals count 1 forgotten', r.totals.forgotten === 1, JSON.stringify(r.totals))
 
-      await waitFor(`!!document.querySelector('[data-resources-badge]')`, 5000, 'badge')
-      check('header Resources button shows the forgotten badge (1)', (await text('[data-resources-badge]')) === '1', await text('[data-resources-badge]'))
+      await click('[data-status-button]')
+      await waitFor(`!!document.querySelector('[data-status-popover] [data-resources-badge]')`, 5000, 'badge')
+      check('header status popover: Resources row shows the forgotten badge (1)', (await text('[data-resources-badge]')) === '1', await text('[data-resources-badge]'))
       await waitFor(`document.querySelectorAll('[data-card-resources]').length >= 2`, 5000, 'card lines')
       const cards = await evaluate(`[...document.querySelectorAll('[data-card-resources]')].map((e) => e.textContent.replace(/\\s+/g, ' ').trim())`)
       check('session cards show a RAM / CPU line, the idle one marked forgotten', cards.some((c) => /528\s?MB/.test(c)) && cards.some((c) => /300\s?MB/.test(c) && /forgotten/i.test(c)), JSON.stringify(cards))
 
-      await click('[data-resources-button]')
+      await click('[data-status-popover] [data-resources-button]')
       await waitFor(`!!document.querySelector('[data-resources-dialog]')`, 5000, 'dialog')
       check('dialog lists both sessions', (await evaluate(`document.querySelectorAll('[data-res-session]').length`)) === 2)
       await shot('v76-01-resources-sessions')
@@ -314,7 +315,7 @@ async function main() {
       await waitFor(`document.querySelectorAll('[data-sensitive-ignore]').length < ${ignores}`, 5000, 'ignored')
       await sleep(800)
       check('Ignore for project → stored in sensitive.json', fs.existsSync(path.join(DATA, 'sensitive.json')) && fs.readFileSync(path.join(DATA, 'sensitive.json'), 'utf8').includes('git-force-push'))
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'access'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-sensitive-settings]')`, 5000, 'settings')
       check('Settings: rule groups + ignored entry listed', (await evaluate(`document.querySelectorAll('[data-sensitive-group]').length`)) >= 5 && (await evaluate(`document.querySelectorAll('[data-sensitive-ignored]').length`)) === 1)
       await setInput('[data-sensitive-glob-input]', '*.secret')
@@ -404,19 +405,20 @@ async function main() {
     })
 
     await step('idle setting', async () => {
-      await evaluate(`${UI}.settingsOpen = true`)
-      const group = '[role="radiogroup"][aria-label="Forgotten after"]'
+      await evaluate(`${UI}.settingsPage = 'notify'; ${UI}.settingsOpen = true`)
+      const group = '[data-idle-select]'
+      const pick = (i) => evaluate(`(() => { const s = document.querySelector('${group}'); s.selectedIndex = ${i}; s.dispatchEvent(new Event('change', { bubbles: true })) })()`)
       await waitFor(`!!document.querySelector('${group}')`, 5000, 'idle control')
-      const opts = await evaluate(`[...document.querySelectorAll('${group} [role="radio"]')].map((r) => r.textContent.trim() + (r.getAttribute('aria-checked') === 'true' ? '*' : ''))`)
+      const opts = await evaluate(`[...document.querySelectorAll('${group} option')].map((o, i) => o.textContent.trim() + (i === document.querySelector('${group}').selectedIndex ? '*' : ''))`)
       check('Notifications › Forgotten after: Off / 15 / 30 / 1 h* / 2 h / 4 h', opts.length === 6 && opts[3].endsWith('*'), JSON.stringify(opts))
-      await radio(group, 1)
-      await waitFor(`document.querySelectorAll('${group} [role="radio"]')[1].getAttribute('aria-checked') === 'true'`, 5000, '15 min')
+      await pick(1)
+      await waitFor(`document.querySelector('${group}').selectedIndex === 1`, 5000, '15 min')
       await pass('idle 15', `${RES}.report?.idleMinutes === 15`)
       check('collector applies 15 min to the next report', true)
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'notify'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('${group}')`, 5000, 'idle control again')
-      await radio(group, 3)
-      await waitFor(`document.querySelectorAll('${group} [role="radio"]')[3].getAttribute('aria-checked') === 'true'`, 5000, 'back to 60')
+      await pick(3)
+      await waitFor(`document.querySelector('${group}').selectedIndex === 3`, 5000, 'back to 60')
       await evaluate(`${UI}.settingsOpen = false`)
     })
 
@@ -425,7 +427,7 @@ async function main() {
       let st = await evaluate(`window.ccmDesktop.awakeState()`)
       check('session B working, on AC, mode Only on power → holding (badge "working")', st?.holding === true && st.reason === 'working' && st.mode === 'plugged' && (await evaluate(`document.querySelector('[data-awake]').dataset.awake`)) === 'working', JSON.stringify(st))
       await shot('v76-08-awake')
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'general'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-setting="keep-awake"]')`, 5000, 'awake setting')
       await radio('[data-setting="keep-awake"]', 0)
       await waitFor(`!document.querySelector('[data-awake]')`, 5000, 'released')
@@ -446,7 +448,7 @@ async function main() {
     })
 
     await step('capture folder', async () => {
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'integrations'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-capture-settings]')`, 5000, 'capture settings')
       check('no folder at first (as before)', !(await evaluate(`!!document.querySelector('[data-capture-clear]')`)))
       const none = await evaluate(`window.ccmDesktop.captureShot({ png: ${JSON.stringify(PNG)}, device: 'Pixel' })`)
@@ -480,8 +482,10 @@ async function main() {
 
     await step('phone', async () => {
       await evaluate(`window.__phoneEv = []; window.ccmDesktop.onPhone((e) => window.__phoneEv.push(e))`)
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'notify'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-phone-settings]')`, 5000, 'phone settings')
+      await evaluate(`document.querySelector('[data-notify-more][aria-expanded="false"]')?.click()`)
+      await sleep(200)
       check('off by default, not configured, Send test disabled', (await evaluate(`document.querySelector('[data-phone-enable] [role="switch"]').getAttribute('aria-checked')`)) === 'false' && (await evaluate(`document.querySelector('[data-phone-test]').disabled`)))
       const guide = await evaluate(`(() => { const g = document.querySelector('[data-phone-guide]'); return g && { open: g.open, channel: g.dataset.phoneGuideChannel, steps: g.querySelectorAll('[data-phone-guide-step]').length, stores: [...g.querySelectorAll('[data-phone-store]')].map((b) => b.dataset.phoneStore) } })()`)
       check('ntfy setup guide open while not configured: 5 steps + Play / App Store buttons', guide?.open === true && guide.channel === 'ntfy' && guide.steps === 5 && JSON.stringify(guide.stores) === '["play","ios"]', JSON.stringify(guide))
@@ -534,8 +538,10 @@ async function main() {
       check('payload has no paths, prompts or commands', !!ep && !ep.body.includes(FAKE.replace(/\\/g, '\\\\')) && !ep.body.includes(FAKE) && !/hello|git push|\.env/.test(ep.body), ep?.body)
 
       phoneDown = true
-      await evaluate(`${UI}.settingsOpen = true`)
+      await evaluate(`${UI}.settingsPage = 'notify'; ${UI}.settingsOpen = true`)
       await waitFor(`!!document.querySelector('[data-phone-test]')`, 5000, 'test button')
+      await evaluate(`document.querySelector('[data-notify-more][aria-expanded="false"]')?.click()`)
+      await sleep(200)
       await click('[data-phone-test]')
       await waitFor(`!!document.querySelector('[data-phone-note].text-st-error')`, 15000, 'fail note')
       await sleep(400)

@@ -43,8 +43,10 @@ async function run(app) {
 
   // Open from the Changes pane toolbar.
   await evaluate(`${W}.openChanges(${JSON.stringify(DIR)})`)
-  await waitFor(`!!document.querySelector('[data-changes-log]')`, 10000, 'log button')
-  await evaluate(`document.querySelector('[data-changes-log]').click()`)
+  await waitFor(`!!document.querySelector('[data-kind=changes] [data-pane-more]')`, 10000, 'more menu')
+  // The "log" entry needs the repo root, which resolves a moment after the pane mounts: reopen the menu until it shows.
+  await waitFor(`(() => { const m = document.querySelector('[data-context-menu] [data-menu-id="log"]'); if (m) return true; document.querySelector('[data-context-menu]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.querySelector('[data-kind=changes] [data-pane-more]').click(); return false })()`, 12000, 'menu log')
+  await evaluate(`document.querySelector('[data-context-menu] [data-menu-id="log"]').click()`)
   await waitFor(`document.querySelectorAll('[data-log-table] [data-commit]').length === 4`, 10000, 'log rows').catch(() => {})
   check('Log pane lists every commit', (await evaluate(`document.querySelectorAll('[data-log-table] [data-commit]').length`)) === 4)
   check('graph draws a second lane for the merge', await evaluate(`[...document.querySelectorAll('[data-log-table] svg')].some((s) => s.querySelectorAll('path').length >= 2)`))
@@ -125,7 +127,13 @@ async function run(app) {
   check('Esc returns to the log', await evaluate(`!document.querySelector('[data-log-diff]') && !!document.querySelector('[data-log-table]')`))
 
   // v36 Branches toolbar (delete is not driven here: the native confirm cannot be clicked through CDP; test/branches.test.ts covers it).
-  check('vertical branches toolbar is shown', await evaluate(`!!document.querySelector('[data-refs-toolbar] [data-refs-action=newBranch]')`))
+  check('vertical branches toolbar is shown', await evaluate(`!!document.querySelector('[data-refs-toolbar] [data-refs-action=fetch]') && !!document.querySelector('[data-refs-toolbar] [data-refs-action=more]')`))
+  // v79: new branch / compare / favorite / expand / collapse live in the ⋯ menu.
+  const refsMenuAct = async (action) => {
+    await evaluate(`(() => { if (!document.querySelector('[data-refs-more]')) document.querySelector('[data-refs-action=more]').click() })()`)
+    await waitFor(`!!document.querySelector('[data-refs-more]')`, 2000, 'more menu').catch(() => {})
+    await evaluate(`document.querySelector('[data-refs-more] [data-refs-action=${action}]').click()`)
+  }
   // cmp-e2e: one commit main lacks (Compare target); zz-fav sorts last until it is a favorite.
   git('branch', 'cmp-e2e', git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'cmp only'))
   git('branch', 'zz-fav')
@@ -133,7 +141,7 @@ async function run(app) {
   const localOrder = `[...document.querySelectorAll('[data-log-refs] [data-ref^="refs/heads/"]')].map((r) => r.dataset.ref)`
   const before = await evaluate(localOrder)
   await evaluate(`document.querySelector('[data-log-refs] [data-ref="refs/heads/zz-fav"]').focus()`)
-  await evaluate(`document.querySelector('[data-refs-action=favorite]').click()`)
+  await refsMenuAct('favorite')
   await sleep(200)
   const after = await evaluate(localOrder)
   const at = (list, b) => (list ?? []).indexOf(`refs/heads/${b}`)
@@ -141,11 +149,11 @@ async function run(app) {
   check('star marks the branch favorite (icon + stored per repo)', await evaluate(`(() => { const row = document.querySelector('[data-log-refs] [data-ref="refs/heads/zz-fav"]'); return !!row?.querySelector('svg[aria-label]') && JSON.stringify(Object.values(JSON.parse(localStorage.getItem('ccm.workspace.logFavorites') ?? '{}'))).includes('zz-fav') })()`))
   check('current branch shows both the current mark and its default-favorite star', await evaluate(`(document.querySelector('[data-log-refs] [data-ref="refs/heads/main"]')?.querySelectorAll('svg[aria-label]').length ?? 0) >= 2`))
   await evaluate(`document.querySelector('[data-log-refs] [data-ref="refs/heads/cmp-e2e"]').focus()`)
-  await evaluate(`document.querySelector('[data-refs-action=compare]').click()`)
+  await refsMenuAct('compare')
   await waitFor(`!!document.querySelector('[data-log-compare]') && document.querySelectorAll('[data-log-table] [data-commit]').length === 1`, 6000, 'compare').catch(() => {})
   check('Compare with Current lists only commits missing from the current branch', await evaluate(`(() => { const rows = [...document.querySelectorAll('[data-log-table] [data-commit]')]; return !!document.querySelector('[data-log-compare]') && rows.length === 1 && rows[0].textContent.includes('cmp only') })()`))
   await evaluate(`document.querySelector('[data-log-compare-clear]').click()`)
-  await evaluate(`document.querySelector('[data-refs-action=newBranch]').click()`)
+  await refsMenuAct('newBranch')
   await waitFor(`!!document.querySelector('[data-new-branch-name]')`, 3000, 'new branch').catch(() => {})
   // Submit is :disabled until Vue re-renders after the input: click it on a later tick, not in the same script.
   await evaluate(`(() => { const i = document.querySelector('[data-new-branch-name]'); i.value = 'toolbar-e2e'; i.dispatchEvent(new Event('input')); document.querySelector('[data-new-branch-checkout]').click() })()`)
@@ -154,10 +162,10 @@ async function run(app) {
   await waitFor(`!!document.querySelector('[data-log-refs] [data-ref="refs/heads/toolbar-e2e"]')`, 6000, 'branch listed').catch(() => {})
   check('New Branch creates a branch without switching', (await evaluate(`!!document.querySelector('[data-log-refs] [data-ref="refs/heads/toolbar-e2e"]')`)) && git('branch', '--show-current') !== 'toolbar-e2e')
   await shot('log-05-branches-toolbar')
-  await evaluate(`document.querySelector('[data-refs-action=collapseAll]').click()`)
+  await refsMenuAct('collapseAll')
   await sleep(150)
   check('Collapse All leaves only section rows', await evaluate(`[...document.querySelectorAll('[data-log-refs] [role=treeitem]')].every((r) => r.getAttribute('aria-level') === '1')`))
-  await evaluate(`document.querySelector('[data-refs-action=expandAll]').click()`)
+  await refsMenuAct('expandAll')
   await evaluate(`document.querySelector('[data-refs-action=more]').click()`)
   await waitFor(`!!document.querySelector('[data-refs-more]')`, 2000, 'more').catch(() => {})
   await evaluate(`document.querySelector('[data-refs-view=group]').click()`)

@@ -12,7 +12,7 @@ import PanelHeader from './PanelHeader.vue'
 import PanelSplitter from './PanelSplitter.vue'
 import SessionCard from './SessionCard.vue'
 import SessionList from './SessionList.vue'
-import WaitingQueue from './WaitingQueue.vue'
+import WaitingStrip from './WaitingStrip.vue'
 
 const { t } = useI18n()
 const connection = useConnectionStore()
@@ -70,7 +70,7 @@ function panelTransition(p: Panel): string {
     <div class="flex shrink-0 flex-col gap-2 px-3 pt-2 empty:hidden">
       <AwaySummary />
       <PortConflictBar />
-      <WaitingQueue v-if="!ui.sessionTab" data-tour="waiting" class="ccm-scroll max-h-40 overflow-y-auto" />
+      <WaitingStrip v-if="!ui.sessionTab && !ui.panels.sessions.open" data-tour="waiting" />
     </div>
 
     <div ref="stage" class="relative flex min-h-0 flex-1" :class="dragging ? 'select-none' : ''">

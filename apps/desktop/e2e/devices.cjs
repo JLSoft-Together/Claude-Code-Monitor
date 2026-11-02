@@ -56,6 +56,8 @@ async function run(app) {
   check('adb was found through ANDROID_HOME (no missing-adb banner)', await evaluate(`!document.querySelector('[data-dev-noadb]')`))
   await shot('devices-01-ready')
 
+  await evaluate(`document.querySelector('[data-dev-add]').click()`)
+  await waitFor(`!!document.querySelector('[data-dev-address]')`, 5000, 'add panel')
   await evaluate(`document.querySelector('[data-dev-address]').focus()`)
   await type(WIFI)
   await waitFor(`!document.querySelector('[data-dev-connect]').disabled`, 5000, 'connect enabled')

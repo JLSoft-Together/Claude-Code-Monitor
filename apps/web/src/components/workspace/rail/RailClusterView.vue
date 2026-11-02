@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, ChevronRight, Ellipsis, Folder, FolderOpen, GitBranch, Mail, Plus, X } from 'lucide-vue-next'
+import { BellRing, ChevronRight, Ellipsis, Folder, FolderOpen, GitBranch, LoaderCircle, Mail, Plus, X } from 'lucide-vue-next'
 import { usePaneInfo } from '../../../composables/usePaneInfo'
 import { useRailTabStop } from '../../../composables/useRail'
 import { onDustLeave } from '../../../lib/dust'
+import { duration, now as clock } from '../../../lib/format'
 import { motionMs, pinLeaving } from '../../../lib/motion'
 import {
   checkoutId,
   headId,
+  isSolo,
+  RAIL_BADGE,
   railItems,
   showsCheckouts,
+  stateWord,
   type RailCheckout,
   type RailCluster,
   type RailGroup,
@@ -24,6 +28,7 @@ import { folderIcon } from '../../../lib/explorer/fileIcons'
 import { useSettingsStore } from '../../../stores/settings'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import FileTypeIcon from '../FileTypeIcon.vue'
+import StatusIcon from '../../StatusIcon.vue'
 import RunBadge from '../RunBadge.vue'
 import RailGroupHead from './RailGroupHead.vue'
 import RailRow from './RailRow.vue'
@@ -63,8 +68,31 @@ const name = computed(() => (props.cluster.key === 'home' ? t('workspace.side.ho
 const settings = useSettingsStore()
 const atomFolder = computed(() => (settings.fileIcons === 'atom' ? folderIcon(name.value, props.cluster.active) : null))
 const headDir = computed(() => (props.cluster.checkouts.find((k) => k.active) ?? props.cluster.checkouts[0])?.path ?? props.cluster.root)
-// A lone plain folder needs no checkout line; a branch, a worktree or a remembered project does.
+// A lone checkout has no line: its branch sits on the header, and a remembered project opens from the header.
 const showCheckouts = computed(() => showsCheckouts(props.cluster))
+const opener = computed(() => (!props.cluster.live && !showCheckouts.value ? (props.cluster.checkouts.find((k) => k.path) ?? null) : null))
+const headBranch = computed(() => (showCheckouts.value ? null : (props.cluster.checkouts.find((k) => k.branch)?.branch ?? null)))
+
+const solo = computed(() => isSolo(props.cluster))
+const soloRow = computed(() => (solo.value ? props.cluster.checkouts[0]!.rows[0]! : null))
+const soloWord = computed(() => {
+  const r = soloRow.value
+  if (!r) return ''
+  const w = stateWord(r.state, r.subagents)
+  return w.n === undefined ? t(w.key) : t(w.key, { n: w.n }, w.n)
+})
+const soloTime = computed(() => {
+  const r = soloRow.value
+  if (!r || !r.since || r.state === 'idle' || r.state === 'parked' || r.state === 'ended') return null
+  return duration(new Date(r.since).toISOString(), clock.value)
+})
+const soloTone = computed(() => (soloRow.value?.state === 'failed' ? 'text-st-error' : soloRow.value?.state === 'asked' ? 'text-st-waiting' : 'text-ink-faint'))
+
+function onHead(): void {
+  if (opener.value) emit('checkout', opener.value)
+  else if (soloRow.value) emit('focus', soloRow.value.paneKey)
+  else emit('toggle')
+}
 const isStop = useRailTabStop()
 const headStop = computed(() => (isStop(headId(props.cluster.key)) ? 0 : -1))
 const { peerView } = usePaneInfo()
@@ -111,7 +139,7 @@ const HEAD_BTN =
     :class="cluster.active ? 'outline-line-strong' : 'outline-transparent'"
     :data-group="cluster.key"
   >
-    <div class="group/head flex h-8 min-w-0 items-center gap-0.5 pr-0.5" @contextmenu.prevent.stop="emit('contextHead', $event)">
+    <div class="group/head flex h-7 min-w-0 items-center gap-0.5 pr-0.5" @contextmenu.prevent.stop="emit('contextHead', $event)">
       <h3 :id="`ws-rail-${index}`" class="min-w-0 flex-1" role="none">
         <button
           type="button"
@@ -119,21 +147,23 @@ const HEAD_BTN =
           data-side-head
           :data-side-id="headId(cluster.key)"
           :data-order-key="cluster.key"
-          class="flex h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pl-1 text-left text-xs font-semibold hover:text-ink"
+          class="flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-inner pl-1 text-left text-xs font-semibold hover:text-ink"
           :class="cluster.live ? 'text-ink-muted' : 'text-ink-faint'"
           role="treeitem"
           aria-level="1"
-          :aria-expanded="!collapsed"
+          :aria-expanded="opener || solo ? undefined : !collapsed"
           :tabindex="headStop"
-          :title="[cluster.root, t('workspace.rail.moveHint', MOVE_KEYS)].filter(Boolean).join('\n')"
-          @click="emit('toggle')"
+          :title="[cluster.root, headBranch, t('workspace.rail.moveHint', MOVE_KEYS)].filter(Boolean).join('\n')"
+          @click="onHead"
         >
           <ChevronRight
+            v-if="!opener && !solo"
             :size="12"
             class="shrink-0 text-ink-faint transition-transform duration-(--ccm-dur-fast) ease-out-quint"
             :class="collapsed ? '' : 'rotate-90'"
             aria-hidden="true"
           />
+          <span v-else class="w-3 shrink-0" aria-hidden="true" />
           <FileTypeIcon
             v-if="atomFolder"
             :icon="atomFolder"
@@ -151,7 +181,17 @@ const HEAD_BTN =
             aria-hidden="true"
             data-rail-folder
           />
-          <span class="min-w-0 truncate" :class="cluster.active ? 'text-ink' : ''" data-rail-name>{{ name }}</span>
+          <span class="min-w-0 flex-1 truncate" :class="cluster.active ? 'text-ink' : ''" data-rail-name>{{ name }}</span>
+          <span v-if="headBranch" class="inline-flex max-w-[45%] min-w-0 items-center gap-0.5 font-normal text-ink-faint" data-rail-branch>
+            <GitBranch :size="11" class="shrink-0" aria-hidden="true" />
+            <span class="min-w-0 truncate text-[11px]">{{ headBranch }}</span>
+          </span>
+          <span v-if="soloRow" class="inline-flex shrink-0 items-center gap-1 text-[11px] font-normal tabular-nums" :class="soloTone" data-rail-solo-state :data-state="soloRow.state">
+            <LoaderCircle v-if="soloRow.state === 'starting'" :size="11" class="ccm-spin" aria-hidden="true" />
+            <StatusIcon v-else-if="RAIL_BADGE[soloRow.state]" :status="RAIL_BADGE[soloRow.state]!" :size="11" />
+            <span v-if="soloTime">{{ soloTime }}</span>
+            <span class="sr-only">{{ soloWord }}</span>
+          </span>
         </button>
       </h3>
       <span role="group" class="flex shrink-0 items-center gap-0.5" :aria-label="t('workspace.rail.menu.label', { name })">
@@ -170,6 +210,20 @@ const HEAD_BTN =
           <BellRing :size="10" aria-hidden="true" />{{ cluster.needs }}<span class="sr-only"> {{ t('workspace.rail.needs', { n: cluster.needs }, cluster.needs) }}</span>
         </span>
         <RunBadge v-if="headDir" :dir="headDir" :compact="narrow" :tabindex="headStop" />
+        <button
+          v-if="solo"
+          type="button"
+          :class="HEAD_BTN"
+          :title="t(collapsed ? 'workspace.rail.menu.expand' : 'workspace.rail.menu.collapse')"
+          :aria-label="t(collapsed ? 'workspace.rail.menu.expand' : 'workspace.rail.menu.collapse')"
+          :aria-expanded="!collapsed"
+          :tabindex="headStop"
+          data-rail-solo-toggle
+          data-no-drag
+          @click="emit('toggle')"
+        >
+          <ChevronRight :size="12" class="transition-transform duration-(--ccm-dur-fast) ease-out-quint" :class="collapsed ? '' : 'rotate-90'" aria-hidden="true" />
+        </button>
         <button
           v-if="headDir || cluster.key === 'home'"
           type="button"
