@@ -91,6 +91,14 @@ describe('workspaceAction', () => {
     expect(workspaceAction(key('ArrowLeft', { altKey: true }), false, true)).toEqual({ t: 'focus', dir: 'left' })
   })
 
+  it('Ctrl+Alt+P (⌃⌥P on macOS) opens Go to project, not AltGr+P', () => {
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, altKey: true }), false, false)).toEqual({ t: 'projects', back: false })
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, altKey: true }), true, false)).toEqual({ t: 'projects', back: false })
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, altKey: true }, true), false, false)).toBeNull()
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, altKey: true, shiftKey: true }), false, false)).toEqual({ t: 'projects', back: true })
+    expect(workspaceAction(key('KeyP', { ctrlKey: true, altKey: true, shiftKey: true }), true, false)).toEqual({ t: 'projects', back: true })
+  })
+
   it('Ctrl+Alt+N (⌃⌥N on macOS) opens project notes, not AltGr+N', () => {
     expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true }), false, false)).toEqual({ t: 'notes' })
     expect(workspaceAction(key('KeyN', { ctrlKey: true, altKey: true }), true, false)).toEqual({ t: 'notes' })

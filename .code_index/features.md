@@ -273,6 +273,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Thiết lập nhanh lần đầu** (v27) — `apps/web/src/components/QuickSetup.vue`
 - **"Có gì mới" dialog** (v71, 2.4.0) — mở lại trong Cài đặt và Ctrl+K · `apps/web/src/components/WhatsNewDialog.vue`
 - **Bảng phím tắt (?)** (v1.2.0) — `apps/web/src/components/ShortcutsDialog.vue`
+- **Chuyển tới dự án (Ctrl+Alt+P / ⌃⌥P)** (v78) — tìm mờ mọi project đang mở / đã đóng / yêu thích, dùng gần nhất trước · `apps/web/src/components/workspace/ProjectSwitcher.vue`
 - **Bảng lệnh Ctrl+K** — tìm session, lệnh, công cụ · `apps/web/src/components/CommandPalette.vue`
 - **Ngôn ngữ giao diện en / vi** — `apps/web/src/i18n/en.ts`, `apps/web/src/i18n/vi.ts`
 - **Chế độ sáng / tối** — nhớ lựa chọn, tuỳ chọn trong Cài đặt · `apps/web/src/stores/settings.ts`

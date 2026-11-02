@@ -35,9 +35,11 @@ export type WorkspaceAction =
   | { t: 'notes' }
   /** Drop-down shell terminal (Ctrl+` / ⌃`, as in VS Code). */
   | { t: 'dropTerm' }
+  /** Go to project (⌃⌥P on macOS, Ctrl+Alt+P elsewhere); pressed again while held it steps the list, Shift steps back. */
+  | { t: 'projects'; back: boolean }
 
 /** Chords that still work while focus is in the drop-down terminal: they open global UI, never touch the pane behind it. */
-export const DROP_TERM_KEYS: ReadonlySet<WorkspaceAction['t']> = new Set(['dropTerm', 'quickOpen', 'explorer', 'search', 'mission', 'prompts', 'recent', 'bookmarks', 'notes'])
+export const DROP_TERM_KEYS: ReadonlySet<WorkspaceAction['t']> = new Set(['dropTerm', 'quickOpen', 'explorer', 'search', 'mission', 'prompts', 'recent', 'bookmarks', 'notes', 'projects'])
 
 const ARROWS: Record<string, FocusDir> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }
 const PAGES: Record<string, 1 | -1> = { PageUp: -1, PageDown: 1 }
@@ -55,6 +57,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   if (mac) {
     if (ctrl && !meta && !alt && code === 'Minus') return { t: shift ? 'navForward' : 'navBack' }
     if (ctrl && alt && !meta && !shift && code === 'KeyN') return { t: 'notes' }
+    if (ctrl && alt && !meta && code === 'KeyP') return { t: 'projects', back: shift }
     if (!meta || ctrl) return null
     if (code === 'KeyE' && !shift && !alt) return { t: 'recent' }
     if (code === 'KeyT' && !shift && !alt) return { t: 'newTab' }
@@ -97,6 +100,7 @@ export function workspaceAction(e: KeyboardEvent, mac: boolean, multiPane: boole
   // AltGr arrives as Ctrl+Alt on Windows; AltGr+digit types characters like @ { [ on many layouts.
   if (ctrl && alt && !shift && digit && !e.getModifierState?.('AltGraph')) return { t: 'tab', index: Number(digit[1]) - 1 }
   if (ctrl && alt && !shift && code === 'KeyN' && !e.getModifierState?.('AltGraph')) return { t: 'notes' }
+  if (ctrl && alt && code === 'KeyP' && !e.getModifierState?.('AltGraph')) return { t: 'projects', back: shift }
   if (alt && !ctrl && ARROWS[code] && multiPane) return { t: shift ? 'swap' : 'focus', dir: ARROWS[code]! }
   return null
 }

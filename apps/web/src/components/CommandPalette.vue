@@ -27,6 +27,7 @@ import {
   Settings2,
   Smartphone,
   Stethoscope,
+  FolderSearch,
   Trash2,
   Volume2,
   X,
@@ -186,6 +187,17 @@ const items = computed<Item[]>(() => {
       : []),
     ...(hasTerminals
       ? [
+          {
+            id: 'c:projects',
+            group: 'nav' as const,
+            label: t('projectSwitcher.palette'),
+            sub: isMac ? '⌃⌥P' : 'Ctrl+Alt+P',
+            icon: FolderSearch,
+            run: () => {
+              ui.setView('workspace')
+              ui.projectSwitcher = true
+            },
+          },
           {
             id: 'c:prompts',
             group: 'actions' as const,

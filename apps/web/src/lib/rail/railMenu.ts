@@ -143,12 +143,18 @@ export function groupMenu(ctx: { folded: boolean }, t: T): MenuEntry[] {
 }
 
 /** Right-click on the rail's empty space. */
-export function emptyMenu(ctx: { open: boolean; any: boolean }, t: T): MenuEntry[] {
+export function emptyMenu(ctx: { open: boolean; any: boolean; autoCollapse?: boolean }, t: T): MenuEntry[] {
   const entries: MenuEntry[] = []
   if (ctx.open) entries.push({ id: 'open-project', label: t('workspace.rail.openProject') })
   if (ctx.any) {
     if (entries.length) entries.push({ separator: true })
-    entries.push({ id: 'collapse-all', label: t(`${M}collapseAll`) }, { id: 'expand-all', label: t(`${M}expandAll`) })
+    entries.push(
+      { id: 'collapse-others', label: t('railCollapse.others') },
+      { id: 'collapse-all', label: t(`${M}collapseAll`) },
+      { id: 'expand-all', label: t(`${M}expandAll`) },
+      { separator: true },
+      { id: 'auto-collapse', label: t('railCollapse.auto'), hint: t(ctx.autoCollapse ? 'railCollapse.on' : 'railCollapse.off') },
+    )
   }
   return entries
 }

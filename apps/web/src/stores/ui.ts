@@ -231,6 +231,8 @@ export const useUiStore = defineStore('ui', () => {
   const i18nScan = ref<{ dir: string | null } | null>(null)
   /** Repeated permission prompts → allow rules (PermAdvisorDialog.vue): a folder, or null = the focused pane's project. */
   const permAdvisor = ref<{ dir: string | null } | null>(null)
+  /** Go to project (ProjectSwitcher.vue, Ctrl+Alt+P / ⌃⌥P or the palette). */
+  const projectSwitcher = ref(false)
   /** Project build output cleanup (BuildCleanDialog.vue, v77 R8): a project to pick first, or null = all known. */
   const buildClean = ref<{ dir: string | null } | null>(null)
   /** APK / AAB size dialog (ApkSizeDialog.vue): a file + its project, or path null = pick one. */
@@ -520,6 +522,7 @@ export const useUiStore = defineStore('ui', () => {
     envCheck,
     i18nScan,
     permAdvisor,
+    projectSwitcher,
     buildClean,
     apkSize,
     stringsTable,

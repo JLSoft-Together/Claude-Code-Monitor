@@ -58,6 +58,7 @@ import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
 import diskV77 from './disk-v77'
 import workspaceV77 from './workspace-v77'
+import projectsV78 from './projects-v78'
 import libsV75 from './libs-v75'
 import memdocV75 from './memdoc-v75'
 import releaseV75 from './release-v75'
@@ -112,6 +113,7 @@ export default {
   ...agentDataV76.en,
   ...diskV77.en,
   ...workspaceV77.en,
+  ...projectsV78.en,
   app: {
     title: 'Orrery',
     skipToContent: 'Skip to content',
@@ -677,6 +679,7 @@ export default {
       wsNavBack: 'Back to the previous location',
       wsNavForward: 'Forward to the next location',
       wsNotes: 'Project notes',
+      wsProjects: 'Go to project',
       wsDropTerm: 'Drop-down terminal',
       wsExplorer: 'Show the file explorer',
     wsSearch: 'Search in project files',

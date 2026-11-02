@@ -48,6 +48,8 @@ import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
 import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
+import { useProjectMru } from '../../composables/useProjectMru'
+import ProjectSwitcher from './ProjectSwitcher.vue'
 
 const PromptPicker = defineAsyncComponent(() => import('./PromptPicker.vue'))
 const NavPicker = defineAsyncComponent(() => import('./NavPicker.vue'))
@@ -231,6 +233,14 @@ const visibleTabKeys = computed(() => projectTabKeys(rail.clusters.value, worksp
 const visibleTabs = computed(() => visibleTabKeys.value.map((k) => workspace.tabs.find((t) => t.key === k)).filter((t): t is Tab => !!t))
 const tabSpaces = computed(() => spaceIndexes(workspace.tabs, (t) => tabProject(t, paneOf)))
 const activeCluster = computed(() => rail.clusters.value.find((c) => c.active) ?? null)
+const projectMru = useProjectMru()
+/** Ctrl+Alt+P again while Go to project is open: step its list (released → jump, see ProjectSwitcher). */
+const projectStep = ref({ n: 0, back: false })
+watch(
+  () => activeCluster.value?.root,
+  (root) => root && projectMru.touch(root),
+  { immediate: true },
+)
 const otherNeeds = computed(() => rail.clusters.value.filter((c) => !c.active).reduce((n, c) => n + c.needs, 0))
 const otherFailed = computed(() => rail.clusters.value.some((c) => !c.active && c.failed > 0))
 const otherNews = computed(() => {
@@ -1380,6 +1390,10 @@ function onGlobalKey(e: KeyboardEvent): void {
     case 'dropTerm':
       toggleDropTerm()
       break
+    case 'projects':
+      if (ui.projectSwitcher) projectStep.value = { n: projectStep.value.n + 1, back: action.back }
+      else ui.projectSwitcher = true
+      break
   }
 }
 
@@ -2509,6 +2523,7 @@ onBeforeUnmount(() => {
     <ReleaseCheckDialog v-if="ui.releaseCheck && visible" :root="releaseRoot" @close="ui.releaseCheck = null" />
     <LibUpdatesDialog v-if="ui.libUpdates && visible" :path="ui.libUpdates.path" :root="ui.libUpdates.root" @close="ui.libUpdates = null" />
     <ContextSourcesDialog v-if="ui.contextSources && visible" :cwd="ctxTarget.cwd" :terminal-id="ctxTarget.terminalId" @close="ui.contextSources = null" />
+    <ProjectSwitcher :open="ui.projectSwitcher && visible" :step="projectStep" @close="ui.projectSwitcher = false" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />
     <ScriptsDialog
       :open="!!scripts"

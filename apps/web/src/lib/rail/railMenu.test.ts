@@ -127,9 +127,13 @@ describe('groupMenu', () => {
 })
 
 describe('emptyMenu / isMenuKey', () => {
+  it('auto-collapse shows its state', () => {
+    expect(findAction(emptyMenu({ open: false, any: true, autoCollapse: true }, t), 'auto-collapse')?.hint).toBe('on')
+    expect(findAction(emptyMenu({ open: false, any: true }, t), 'auto-collapse')?.hint).toBe('off')
+  })
   it('offers Open Project and collapse / expand all', () => {
-    expect(ids(emptyMenu({ open: true, any: true }, t))).toEqual(['open-project', '-', 'collapse-all', 'expand-all'])
-    expect(ids(emptyMenu({ open: false, any: true }, t))).toEqual(['collapse-all', 'expand-all'])
+    expect(ids(emptyMenu({ open: true, any: true }, t))).toEqual(['open-project', '-', 'collapse-others', 'collapse-all', 'expand-all', '-', 'auto-collapse'])
+    expect(ids(emptyMenu({ open: false, any: true }, t))).toEqual(['collapse-others', 'collapse-all', 'expand-all', '-', 'auto-collapse'])
     expect(emptyMenu({ open: false, any: false }, t)).toEqual([])
   })
   it('ContextMenu key and Shift+F10 open the menu', () => {

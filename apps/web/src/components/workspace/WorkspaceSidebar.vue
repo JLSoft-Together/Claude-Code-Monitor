@@ -2,7 +2,7 @@
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PtyPreset } from '@ccm/shared'
-import { FolderPlus, LoaderCircle } from 'lucide-vue-next'
+import { ChevronsDownUp, FolderPlus, LoaderCircle } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
 import { useCompact } from '../../composables/useCompact'
 import { useOpenProject } from '../../composables/useOpenProject'
@@ -72,6 +72,34 @@ watch(
   },
   { deep: true },
 )
+const AUTO_COLLAPSE_KEY = 'ccm.workspace.autoCollapse'
+const autoCollapse = ref(readAutoCollapse())
+function readAutoCollapse(): boolean {
+  try {
+    return localStorage.getItem(AUTO_COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function setAutoCollapse(on: boolean): void {
+  autoCollapse.value = on
+  try {
+    localStorage.setItem(AUTO_COLLAPSE_KEY, on ? '1' : '0')
+  } catch {
+    // preference only
+  }
+  if (on) collapseOthers()
+}
+const activeClusterKey = computed(() => rail.clusters.value.find((c) => c.active)?.key ?? null)
+/** Every project folded but the one being worked in, which opens. */
+function collapseOthers(): void {
+  const keep = activeClusterKey.value
+  collapsed.value = new Set([...collapsed.value, ...rail.clusters.value.map((c) => c.key)].filter((k) => k !== keep))
+}
+watch(activeClusterKey, (key, before) => {
+  if (autoCollapse.value && key && key !== before) collapseOthers()
+})
+
 function toggle(c: RailCluster, open?: boolean): void {
   const next = new Set(collapsed.value)
   const shut = open === undefined ? !next.has(c.key) : !open
@@ -496,7 +524,7 @@ function showEmptyMenu(e: MouseEvent): void {
   e.preventDefault()
   if (echo()) return
   ++menuSeq
-  const entries = emptyMenu({ open: openable, any: clusters.value.length > 0 }, t)
+  const entries = emptyMenu({ open: openable, any: clusters.value.length > 0, autoCollapse: autoCollapse.value }, t)
   if (!entries.length) return
   ctxMenu.value = {
     at: cursorAt(e),
@@ -505,6 +533,8 @@ function showEmptyMenu(e: MouseEvent): void {
     entries,
     pick: (id) => {
       if (id === 'open-project') void pickProjectFolder()
+      else if (id === 'collapse-others') collapseOthers()
+      else if (id === 'auto-collapse') setAutoCollapse(!autoCollapse.value)
       else collapsed.value = id === 'collapse-all' ? new Set([...collapsed.value, ...clusters.value.map((c) => c.key)]) : new Set()
     },
   }
@@ -634,10 +664,11 @@ function pickNew(choice: SplitChoice): void {
     @pointerdown="onPointerDown"
     @contextmenu="showEmptyMenu"
   >
+    <div v-if="!only && (openable || clusters.length > 1)" class="flex shrink-0 items-center gap-1">
     <button
-      v-if="!only && openable"
+      v-if="openable"
       type="button"
-      class="inline-flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-inner border border-dashed border-line px-2 text-left text-xs text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink disabled:cursor-default disabled:text-ink-faint"
+      class="inline-flex h-8 min-w-0 flex-1 shrink-0 cursor-pointer items-center gap-2 rounded-inner border border-dashed border-line px-2 text-left text-xs text-ink-muted transition-colors duration-(--ccm-dur-fast) hover:bg-fill hover:text-ink disabled:cursor-default disabled:text-ink-faint"
       :title="t('workspace.rail.openProjectHint')"
       :disabled="picking"
       data-rail-open-project
@@ -647,6 +678,19 @@ function pickNew(choice: SplitChoice): void {
       <FolderPlus v-else :size="14" class="shrink-0" aria-hidden="true" />
       <span class="min-w-0 truncate">{{ t('workspace.rail.openProject') }}</span>
     </button>
+    <button
+      v-if="clusters.length > 1"
+      type="button"
+      class="ccm-btn-plain inline-flex size-8 shrink-0 items-center justify-center rounded-inner"
+      :class="autoCollapse ? 'text-accent-ink' : 'text-ink-muted'"
+      :title="t('railCollapse.othersHint')"
+      :aria-label="t('railCollapse.others')"
+      data-rail-collapse-others
+      @click="collapseOthers"
+    >
+      <ChevronsDownUp :size="14" aria-hidden="true" />
+    </button>
+    </div>
     <div ref="list" class="ccm-scroll min-h-0 flex-1 overflow-y-auto">
     <TransitionGroup
       tag="div"
