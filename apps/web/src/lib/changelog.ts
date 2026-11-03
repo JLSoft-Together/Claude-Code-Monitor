@@ -18,6 +18,22 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.1.0',
+    date: '2026-11-03',
+    items: [
+      { en: 'Agents can notify you, open a file or diff for you and ask who is editing a file', vi: 'Agent có thể báo chủ nhân, mở file hoặc diff cho chủ nhân xem và hỏi ai đang sửa file' },
+      { en: 'Agent tools for Run: start / reload the app, read its log, screenshot the device', vi: 'Tool Run cho agent: chạy / reload app, đọc log, chụp màn thiết bị' },
+      { en: 'Agent tools: render an XML layout, list and stop the ports a pane left open', vi: 'Tool cho agent: dựng layout XML, xem và dừng cổng pane còn mở' },
+      { en: 'Codex panes get the Orrery MCP tools too', vi: 'Pane Codex cũng dùng được tool MCP của Orrery' },
+      { en: 'Changes lists unreviewed files first; History can continue an ended session', vi: 'Changes đưa file chưa xem lên đầu; History có nút Tiếp tục session đã kết thúc' },
+      { en: 'Run can reload when the agent finishes and remembers each project\'s device', vi: 'Run có thể tự reload khi agent xong và nhớ thiết bị của từng dự án' },
+      { en: 'Limits warn ahead with the time they are forecast to run out', vi: 'Hạn mức báo trước giờ dự kiến hết' },
+      { en: 'Ctrl+K searches sessions, projects, files, settings and actions in one box', vi: 'Ctrl+K tìm session, dự án, file, cài đặt và hành động trong một ô' },
+      { en: 'Agent Map shows each sub-agent\'s recent tool calls', vi: 'Agent Map hiện các lệnh gọi tool gần đây của từng sub-agent' },
+      { en: 'One toast stack for undo, break and phone notices; rarely used dialogs load later', vi: 'Một chồng toast chung cho hoàn tác, nhắc nghỉ, điện thoại; hộp thoại ít dùng tải sau' },
+    ],
+  },
+  {
     version: '3.0.0',
     date: '2026-11-03',
     items: [

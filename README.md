@@ -32,7 +32,13 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 **Workspace**
 - Terminal trong app (Claude Code / Codex / shell): tab, chia ô, nhóm tab, phóng ô, hoàn tác đóng, Mission Control, worktree.
 - Khôi phục workspace sau khi khởi động lại hoặc app tắt bất thường (`--resume`).
-- Chuyển dự án nhanh `Ctrl+Alt+P` (macOS `⌃⌥P`), `Ctrl K` mở bảng lệnh.
+- Chuyển dự án nhanh `Ctrl+Alt+P` (macOS `⌃⌥P`); `Ctrl K` tìm session, dự án, file, cài đặt và lệnh.
+- Changes đưa file chưa xem lên đầu; History có nút Tiếp tục session đã kết thúc.
+
+**Tool cho agent** (MCP `orrery`, Claude Code và Codex trong pane; không gửi prompt, không tốn token)
+- Mở session mới thành pane, báo chủ nhân, mở file / diff, hỏi ai đang sửa file.
+- Chạy / reload app, đọc log Run, chụp màn thiết bị, dựng layout XML.
+- Xem và dừng cổng do chính pane mở (hỏi xác nhận trước).
 - Editor có tô màu cú pháp, tự lưu (tuỳ chọn), Outline, Local History; Explorer icon Atom Material.
 - Tìm / thay trong nhiều file, TODO, pane Trình duyệt, ghi chú dự án, Plan board.
 
