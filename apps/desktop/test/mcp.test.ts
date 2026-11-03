@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleMcp, MCP_PROTOCOL_VERSION, mcpGate, OPEN_SESSION_TOOL, toOpenResult, type OpenArgs, type OpenOutcome } from '../src/pty/mcp'
+import { handleMcp, MCP_PROTOCOL_VERSION, mcpGate, OPEN_SESSION_TOOL, toOpenResult, type OpenArgs, type OpenOutcome, type ToolHost } from '../src/pty/mcp'
 
 const uuid = '0b3c1f9e-1111-4222-8333-444455556666'
 const opened: OpenOutcome = { ok: true, preset: 'claude', cwd: 'D:\\work\\app', sessionId: uuid, prompt: true }
-const never = (): Promise<OpenOutcome> => Promise.reject(new Error('not expected'))
+const fail = (): Promise<never> => Promise.reject(new Error('not expected'))
+const hostWith = (openSession: ToolHost['openSession'] = fail): ToolHost => ({ root: process.cwd(), take: () => true, openSession, notify: fail, page: fail, checkoutRoots: () => Promise.resolve([]) })
+const never = hostWith()
 const call = (id: number, name: string, args?: unknown) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } })
 
 describe('mcp json-rpc', () => {
@@ -39,10 +41,10 @@ describe('mcp json-rpc', () => {
     expect(await handleMcp([], never, '0')).toEqual({ status: 200, json: { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } } })
   })
 
-  it('lists open_session with a closed schema', async () => {
+  it('lists open_session first with a closed schema', async () => {
     const res = await handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, never, '0')
     const tools = (res.json as { result: { tools: (typeof OPEN_SESSION_TOOL)[] } }).result.tools
-    expect(tools).toHaveLength(1)
+    expect(tools.map((t) => t.name)).toEqual(['open_session', 'notify_owner', 'open_in_workspace', 'who_is_editing', 'preview_layout', 'list_servers', 'free_port', 'run_app', 'run_status', 'run_log', 'device_screenshot'])
     const tool = tools[0]!
     expect(tool.name).toBe('open_session')
     expect(tool.description).toContain('instead of starting a terminal window')
@@ -55,7 +57,7 @@ describe('mcp json-rpc', () => {
 
   it('opens a session and describes it', async () => {
     const open = vi.fn((_args: OpenArgs) => Promise.resolve(opened))
-    const res = await handleMcp(call(4, 'open_session', { agent: 'claude', prompt: 'hi' }), open, '0')
+    const res = await handleMcp(call(4, 'open_session', { agent: 'claude', prompt: 'hi' }), hostWith(open), '0')
     expect(open).toHaveBeenCalledWith({ agent: 'claude', prompt: 'hi' })
     const result = (res.json as { id: number; result: { content: { type: string; text: string }[]; structuredContent: unknown; isError?: boolean } }).result
     expect(result.isError).toBeUndefined()
@@ -66,22 +68,22 @@ describe('mcp json-rpc', () => {
         text: `Opened Claude Code in D:\\work\\app as a new Orrery pane next to this session. Session id: ${uuid}. The prompt is waiting in its input box; the user presses Enter to send it.`,
       },
     ])
-    const shell = await handleMcp(call(5, 'open_session'), () => Promise.resolve({ ok: true, preset: 'shell', cwd: '/srv', prompt: false }), '0')
+    const shell = await handleMcp(call(5, 'open_session'), hostWith(() => Promise.resolve({ ok: true, preset: 'shell', cwd: '/srv', prompt: false })), '0')
     expect(open).toHaveBeenCalledTimes(1)
     expect((shell.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe('Opened a shell in /srv as a new Orrery pane next to this session.')
-    const resumed = await handleMcp(call(8, 'open_session', { resume: uuid }), () => Promise.resolve({ ok: true, preset: 'codex', cwd: '/srv', sessionId: uuid, prompt: false, resumed: true }), '0')
+    const resumed = await handleMcp(call(8, 'open_session', { resume: uuid }), hostWith(() => Promise.resolve({ ok: true, preset: 'codex', cwd: '/srv', sessionId: uuid, prompt: false, resumed: true })), '0')
     expect((resumed.json as { result: { content: { text: string }[] } }).result.content[0]!.text).toBe(`Reopened Codex session ${uuid} in /srv as an Orrery pane.`)
   })
 
   it('reports refusals as tool errors that discourage an external terminal', async () => {
     for (const error of ['limit', 'cwd', 'rate', 'unavailable', 'preset', 'failed', 'resume', 'live'] as const) {
-      const res = await handleMcp(call(6, 'open_session', { cwd: 'relative' }), () => Promise.resolve({ ok: false, error }), '0')
+      const res = await handleMcp(call(6, 'open_session', { cwd: 'relative' }), hostWith(() => Promise.resolve({ ok: false, error })), '0')
       const result = (res.json as { result: { content: { text: string }[]; structuredContent: unknown; isError?: boolean } }).result
       expect(result.isError).toBe(true)
       expect(result.structuredContent).toEqual({ ok: false, error })
       expect(result.content[0]!.text.endsWith('Do not open an external terminal window instead unless the user asks for it.')).toBe(true)
     }
-    const thrown = await handleMcp(call(7, 'open_session'), () => Promise.reject(new Error('x')), '0')
+    const thrown = await handleMcp(call(7, 'open_session'), hostWith(() => Promise.reject(new Error('x'))), '0')
     expect(thrown.json).toMatchObject({ result: { isError: true, structuredContent: { ok: false, error: 'failed' } } })
   })
 

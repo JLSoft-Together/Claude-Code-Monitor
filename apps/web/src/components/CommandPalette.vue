@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { modeOf, THEMES } from '../lib/themes'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   AArrowDown,
@@ -43,6 +43,10 @@ import {
   Package,
   Layers,
   ClipboardCheck,
+  FileText,
+  Folder,
+  SlidersHorizontal,
+  Star,
 } from 'lucide-vue-next'
 import { DEV_TOOLS } from '../lib/devTools'
 import { retireOverlay, withViewTransition } from '../lib/motion'
@@ -57,6 +61,17 @@ import { visibleFonts } from '../lib/fonts'
 import { stepCodeSize } from '../composables/useWheelZoom'
 import { useTipsStore } from '../stores/tips'
 import { shortPath } from '../lib/format'
+import { highlightRuns } from '../lib/fuzzy'
+import { entries as settingsEntries, searchSettings, type SettingsPage } from './settings'
+import { cap, fold, joinPath, listSettings, matchFiles, matchText, parsePrefix, prefixOf, searchable, type PaletteMode, type Searchable } from '../lib/paletteSearch'
+import { listFiles, changesStatus, type FileList } from '../lib/preview'
+import { filterProjects, landingTab, projectEntries, type ProjectEntry } from '../lib/projectSwitcher'
+import { flashSettingRow } from '../lib/settingsFlash'
+import { leaves } from '../lib/splitLayout'
+import { useProjectMru } from '../composables/useProjectMru'
+import { useRail } from '../composables/useRail'
+import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
+import { useSettingsEnv } from '../composables/useSettingsEnv'
 import { isMac } from '../lib/platform'
 import { keyCombo } from '../lib/shortcuts'
 import { statusMeta } from '../lib/status'
@@ -74,23 +89,28 @@ import { useWorkspaceStore, workCwd } from '../stores/workspace'
 import ArtImage from './ArtImage.vue'
 import StatusIcon from './StatusIcon.vue'
 
-type Group = 'sessions' | 'favorites' | 'nav' | 'actions' | 'prefs' | 'help'
-type Scope = 'all' | 'sessions' | 'favorites' | 'commands'
+type Group = 'sessions' | 'projects' | 'favorites' | 'files' | 'nav' | 'actions' | 'prefs' | 'settings' | 'help'
+type Scope = 'all' | 'sessions' | 'projects' | 'commands' | 'files' | 'settings'
 
-interface Item {
+interface Item extends Searchable {
   id: string
   group: Group
-  label: string
   sub?: string
-  hay: string
   icon?: Component
   status?: string
   /** Current state of a preference, shown as an On / Off tag. */
   on?: boolean
+  /** Character positions in `label` a fuzzy match hit. */
+  marks?: number[]
   run: () => void
   /** Shift+Enter. */
   alt?: () => void
   altHint?: string
+}
+
+interface MoreRow {
+  more: Group
+  hidden: number
 }
 
 const { t } = useI18n()
@@ -103,6 +123,10 @@ const settings = useSettingsStore()
 const connection = useConnectionStore()
 const prompts = usePromptsStore()
 const inbox = useInboxStore()
+const rail = useRail()
+const projectMru = useProjectMru()
+const reveal = useRevealInWorkspace()
+const settingsEnv = useSettingsEnv()
 
 const query = ref('')
 const scope = ref<Scope>('all')
@@ -111,12 +135,73 @@ const input = ref<HTMLInputElement | null>(null)
 const list = ref<HTMLElement | null>(null)
 let restoreFocus: HTMLElement | null = null
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-
 const STATUS_RANK: Record<string, number> = { waiting: 0, working: 1, error: 2, idle: 3, unknown: 4, stale: 5 }
-const GROUP_ORDER: Group[] = ['sessions', 'favorites', 'nav', 'actions', 'prefs', 'help']
-const SCOPES: Scope[] = ['all', 'sessions', 'favorites', 'commands']
-const inScope = (g: Group, s: Scope) => s === 'all' || s === g || (s === 'commands' && g !== 'sessions' && g !== 'favorites')
+const GROUP_ORDER: Group[] = ['sessions', 'projects', 'favorites', 'files', 'nav', 'actions', 'prefs', 'help', 'settings']
+const SCOPES: Scope[] = ['all', 'sessions', 'projects', 'commands', 'files', 'settings']
+const MODE_SCOPE: Record<PaletteMode, Scope> = { actions: 'commands', sessions: 'sessions', files: 'files', settings: 'settings' }
+const MODES: PaletteMode[] = ['actions', 'sessions', 'files', 'settings']
+const inScope = (g: Group, s: Scope) =>
+  s === 'all' || s === g || (s === 'projects' && g === 'favorites') || (s === 'commands' && g !== 'sessions' && g !== 'projects' && g !== 'favorites' && g !== 'files' && g !== 'settings')
+
+const parsed = computed(() => parsePrefix(query.value))
+const text = computed(() => parsed.value.text)
+const scopeNow = computed<Scope>(() => (parsed.value.mode ? MODE_SCOPE[parsed.value.mode] : scope.value))
+
+const tabFocusedAt = (tabKey: string): number => {
+  const tab = workspace.tabs.find((x) => x.key === tabKey)
+  if (!tab) return 0
+  return Math.max(0, ...leaves(tab.root).map((k) => workspace.panes.find((p) => p.key === k)?.focusedAt ?? 0))
+}
+
+function openProject(entry: ProjectEntry, newTab: boolean): void {
+  ui.setView('workspace')
+  const tabKey = newTab ? undefined : landingTab(entry.tabKeys, tabFocusedAt)
+  if (tabKey) workspace.activateTab(tabKey)
+  else workspace.open(workspace.preset, entry.dir, undefined, { tab: newTab })
+}
+
+const projectItem = (e: ProjectEntry, marks?: number[]): Item => ({
+  id: `p:${e.key}`,
+  group: 'projects',
+  ...searchable(e.name, e.dir, e.branch),
+  sub: [e.branch, shortPath(e.dir), e.tabs ? t('paletteV80.project.tabs', { n: e.tabs }, e.tabs) : null].filter(Boolean).join(' · '),
+  icon: e.favorite ? Star : Folder,
+  status: e.needs ? 'waiting' : e.failed ? 'error' : undefined,
+  marks,
+  run: () => openProject(e, false),
+  alt: () => openProject(e, true),
+  altHint: t('paletteV80.newTab'),
+})
+
+const projects = computed(() => projectEntries({ clusters: rail.clusters.value, mru: projectMru.mru.value, favorites: favorites.list }))
+const projectItems = computed<Item[]>(() => (hasTerminals ? projects.value.map((e) => projectItem(e)) : []))
+
+const activeCwd = (): string | undefined => {
+  const pane = workspace.active
+  if (!pane) return undefined
+  return pane.kind === 'changes' || pane.kind === 'log' ? (pane.root ?? pane.cwd) : workCwd(pane)
+}
+
+const files = shallowRef<FileList | null>(null)
+const fileState = ref<'idle' | 'loading' | 'failed' | 'none'>('idle')
+let fileLoad = 0
+
+async function loadFiles(): Promise<void> {
+  const run = ++fileLoad
+  files.value = null
+  const cwd = activeCwd()
+  if (!cwd) {
+    fileState.value = 'none'
+    return
+  }
+  fileState.value = 'loading'
+  const status = await changesStatus(cwd)
+  if (run !== fileLoad) return
+  const res = await listFiles(status.ok ? status.root : cwd)
+  if (run !== fileLoad) return
+  files.value = res
+  fileState.value = res ? 'idle' : 'failed'
+}
 
 const items = computed<Item[]>(() => {
   const sessions: Item[] = [...terminals.list]
@@ -125,34 +210,35 @@ const items = computed<Item[]>(() => {
       const title = displayTitle(x)
       const live = x.status !== 'stale'
       const provider = isCodex(x) ? t('provider.codex') : null
+      const reopen = !live && reveal.canReopen(x)
       return {
         id: `s:${x.id}`,
         group: 'sessions' as const,
-        label: title,
+        ...searchable(title, x.title, x.cwd, x.gitBranch, x.status, provider),
         sub: [provider, t(statusMeta(x.status).labelKey), x.gitBranch, shortPath(x.cwd)].filter(Boolean).join(' · '),
-        hay: fold(`${title} ${x.title} ${x.cwd ?? ''} ${x.gitBranch ?? ''} ${x.status} ${provider ?? ''}`),
         status: x.status,
         run: () => {
           ui.setView('monitor')
           ui.focusTerminal(x.id)
         },
-        alt: live && x.processId ? () => connection.focusWindow(x.id) : undefined,
-        altHint: t('palette.jump'),
+        alt: reopen ? () => void reveal.reopen(x) : live && x.processId ? () => connection.focusWindow(x.id) : undefined,
+        altHint: reopen ? t('paletteV80.resume') : t('palette.jump'),
       }
     })
-  const favs: Item[] = favorites.list.map((f) => ({
-    id: `f:${f.dir}`,
-    group: 'favorites' as const,
-    label: f.label,
-    sub: shortPath(f.dir),
-    hay: fold(`${f.label} ${f.dir}`),
-    icon: FolderOpen,
-    run: () => connection.openFavorite(f.dir, 'new'),
-    alt: () => connection.openFavorite(f.dir, 'continue'),
-    altHint: t('palette.continue'),
-  }))
+  const favs: Item[] = hasTerminals
+    ? []
+    : favorites.list.map((f) => ({
+        id: `f:${f.dir}`,
+        group: 'favorites' as const,
+        ...searchable(f.label, f.dir),
+        sub: shortPath(f.dir),
+        icon: FolderOpen,
+        run: () => connection.openFavorite(f.dir, 'new'),
+        alt: () => connection.openFavorite(f.dir, 'continue'),
+        altHint: t('palette.continue'),
+      }))
   const ended = terminals.list.filter((x) => x.status === 'stale').length
-  const commands: Omit<Item, 'hay'>[] = [
+  const commands: Omit<Item, 'exact' | 'hay'>[] = [
     { id: 'c:monitor', group: 'nav', label: t('palette.goMonitor'), icon: Activity, run: () => ui.setView('monitor') },
     { id: 'c:usage', group: 'nav', label: t('palette.goUsage'), icon: ChartColumnBig, run: () => ui.setView('usage') },
     { id: 'c:history', group: 'nav', label: t('palette.goHistory'), icon: History, run: () => ui.setView('history') },
@@ -378,23 +464,105 @@ const items = computed<Item[]>(() => {
     { id: 'c:diag', group: 'help', label: t('diag.title'), icon: Stethoscope, run: () => (ui.diagnosticsOpen = true) },
     ...(desktop ? [{ id: 'c:setup', group: 'help' as const, label: t('setup.open'), sub: t('setup.openHint'), icon: ListChecks, run: () => (ui.setupOpen = true) }] : []),
   ]
-  return [...sessions, ...favs, ...commands.map((c) => ({ ...c, hay: fold(`${c.label} ${c.sub ?? ''}`) }))]
+  return [...sessions, ...favs, ...commands.map((c) => ({ ...c, ...searchable(c.label, c.sub) }))]
 })
 
-const tokens = computed(() => fold(query.value).split(/\s+/).filter(Boolean))
-const matched = computed(() => items.value.filter((x) => tokens.value.every((tk) => x.hay.includes(tk))))
-const filtered = computed(() => matched.value.filter((x) => inScope(x.group, scope.value)))
+// One letter is too vague for files, and settings only join the mixed view once something is typed.
+const wantFiles = computed(() => scopeNow.value === 'files' || text.value.length >= 2)
+const wantSettings = computed(() => scopeNow.value === 'settings' || text.value !== '')
+
+const localMatches = computed<Item[]>(() => {
+  const found = matchText(items.value, text.value)
+  const known = text.value ? filterProjects(projects.value, text.value).map((h) => projectItem(h.entry, h.name)) : projectItems.value
+  return [...found, ...(hasTerminals ? known : [])]
+})
+
+function openSetting(page: SettingsPage, id: string): void {
+  ui.settingsPage = page
+  ui.settingsOpen = true
+  flashSettingRow(id)
+}
+
+const settingItems = computed<Item[]>(() => {
+  if (!wantSettings.value) return []
+  const all = settingsEntries(isMac)
+  const tr = (k: string): string => t(k)
+  const hits = text.value ? searchSettings(text.value, all, settingsEnv.value, tr) : listSettings(all, settingsEnv.value, tr)
+  return hits.map((h) => ({
+    id: `set:${h.page}:${h.id}`,
+    group: 'settings' as const,
+    ...searchable(h.label),
+    sub: t(`settingsV79.pages.${h.page}`),
+    icon: SlidersHorizontal,
+    run: () => openSetting(h.page, h.id),
+  }))
+})
+
+function openFile(root: string, rel: string, line: number | undefined, split: boolean): void {
+  ui.setView('workspace')
+  const key = workspace.activeKey
+  withViewTransition(() => workspace.openFile(joinPath(root, rel), line, split && key ? { cwd: root, split: { key, dir: 'row' } } : { cwd: root }))
+}
+
+const fileItems = computed<Item[]>(() => {
+  const list = files.value
+  if (!list || !wantFiles.value) return []
+  const found = matchFiles(list.files, text.value, { min: scopeNow.value === 'files' ? 0 : 2 })
+  return found.hits.map((hit) => {
+    const cut = hit.item.lastIndexOf('/') + 1
+    const dir = cut ? hit.item.slice(0, cut - 1) : ''
+    return {
+      id: `file:${hit.item}`,
+      group: 'files' as const,
+      ...searchable(hit.item.slice(cut)),
+      sub: [dir, found.line ? t('paletteV80.files.line', { n: found.line }) : null].filter(Boolean).join(' · ') || undefined,
+      marks: hit.positions.filter((p) => p >= cut).map((p) => p - cut),
+      icon: FileText,
+      run: () => openFile(list.root, hit.item, found.line, false),
+      alt: () => openFile(list.root, hit.item, found.line, true),
+      altHint: t('workspace.quickOpen.hints.split'),
+    }
+  })
+})
+
+const matched = computed<Item[]>(() => [...localMatches.value, ...fileItems.value, ...settingItems.value])
+const filtered = computed(() => matched.value.filter((x) => inScope(x.group, scopeNow.value)))
 const scopeCounts = computed(() => Object.fromEntries(SCOPES.map((s) => [s, matched.value.filter((x) => inScope(x.group, s)).length])) as Record<Scope, number>)
+
+const expanded = ref(new Set<Group>())
+type Row = (Item | MoreRow) & { index: number }
+const isMore = (r: Row): r is MoreRow & { index: number } => 'more' in r
+
+const groupLabel = (g: Group): string => (g === 'projects' || g === 'files' || g === 'settings' ? t(`paletteV80.group.${g}`) : t(`palette.group.${g}`))
 
 const groups = computed(() => {
   let index = 0
-  return GROUP_ORDER.map((g) => ({ key: g, label: t(`palette.group.${g}`), items: filtered.value.filter((x) => x.group === g).map((x) => ({ ...x, index: index++ })) })).filter(
-    (g) => g.items.length,
-  )
+  const single = scopeNow.value !== 'all'
+  return GROUP_ORDER.flatMap((g) => {
+    const inGroup = filtered.value.filter((x) => x.group === g)
+    if (!inGroup.length) return []
+    const { shown, hidden } = single ? { shown: inGroup, hidden: 0 } : cap(inGroup, expanded.value.has(g))
+    const rows: Row[] = shown.map((x) => ({ ...x, index: index++ }))
+    if (hidden) rows.push({ more: g, hidden, index: index++ })
+    return [{ key: g, label: groupLabel(g), items: rows }]
+  })
+})
+const flat = computed(() => groups.value.flatMap((g) => g.items))
+
+const fileNote = computed(() => {
+  if (scopeNow.value !== 'files') return null
+  if (fileState.value === 'none') return t('paletteV80.files.noProject')
+  if (fileState.value === 'loading') return t('paletteV80.files.loading')
+  if (fileState.value === 'failed') return t('paletteV80.files.failed')
+  return null
 })
 
+const tokens = computed(() => fold(text.value).split(/\s+/).filter(Boolean))
+
 /** Splits a label into matched / unmatched runs; folding keeps precomposed text the same length. */
-function parts(label: string): { text: string; hit: boolean }[] {
+function parts(item: Item): { text: string; hit: boolean }[] {
+  const label = item.label
+  if (item.marks) return highlightRuns(label, item.marks)
   const folded = fold(label)
   if (!tokens.value.length || folded.length !== label.length) return [{ text: label, hit: false }]
   const mark = new Array<boolean>(label.length).fill(false)
@@ -414,9 +582,12 @@ function parts(label: string): { text: string; hit: boolean }[] {
   return out
 }
 
-watch([query, scope], () => (active.value = 0))
+watch([query, scope], () => {
+  active.value = 0
+  expanded.value = new Set()
+})
 watch(
-  () => filtered.value.length,
+  () => flat.value.length,
   (n) => {
     if (active.value > n - 1) active.value = Math.max(0, n - 1)
   },
@@ -426,26 +597,40 @@ function close(): void {
   ui.paletteOpen = false
 }
 
-function choose(item: Item | undefined, alt: boolean): void {
+function choose(item: Row | undefined, alt: boolean): void {
   if (!item) return
+  if (isMore(item)) {
+    expanded.value = new Set(expanded.value).add(item.more)
+    return
+  }
   close()
   // After the close watcher has put focus back, so a navigating action keeps the focus it sets.
   void nextTick(() => (alt && item.alt ? item.alt() : item.run()))
 }
 
 function move(delta: number): void {
-  const n = filtered.value.length
+  const n = flat.value.length
   if (!n) return
   active.value = (active.value + delta + n) % n
   void nextTick(() => list.value?.querySelector(`[data-index="${active.value}"]`)?.scrollIntoView({ block: 'nearest' }))
 }
 
+function setScope(next: Scope): void {
+  if (parsed.value.mode) query.value = parsed.value.text
+  scope.value = next
+}
+
 function cycleScope(delta: number): void {
-  scope.value = SCOPES[(SCOPES.indexOf(scope.value) + delta + SCOPES.length) % SCOPES.length]!
+  setScope(SCOPES[(SCOPES.indexOf(scopeNow.value) + delta + SCOPES.length) % SCOPES.length]!)
 }
 
 function clearQuery(): void {
   query.value = ''
+  input.value?.focus()
+}
+
+function startMode(mode: PaletteMode): void {
+  query.value = prefixOf(mode)
   input.value?.focus()
 }
 
@@ -458,7 +643,7 @@ function onKey(e: KeyboardEvent): void {
     move(-1)
   } else if (e.key === 'Enter') {
     e.preventDefault()
-    choose(filtered.value[active.value], e.shiftKey)
+    choose(flat.value[active.value], e.shiftKey)
   } else if (e.key === 'Escape') {
     e.preventDefault()
     if (query.value) query.value = ''
@@ -486,19 +671,36 @@ watch(
       query.value = ''
       scope.value = 'all'
       active.value = 0
+      expanded.value = new Set()
+      filesAsked = false
       await nextTick()
       input.value?.focus()
     } else {
+      fileLoad++
+      files.value = null
+      fileState.value = 'idle'
       if (restoreFocus?.isConnected) restoreFocus.focus()
       restoreFocus = null
     }
   },
 )
 
+// The project's file list is only fetched once a search could use it.
+let filesAsked = false
+watch(
+  () => ui.paletteOpen && (scopeNow.value === 'files' || (scopeNow.value === 'all' && text.value.length >= 2)),
+  (want) => {
+    if (!want || filesAsked) return
+    filesAsked = true
+    void loadFiles()
+  },
+)
+
 onMounted(() => document.addEventListener('keydown', onGlobalKey))
 onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKey))
 
-const activeId = computed(() => (filtered.value[active.value] ? `palette-opt-${active.value}` : undefined))
+const activeId = computed(() => (flat.value[active.value] ? `palette-opt-${active.value}` : undefined))
+const emptyText = computed(() => fileNote.value ?? (query.value ? t('palette.emptyFor', { q: query.value }) : t('palette.empty')))
 const HINTS = [
   { key: 'move', keys: '↑ ↓' },
   { key: 'open', keys: 'Enter' },
@@ -529,7 +731,7 @@ const HINTS = [
               aria-autocomplete="list"
               :aria-activedescendant="activeId"
               :aria-label="t('palette.title')"
-              :placeholder="t('palette.placeholder')"
+              :placeholder="t('paletteV80.placeholder')"
               class="ccm-bare-input h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-faint"
               autocomplete="off"
               spellcheck="false"
@@ -549,35 +751,35 @@ const HINTS = [
             <kbd v-else class="hidden shrink-0 rounded-inner bg-fill px-1.5 py-0.5 font-sans text-2xs text-ink-faint sm:inline">Esc</kbd>
           </div>
 
-          <div class="flex gap-5 border-b border-line px-5" role="radiogroup" :aria-label="t('palette.scopeLabel')">
+          <div class="flex gap-4 border-b border-line px-5" role="radiogroup" :aria-label="t('palette.scopeLabel')">
             <button
               v-for="s in SCOPES"
               :key="s"
               type="button"
               role="radio"
-              :aria-checked="scope === s"
+              :aria-checked="scopeNow === s"
               tabindex="-1"
               class="-mb-px inline-flex h-9 cursor-pointer items-center gap-1.5 border-b-2 text-xs font-medium transition-colors"
-              :class="scope === s ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'"
+              :class="scopeNow === s ? 'border-accent text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'"
               @mousedown.prevent
-              @click="scope = s"
+              @click="setScope(s)"
             >
-              {{ t(`palette.scope.${s}`) }}
-              <span class="tabular text-2xs" :class="scope === s ? 'text-accent-ink' : 'text-ink-faint'">{{ scopeCounts[s] }}</span>
+              {{ t(`paletteV80.scope.${s}`) }}
+              <span class="tabular text-2xs" :class="scopeNow === s ? 'text-accent-ink' : 'text-ink-faint'">{{ scopeCounts[s] }}</span>
             </button>
           </div>
 
           <div id="palette-list" ref="list" role="listbox" :aria-label="t('palette.title')" class="ccm-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3">
-            <div v-if="!filtered.length" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
+            <div v-if="!flat.length" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
               <ArtImage name="empty-project-search" class="w-28" />
-              <p class="text-sm font-medium">{{ query ? t('palette.emptyFor', { q: query }) : t('palette.empty') }}</p>
-              <p class="max-w-[36ch] text-xs text-ink-faint">{{ t('palette.emptyHint') }}</p>
+              <p class="text-sm font-medium" :role="fileNote ? 'status' : undefined">{{ emptyText }}</p>
+              <p v-if="!fileNote" class="max-w-[36ch] text-xs text-ink-faint">{{ t('palette.emptyHint') }}</p>
               <button
-                v-if="scope !== 'all' && scopeCounts.all"
+                v-if="scopeNow !== 'all' && scopeCounts.all"
                 type="button"
                 class="ccm-btn mt-2"
                 @mousedown.prevent
-                @click="scope = 'all'"
+                @click="setScope('all')"
               >
                 {{ t('palette.showAll', { n: scopeCounts.all }) }}
               </button>
@@ -585,10 +787,25 @@ const HINTS = [
             <div v-for="g in groups" :key="g.key" role="group" :aria-label="g.label" class="pt-3">
               <p class="px-3 pb-1.5 text-2xs font-medium text-ink-faint">{{ g.label }}</p>
               <div class="flex flex-col gap-0.5">
+                <template v-for="item in g.items" :key="'more' in item ? `more:${item.more}` : item.id">
                 <div
-                  v-for="item in g.items"
+                  v-if="isMore(item)"
                   :id="`palette-opt-${item.index}`"
-                  :key="item.id"
+                  role="option"
+                  :data-index="item.index"
+                  :aria-selected="item.index === active"
+                  class="flex h-9 cursor-pointer items-center gap-3 rounded-inner px-3 text-xs"
+                  :class="item.index === active ? 'bg-accent text-on-accent' : 'text-ink-muted'"
+                  data-palette-more
+                  @mousemove="active = item.index"
+                  @click="choose(item, false)"
+                >
+                  <span class="inline-flex size-7 shrink-0 items-center justify-center" aria-hidden="true">…</span>
+                  {{ t('paletteV80.more', { n: item.hidden }) }}
+                </div>
+                <div
+                  v-else
+                  :id="`palette-opt-${item.index}`"
                   role="option"
                   :data-index="item.index"
                   :aria-selected="item.index === active"
@@ -607,7 +824,7 @@ const HINTS = [
                   </span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate"
-                      ><template v-for="(p, pi) in parts(item.label)" :key="pi"
+                      ><template v-for="(p, pi) in parts(item)" :key="pi"
                         ><mark v-if="p.hit" class="bg-transparent font-semibold" :class="item.index === active ? 'text-on-accent' : 'text-accent-ink'">{{ p.text }}</mark
                         ><template v-else>{{ p.text }}</template></template
                       ></span
@@ -630,13 +847,28 @@ const HINTS = [
                     <kbd class="inline-flex items-center rounded-inner bg-on-accent/20 px-1 py-px"><CornerDownLeft :size="12" aria-hidden="true" /></kbd>
                   </span>
                 </div>
+                </template>
               </div>
             </div>
+            <p v-if="scopeNow === 'files' && files?.truncated && flat.length" class="px-3 pt-3 text-2xs text-ink-faint">{{ t('paletteV80.files.truncated', { n: files.files.length }) }}</p>
           </div>
 
-          <div class="hidden items-center gap-x-5 border-t border-line px-5 py-3 text-2xs text-ink-faint sm:flex">
+          <div class="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t border-line px-5 py-3 text-2xs text-ink-faint sm:flex">
             <span v-for="h in HINTS" :key="h.key" class="inline-flex items-center gap-1.5">
               <kbd class="rounded-inner bg-fill px-1.5 py-px font-sans text-ink-muted">{{ h.keys }}</kbd>{{ t(`palette.hints.${h.key}`) }}
+            </span>
+            <span class="ml-auto inline-flex items-center gap-3">
+              <button
+                v-for="m in MODES"
+                :key="m"
+                type="button"
+                class="inline-flex cursor-pointer items-center gap-1.5 hover:text-ink-muted"
+                :data-palette-mode="m"
+                @mousedown.prevent
+                @click="startMode(m)"
+              >
+                <kbd class="rounded-inner bg-fill px-1.5 py-px font-sans text-ink-muted">{{ prefixOf(m) }}</kbd>{{ t(`paletteV80.prefix.${m}`) }}
+              </button>
             </span>
           </div>
         </div>

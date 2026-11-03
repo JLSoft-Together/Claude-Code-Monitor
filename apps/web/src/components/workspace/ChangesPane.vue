@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronRight, FileWarning, GitMerge, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, SquareCheck, SquareMinus, SquarePlus, Undo2 } from 'lucide-vue-next'
-import { absoluteIn, dirOfRel, fileStepKey, groupChanges, KIND_CLASS, KIND_LETTER, samePath, scrollSideways, stageState } from '../../lib/changesView'
+import { Check, CheckCheck, ChevronRight, FileWarning, GitMerge, Folder, GitBranch, GitCompare, GitGraph, ListTree, RotateCw, SlidersHorizontal, SquareArrowOutUpRight, SquareCheck, SquareMinus, SquarePlus, Undo2 } from 'lucide-vue-next'
+import { absoluteIn, dirOfRel, fileStepKey, groupChanges, type ChangeGroupKey, KIND_CLASS, KIND_LETTER, samePath, scrollSideways, stageState } from '../../lib/changesView'
 import { changesTree, type ChangesTreeRow } from '../../lib/changesTree'
+import { markAllSeen, markSeen, readSeen, setUnseenCount, splitUnseen } from '../../lib/reviewQueue'
 import { grammarFor } from '../../lib/codeView'
 import { parseUnifiedDiff, type DiffFile } from '../../lib/diff'
 import { blockPatch, viewBlocks } from '../../lib/diffBlocks'
@@ -122,7 +123,18 @@ watch(
   () => void loadDiff(true),
 )
 
-const groups = computed(() => groupChanges(entries.value))
+const seenMap = ref<Record<string, string>>({})
+const reviewSplit = computed(() => splitUnseen(entries.value, seenMap.value))
+const unseenCount = computed(() => reviewSplit.value.unseen.length)
+// With nothing seen yet every file is unseen: a lone "Unseen" group would only hide the usual grouping.
+const unseenGroup = computed(() => unseenCount.value > 0 && unseenCount.value < entries.value.filter((e) => e.kind !== 'conflict').length)
+const groups = computed<{ key: ChangeGroupKey | 'unseen'; items: ChangeEntry[] }[]>(() =>
+  unseenGroup.value ? [...groupChanges(reviewSplit.value.rest.filter((e) => e.kind === 'conflict')), { key: 'unseen', items: reviewSplit.value.unseen }, ...groupChanges(reviewSplit.value.rest.filter((e) => e.kind !== 'conflict'))] : groupChanges(entries.value),
+)
+watch(unseenCount, (n) => repoRoot.value && setUnseenCount(repoRoot.value, n), { immediate: true })
+function markAllReviewed(): void {
+  if (repoRoot.value) seenMap.value = markAllSeen(repoRoot.value, entries.value)
+}
 /** Files in display order (tree order when grouped by folder, folded folders included): F7 / [ ] walk this. */
 const ordered = computed(() =>
   groups.value.flatMap((g) =>
@@ -167,6 +179,7 @@ async function loadStatus(): Promise<void> {
     emit('root', res.root)
     void setWatch(res.root)
   }
+  seenMap.value = readSeen(res.root)
   branch.value = res.branch
   entries.value = res.entries
   truncated.value = res.truncated
@@ -201,8 +214,14 @@ function applySelect(): boolean {
   if (!hit) return false
   revealInTree(hit.path)
   if (hit.path === selected.value) void loadDiff(true)
-  select(hit.path, true)
+  select(hit.path, !typingElsewhere())
   return true
+}
+
+/** An agent may ask for this (open_in_workspace): never pull the caret out of a terminal or field the owner is typing in. */
+function typingElsewhere(): boolean {
+  const a = document.activeElement
+  return !!a && a !== document.body && !listEl.value?.contains(a) && !!a.closest('.xterm, input, textarea, [contenteditable="true"]')
 }
 
 watch(
@@ -293,6 +312,8 @@ function onWindowFocus(): void {
 }
 
 function select(path: string, focus = false): void {
+  const entry = entries.value.find((e) => e.path === path)
+  if (entry && repoRoot.value) markSeen(repoRoot.value, entry)
   selected.value = path
   cursor.value = `f:${path}`
   armed = 0
@@ -660,6 +681,7 @@ const headMore = computed<MenuEntry[]>(() => {
     { id: 'layout:split', label: t('workspace.changes.split'), icon: opts.value.layout === 'split' ? Check : undefined },
     { separator: true },
   ]
+  if (unseenCount.value) out.push({ id: 'seen', label: t('linksV80.markSeen'), icon: CheckCheck })
   if (hasLog && repoRoot.value) out.push({ id: 'log', label: t('workspace.log.open'), icon: GitGraph })
   out.push({ id: 'refresh', label: t('workspace.changes.refresh'), icon: RotateCw })
   return out
@@ -670,6 +692,7 @@ function pickHead(id: string): void {
   else if (id === 'layout:inline') setOpt('layout', 'inline')
   else if (id === 'layout:split') setOpt('layout', 'split')
   else if (id === 'log' && repoRoot.value) emit('log', repoRoot.value)
+  else if (id === 'seen') markAllReviewed()
   else if (id === 'refresh') void loadStatus()
 }
 </script>
@@ -686,6 +709,7 @@ function pickHead(id: string): void {
       <GitCompare :size="15" class="mr-0.5 shrink-0 text-ink-muted" aria-hidden="true" />
       <span class="shrink-0 text-xs font-semibold text-ink @max-[560px]:sr-only">{{ t('workspace.changes.title') }}</span>
       <span v-if="entries.length" class="shrink-0 rounded-full bg-fill px-1.5 text-2xs tabular text-ink-muted @max-[300px]:hidden">{{ entries.length }}</span>
+      <span v-if="unseenCount" class="shrink-0 rounded-full bg-accent-soft px-1.5 text-2xs tabular text-accent-ink @max-[300px]:hidden" :title="t('linksV80.unseenCount', { n: unseenCount }, unseenCount)" data-review-unseen>{{ t('linksV80.badge', { n: unseenCount }) }}</span>
       <span v-if="branch" class="ml-1 hidden min-w-0 items-center gap-1 truncate text-2xs text-ink-faint @md:inline-flex" :title="repoRoot ?? cwd">
         <GitBranch :size="12" class="shrink-0" aria-hidden="true" />
         <span class="truncate">{{ branch }}</span>
@@ -837,6 +861,13 @@ function pickHead(id: string): void {
       <button type="button" class="ccm-btn h-6 shrink-0 text-2xs" :disabled="aborting" data-merge-abort @click="abortMerge()">{{ t('workspace.conflicts.abort') }}</button>
     </div>
 
+    <div v-if="unseenCount && !loading && !statusError" class="flex shrink-0 items-center gap-2 border-b border-line bg-fill px-3 py-1 text-xs text-ink" role="status" data-review-bar>
+      <span class="min-w-0 flex-1 truncate">{{ t('linksV80.unseenCount', { n: unseenCount }, unseenCount) }}</span>
+      <button type="button" class="ccm-btn h-6 shrink-0 gap-1 text-2xs" data-review-mark-seen @click="markAllReviewed()">
+        <CheckCheck :size="12" aria-hidden="true" />{{ t('linksV80.markSeen') }}
+      </button>
+    </div>
+
     <div v-if="!hasChanges || statusError" class="grid min-h-0 flex-1 place-items-center p-6">
       <div class="flex max-w-sm flex-col items-center gap-2 text-center">
         <FileWarning :size="26" class="text-ink-faint" aria-hidden="true" />
@@ -861,7 +892,7 @@ function pickHead(id: string): void {
       >
         <div v-for="g in treeGroups" :key="g.key" role="group" :aria-labelledby="`chg-${g.key}`">
           <p :id="`chg-${g.key}`" class="flex items-center gap-1.5 px-3 pb-0.5 pt-2 text-2xs font-semibold text-ink-faint">
-            {{ t(`workspace.changes.groups.${g.key}`) }}
+            {{ g.key === 'unseen' ? t('linksV80.unseen') : t(`workspace.changes.groups.${g.key}`) }}
             <span class="tabular font-normal">{{ g.items.length }}</span>
           </p>
           <template v-if="treeMode">

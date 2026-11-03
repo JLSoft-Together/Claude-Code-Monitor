@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Asterisk, FileText, Folder, FolderOpen, GitCompare, GitGraph, Globe, Hexagon, House, SquareTerminal, Star, X } from 'lucide-vue-next'
+import { Asterisk, FileText, Folder, FolderOpen, GitCompare, GitGraph, Globe, Hexagon, House, SquareTerminal, Star, TrendingUp, X } from 'lucide-vue-next'
 import type { PtyPreset } from '@ccm/shared'
 import { desktop } from '../../lib/desktop'
 import { devUrlLabel, lastDevUrl } from '../../lib/devServer'
-import { shortPath } from '../../lib/format'
+import { now, shortPath } from '../../lib/format'
+import { limitRisk } from '../../lib/headerStatus'
 import { hasChanges, hasLog, hasPreview } from '../../lib/preview'
+import { useExtrasStore } from '../../stores/extras'
 import { dirKey, useFavoritesStore } from '../../stores/favorites'
 import { useTerminalsStore } from '../../stores/terminals'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -20,7 +22,10 @@ const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const favorites = useFavoritesStore()
 const terminals = useTerminalsStore()
+const extras = useExtrasStore()
 
+const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+const SOON_MS = 30 * 60_000
 const PER_SECTION = 8
 const root = ref<HTMLElement | null>(null)
 const browsing = ref(false)
@@ -32,6 +37,19 @@ const presetOptions = computed(() => [
   { value: 'codex' as PtyPreset, label: t('workspace.preset.codex'), icon: Hexagon, iconClass: 'text-agent-codex' },
   { value: 'shell' as PtyPreset, label: t('workspace.preset.shell'), icon: SquareTerminal, iconClass: 'text-agent-shell' },
 ])
+
+const soon = computed(() => {
+  const only = workspace.preset === 'claude' || workspace.preset === 'codex' ? workspace.preset : undefined
+  if (!only) return null
+  const r = limitRisk(extras.limits, extras.codexLimits, now.value, SOON_MS, only)
+  if (!r) return null
+  return {
+    provider: t(`provider.${r.provider}`),
+    window: t(`limits.${r.key}`),
+    at: clock.format(r.fullAtMs),
+    min: Math.max(1, Math.round((r.fullAtMs - now.value) / 60_000)),
+  }
+})
 
 const devUrl = computed(() => (props.cwd && hasPreview ? lastDevUrl(props.cwd) : null))
 
@@ -97,6 +115,9 @@ defineExpose({ focusFirst })
 <template>
   <div ref="root" class="flex min-h-0 flex-col gap-2" @keydown="onKey">
     <SegmentedControl v-model="workspace.preset" :options="presetOptions" :label="t('workspace.launch.agent')" fill />
+    <p v-if="soon" class="flex items-start gap-1.5 px-1 text-2xs text-warning" role="status" data-launch-limit-warn>
+      <TrendingUp :size="12" class="mt-0.5 shrink-0" aria-hidden="true" />{{ t('limitsV80.launchWarn', soon) }}
+    </p>
 
     <div class="ccm-scroll -mx-1 max-h-[min(52vh,420px)] min-h-0 overflow-y-auto px-1">
       <section v-for="s in sections" :key="s.id" class="pt-1.5" :aria-labelledby="`launch-${s.id}`">

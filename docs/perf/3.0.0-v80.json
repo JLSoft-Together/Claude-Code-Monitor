@@ -1,0 +1,1190 @@
+{
+  "version": "3.0.0",
+  "label": "v80",
+  "date": "2026-11-02",
+  "chunks": [
+    {
+      "file": "assets/index-BWrsNhGp.js",
+      "type": "js",
+      "bytes": 1610264,
+      "gzip": 530722
+    },
+    {
+      "file": "assets/WorkspaceView-zT9TyOB3.js",
+      "type": "js",
+      "bytes": 1480997,
+      "gzip": 432689
+    },
+    {
+      "file": "assets/cpp-jvSrPFZo.js",
+      "type": "js",
+      "bytes": 796996,
+      "gzip": 55603
+    },
+    {
+      "file": "assets/cpp-DddhVWhK.js",
+      "type": "js",
+      "bytes": 796962,
+      "gzip": 55587
+    },
+    {
+      "file": "assets/cmLanguage-CsmMR_jz.js",
+      "type": "js",
+      "bytes": 356768,
+      "gzip": 116750
+    },
+    {
+      "file": "assets/index-C7kLzeQR.js",
+      "type": "js",
+      "bytes": 268285,
+      "gzip": 93500
+    },
+    {
+      "file": "assets/en-qIiw55dF.js",
+      "type": "js",
+      "bytes": 241916,
+      "gzip": 77312
+    },
+    {
+      "file": "assets/typescript-BqvgUolh.js",
+      "type": "js",
+      "bytes": 181084,
+      "gzip": 16043
+    },
+    {
+      "file": "assets/typescript-BPQ3VLAy.js",
+      "type": "js",
+      "bytes": 181080,
+      "gzip": 16039
+    },
+    {
+      "file": "assets/jsx-8cLv2Six.js",
+      "type": "js",
+      "bytes": 177796,
+      "gzip": 16611
+    },
+    {
+      "file": "assets/jsx-g9-lgVsj.js",
+      "type": "js",
+      "bytes": 177792,
+      "gzip": 16607
+    },
+    {
+      "file": "assets/tsx-D6116Ycy.js",
+      "type": "js",
+      "bytes": 175540,
+      "gzip": 16511
+    },
+    {
+      "file": "assets/tsx-COt5Ahok.js",
+      "type": "js",
+      "bytes": 175536,
+      "gzip": 16507
+    },
+    {
+      "file": "assets/javascript-WyGyM1wV.js",
+      "type": "js",
+      "bytes": 174831,
+      "gzip": 16517
+    },
+    {
+      "file": "assets/javascript-wDzz0qaB.js",
+      "type": "js",
+      "bytes": 174827,
+      "gzip": 16513
+    },
+    {
+      "file": "assets/index-cFAYAcJq.css",
+      "type": "css",
+      "bytes": 173494,
+      "gzip": 29213
+    },
+    {
+      "file": "assets/lottie_light-CqCLRh1P.js",
+      "type": "js",
+      "bytes": 169126,
+      "gzip": 48268
+    },
+    {
+      "file": "assets/core-DVezgdzc.js",
+      "type": "js",
+      "bytes": 113701,
+      "gzip": 36283
+    },
+    {
+      "file": "assets/core-BXIHazbm.js",
+      "type": "js",
+      "bytes": 113646,
+      "gzip": 36263
+    },
+    {
+      "file": "assets/php-QTpNQqNx.js",
+      "type": "js",
+      "bytes": 113133,
+      "gzip": 28737
+    },
+    {
+      "file": "assets/php-DoruYMF0.js",
+      "type": "js",
+      "bytes": 113129,
+      "gzip": 28734
+    },
+    {
+      "file": "assets/index-iA2i6HbF.js",
+      "type": "js",
+      "bytes": 104320,
+      "gzip": 32269
+    },
+    {
+      "file": "assets/DevicesView-WJwBDk8i.js",
+      "type": "js",
+      "bytes": 101846,
+      "gzip": 27739
+    },
+    {
+      "file": "assets/less-XNfgnZC7.js",
+      "type": "js",
+      "bytes": 97637,
+      "gzip": 14700
+    },
+    {
+      "file": "assets/less-B1dDrJ26.js",
+      "type": "js",
+      "bytes": 97633,
+      "gzip": 14697
+    },
+    {
+      "file": "assets/csharp-c2HXxEvb.js",
+      "type": "js",
+      "bytes": 91446,
+      "gzip": 10844
+    },
+    {
+      "file": "assets/csharp-B_TYUkTI.js",
+      "type": "js",
+      "bytes": 91442,
+      "gzip": 10840
+    },
+    {
+      "file": "assets/swift-CGD9CJBj.js",
+      "type": "js",
+      "bytes": 87235,
+      "gzip": 14839
+    },
+    {
+      "file": "assets/swift-C2oV4EkX.js",
+      "type": "js",
+      "bytes": 87231,
+      "gzip": 14835
+    },
+    {
+      "file": "assets/index-Bhpokfqk.js",
+      "type": "js",
+      "bytes": 84730,
+      "gzip": 33505
+    },
+    {
+      "file": "assets/IsoRenderer-CQPz0S1o.js",
+      "type": "js",
+      "bytes": 84335,
+      "gzip": 31081
+    },
+    {
+      "file": "assets/particles-CqyAfvGc.js",
+      "type": "js",
+      "bytes": 83706,
+      "gzip": 30866
+    },
+    {
+      "file": "assets/ruby-CknrtnG0.js",
+      "type": "js",
+      "bytes": 72663,
+      "gzip": 9323
+    },
+    {
+      "file": "assets/ruby-5x8vynjC.js",
+      "type": "js",
+      "bytes": 72639,
+      "gzip": 9312
+    },
+    {
+      "file": "assets/c-BG-tZi7o.js",
+      "type": "js",
+      "bytes": 72117,
+      "gzip": 10509
+    },
+    {
+      "file": "assets/c-BIGW1oBm.js",
+      "type": "js",
+      "bytes": 72113,
+      "gzip": 10505
+    },
+    {
+      "file": "assets/python-B6Ihcp-E.js",
+      "type": "js",
+      "bytes": 69956,
+      "gzip": 9137
+    },
+    {
+      "file": "assets/python-B6aJPvgy.js",
+      "type": "js",
+      "bytes": 69952,
+      "gzip": 9133
+    },
+    {
+      "file": "assets/CodeEditor-BvdxgB7r.js",
+      "type": "js",
+      "bytes": 67727,
+      "gzip": 23014
+    },
+    {
+      "file": "assets/ExtensionsView-DNe44DQN.js",
+      "type": "js",
+      "bytes": 65100,
+      "gzip": 20299
+    },
+    {
+      "file": "assets/engine-javascript-CuxHA8oH.js",
+      "type": "js",
+      "bytes": 59466,
+      "gzip": 20837
+    },
+    {
+      "file": "assets/markdown-DX-TNHnc.js",
+      "type": "js",
+      "bytes": 59339,
+      "gzip": 5646
+    },
+    {
+      "file": "assets/markdown-Cvjx9yec.js",
+      "type": "js",
+      "bytes": 59335,
+      "gzip": 5643
+    },
+    {
+      "file": "assets/html-ule6rqcP.js",
+      "type": "js",
+      "bytes": 57251,
+      "gzip": 11693
+    },
+    {
+      "file": "assets/html-BlS82ilI.js",
+      "type": "js",
+      "bytes": 57247,
+      "gzip": 11688
+    },
+    {
+      "file": "assets/css-YcxRgQQQ.js",
+      "type": "js",
+      "bytes": 53369,
+      "gzip": 12438
+    },
+    {
+      "file": "assets/css-Z72CF80r.js",
+      "type": "js",
+      "bytes": 53365,
+      "gzip": 12435
+    },
+    {
+      "file": "assets/index-gFGQ0WTU.js",
+      "type": "js",
+      "bytes": 47786,
+      "gzip": 19360
+    },
+    {
+      "file": "assets/go-B7VTfpnm.js",
+      "type": "js",
+      "bytes": 46822,
+      "gzip": 5183
+    },
+    {
+      "file": "assets/go-C27-OAKa.js",
+      "type": "js",
+      "bytes": 46818,
+      "gzip": 5179
+    },
+    {
+      "file": "assets/index-DZPQDSJh.js",
+      "type": "js",
+      "bytes": 45167,
+      "gzip": 19183
+    },
+    {
+      "file": "assets/index-DmAOUUF0.js",
+      "type": "js",
+      "bytes": 44491,
+      "gzip": 15446
+    },
+    {
+      "file": "assets/shellscript-DgJyDXW6.js",
+      "type": "js",
+      "bytes": 41483,
+      "gzip": 6096
+    },
+    {
+      "file": "assets/shellscript-Yzrsuije.js",
+      "type": "js",
+      "bytes": 41479,
+      "gzip": 6092
+    },
+    {
+      "file": "assets/DeviceCaptureDialog.vue_vue_type_script_setup_true_lang-B1t4GOHg.js",
+      "type": "js",
+      "bytes": 40293,
+      "gzip": 14408
+    },
+    {
+      "file": "assets/sql-D0XecflT.js",
+      "type": "js",
+      "bytes": 37052,
+      "gzip": 10936
+    },
+    {
+      "file": "assets/index-l4VBMP_N.js",
+      "type": "js",
+      "bytes": 28791,
+      "gzip": 11703
+    },
+    {
+      "file": "assets/index-CymI9kkn.js",
+      "type": "js",
+      "bytes": 28279,
+      "gzip": 12835
+    },
+    {
+      "file": "assets/java-BTDmaRNO.js",
+      "type": "js",
+      "bytes": 27223,
+      "gzip": 4267
+    },
+    {
+      "file": "assets/java-CylS5w8V.js",
+      "type": "js",
+      "bytes": 27219,
+      "gzip": 4263
+    },
+    {
+      "file": "assets/scss-lJF4zdjY.js",
+      "type": "js",
+      "bytes": 27208,
+      "gzip": 4199
+    },
+    {
+      "file": "assets/scss-Cw6XMfVs.js",
+      "type": "js",
+      "bytes": 27204,
+      "gzip": 4196
+    },
+    {
+      "file": "assets/index-TKdkXd18.js",
+      "type": "js",
+      "bytes": 26964,
+      "gzip": 8931
+    },
+    {
+      "file": "assets/vue-Caz0GdtF.js",
+      "type": "js",
+      "bytes": 25744,
+      "gzip": 3235
+    },
+    {
+      "file": "assets/vue-CwSeJimo.js",
+      "type": "js",
+      "bytes": 25690,
+      "gzip": 3229
+    },
+    {
+      "file": "assets/astro-2IDf6ngd.js",
+      "type": "js",
+      "bytes": 24017,
+      "gzip": 7558
+    },
+    {
+      "file": "assets/astro-DOly5024.js",
+      "type": "js",
+      "bytes": 24013,
+      "gzip": 7552
+    },
+    {
+      "file": "assets/sql-B4Ro-HO0.js",
+      "type": "js",
+      "bytes": 23674,
+      "gzip": 7482
+    },
+    {
+      "file": "assets/sql-DkvoVjww.js",
+      "type": "js",
+      "bytes": 23670,
+      "gzip": 7479
+    },
+    {
+      "file": "assets/vi-CX-UQLQP.js",
+      "type": "js",
+      "bytes": 23645,
+      "gzip": 9677
+    },
+    {
+      "file": "assets/WorkspaceView-Bb1Vc_4R.css",
+      "type": "css",
+      "bytes": 22813,
+      "gzip": 4487
+    },
+    {
+      "file": "assets/clike-B9uivgTg.js",
+      "type": "js",
+      "bytes": 22302,
+      "gzip": 7864
+    },
+    {
+      "file": "assets/powershell-BSV4eUHB.js",
+      "type": "js",
+      "bytes": 20158,
+      "gzip": 4074
+    },
+    {
+      "file": "assets/powershell-Dd0kTxKP.js",
+      "type": "js",
+      "bytes": 20154,
+      "gzip": 4070
+    },
+    {
+      "file": "assets/groovy-DFxE31Qs.js",
+      "type": "js",
+      "bytes": 19183,
+      "gzip": 3603
+    },
+    {
+      "file": "assets/groovy-gcz8RCvz.js",
+      "type": "js",
+      "bytes": 19179,
+      "gzip": 3599
+    },
+    {
+      "file": "assets/svelte-aUnQ6nzH.js",
+      "type": "js",
+      "bytes": 18259,
+      "gzip": 3155
+    },
+    {
+      "file": "assets/svelte-DoIXUgJc.js",
+      "type": "js",
+      "bytes": 18255,
+      "gzip": 3153
+    },
+    {
+      "file": "assets/ResourcesDialog-KGHBzDCu.js",
+      "type": "js",
+      "bytes": 16174,
+      "gzip": 5240
+    },
+    {
+      "file": "assets/lua-8Av-h-ns.js",
+      "type": "js",
+      "bytes": 15539,
+      "gzip": 3163
+    },
+    {
+      "file": "assets/lua-BaeVxFsk.js",
+      "type": "js",
+      "bytes": 15535,
+      "gzip": 3161
+    },
+    {
+      "file": "assets/StringsDialog-DPSeudrJ.js",
+      "type": "js",
+      "bytes": 15504,
+      "gzip": 5499
+    },
+    {
+      "file": "assets/rust-Pj9ynUQO.js",
+      "type": "js",
+      "bytes": 15172,
+      "gzip": 2733
+    },
+    {
+      "file": "assets/rust-DPvrY3IQ.js",
+      "type": "js",
+      "bytes": 15168,
+      "gzip": 2730
+    },
+    {
+      "file": "assets/ApkSizeDialog-CdvwKOww.js",
+      "type": "js",
+      "bytes": 15059,
+      "gzip": 4752
+    },
+    {
+      "file": "assets/PromptPicker-BdLD1gN4.js",
+      "type": "js",
+      "bytes": 15044,
+      "gzip": 5069
+    },
+    {
+      "file": "assets/LibUpdatesDialog-BofYlTJD.js",
+      "type": "js",
+      "bytes": 14800,
+      "gzip": 4794
+    },
+    {
+      "file": "assets/index-CxGsobWs.js",
+      "type": "js",
+      "bytes": 14703,
+      "gzip": 5959
+    },
+    {
+      "file": "assets/DevToolsDialog-CwqqtdPa.js",
+      "type": "js",
+      "bytes": 14033,
+      "gzip": 4463
+    },
+    {
+      "file": "assets/ContextSourcesDialog-DQGDvxxK.js",
+      "type": "js",
+      "bytes": 13268,
+      "gzip": 4438
+    },
+    {
+      "file": "assets/bat-C1qk1Jq1.js",
+      "type": "js",
+      "bytes": 12898,
+      "gzip": 3231
+    },
+    {
+      "file": "assets/bat-CickPsom.js",
+      "type": "js",
+      "bytes": 12894,
+      "gzip": 3227
+    },
+    {
+      "file": "assets/index-DsdkVVgs.js",
+      "type": "js",
+      "bytes": 12659,
+      "gzip": 5059
+    },
+    {
+      "file": "assets/RecapDialog-B1GjJEHb.js",
+      "type": "js",
+      "bytes": 12232,
+      "gzip": 4839
+    },
+    {
+      "file": "assets/HttpPanel-C5_iZ3Ny.js",
+      "type": "js",
+      "bytes": 12152,
+      "gzip": 4339
+    },
+    {
+      "file": "assets/BuildCleanDialog-YupCF_D6.js",
+      "type": "js",
+      "bytes": 11638,
+      "gzip": 4329
+    },
+    {
+      "file": "assets/index-DeoIq5nv.js",
+      "type": "js",
+      "bytes": 11622,
+      "gzip": 5189
+    },
+    {
+      "file": "assets/isoArt-C9qY_pso.js",
+      "type": "js",
+      "bytes": 10913,
+      "gzip": 4186
+    },
+    {
+      "file": "assets/yaml-Bopit2L3.js",
+      "type": "js",
+      "bytes": 10510,
+      "gzip": 2277
+    },
+    {
+      "file": "assets/yaml-Buea-lGh.js",
+      "type": "js",
+      "bytes": 10506,
+      "gzip": 2274
+    },
+    {
+      "file": "assets/ReleaseCheckDialog-KDVm7fEq.js",
+      "type": "js",
+      "bytes": 10490,
+      "gzip": 3737
+    },
+    {
+      "file": "assets/PlanBoard-CvxJkDV1.js",
+      "type": "js",
+      "bytes": 10408,
+      "gzip": 4265
+    },
+    {
+      "file": "assets/I18nScanDialog-C25vEAzS.js",
+      "type": "js",
+      "bytes": 10376,
+      "gzip": 3712
+    },
+    {
+      "file": "assets/PermAdvisorDialog-Chh8vVIr.js",
+      "type": "js",
+      "bytes": 9447,
+      "gzip": 3514
+    },
+    {
+      "file": "assets/EnvCheckDialog-Bnsth4n7.js",
+      "type": "js",
+      "bytes": 9412,
+      "gzip": 3325
+    },
+    {
+      "file": "assets/LogFileView-DYOXx88d.js",
+      "type": "js",
+      "bytes": 9052,
+      "gzip": 3841
+    },
+    {
+      "file": "assets/makefile-DXVx14cr.js",
+      "type": "js",
+      "bytes": 8965,
+      "gzip": 1770
+    },
+    {
+      "file": "assets/makefile-CHLpvVh8.js",
+      "type": "js",
+      "bytes": 8961,
+      "gzip": 1767
+    },
+    {
+      "file": "assets/kotlin-BQy537ds.js",
+      "type": "js",
+      "bytes": 8789,
+      "gzip": 2134
+    },
+    {
+      "file": "assets/kotlin-BdnUsdx6.js",
+      "type": "js",
+      "bytes": 8785,
+      "gzip": 2130
+    },
+    {
+      "file": "assets/persona-DyMrMGUZ.js",
+      "type": "js",
+      "bytes": 8737,
+      "gzip": 4041
+    },
+    {
+      "file": "assets/dart-pH6O-HP5.js",
+      "type": "js",
+      "bytes": 8619,
+      "gzip": 2003
+    },
+    {
+      "file": "assets/dart-CtKP3W-j.js",
+      "type": "js",
+      "bytes": 8615,
+      "gzip": 1999
+    },
+    {
+      "file": "assets/NotesPanel-DyRySAia.js",
+      "type": "js",
+      "bytes": 8470,
+      "gzip": 3807
+    },
+    {
+      "file": "assets/WorktreeCompare-Cwhj4bbe.js",
+      "type": "js",
+      "bytes": 8349,
+      "gzip": 3294
+    },
+    {
+      "file": "assets/ImageCompare-CCIKS9nf.js",
+      "type": "js",
+      "bytes": 7841,
+      "gzip": 2935
+    },
+    {
+      "file": "assets/powershell-CFHJl5sT.js",
+      "type": "js",
+      "bytes": 7769,
+      "gzip": 3330
+    },
+    {
+      "file": "assets/ConflictView-DnNtHSOs.js",
+      "type": "js",
+      "bytes": 7676,
+      "gzip": 2936
+    },
+    {
+      "file": "assets/TurnReview-D3ICw3kd.js",
+      "type": "js",
+      "bytes": 7663,
+      "gzip": 2952
+    },
+    {
+      "file": "assets/UpdateDialog-C6oWDmib.js",
+      "type": "js",
+      "bytes": 7376,
+      "gzip": 2829
+    },
+    {
+      "file": "assets/DiagnosticsDialog-CaJKnANI.js",
+      "type": "js",
+      "bytes": 6685,
+      "gzip": 2733
+    },
+    {
+      "file": "assets/DropTerminal-DPq0KrDu.js",
+      "type": "js",
+      "bytes": 6588,
+      "gzip": 3016
+    },
+    {
+      "file": "assets/toml-Ms459DBw.js",
+      "type": "js",
+      "bytes": 6430,
+      "gzip": 1286
+    },
+    {
+      "file": "assets/toml-vGWfd6FD.js",
+      "type": "js",
+      "bytes": 6426,
+      "gzip": 1282
+    },
+    {
+      "file": "assets/postcss-D_A8HZsZ.js",
+      "type": "js",
+      "bytes": 6415,
+      "gzip": 1916
+    },
+    {
+      "file": "assets/postcss-DnzrXTVv.js",
+      "type": "js",
+      "bytes": 6411,
+      "gzip": 1912
+    },
+    {
+      "file": "assets/NavPicker-D7Jhioo0.js",
+      "type": "js",
+      "bytes": 6074,
+      "gzip": 2687
+    },
+    {
+      "file": "assets/JsonTree-DfkzJPSp.js",
+      "type": "js",
+      "bytes": 5995,
+      "gzip": 2579
+    },
+    {
+      "file": "assets/markdown-CH_EROdO.js",
+      "type": "js",
+      "bytes": 5661,
+      "gzip": 2638
+    },
+    {
+      "file": "assets/xml-BkAJuBCc.js",
+      "type": "js",
+      "bytes": 5388,
+      "gzip": 1217
+    },
+    {
+      "file": "assets/xml-sdJ4AIDG.js",
+      "type": "js",
+      "bytes": 5384,
+      "gzip": 1214
+    },
+    {
+      "file": "assets/ruby-BK5aLJev.js",
+      "type": "js",
+      "bytes": 5212,
+      "gzip": 2159
+    },
+    {
+      "file": "assets/OutlinePicker-BLe2m1z-.js",
+      "type": "js",
+      "bytes": 4802,
+      "gzip": 2273
+    },
+    {
+      "file": "assets/TextCompareDialog.vue_vue_type_script_setup_true_lang-Bk65KnIE.js",
+      "type": "js",
+      "bytes": 4684,
+      "gzip": 2063
+    },
+    {
+      "file": "assets/InboxPanel-DUyS_ZlJ.js",
+      "type": "js",
+      "bytes": 4247,
+      "gzip": 2014
+    },
+    {
+      "file": "assets/highlight.worker-vl9wUBnw.js",
+      "type": "js",
+      "bytes": 4154,
+      "gzip": 1987
+    },
+    {
+      "file": "assets/groovy-D9Dt4D0W.js",
+      "type": "js",
+      "bytes": 4139,
+      "gzip": 1767
+    },
+    {
+      "file": "assets/highlightCore-CicaI5LE.js",
+      "type": "js",
+      "bytes": 4075,
+      "gzip": 1619
+    },
+    {
+      "file": "assets/swift-BzpIVaGY.js",
+      "type": "js",
+      "bytes": 3955,
+      "gzip": 1785
+    },
+    {
+      "file": "assets/lua-VAEuO923.js",
+      "type": "js",
+      "bytes": 3407,
+      "gzip": 1434
+    },
+    {
+      "file": "assets/ShortcutsDialog-CQ6B87d1.js",
+      "type": "js",
+      "bytes": 3214,
+      "gzip": 1592
+    },
+    {
+      "file": "assets/LocalHistoryDialog-BvDXca4B.js",
+      "type": "js",
+      "bytes": 3166,
+      "gzip": 1579
+    },
+    {
+      "file": "assets/jsonc-CvUCa1o5.js",
+      "type": "js",
+      "bytes": 3113,
+      "gzip": 800
+    },
+    {
+      "file": "assets/jsonc-Des-eS-w.js",
+      "type": "js",
+      "bytes": 3109,
+      "gzip": 797
+    },
+    {
+      "file": "assets/CodeEditor-BVI9Pn59.css",
+      "type": "css",
+      "bytes": 3067,
+      "gzip": 941
+    },
+    {
+      "file": "assets/json-B8JryHcM.js",
+      "type": "js",
+      "bytes": 2828,
+      "gzip": 783
+    },
+    {
+      "file": "assets/json-Cp-IABpG.js",
+      "type": "js",
+      "bytes": 2824,
+      "gzip": 780
+    },
+    {
+      "file": "assets/go-CTD25R5P.js",
+      "type": "js",
+      "bytes": 2792,
+      "gzip": 1296
+    },
+    {
+      "file": "assets/diff-jW5kmiru.js",
+      "type": "js",
+      "bytes": 2573,
+      "gzip": 698
+    },
+    {
+      "file": "assets/shell-CjFT_Tl9.js",
+      "type": "js",
+      "bytes": 2571,
+      "gzip": 1213
+    },
+    {
+      "file": "assets/diff-D97Zzqfu.js",
+      "type": "js",
+      "bytes": 2569,
+      "gzip": 695
+    },
+    {
+      "file": "assets/simple-mode-GW_nhZxv.js",
+      "type": "js",
+      "bytes": 2277,
+      "gzip": 1088
+    },
+    {
+      "file": "assets/07-radar-scan-BMrYeALK.js",
+      "type": "js",
+      "bytes": 2207,
+      "gzip": 659
+    },
+    {
+      "file": "assets/rust-B-h1RXZJ.js",
+      "type": "js",
+      "bytes": 2104,
+      "gzip": 934
+    },
+    {
+      "file": "assets/index-CjFbTaBZ.js",
+      "type": "js",
+      "bytes": 2047,
+      "gzip": 1285
+    },
+    {
+      "file": "assets/dockerfile-BKs6k2Af.js",
+      "type": "js",
+      "bytes": 1949,
+      "gzip": 668
+    },
+    {
+      "file": "assets/UpdateDialog-BBovqlFp.css",
+      "type": "css",
+      "bytes": 1817,
+      "gzip": 506
+    },
+    {
+      "file": "assets/dockerfile-DG9neUKd.js",
+      "type": "js",
+      "bytes": 1745,
+      "gzip": 604
+    },
+    {
+      "file": "assets/dockerfile-BcOcwvcX.js",
+      "type": "js",
+      "bytes": 1741,
+      "gzip": 600
+    },
+    {
+      "file": "assets/09-notification-bell-BNvIWfGl.js",
+      "type": "js",
+      "bytes": 1699,
+      "gzip": 574
+    },
+    {
+      "file": "assets/projection-DXnyaciV.js",
+      "type": "js",
+      "bytes": 1557,
+      "gzip": 918
+    },
+    {
+      "file": "assets/ini-Dix3pTmg.js",
+      "type": "js",
+      "bytes": 1529,
+      "gzip": 503
+    },
+    {
+      "file": "assets/ini-BEwlwnbL.js",
+      "type": "js",
+      "bytes": 1525,
+      "gzip": 499
+    },
+    {
+      "file": "assets/08-check-pop-DneVzS7B.js",
+      "type": "js",
+      "bytes": 1276,
+      "gzip": 489
+    },
+    {
+      "file": "assets/NotesPanel-JRO1kB3O.css",
+      "type": "css",
+      "bytes": 1165,
+      "gzip": 423
+    },
+    {
+      "file": "assets/toml-Bm5Em-hy.js",
+      "type": "js",
+      "bytes": 1138,
+      "gzip": 539
+    },
+    {
+      "file": "assets/archetypes-Dm5IuAuy.js",
+      "type": "js",
+      "bytes": 922,
+      "gzip": 505
+    },
+    {
+      "file": "assets/fonts-Dckk3qjP.js",
+      "type": "js",
+      "bytes": 817,
+      "gzip": 554
+    },
+    {
+      "file": "assets/properties-C78fOPTZ.js",
+      "type": "js",
+      "bytes": 667,
+      "gzip": 346
+    },
+    {
+      "file": "assets/LogFileView-1D6ts0Nb.css",
+      "type": "css",
+      "bytes": 585,
+      "gzip": 204
+    },
+    {
+      "file": "assets/circle-dashed-55ykqkl0.js",
+      "type": "js",
+      "bytes": 571,
+      "gzip": 287
+    },
+    {
+      "file": "assets/lock-s5LK8HAr.js",
+      "type": "js",
+      "bytes": 459,
+      "gzip": 277
+    },
+    {
+      "file": "assets/JsonTree-DgEqb0_P.css",
+      "type": "css",
+      "bytes": 453,
+      "gzip": 176
+    },
+    {
+      "file": "assets/DropTerminal-D1hdhXUR.css",
+      "type": "css",
+      "bytes": 399,
+      "gzip": 174
+    },
+    {
+      "file": "assets/hammer-kY3FBA3R.js",
+      "type": "js",
+      "bytes": 392,
+      "gzip": 275
+    },
+    {
+      "file": "assets/ImageCompare-BbjvIPxB.css",
+      "type": "css",
+      "bytes": 345,
+      "gzip": 174
+    },
+    {
+      "file": "assets/server-CHoIq1V5.js",
+      "type": "js",
+      "bytes": 335,
+      "gzip": 214
+    },
+    {
+      "file": "assets/bot-EiIP-n8i.js",
+      "type": "js",
+      "bytes": 325,
+      "gzip": 226
+    },
+    {
+      "file": "assets/personas-NWeysHBK.js",
+      "type": "js",
+      "bytes": 323,
+      "gzip": 246
+    },
+    {
+      "file": "assets/file-search-WAjkhd13.js",
+      "type": "js",
+      "bytes": 322,
+      "gzip": 236
+    },
+    {
+      "file": "assets/diff-DbItnlRl.js",
+      "type": "js",
+      "bytes": 309,
+      "gzip": 238
+    },
+    {
+      "file": "assets/box-CoBzcJ2M.js",
+      "type": "js",
+      "bytes": 307,
+      "gzip": 224
+    },
+    {
+      "file": "assets/ConflictView-DEMK90L6.css",
+      "type": "css",
+      "bytes": 287,
+      "gzip": 191
+    },
+    {
+      "file": "assets/globe-TIK7gBwd.js",
+      "type": "js",
+      "bytes": 239,
+      "gzip": 187
+    },
+    {
+      "file": "assets/circle-plus-BC3RAmhC.js",
+      "type": "js",
+      "bytes": 199,
+      "gzip": 173
+    },
+    {
+      "file": "assets/circle-slash-DUtcvmv0.js",
+      "type": "js",
+      "bytes": 182,
+      "gzip": 167
+    },
+    {
+      "file": "assets/TextCompareDialog-5VFr8Nk4.css",
+      "type": "css",
+      "bytes": 174,
+      "gzip": 122
+    },
+    {
+      "file": "assets/TextCompareDialog-cvH66o5Z.js",
+      "type": "js",
+      "bytes": 171,
+      "gzip": 160
+    },
+    {
+      "file": "assets/clock-Df56SpQ-.js",
+      "type": "js",
+      "bytes": 161,
+      "gzip": 162
+    },
+    {
+      "file": "assets/WorktreeCompare-C0P2EKFX.css",
+      "type": "css",
+      "bytes": 150,
+      "gzip": 127
+    },
+    {
+      "file": "assets/HttpPanel-D4_Q751r.css",
+      "type": "css",
+      "bytes": 65,
+      "gzip": 82
+    }
+  ],
+  "totals": {
+    "js": 11097040,
+    "jsGzip": 2532553,
+    "css": 204814,
+    "cssGzip": 36820,
+    "gzip": 2569373,
+    "chunks": 191,
+    "fontsBytes": 2064696
+  },
+  "startup": {
+    "runs": 3,
+    "note": "dev build, page reload on a warm collector; ms since navigation start",
+    "mountMs": {
+      "samples": [
+        59,
+        61,
+        70
+      ],
+      "median": 61
+    },
+    "snapshotMs": {
+      "samples": [
+        70,
+        72,
+        70
+      ],
+      "median": 70
+    },
+    "fcpMs": {
+      "samples": [
+        76,
+        84,
+        88
+      ],
+      "median": 84
+    }
+  }
+}

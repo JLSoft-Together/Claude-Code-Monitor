@@ -288,3 +288,14 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Chuyển động có thể tắt** (reduced motion) — `apps/web/src/lib/motion.ts`
 - **Cửa sổ Cài đặt** (v79) — sidebar 9 trang + ô tìm, bảng chọn sự kiện báo bằng cảnh báo hệ thống / thông báo, Ctrl+, · `apps/web/src/components/SettingsMenu.vue`, `apps/web/src/components/settings/index.ts`
 - **Sao lưu / chuyển cấu hình** (v74) — xuất một file JSON (ccm.* localStorage + file cấu hình trong data dir, không token), nhập có xem trước theo mục, cờ đường dẫn không có, tự sao lưu trước khi cài update (giữ 3) · `apps/desktop/src/backup/service.ts`, `apps/web/src/components/BackupSettings.vue`
+
+## v80 (2026-11-03)
+
+- **Công cụ MCP cho agent** — notify_owner (Inbox + toast / điện thoại), open_in_workspace, who_is_editing, run_app / run_status / run_log, device_screenshot, preview_layout, list_servers, free_port (confirm native); mọi tool: token theo pane, kiểm path / tham số, rate limit, không gửi prompt · `apps/desktop/src/pty/mcpTools/`, `apps/desktop/src/mcpDesk.ts`, docs §11w
+- **Hàng đợi review trong Changes** — nhóm "Chưa xem", nhớ file đã xem theo repo · `apps/web/src/lib/reviewQueue.ts`, `ChangesPane.vue`
+- **Tiếp tục session từ History** — nút Tiếp tục dùng `SessionRecord.sessionId` · `apps/web/src/components/history/HistoryView.vue`
+- **Run tự reload khi agent xong** (mặc định tắt) + nhớ thiết bị theo dự án, nối lại Wi-Fi · `apps/web/src/lib/runAutoReload.ts`, `stores/run.ts`
+- **Dự báo hạn mức** — "hết lúc…" trong popover, chấm trên nút, cảnh báo khi mở agent · `apps/web/src/lib/headerStatus.ts` `limitRisk`
+- **Ctrl+K gộp** session / dự án / file / cài đặt, tiền tố > @ # : · `apps/web/src/lib/paletteSearch.ts`, `CommandPalette.vue`; timeline tool trong panel sub-agent · `lib/agentTools.ts`
+- **Chồng toast chung** (tối đa 3, dừng khi rê chuột, Esc) · `apps/web/src/stores/toasts.ts`, `components/ToastHost.vue`
+- **Dialog ít dùng tải ngầm** · `apps/web/src/lib/lazyOverlay.ts`; đo bundle / khởi động · `scripts/measure.mjs`

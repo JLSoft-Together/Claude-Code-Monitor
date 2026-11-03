@@ -21,7 +21,11 @@ import {
 } from '../../../../packages/shared/src/pty'
 import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, runGit, worktreeDest } from './git'
 import { copySetupFiles } from './wtCopy'
-import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome } from './mcp'
+import { parseMcpPageResult, type AgentNoteLevel, type McpPageCall, type McpPageResult } from '../../../../packages/shared/src/mcpCall'
+import { parseMcpDeskResult, type McpDeskCall, type McpDeskResult } from '../../../../packages/shared/src/mcpDesk'
+import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome, type ToolHost } from './mcp'
+import { NoteQueue } from './mcpTools/notifyOwner'
+import type { NoteOutcome } from './mcpTools/types'
 import { ownersOf, readPidTable } from './owners'
 import { childEnv, clampDim, earlyExitNote, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
 import { writeShellInit } from './shellInit'
@@ -73,6 +77,9 @@ interface Session {
   token: string
   opens: number[]
   siNonce: string | null
+  /** v80 MCP tools: sliding windows per tool key, and the notify_owner fold queue. */
+  rates: Map<string, number[]>
+  notes: NoteQueue | null
 }
 
 interface Ticket {
@@ -87,6 +94,7 @@ const sessions = new Map<string, Session>()
 const tokens = new Map<string, string>()
 const tickets = new Map<string, Ticket>()
 const openWaiters = new Map<string, (result: PaneOpenResult) => void>()
+const mcpWaiters = new Map<string, (raw: unknown) => void>()
 
 // One bad frame or a dying child must never take every other terminal down with it.
 process.on('uncaughtException', (err) => console.error('pty host error:', err))
@@ -156,7 +164,7 @@ function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resum
   const env = { ...childEnv(process.env), ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
   const startedAt = Date.now()
-  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [], siNonce: spec.integrated && shellNonce ? shellNonce : null }
+  const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [], siNonce: spec.integrated && shellNonce ? shellNonce : null, rates: new Map(), notes: null }
   proc.onData((d) => {
     s.ring += d
     // Amortised trim; a replay may start mid escape sequence, which xterm shrugs off.
@@ -240,6 +248,7 @@ function kill(s: Session, treeKilled = false): void {
   sessions.delete(s.id)
   tokens.delete(s.token)
   dropWatcher(s)
+  s.notes?.dispose()
   const pid = treeKilled ? null : treePid(s)
   if (pid) execFile(taskkillPath(process.env), ['/T', '/F', '/PID', String(pid)], { windowsHide: true }, () => undefined)
   try {
@@ -458,6 +467,60 @@ async function openFrom(s: Session, args: OpenArgs): Promise<OpenOutcome> {
   return { ok: false, error: result.error }
 }
 
+function askPageMcp(call: McpPageCall): Promise<McpPageResult> {
+  return new Promise((resolve) => {
+    const done = (raw: unknown): void => {
+      clearTimeout(timer)
+      mcpWaiters.delete(call.id)
+      resolve(parseMcpPageResult(raw, call.tool))
+    }
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), OPEN_REPLY_MS)
+    mcpWaiters.set(call.id, done)
+    process.parentPort.postMessage({ t: 'mcp', call })
+  })
+}
+
+// free_port waits for the owner's answer in a native dialog (an answer after the timeout would still act); the others answer within seconds.
+const deskReplyMs = (tool: McpDeskCall['tool']): number => (tool === 'free_port' ? 600_000 : 40_000)
+
+function askDesk(call: McpDeskCall): Promise<McpDeskResult> {
+  return new Promise((resolve) => {
+    const done = (raw: unknown): void => {
+      clearTimeout(timer)
+      mcpWaiters.delete(call.id)
+      resolve(parseMcpDeskResult(raw, call.tool))
+    }
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), deskReplyMs(call.tool))
+    mcpWaiters.set(call.id, done)
+    process.parentPort.postMessage({ t: 'mcp-desk', call })
+  })
+}
+
+async function noteFrom(s: Session, text: string, level: AgentNoteLevel, merged: number): Promise<NoteOutcome> {
+  const res = await askPageMcp({ id: randomUUID(), tool: 'notify_owner', from: s.id, cwd: s.cwd, text, level, merged })
+  if (!res.ok) return { ok: false, error: res.error === 'unavailable' ? 'unavailable' : 'failed' }
+  return res.tool === 'notify_owner' ? { ok: true, sent: true, name: res.name, inbox: res.inbox } : { ok: false, error: 'failed' }
+}
+
+function toolHost(s: Session): ToolHost {
+  return {
+    root: s.cwd,
+    take: (key, max, windowMs) => {
+      const now = Date.now()
+      const times = (s.rates.get(key) ?? []).filter((t) => now - t < windowMs)
+      if (times.length >= max) return s.rates.set(key, times), false
+      times.push(now)
+      s.rates.set(key, times)
+      return true
+    },
+    openSession: (args) => openFrom(s, args),
+    notify: (text, level) => (s.notes ??= new NoteQueue((t, l, merged) => noteFrom(s, t, l, merged))).submit(text, level),
+    checkoutRoots: async () => ((hasGit() ? await listWorktrees(s.cwd) : null) ?? []).map((w) => w.path),
+    page: (call) => askPageMcp({ id: randomUUID(), from: s.id, cwd: s.cwd, ...call }),
+    desk: (call) => askDesk({ id: randomUUID(), from: s.id, cwd: s.cwd, pid: s.exitCode === null ? s.proc.pid || s.pid || null : null, name: path.basename(s.cwd) || s.cwd, ...call } as McpDeskCall),
+  }
+}
+
 function readBody(req: http.IncomingMessage): Promise<string | null> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
@@ -490,7 +553,7 @@ async function onRequest(req: http.IncomingMessage, res: http.ServerResponse): P
   } catch {
     return replyJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
   }
-  const out = await handleMcp(body, (args) => openFrom(caller, args), APP_VERSION)
+  const out = await handleMcp(body, toolHost(caller), APP_VERSION)
   if (out.json === undefined) res.writeHead(out.status).end()
   else replyJson(res, out.status, out.json)
 }
@@ -590,5 +653,8 @@ process.parentPort.on('message', ({ data }: { data: unknown }) => {
     const { id, result } = data as { id?: unknown; result?: unknown }
     const parsed = toOpenResult(result)
     if (typeof id === 'string' && parsed) openWaiters.get(id)?.(parsed)
+  } else if (data && typeof data === 'object' && (data as { t?: unknown }).t === 'mcp-reply') {
+    const { id, result } = data as { id?: unknown; result?: unknown }
+    if (typeof id === 'string') mcpWaiters.get(id)?.(result)
   }
 })

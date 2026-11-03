@@ -41,8 +41,14 @@ export interface LayoutIpcDeps {
   renderCacheSize?: number
 }
 
+export type AgentRenderOutcome =
+  | { ok: true; png: string; width: number; height: number; renderMs: number; frameworkOnly: boolean; diagnostics: LayoutDiagnostic[] }
+  | { ok: false; code: string; retryInSec?: number; detail?: string }
+
 export interface LayoutIpc {
   dispose: () => void
+  /** v80 preview_layout: an agent's call is itself the warm-up signal (no JVM before it); answers `starting` instead of waiting out a cold start. */
+  agentRender: (file: string, opts: { device: LayoutDevice; night: boolean; slot: string }) => Promise<AgentRenderOutcome>
   stop: () => Promise<void>
   killNow: () => void
   model: LayoutModelService | null
@@ -52,6 +58,9 @@ const CHANNELS = ['ccm:layout-status', 'ccm:layout-download', 'ccm:layout-render
 const RENDER_CACHE = 32
 const CLASS_MISSING_RE = /class not found|NoClassDefFoundError/i
 const MAX_SLOT = 3
+const WARM_PEEK_MS = 1_500
+// Rough seconds left of a cold start per stage (v46 stages; ~3 s with AppCDS, longer without).
+const STAGE_WAIT_S: Record<string, number> = { jvm: 8, setup: 6, prepare: 4, warmup: 2 }
 
 interface CachedRender {
   result: Omit<Extract<LayoutRenderResult, { ok: true }>, 'pngUrl' | 'cached'>
@@ -476,7 +485,58 @@ export function registerLayoutIpc(deps: LayoutIpcDeps): LayoutIpc {
     }
   })
 
+  let agentWarm: Promise<void> | null = null
+  const failOf = (err: unknown): AgentRenderOutcome =>
+    err instanceof LayoutError ? { ok: false, code: err.code === 'cancelled' ? 'busy' : err.code, ...(err.detail ? { detail: err.detail.slice(-300) } : {}) } : { ok: false, code: 'failed' }
+
+  const agentRender: LayoutIpc['agentRender'] = async (file, o) => {
+    if (!(await isLayoutTarget(file, null, platform))) return { ok: false, code: 'not-layout' }
+    if (!jarExists()) return { ok: false, code: 'jar-missing' }
+    if (!bundle.isReady()) return { ok: false, code: 'bundle-missing' }
+    const stat = await fs.stat(file).catch(() => null)
+    if (!stat?.isFile()) return { ok: false, code: 'missing' }
+    if (stat.size > MAX_XML) return { ok: false, code: 'too-large' }
+    if (daemon.state !== 'ready') {
+      agentWarm ??= (async () => {
+        // A model that fails to load still leaves framework views to render.
+        if (model) await model.prepare(file).catch(() => undefined)
+        await daemon.ensure()
+      })().finally(() => {
+        agentWarm = null
+      })
+      const settled = await Promise.race([
+        agentWarm.then(() => null, (err: unknown) => failOf(err)),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), WARM_PEEK_MS).unref?.()),
+      ])
+      if (settled === 'pending') return { ok: false, code: 'starting', retryInSec: STAGE_WAIT_S[daemon.stage ?? ''] ?? 10 }
+      if (settled) return settled
+    }
+    const xmlContent = await fs.readFile(file, 'utf8').catch(() => null)
+    if (xmlContent === null) return { ok: false, code: 'missing' }
+    const prepared = model ? await model.prepare(file).catch(() => null) : { frameworkOnly: true }
+    let res: DaemonRenderResult
+    try {
+      await fs.mkdir(renderDir, { recursive: true })
+      res = await daemon.render({ layoutPath: file, xmlContent, device: o.device, theme: null, night: o.night, locale: null }, `agent:${o.slot}`)
+    } catch (err) {
+      return failOf(err)
+    }
+    realRender ??= await fs.realpath(renderDir).catch(() => null)
+    const png = typeof res.png === 'string' && path.isAbsolute(res.png) ? await fs.realpath(res.png).catch(() => null) : null
+    if (!realRender || !png || !isWithin(realRender, png, platform) || path.extname(png).toLowerCase() !== '.png') return { ok: false, code: 'render-failed' }
+    return {
+      ok: true,
+      png,
+      width: Number(res.width) || o.device.width,
+      height: Number(res.height) || o.device.height,
+      renderMs: Number(res.renderMs) || 0,
+      frameworkOnly: prepared?.frameworkOnly ?? true,
+      diagnostics: cleanDiagnostics(res.diagnostics),
+    }
+  }
+
   return {
+    agentRender,
     dispose: () => {
       for (const ch of CHANNELS) ipcMain.removeHandler(ch)
     },

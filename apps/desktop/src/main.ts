@@ -70,16 +70,21 @@ import { installKind, platformKind } from './update/pick'
 import { BackupService } from './backup/service'
 import { DeviceUseReporter, RUN_USE_THROTTLE_MS } from './resources/deviceUse'
 import { confirmLines, fixtureKill, killTreeByPid, liveStarts, planKill } from './resources/kill'
+import { readProcRows } from './resources/agentPorts'
+import { createDesk } from './mcpDesk'
+import type { McpDeskCall } from '../../../packages/shared/src/mcpDesk'
 import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, type ResKillResult, type ResourceReport } from '@ccm/shared'
 import { AWAKE_FILE, KeepAwake, readAwakeMode, writeAwakeMode } from './power/awake'
 import { CAPTURE_FILE } from './capture/files'
 import { CaptureFolder } from './capture/folder'
+import { mcpScreenshot } from './devices/mcpShot'
 import { registerCaptureIpc } from './capture/ipc'
 import { PHONE_FILE, PhoneNotifier } from './phone/notifier'
 import { registerPhoneIpc } from './phone/ipc'
 import { e2eOverride } from './phone/send'
 import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
+import type { AgentNoteMessage, McpPageCall } from '../../../packages/shared/src/mcpCall'
 import { AgentDataService } from './agentData/service'
 import { MoveStore, freeBytes, isLocalDir } from './agentData/move'
 import { agentProcs } from './agentData/procs'
@@ -577,7 +582,7 @@ function showError(reason: FatalReason): void {
  * R1 / R2 stop: only pids in the newest collector report, with the same creation time now (no reused pid), after one
  * native confirm for all. Emulators go through `adb emu kill`. `CCM_RES_FIXTURE` (E2E) never stops anything real.
  */
-async function resKill(sender: WebContents, targets: ReturnType<typeof parseKillTargets>): Promise<ResKillResult> {
+async function resKill(sender: WebContents, targets: ReturnType<typeof parseKillTargets>, ask?: { message: string; detail: (lines: string[]) => string; confirm: string }): Promise<ResKillResult> {
   if (!targets) return { ok: false, error: 'invalid' }
   const plan = planKill(resReport, targets, Date.now())
   if (!plan.ok) return plan
@@ -591,9 +596,9 @@ async function resKill(sender: WebContents, targets: ReturnType<typeof parseKill
   if (!(await sameStart())) return { ok: false, error: 'gone' }
   const opts: Electron.MessageBoxOptions = {
     type: 'warning',
-    message: t.resKillTitle(items.length, items[0]!.name),
-    detail: t.resKillDetail(confirmLines(items, t.resKillSession), items.some((i) => i.session)),
-    buttons: [t.resKillConfirm(items.length), t.quitCancel],
+    message: ask?.message ?? t.resKillTitle(items.length, items[0]!.name),
+    detail: ask ? ask.detail(confirmLines(items, t.resKillSession)) : t.resKillDetail(confirmLines(items, t.resKillSession), items.some((i) => i.session)),
+    buttons: [ask?.confirm ?? t.resKillConfirm(items.length), t.quitCancel],
     defaultId: 1,
     cancelId: 1,
     noLink: true,
@@ -793,6 +798,70 @@ function paneHandles(terminalId: string): Promise<boolean> {
     ipcMain.on('ccm:focus-reply', onReply)
     contents.send('ccm:focus', terminalId)
   })
+}
+
+function askPageMcp(call: McpPageCall): Promise<unknown> {
+  const contents = mainWindow?.webContents
+  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
+    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
+      if (event.sender === contents && id === call.id && isAppFrame(event)) done(result)
+    }
+    const done = (result: unknown): void => {
+      clearTimeout(timer)
+      ipcMain.removeListener('ccm:mcp-reply', onReply)
+      resolve(result)
+    }
+    ipcMain.on('ccm:mcp-reply', onReply)
+    contents.send('ccm:mcp-call', call)
+  })
+}
+
+/** device_screenshot needs adb and the capture folder, both in main: the page is not asked. */
+function screenshotMcp(call: { cwd: string; serial?: string }): Promise<unknown> {
+  const devices = deviceManager
+  if (!devices) return Promise.resolve({ ok: false, error: 'unavailable' })
+  return mcpScreenshot(call, {
+    snapshot: () => devices.snapshot(),
+    screencap: (id) => devices.screencap(id),
+    runs: () => runManager?.list() ?? [],
+    writeShot: (png, device) => capture?.writeShot(png, device, null) ?? Promise.resolve(null),
+    captureActive: () => !!capture?.active(),
+    tmpRoot: os.tmpdir(),
+  })
+}
+
+/** v80 WP-5 MCP tools answered here (docs §11w): preview_layout, list_servers, free_port. */
+const desk: (call: McpDeskCall) => Promise<unknown> = createDesk({
+  render: (file, opts) => (layoutIpc ? layoutIpc.agentRender(file, opts) : Promise.resolve({ ok: false, code: 'unavailable' })),
+  writeShot: async (png, name) => (capture ? capture.writeShot(png, name, null) : null),
+  fallbackDir: path.join(os.tmpdir(), 'orrery-layout'),
+  report: () => resReport,
+  procRows: () => readProcRows(),
+  home: os.homedir(),
+  locale: () => saved().locale ?? 'vi',
+  kill: async (targets, ask) => {
+    const contents = mainWindow?.webContents
+    if (!contents || contents.isDestroyed()) return { ok: false, error: 'unavailable' }
+    if (mainWindow && !mainWindow.isVisible()) showMain()
+    return resKill(contents, targets, ask)
+  },
+})
+
+/** notify_owner: the page files it in the Inbox and names the pane; the toast / phone go through the collector either way. */
+async function pageMcp(call: McpPageCall): Promise<unknown> {
+  if (call.tool === 'device_screenshot') return screenshotMcp(call)
+  const res = await askPageMcp(call)
+  if (call.tool !== 'notify_owner') return res
+  const r = (res && typeof res === 'object' ? res : {}) as { ok?: unknown; name?: unknown; terminalId?: unknown; inbox?: unknown }
+  // Only a pane the page knows may reach the toasts / phone.
+  if (r.ok !== true) return res
+  const named = typeof r.name === 'string' && r.name ? r.name : path.basename(call.cwd) || 'Agent'
+  const terminalId = typeof r.terminalId === 'string' ? r.terminalId : undefined
+  const note: AgentNoteMessage = { type: 'agent.note', episode: call.id, level: call.level, text: call.text, name: named, ...(terminalId ? { terminalId } : {}), merged: call.merged }
+  host?.post(note)
+  return { ok: true, name: named, ...(terminalId ? { terminalId } : {}), inbox: r.inbox === true }
 }
 
 function pageOpen(req: PaneOpenRequest): Promise<PaneOpenResult> {
@@ -1254,6 +1323,8 @@ async function ready(): Promise<void> {
     logFile: path.join(app.getPath('logs'), 'pty.log'),
     shellInitDir: path.join(DATA_DIR, 'shell-init'),
     onOpen: pageOpen,
+    onMcp: pageMcp,
+    onDesk: (call) => desk(call),
     mcpConfig: path.join(DATA_DIR, 'orrery-mcp.json'),
   })
   // The token is the only gate on a shell; hand it out to top-level app frames only.

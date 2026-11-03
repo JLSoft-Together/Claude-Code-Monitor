@@ -35,6 +35,7 @@ const MENU_ROW =
   'group flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:text-ink-disabled'
 
 const config = computed(() => run.selectedConfig(props.root))
+const autoReload = computed(() => run.autoReloadOn(props.root))
 const devices = computed(() => run.devicesFor(config.value))
 const device = computed(() => run.selectedDevice(props.root, config.value))
 const needsDevice = computed(() => !!config.value && config.value.type !== 'custom' && config.value.device === 'selected')
@@ -203,6 +204,18 @@ const launchingName = computed(() => run.emulators.find((e) => e.id === launchin
           </template>
           <p v-if="!grouped.length" class="px-2 py-1.5 text-xs text-ink-muted">{{ t('run.config.none') }}</p>
           <div class="mx-2 my-1 h-px bg-line" role="separator" />
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="autoReload"
+            :class="MENU_ROW"
+            :title="t('linksV80.autoReloadHint')"
+            data-run-auto-reload
+            @click="run.setAutoReload(root, !autoReload)"
+          >
+            <Check :size="13" class="shrink-0" :class="autoReload ? '' : 'invisible'" aria-hidden="true" />
+            <span class="min-w-0 flex-1 truncate">{{ t('linksV80.autoReload') }}</span>
+          </button>
           <button type="button" role="menuitem" :class="MENU_ROW" data-run-edit-configs @click="(close(true), emit('editConfigs'))">
             <Settings2 :size="14" class="shrink-0 text-ink-muted group-focus-visible:text-on-accent" aria-hidden="true" />
             <span class="truncate">{{ t('run.config.edit') }}</span>

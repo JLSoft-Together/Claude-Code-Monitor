@@ -26,7 +26,11 @@ export function safeShell(shellEnv: string | undefined, platform: NodeJS.Platfor
  */
 function agentCommand(preset: Exclude<PtyPreset, 'shell'>, win: boolean, resume?: string, opts: AgentOptions = {}): string {
   const resumed = !!resume && isAgentSessionId(resume)
-  if (preset === 'codex') return resumed ? `codex resume ${resume}` : 'codex'
+  if (preset === 'codex') {
+    // Codex needs a literal url (no ${VAR} expansion in config); the bearer comes from the env var it names. A -c value that is not valid TOML is taken as a raw string.
+    const mcp = opts.mcp ? ` -c ${win ? '"mcp_servers.orrery.url=$env:ORRERY_API/mcp"' : '"mcp_servers.orrery.url=$ORRERY_API/mcp"'} -c mcp_servers.orrery.bearer_token_env_var=ORRERY_TOKEN` : ''
+    return resumed ? `codex${mcp} resume ${resume}` : `codex${mcp}`
+  }
   const base = resumed
     ? `claude --resume ${resume}`
     : `claude${isAgentSessionId(opts.sessionId) ? ` --session-id ${opts.sessionId}` : ''}${isPaneName(opts.name) ? ` -n '${opts.name}'` : ''}`

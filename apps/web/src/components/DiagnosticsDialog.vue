@@ -143,6 +143,7 @@ watch(
       restoreFocus = null
     }
   },
+  { immediate: true },
 )
 onBeforeUnmount(() => window.clearInterval(poll))
 </script>

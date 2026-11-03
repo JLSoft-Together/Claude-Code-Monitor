@@ -445,3 +445,23 @@ describe('Toaster disk (v77 R9)', () => {
     expect(phone).toHaveLength(1)
   })
 })
+
+describe('Toaster agent notes (v80 notify_owner)', () => {
+  it('attention follows needs-you, done follows the done switch (off by default), info never toasts', async () => {
+    const { toaster, shown, flush } = setup()
+    const phone: unknown[] = []
+    toaster.onPhone = (m) => phone.push(m)
+    toaster.observeNote({ type: 'agent.note', episode: 'e1', level: 'info', text: 'fyi', name: 'api', merged: 0 })
+    toaster.observeNote({ type: 'agent.note', episode: 'e2', level: 'attention', text: 'Pick a schema', name: 'api', merged: 2 })
+    toaster.observeNote({ type: 'agent.note', episode: 'e3', level: 'done', text: 'Tests pass', name: 'api', merged: 0 })
+    await flush()
+    expect(shown.map((s) => [s.title, s.body])).toEqual([['api cần chủ nhân xem', 'Pick a schema (+2 tin nữa)']])
+    expect(phone).toEqual([expect.objectContaining({ type: 'phone', reason: 'note', name: 'api', text: 'Pick a schema (+2 tin nữa)' })])
+    toaster.update({ kinds: { done: true, waiting: false } })
+    toaster.observeNote({ type: 'agent.note', episode: 'e4', level: 'done', text: 'Tests pass', name: 'api', merged: 0 })
+    toaster.observeNote({ type: 'agent.note', episode: 'e5', level: 'attention', text: 'again', name: 'api', merged: 0 })
+    await flush()
+    expect(shown.map((s) => s.title)).toEqual(['api cần chủ nhân xem', 'api báo đã xong'])
+    expect(phone).toHaveLength(2)
+  })
+})

@@ -384,6 +384,8 @@ export type FavoriteRejectReason = 'invalid' | 'notFound' | 'exists' | 'limit'
 /** A session that ended, kept by the collector (`<dataDir>/history.json`, newest first, capped). Counters only. */
 export interface SessionRecord {
   id: string
+  /** Claude session uuid for `--resume`; missing on records written before v80. */
+  sessionId?: string
   title: string
   cwd?: string
   gitBranch?: string

@@ -201,6 +201,7 @@ watch(
       restoreFocus = null
     }
   },
+  { immediate: true },
 )
 </script>
 

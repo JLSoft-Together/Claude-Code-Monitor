@@ -72,6 +72,29 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
         .then(reply, () => reply({ ok: false, error: 'failed' }))
     })
   },
+  /** v80 MCP tools (notify_owner, open_in_workspace, who_is_editing); one handler, the last one set wins. */
+  onMcpCall: (() => {
+    let current: ((call: unknown) => unknown) | null = null
+    ipcRenderer.on('ccm:mcp-call', (_event, call: unknown) => {
+      const id = typeof call === 'object' && call !== null && typeof (call as { id?: unknown }).id === 'string' ? (call as { id: string }).id : null
+      if (id === null) return
+      const reply = (result: unknown): void => {
+        try {
+          ipcRenderer.send('ccm:mcp-reply', id, result)
+        } catch {
+          ipcRenderer.send('ccm:mcp-reply', id, { ok: false, error: 'failed' })
+        }
+      }
+      if (!current) return reply({ ok: false, error: 'unavailable' })
+      const handler = current
+      void Promise.resolve()
+        .then(() => handler(call))
+        .then(reply, () => reply({ ok: false, error: 'failed' }))
+    })
+    return (handler: (call: unknown) => unknown): void => {
+      current = handler
+    }
+  })(),
   previewUrl: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:preview-url', path),
   readFile: (path: string): Promise<unknown> => ipcRenderer.invoke('ccm:read-file', path),
   logRead: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:log-read', req),

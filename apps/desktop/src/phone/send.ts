@@ -60,6 +60,7 @@ const TEXT: Record<PhoneLocale, { [K in PhoneEpisodeMessage['reason']]: (m: Phon
     job: () => 'A background job needs you',
     limit: () => 'Usage limit is about to run out',
     disk: (m) => (m.freeBytes !== undefined ? `Disk almost full: ${formatGb(m.freeBytes)} left` : 'Disk almost full'),
+    note: (m) => m.text ?? 'Message from the agent',
     test: 'Test from Orrery: phone notifications work.',
   },
   vi: {
@@ -71,6 +72,7 @@ const TEXT: Record<PhoneLocale, { [K in PhoneEpisodeMessage['reason']]: (m: Phon
     job: () => 'Job nền cần chủ nhân',
     limit: () => 'Hạn mức sắp hết',
     disk: (m) => (m.freeBytes !== undefined ? `Ổ sắp đầy: còn ${formatGb(m.freeBytes)}` : 'Ổ sắp đầy'),
+    note: (m) => m.text ?? 'Agent nhắn chủ nhân',
     test: 'Thử từ Orrery: báo ra điện thoại đang chạy.',
   },
 }

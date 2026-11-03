@@ -1,9 +1,19 @@
-import type { TerminalSession } from '@ccm/shared'
+import type { AgentNoteLevel, TerminalSession } from '@ccm/shared'
 
-export type InboxReason = 'waiting' | 'loop' | 'checks' | 'stuck' | 'done'
+export type InboxReason = 'waiting' | 'note' | 'loop' | 'checks' | 'stuck' | 'done'
 
 /** Lower = more urgent; one row per agent with its most urgent reason. */
-export const SEVERITY: Record<InboxReason, number> = { waiting: 0, loop: 1, checks: 2, stuck: 3, done: 4 }
+export const SEVERITY: Record<InboxReason, number> = { waiting: 0, note: 0.5, loop: 1, checks: 2, stuck: 3, done: 4 }
+
+/** What an agent left with notify_owner (v80), latest per agent. */
+export interface InboxNote {
+  text: string
+  level: AgentNoteLevel
+  /** ISO time the note arrived. */
+  at: string
+  /** Earlier notes folded into this one by the rate limit. */
+  merged: number
+}
 
 export interface InboxItem {
   id: string
@@ -12,6 +22,7 @@ export interface InboxItem {
   since?: string
   /** Changes the row's dismiss stamp: a dismissed row comes back once this differs. */
   stamp: string
+  note?: InboxNote
 }
 
 export interface InboxInput {
@@ -24,6 +35,8 @@ export interface InboxInput {
   failedRoots: readonly string[]
   /** Agents that finished out of sight (workspace pane `attention: 'done'`). */
   doneUnseen: ReadonlySet<string>
+  /** Terminal id → its latest agent note. */
+  notes?: ReadonlyMap<string, InboxNote>
   /** id → stamp dismissed with E. */
   dismissed: Readonly<Record<string, string>>
 }
@@ -42,11 +55,13 @@ export function inboxItems(input: InboxInput): InboxItem[] {
     if (x.cwd && input.failedRoots.some((r) => inside(x.cwd!, r))) reasons.push({ reason: 'checks' })
     if (input.stuck.has(x.id)) reasons.push({ reason: 'stuck', since: x.lastActivityAt })
     if (input.doneUnseen.has(x.id) && x.status !== 'working') reasons.push({ reason: 'done', since: x.statusSince })
+    const note = input.notes?.get(x.id)
+    if (note) reasons.push({ reason: 'note', since: note.at })
     const top = reasons.sort((a, b) => SEVERITY[a.reason] - SEVERITY[b.reason])[0]
     if (!top) continue
-    const stamp = `${top.reason}|${x.status}|${x.statusSince ?? ''}`
+    const stamp = top.reason === 'note' && note ? `note|${note.at}` : `${top.reason}|${x.status}|${x.statusSince ?? ''}`
     if (input.dismissed[x.id] === stamp) continue
-    out.push({ id: x.id, reason: top.reason, since: top.since, stamp })
+    out.push({ id: x.id, reason: top.reason, since: top.since, stamp, ...(top.reason === 'note' && note ? { note } : {}) })
   }
   const at = (i: InboxItem): number => (i.since ? Date.parse(i.since) || Infinity : Infinity)
   return out.sort((a, b) => SEVERITY[a.reason] - SEVERITY[b.reason] || at(a) - at(b))

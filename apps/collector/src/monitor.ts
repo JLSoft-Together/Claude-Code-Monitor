@@ -642,6 +642,7 @@ export class Monitor {
     }
     return {
       id: terminal.id,
+      sessionId: terminal.claudeSessionId,
       title: terminal.alias ?? terminal.title,
       cwd: terminal.cwd,
       gitBranch: terminal.gitBranch,

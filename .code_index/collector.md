@@ -96,3 +96,8 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 
 ## v77 (2026-11-01)
 - R9: `toast.ts` `Toaster.observeDisk(DiskAlertMessage)` (kind `disk`, tag `disk:<label>`, danger → `phone` reason `disk` with `freeBytes`, quiet hours / kinds applied); `index.ts` parentPort `parseDiskAlert`.
+
+## v80 (2026-11-03)
+
+- `index.ts` parses `agent.note`; `toast.ts` `Toaster.observeNote` (TEXT `noteTitle` / `noteMore`, `hideFor` includes `note:`; attention follows "needs you", done follows "done" switch, info = Inbox only; quiet hours + snooze apply).
+- `monitor.ts` `recordOf` stores `sessionId`; `history.ts` keeps it in `history.json`.

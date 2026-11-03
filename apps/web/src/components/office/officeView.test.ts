@@ -802,14 +802,15 @@ describe('Office theme packs', () => {
 describe('Office full screen', () => {
   it('puts the map region (canvas + floating Office controls) in full screen from a toolbar button and Shift+F', async () => {
     const src = (await import('../AgentMap.vue?raw')).default
-    expect(src).toContain('const officeFs = useFullscreen(canvas)')
+    const controls = (await import('../map/useOfficeControls.ts?raw')).default
+    expect(controls).toContain('const officeFs = useFullscreen(canvas)')
     const start = src.indexOf('data-office-fullscreen-toggle')
     expect(start).toBeGreaterThan(-1)
     const button = src.slice(src.lastIndexOf('<button', start), src.indexOf('</button>', start))
     expect(button).toContain('aria-keyshortcuts="Shift+F"')
     expect(button).toContain(':aria-pressed="officeFullscreen"')
-    expect(src).toMatch(/e\.code !== 'KeyF' \|\| !e\.shiftKey/)
-    expect(src).toMatch(/if \(v !== 'office'\) void officeFs\.exit\(\)/)
+    expect(controls).toMatch(/e\.code !== 'KeyF' \|\| !e\.shiftKey/)
+    expect(controls).toMatch(/if \(v !== 'office'\) void officeFs\.exit\(\)/)
     const region = src.slice(src.indexOf('ref="canvas"'), src.indexOf('<ToolTimeline'))
     expect(region).toContain('data-office-fullscreen')
     const toolbar = src.indexOf('<OfficeOptions />')

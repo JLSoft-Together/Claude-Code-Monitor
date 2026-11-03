@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import ArtImage from './ArtImage.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow, type Edge, type GraphNode, type Node } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import {
-  ArrowDown,
-  ArrowDownLeft,
-  ArrowDownRight,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ArrowUpLeft,
-  ArrowUpRight,
   Building2,
   ChevronDown,
   ChevronUp,
@@ -23,9 +15,6 @@ import {
   LayoutGrid,
   Mail,
   Maximize,
-  Volume1,
-  Volume2,
-  VolumeX,
   Minus,
   Network,
   PanelLeft,
@@ -44,10 +33,10 @@ import { useAgentActions } from '../composables/useAgentActions'
 import { MAP_RUNNERS, PEER_MAP, usePeerName, type PeerEdgeData, type PeerLane, type PeerMapContext, type RunnerBudget } from '../composables/useMapNode'
 import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
 import { dustOutAll } from '../lib/dust'
-import { isFinished, MAIN_HEIGHT, MAIN_WIDTH, peerPath, peerSlots, pickLayout, trayId, trayTerminal, treeOrder, visibleAgents, type Box, type Point } from '../lib/layout'
+import { isFinished, MAIN_HEIGHT, MAIN_WIDTH, peerPath, peerSlots, pickLayout, trayId, trayTerminal, visibleAgents, type Box, type Point } from '../lib/layout'
 import { canvasMenu, nodeMenu, peerTarget, type CanvasAction, type NodeAction } from '../lib/mapMenu'
 import { buildNav, childCounts, hideCollapsed, navigate, NAV_KEYS, treeParent, type MapNav, type MapNodeContext, type NavKey, type TrayState } from '../lib/mapNav'
-import { agentName, searchText } from '../lib/mapText'
+import { agentName } from '../lib/mapText'
 import type { MenuEntry } from '../lib/menu'
 import { motionMs, nextMapIsSwitch, reducedMotion } from '../lib/motion'
 import { isMac } from '../lib/platform'
@@ -64,8 +53,10 @@ import SegmentedControl from './ui/SegmentedControl.vue'
 import OfficeOptions from './office/OfficeOptions.vue'
 import OfficeView from './office/OfficeView.vue'
 import { useOfficeStore } from '../stores/office'
-import { useFullscreen } from '../composables/useFullscreen'
-import { modalOpen } from '@ccm/habblaud/client/src/world/input'
+import { useMapFind } from './map/useMapFind'
+import { useLiveAnnounce } from './map/useLiveAnnounce'
+import { useOffscreenCapsules } from './map/useOffscreenCapsules'
+import { useOfficeControls } from './map/useOfficeControls'
 
 const props = defineProps<{ terminalId?: string | null }>()
 const { t } = useI18n()
@@ -711,114 +702,7 @@ const peerMapCtx: PeerMapContext = {
 }
 provide(PEER_MAP, peerMapCtx)
 
-const LIVE_MS = 10_000
-type LiveItem = { from: string; to: string; n: number }
-const liveText = ref('')
-const liveBuffer = new Map<string, LiveItem>()
-let liveTimer = 0
-function say(items: LiveItem[]): void {
-  const text = items.map((x) => t('peer.live', { from: nameOf(x.from), to: nameOf(x.to), n: x.n }, x.n)).join(' · ')
-  liveText.value = ''
-  void nextTick(() => (liveText.value = text))
-}
-function flushLive(): void {
-  liveTimer = 0
-  if (!liveBuffer.size) return
-  const items = [...liveBuffer.values()]
-  liveBuffer.clear()
-  say(items)
-  liveTimer = window.setTimeout(flushLive, LIVE_MS)
-}
-function announce(from: string, to: string, n: number): void {
-  if (!liveTimer) {
-    say([{ from, to, n }])
-    liveTimer = window.setTimeout(flushLive, LIVE_MS)
-    return
-  }
-  const key = `${from}>${to}`
-  const cur = liveBuffer.get(key)
-  if (cur) cur.n += n
-  else liveBuffer.set(key, { from, to, n })
-}
-
-const CAPSULE_MS = 6000
-const CAPSULE_MAX = 3
-const SCREEN_MARGIN = 16
-type Capsule = { key: number; from: string; to: string; node: string }
-const capsules = ref<Capsule[]>([])
-const capsuleTimers = new Map<number, number>()
-let capsuleSeq = 0
-const ARROWS: Record<string, Component> = {
-  '-1,-1': ArrowUpLeft,
-  '0,-1': ArrowUp,
-  '1,-1': ArrowUpRight,
-  '-1,0': ArrowLeft,
-  '1,0': ArrowRight,
-  '-1,1': ArrowDownLeft,
-  '0,1': ArrowDown,
-  '1,1': ArrowDownRight,
-}
-
-function screenCenter(id: string): Point | null {
-  const n = findNode(id)
-  if (!n) return null
-  const { x, y, zoom } = viewport.value
-  return {
-    x: (n.computedPosition.x + (n.dimensions.width || MAIN_WIDTH) / 2) * zoom + x,
-    y: (n.computedPosition.y + (n.dimensions.height || MAIN_HEIGHT) / 2) * zoom + y,
-  }
-}
-
-function onScreen(p: Point): boolean {
-  const { width, height } = dimensions.value
-  if (!width || !height) return true
-  return p.x >= SCREEN_MARGIN && p.x <= width - SCREEN_MARGIN && p.y >= KEEP_CLEAR && p.y <= height - SCREEN_MARGIN
-}
-
-function dismissCapsule(key: number): void {
-  window.clearTimeout(capsuleTimers.get(key))
-  capsuleTimers.delete(key)
-  capsules.value = capsules.value.filter((c) => c.key !== key)
-}
-
-function offerCapsule(from: string, to: string, node: string): void {
-  const at = screenCenter(node)
-  if (!at || onScreen(at)) return
-  const fromNode = mainNodeOf(from)
-  const fromAt = fromNode ? screenCenter(fromNode) : null
-  if (fromAt && !onScreen(fromAt)) return
-  for (const c of capsules.value) if (c.to === to) dismissCapsule(c.key)
-  const key = ++capsuleSeq
-  capsules.value = [...capsules.value, { key, from, to, node }].slice(-CAPSULE_MAX)
-  capsuleTimers.set(
-    key,
-    window.setTimeout(() => dismissCapsule(key), CAPSULE_MS),
-  )
-}
-
-const capsuleViews = computed(() => {
-  const { width, height } = dimensions.value
-  return capsules.value.flatMap((c) => {
-    const at = screenCenter(c.node)
-    if (!at || onScreen(at)) return []
-    const dx = at.x < SCREEN_MARGIN ? -1 : at.x > width - SCREEN_MARGIN ? 1 : 0
-    const dy = at.y < KEEP_CLEAR ? -1 : at.y > height - SCREEN_MARGIN ? 1 : 0
-    const left = dx < 0 ? 12 : dx > 0 ? width - 12 : Math.min(Math.max(at.x, width * 0.2), width * 0.8)
-    const top = dy < 0 ? KEEP_CLEAR : dy > 0 ? height - 12 : Math.min(Math.max(at.y, KEEP_CLEAR + 16), height - 28)
-    const tx = dx < 0 ? '0' : dx > 0 ? '-100%' : '-50%'
-    const ty = dy < 0 ? '0' : dy > 0 ? '-100%' : '-50%'
-    return [
-      {
-        key: c.key,
-        to: c.to,
-        icon: ARROWS[`${dx},${dy}`] ?? ArrowUp,
-        text: t('peer.received', { name: nameOf(c.from) }),
-        label: t('peerMap.capsuleLabel', { from: nameOf(c.from), to: nameOf(c.to) }),
-        style: { left: `${left}px`, top: `${top}px`, transform: `translate(${tx}, ${ty})` },
-      },
-    ]
-  })
-})
+const { liveText, announce } = useLiveAnnounce(nameOf)
 
 let peerSeen = peers.pulses.at(-1)?.key ?? 0
 watch(
@@ -851,7 +735,7 @@ function onPeerPulse(p: PeerPulse): void {
 }
 
 function goToPeer(tid: string): void {
-  for (const c of capsules.value) if (c.to === tid) dismissCapsule(c.key)
+  dismissCapsulesTo(tid)
   const id = mainNodeOf(tid)
   if (!id) {
     ui.focusTerminal(tid)
@@ -881,8 +765,6 @@ function peerTargets(tid: string): { terminalId: string; name: string }[] {
 onBeforeUnmount(() => {
   for (const timer of peerFadeTimers.values()) window.clearTimeout(timer)
   for (const list of queuedFlights.values()) for (const q of list) window.clearTimeout(q.timer)
-  for (const timer of capsuleTimers.values()) window.clearTimeout(timer)
-  window.clearTimeout(liveTimer)
 })
 
 function sameEdge(a: Edge, b: Edge): boolean {
@@ -1025,6 +907,7 @@ function nodeBox(id: string): HTMLElement | null {
 }
 
 const KEEP_CLEAR = 56
+const { capsuleViews, dismissCapsule, dismissCapsulesTo, offerCapsule } = useOffscreenCapsules({ findNode, viewport, dimensions, mainNodeOf, nameOf, keepClear: KEEP_CLEAR })
 /** Pans (same zoom) only when the node is off screen or under the floating toolbar. */
 function ensureVisible(id: string): void {
   const node = findNode(id)
@@ -1108,67 +991,16 @@ const finishedByTerminal = computed(() => {
 const actions = useAgentActions((id) => finishedByTerminal.value[id] ?? [])
 const { labels: textLabels, notice, copyText, copySummary, sessionsText } = actions
 
-// Find: matches in session / tree order, including agents inside folded subtrees (unfolded on the way there).
-const findOpen = ref(false)
-const query = ref('')
-const matchIndex = ref(0)
-const findInput = ref<HTMLInputElement | null>(null)
-const matchList = computed<string[]>(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!findOpen.value || !q) return []
-  const out: string[] = []
-  for (const tid of sessionsOrder.value) {
-    const list = finishedByTerminal.value[tid]
-    if (!list?.length) continue
-    const term = terminals.byId[tid]
-    const main = list.find((a) => a.role === 'main')
-    const ordered = [...(main ? [main] : []), ...treeOrder(list).map((x) => x.agent)]
-    for (const a of ordered) if (searchText(a, term, textLabels.value).includes(q)) out.push(a.id)
-  }
-  return out
+const { findOpen, query, matchIndex, findInput, matchList, matches, currentMatch, stepMatch, openFind, closeFind, onFindKey } = useMapFind({
+  sessionsOrder,
+  finishedByTerminal,
+  textLabels,
+  cursorId,
+  tabStop,
+  unfoldTo,
+  zoomTo,
+  moveCursor,
 })
-const matches = computed(() => (findOpen.value && query.value.trim() ? new Set(matchList.value) : null))
-const currentMatch = computed(() => matchList.value[matchIndex.value] ?? null)
-
-function goToMatch(): void {
-  const id = currentMatch.value
-  if (!id) return
-  cursorId.value = id
-  unfoldTo(id)
-  void zoomTo(id)
-}
-watch(query, () => {
-  matchIndex.value = 0
-  goToMatch()
-})
-function stepMatch(dir: 1 | -1): void {
-  const n = matchList.value.length
-  if (!n) return
-  matchIndex.value = (matchIndex.value + dir + n) % n
-  goToMatch()
-}
-async function openFind(): Promise<void> {
-  if (ui.mapView !== 'map') return
-  findOpen.value = true
-  await nextTick()
-  findInput.value?.focus()
-  findInput.value?.select()
-}
-function closeFind(refocus = true): void {
-  findOpen.value = false
-  if (!refocus) return
-  const id = currentMatch.value ?? tabStop.value
-  query.value = ''
-  if (id) moveCursor(id)
-}
-function onFindKey(e: KeyboardEvent): void {
-  if (e.key === 'Enter') stepMatch(e.shiftKey ? -1 : 1)
-  else if (e.key === 'Escape') closeFind()
-  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') stepMatch(e.key === 'ArrowDown' ? 1 : -1)
-  else return
-  e.preventDefault()
-  e.stopPropagation()
-}
 
 const mapNode: MapNodeContext = {
   tabStop,
@@ -1434,42 +1266,7 @@ const views = computed(() => [
 ])
 
 const office = useOfficeStore()
-const officeControls = computed<{ key: string; label: string; icon: typeof Plus; hint?: string; run: () => unknown }[]>(() => [
-  { key: 'zoomIn', label: t('officeV60.zoomIn'), icon: Plus, run: () => office.zoomBy(1.25) },
-  { key: 'zoomOut', label: t('officeV60.zoomOut'), icon: Minus, run: () => office.zoomBy(0.8) },
-  { key: 'overview', label: t('officeV60.overview'), icon: Maximize, hint: 'F', run: () => office.overview() },
-])
-const volumePct = computed(() => Math.round(office.volume * 100))
-const volumeIcon = computed(() => (!office.sound || volumePct.value === 0 ? VolumeX : volumePct.value < 50 ? Volume1 : Volume2))
-/** Wheel over the speaker or slider nudges the volume by one step, as on the macOS menu bar. */
-function onVolumeWheel(e: WheelEvent): void {
-  if (!e.deltaY) return
-  office.setVolume((volumePct.value + (e.deltaY < 0 ? 5 : -5)) / 100)
-}
-const officeFs = useFullscreen(canvas)
-const officeFullscreen = computed(() => officeFs.active.value && ui.mapView === 'office')
-watch(officeFs.active, (on) => (office.fullscreen = on), { immediate: true, flush: 'sync' })
-watch(
-  () => ui.mapView,
-  (v) => {
-    if (v !== 'office') void officeFs.exit()
-  },
-)
-function toggleOfficeFullscreen(): void {
-  if (ui.mapView !== 'office') return
-  void officeFs.toggle()
-}
-function onOfficeFullscreenKey(e: KeyboardEvent): void {
-  if (e.code !== 'KeyF' || !e.shiftKey || e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return
-  if (ui.view !== 'monitor' || ui.mapView !== 'office' || isTyping(e.target)) return
-  if (modalOpen(e.target instanceof HTMLElement ? e.target : null)) return
-  if (ui.paletteOpen || ui.settingsOpen || ui.tourOpen || ui.recapOpen || ui.diagnosticsOpen || ui.shortcutsOpen) return
-  e.preventDefault()
-  toggleOfficeFullscreen()
-  ui.pressKey('⇧F')
-}
-onMounted(() => document.addEventListener('keydown', onOfficeFullscreenKey))
-onBeforeUnmount(() => document.removeEventListener('keydown', onOfficeFullscreenKey))
+const { officeControls, volumePct, volumeIcon, onVolumeWheel, officeFullscreen, toggleOfficeFullscreen } = useOfficeControls(canvas)
 const regionLabel = computed(() => t(ui.mapView === 'office' ? 'officeV60.view' : 'map.ariaLabel'))
 </script>
 

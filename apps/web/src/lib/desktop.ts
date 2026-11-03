@@ -8,6 +8,8 @@ import type {
   FwpResult,
   FwpScanResult,
   FwpSnapshot,
+  McpPageCall,
+  McpPageResult,
   McpServerRow,
   PaneOpenRequest,
   PaneOpenResult,
@@ -96,6 +98,8 @@ interface DesktopBridge {
   onFocus?: (handler: (terminalId: string) => boolean) => void
   onSelect?: (handler: (terminalId: string) => void) => void
   onPaneOpen?: (handler: (req: PaneOpenRequest) => PaneOpenResult | Promise<PaneOpenResult>) => void
+  /** v80 MCP tools that need the workspace; the PTY host re-validates whatever the handler answers. */
+  onMcpCall?: (handler: (call: McpPageCall) => McpPageResult | Promise<McpPageResult>) => void
   captureRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<Uint8Array | null>
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>

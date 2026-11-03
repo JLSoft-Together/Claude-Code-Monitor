@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import {
   isRunLive,
+  type TerminalStatus,
   type BuildError,
   type EnvIssue,
   type RunCommandPreview,
@@ -21,8 +22,11 @@ import {
   type ToolchainReport,
 } from '@ccm/shared'
 import { desktop, type RunSettings } from '../lib/desktop'
+import { devConnectMany, devSnapshot } from '../lib/devices'
+import { AUTO_RELOAD_DEBOUNCE_MS, AUTO_RELOAD_MIN_GAP_MS, agentsFinished, autoReloadAction } from '../lib/runAutoReload'
 import { agentPaneFor, errorPrompt, fitsPlatforms, inRoot } from '../lib/runUi'
 import { dirKey } from './favorites'
+import { useTerminalsStore } from './terminals'
 import { useWorkspaceStore } from './workspace'
 
 export { inRoot }
@@ -32,6 +36,7 @@ export const ERROR_CAP = 500
 const ENDED_KEEP = 20
 const FLUSH_MS = 60
 const SELECTED_KEY = 'ccm.run.selected'
+const AUTO_RELOAD_KEY = 'ccm.run.autoReload'
 
 export interface RunSelection {
   config?: string
@@ -58,6 +63,16 @@ function loadSelected(): Record<string, RunSelection> {
       out[k] = { config: typeof config === 'string' ? config : undefined, device: typeof device === 'string' ? device : undefined }
     }
     return out
+  } catch {
+    return {}
+  }
+}
+
+function loadAutoReload(): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AUTO_RELOAD_KEY) ?? '{}') as unknown
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'))
   } catch {
     return {}
   }
@@ -178,6 +193,7 @@ export const useRunStore = defineStore('run', () => {
     holders++
     void desktop?.runHold?.(root, key, true).catch(() => false)
     if (holders === 1 && devicesAsked) void refreshDevices()
+    void reconnectRemembered(root)
     let released = false
     return () => {
       if (released) return
@@ -185,6 +201,20 @@ export const useRunStore = defineStore('run', () => {
       holders--
       void desktop?.runHold?.(root, key, false).catch(() => false)
     }
+  }
+
+  const reconnectTried = new Set<string>()
+
+  /** The project's remembered device when it is a Wi-Fi one that dropped: one connect try per device per window, never polled. */
+  async function reconnectRemembered(root: string): Promise<void> {
+    const id = selected.value[dirKey(root)]?.device
+    if (!id || reconnectTried.has(id)) return
+    const snap = await devSnapshot().catch(() => null)
+    const row = snap?.autoConnect ? snap.devices.find((d) => d.id === id) : undefined
+    if (!row || row.online || row.transport !== 'wifi') return
+    reconnectTried.add(id)
+    await devConnectMany([id]).catch(() => [])
+    await refreshDevices()
   }
 
   const autoImported = new Set<string>()
@@ -371,7 +401,9 @@ export const useRunStore = defineStore('run', () => {
   function selectedDevice(root: string, cfg: RunConfig | null = selectedConfig(root)): RunDevice | null {
     const list = devicesFor(cfg)
     const id = selected.value[dirKey(root)]?.device
-    return list.find((d) => d.id === id) ?? list.find((d) => d.state === 'ready') ?? null
+    const saved = list.find((d) => d.id === id)
+    if (saved?.state === 'ready') return saved
+    return list.find((d) => d.state === 'ready') ?? saved ?? null
   }
 
   /** Newest first. */
@@ -418,7 +450,12 @@ export const useRunStore = defineStore('run', () => {
     const cfg = selectedConfig(root)
     if (!cfg) return failed('spawn')
     const device = cfg.type === 'custom' ? null : selectedDevice(root, cfg)
-    const res = await desktop?.runStart?.({ root, configId: cfg.id, deviceId: device?.id ?? null }).catch(() => failed('spawn')) ?? failed('spawn')
+    return startConfig(root, cfg.id, device?.id ?? null)
+  }
+
+  /** Run with a given config / device without changing the Run bar's pick (MCP run_app). */
+  async function startConfig(root: string, configId: string, deviceId: string | null): Promise<RunResult> {
+    const res = await desktop?.runStart?.({ root, configId, deviceId }).catch(() => failed('spawn')) ?? failed('spawn')
     notices.value[dirKey(root)] = res.ok ? null : res.error
     if (res.ok && res.sessionId) focusSession(root, res.sessionId)
     return res
@@ -465,7 +502,71 @@ export const useRunStore = defineStore('run', () => {
     return true
   }
 
+  /** dirKey → real root (start() needs the original casing). Opt-in per project, off by default. */
+  const autoReload = ref<Record<string, string>>(loadAutoReload())
+  const autoReloadOn = (root: string): boolean => dirKey(root) in autoReload.value
+
+  const agentStatus = new Map<string, TerminalStatus>()
+  const autoTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const autoLastAt = new Map<string, number>()
+  let watchingAgents = false
+
+  function fireAutoReload(key: string): void {
+    autoTimers.delete(key)
+    const root = autoReload.value[key]
+    if (!root) return
+    const busy = useTerminalsStore().list.some((t) => !t.endedAt && !!t.cwd && inRoot(t.cwd, root) && t.status === 'working')
+    if (busy) return
+    const session = focusedSession(root)
+    const action = autoReloadAction(session)
+    if (!session || !action || Date.now() - (autoLastAt.get(key) ?? 0) < AUTO_RELOAD_MIN_GAP_MS) return
+    if (action === 'rerun' && selectedConfig(root)?.id !== session.configId) return
+    autoLastAt.set(key, Date.now())
+    if (action === 'reload') void reload(session.id, false, root)
+    else void start(root)
+  }
+
+  function onAgentsChanged(): void {
+    const terminals = useTerminalsStore()
+    const live = terminals.list.filter((t) => !t.endedAt)
+    const cwdOf = new Map(live.map((t) => [t.id, t.cwd]))
+    for (const id of agentsFinished(agentStatus, live.map((t) => ({ id: t.id, status: t.status })))) {
+      const cwd = cwdOf.get(id)
+      if (!cwd) continue
+      for (const [key, root] of Object.entries(autoReload.value)) {
+        if (!inRoot(cwd, root)) continue
+        const timer = autoTimers.get(key)
+        if (timer) clearTimeout(timer)
+        autoTimers.set(key, setTimeout(() => fireAutoReload(key), AUTO_RELOAD_DEBOUNCE_MS))
+      }
+    }
+  }
+
+  function watchAgents(): void {
+    if (watchingAgents) return
+    watchingAgents = true
+    const terminals = useTerminalsStore()
+    watch(() => terminals.list.map((t) => `${t.id}|${t.status}|${t.endedAt ?? ''}`).join('\n'), onAgentsChanged, { immediate: true })
+  }
+
+  function setAutoReload(root: string, on: boolean): void {
+    const key = dirKey(root)
+    if (on) autoReload.value[key] = root
+    else delete autoReload.value[key]
+    try {
+      localStorage.setItem(AUTO_RELOAD_KEY, JSON.stringify(autoReload.value))
+    } catch {
+      // storage blocked: the switch lasts until the window closes
+    }
+    if (on) watchAgents()
+  }
+
+  if (Object.keys(autoReload.value).length) watchAgents()
+
   return {
+    autoReload,
+    autoReloadOn,
+    setAutoReload,
     projects,
     configs,
     devices,
@@ -503,6 +604,7 @@ export const useRunStore = defineStore('run', () => {
     selectedConfig,
     devicesFor,
     selectedDevice,
+    startConfig,
     sessionsFor,
     liveSessionsFor,
     sessionOf,

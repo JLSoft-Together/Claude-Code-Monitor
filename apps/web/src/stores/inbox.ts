@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { quietFor } from '../lib/attention'
 import { now } from '../lib/format'
-import { inboxItems, pruneDismissed } from '../lib/inbox'
+import { inboxItems, pruneDismissed, type InboxNote } from '../lib/inbox'
 import { useAttentionStore } from './attention'
 import { useChecksStore } from './checks'
 import { useSettingsStore } from './settings'
@@ -30,6 +30,8 @@ export const useInboxStore = defineStore('inbox', () => {
   const workspace = useWorkspaceStore()
   const open = ref(false)
   const dismissed = ref<Record<string, string>>(read())
+  /** notify_owner notes (v80), memory only: they are about this run of the agent. */
+  const notes = shallowRef<ReadonlyMap<string, InboxNote>>(new Map())
 
   const minute = computed(() => Math.floor(now.value / 60_000))
   const stuck = computed(() => {
@@ -44,8 +46,15 @@ export const useInboxStore = defineStore('inbox', () => {
   const doneUnseen = computed(() => new Set(workspace.panes.filter((p) => p.attention === 'done' && p.terminalId).map((p) => p.terminalId!)))
 
   const items = computed(() =>
-    inboxItems({ terminals: terminals.live, loops: attention.loops, stuck: stuck.value, failedRoots: failedRoots.value, doneUnseen: doneUnseen.value, dismissed: dismissed.value }),
+    inboxItems({ terminals: terminals.live, loops: attention.loops, stuck: stuck.value, failedRoots: failedRoots.value, doneUnseen: doneUnseen.value, notes: notes.value, dismissed: dismissed.value }),
   )
+
+  function addNote(terminalId: string, note: InboxNote): void {
+    const live = new Set(terminals.live.map((x) => x.id))
+    const next = new Map([...notes.value].filter(([id]) => live.has(id)))
+    next.set(terminalId, note)
+    notes.value = next
+  }
 
   function dismiss(id: string): void {
     const item = items.value.find((i) => i.id === id)
@@ -64,5 +73,5 @@ export const useInboxStore = defineStore('inbox', () => {
     { deep: true },
   )
 
-  return { open, items, dismiss }
+  return { open, items, dismiss, notes, addNote }
 })

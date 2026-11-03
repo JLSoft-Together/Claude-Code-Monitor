@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, toRaw, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
 import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
+import { installMcpCalls } from '../../composables/useMcpCalls'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
 import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
@@ -15,8 +16,7 @@ import { createStartGuard } from '../../lib/startGuard'
 import { dirKey } from '../../stores/favorites'
 import { isLoopbackUrl, type LinkOpenOptions, type LinkTarget } from '../../lib/fileLinks'
 import { baseName, changesStatus, fullAccess, hasFullAccess, hasPreview, openExternal, pickFile, previewUrl, readFile, requestAccess, type SearchQuery } from '../../lib/preview'
-import { motionMs, pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
-import { dropKept, dustIn, dustOn, dustOutAll, hasKept, onDustLeave } from '../../lib/dust'
+import { pinLeaving, retireOverlay, withViewTransition } from '../../lib/motion'
 import type { MenuEntry } from '../../lib/menu'
 import { isMac } from '../../lib/platform'
 import { boxes, clampRatio, dividers, leaves, MIN_PANE, type Box, type Divider, type Edge, type SplitDir } from '../../lib/splitLayout'
@@ -24,7 +24,7 @@ import { DROP_TERM_KEYS, workspaceAction } from '../../lib/workspaceKeys'
 import { editorKeepsKey, inEditor, onSaveAllRequest, reportDirty } from '../../lib/fileEditor'
 import { isTyping, keyCombo, shortcutText } from '../../lib/shortcuts'
 import { moveTargetOf, tabMenu } from '../../lib/tabMenu'
-import { flashKind, stepSlot, tabMoveIndex, type FlashKind, type TabSignal } from '../../lib/tabStrip'
+import { stepSlot, tabMoveIndex } from '../../lib/tabStrip'
 import { isMenuKey } from '../../lib/rail/railMenu'
 import type { TipAction } from '../../lib/tips'
 import { useTipsStore } from '../../stores/tips'
@@ -35,7 +35,7 @@ import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
 import { useSettingsStore } from '../../stores/settings'
-import { closedPanes, isTerm, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type ClosedEntry, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
+import { isTerm, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
 import LaunchPicker from './LaunchPicker.vue'
 import BrowserPane from './BrowserPane.vue'
@@ -46,7 +46,6 @@ import LayoutsDialog from './LayoutsDialog.vue'
 import LogPane from './log/LogPane.vue'
 import ScriptsDialog from './ScriptsDialog.vue'
 import PaneIcon from './PaneIcon.vue'
-import PresetIcon from './PresetIcon.vue'
 import QuickOpen from './QuickOpen.vue'
 import { useProjectMru } from '../../composables/useProjectMru'
 import ProjectSwitcher from './ProjectSwitcher.vue'
@@ -76,9 +75,18 @@ import RailColumn from './rail/RailColumn.vue'
 import MissionControl from './MissionControl.vue'
 import AttentionPopover from './AttentionPopover.vue'
 import TabRenameInput from './TabRenameInput.vue'
-import UndoToast, { type UndoInfo } from './UndoToast.vue'
+import { useToastsStore } from '../../stores/toasts'
 import ContextMenu from '../ui/ContextMenu.vue'
-import { clampSideWidth, EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY, readSideWidth, SIDE_DEFAULT, SIDE_MAX, SIDE_MIN, writeSideWidth } from '../../lib/sideWidth'
+import { SIDE_MIN } from '../../lib/sideWidth'
+import { boxStyle, dividerStyle } from './view/geometry'
+import { useSidePanels, RAIL_COLUMN_W, SIDE_NARROW } from './view/useSidePanels'
+import { useDialogRoots } from './view/useDialogRoots'
+import { useTabStripVisuals } from './view/useTabStripVisuals'
+import { FLASH_CLASS, useTabFlashRename } from './view/useTabFlashRename'
+import { useCloseFlow } from './view/useCloseFlow'
+import AgentChoiceDialog from './view/AgentChoiceDialog.vue'
+import CloseConfirmDialog from './view/CloseConfirmDialog.vue'
+import RunCloseDialog from './view/RunCloseDialog.vue'
 import { hasRun } from '../../lib/desktop'
 import { latestPeer, type RailCluster } from '../../lib/rail/railModel'
 import { projectTabKeys, spaceIndexes, spaceLabel } from '../../lib/rail/spaces'
@@ -94,90 +102,32 @@ const props = defineProps<{ visible: boolean }>()
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
 useWorkspaceLinks(() => props.visible)
+installMcpCalls()
 const info = usePaneInfo()
 const { describe, isBusy, viewDetail } = info
 const settings = useSettingsStore()
 workspace.setClosedNamer((pane) => info.titleOf(pane))
 
-const SIDEBAR_KEY = 'ccm.workspace.sidebar'
-const sidebarOpen = ref(readSidebar())
-function readSidebar(): boolean {
-  try {
-    return localStorage.getItem(SIDEBAR_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-function toggleSidebar(): void {
-  withViewTransition(() => (sidebarOpen.value = !sidebarOpen.value))
-}
-watch(sidebarOpen, (open) => {
-  try {
-    localStorage.setItem(SIDEBAR_KEY, open ? '1' : '0')
-  } catch {
-    // preference only
-  }
-})
-
-/** File Explorer of the focused pane's project, in its own panel right of the stage. */
-const EXPLORER_KEY = 'ccm.workspace.explorerOpen'
-const explorerOpen = ref(readExplorerOpen())
-function readExplorerOpen(): boolean {
-  try {
-    return localStorage.getItem(EXPLORER_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-function toggleExplorer(): void {
-  withViewTransition(() => (explorerOpen.value = !explorerOpen.value))
-}
-// The panel is on screen from the start, so it can ask for a new terminal's folder before main allows it.
+const {
+  sidebarOpen,
+  explorerOpen,
+  toggleSidebar,
+  toggleExplorer,
+  sideWidth,
+  sideMax,
+  explorerWidth,
+  explorerMax,
+  sideDragging,
+  explorerDragging,
+  onViewportResize,
+  resizeSide,
+  resetSide,
+  resizeExplorer,
+  resetExplorer,
+  commitSide,
+  commitExplorer,
+} = useSidePanels()
 const explorer = useExplorerStore()
-watch(
-  () => workspace.active?.state,
-  (state) => {
-    if (state === 'running' && explorerOpen.value) void explorer.retryFailed()
-  },
-)
-watch(explorerOpen, (open) => {
-  try {
-    localStorage.setItem(EXPLORER_KEY, open ? '1' : '0')
-  } catch {
-    // preference only
-  }
-})
-
-// Stored preferences; what is drawn is clamped to the current window so a narrow window never hides the stage.
-// The left panel leaves room for the Explorer at its minimum; the Explorer takes what the left panel left.
-const sideWidthPref = ref(readSideWidth())
-const explorerWidthPref = ref(readSideWidth(EXPLORER_WIDTH_KEY, EXPLORER_DEFAULT))
-const viewportW = ref(window.innerWidth)
-const sideRoom = computed(() => viewportW.value - (explorerOpen.value ? SIDE_MIN : 0))
-const sideWidth = computed(() => clampSideWidth(sideWidthPref.value, sideRoom.value))
-const sideMax = computed(() => clampSideWidth(SIDE_MAX, sideRoom.value))
-const explorerRoom = computed(() => viewportW.value - (sidebarOpen.value ? sideWidth.value : RAIL_COLUMN_W))
-const explorerWidth = computed(() => clampSideWidth(explorerWidthPref.value, explorerRoom.value))
-const explorerMax = computed(() => clampSideWidth(SIDE_MAX, explorerRoom.value))
-const sideDragging = ref(false)
-const explorerDragging = ref(false)
-function onViewportResize(): void {
-  viewportW.value = window.innerWidth
-}
-function resizeSide(px: number): void {
-  sideWidthPref.value = clampSideWidth(px, sideRoom.value)
-}
-function resetSide(): void {
-  sideWidthPref.value = SIDE_DEFAULT
-  writeSideWidth(SIDE_DEFAULT)
-}
-function resizeExplorer(px: number): void {
-  explorerWidthPref.value = clampSideWidth(px, explorerRoom.value)
-}
-function resetExplorer(): void {
-  explorerWidthPref.value = EXPLORER_DEFAULT
-  writeSideWidth(EXPLORER_DEFAULT, EXPLORER_WIDTH_KEY)
-}
 
 // Opened without a view transition: the tree must exist on the next tick to take focus.
 const explorerPanel = ref<{ showSearch: (query?: SearchQuery) => Promise<void> } | null>(null)
@@ -200,10 +150,6 @@ async function showExplorer(): Promise<void> {
   await nextTick()
   ;(document.querySelector<HTMLElement>('[data-explorer-tree] [tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-explorer] [role="tab"][tabindex="0"]'))?.focus()
 }
-
-/** Closed sidebar = the rail's avatar column; below SIDE_NARROW run badges in project headers shrink to icons. */
-const RAIL_COLUMN_W = 52
-const SIDE_NARROW = 264
 
 const sideEvents = {
   scripts: (root: string) => void openScripts([root]),
@@ -274,7 +220,7 @@ function paneRect(key: string): DOMRect | null {
 const runs = useRunStore()
 /** Close project while one of its apps still builds / runs: asks, then stops the runs before closing. */
 const runClose = ref<{ cluster: RailCluster; ids: string[] } | null>(null)
-const runCloseButton = ref<HTMLButtonElement | null>(null)
+const runCloseDialog = ref<{ focus: () => void } | null>(null)
 const runCloseBusy = ref(false)
 
 function closeProject(cluster: RailCluster): void {
@@ -289,7 +235,7 @@ function closeProject(cluster: RailCluster): void {
   const ids = hasRun ? [...new Set([...dirs].flatMap((d) => runs.liveSessionsFor(d).map((s) => s.id)))] : []
   if (ids.length) {
     runClose.value = { cluster, ids }
-    void nextTick(() => runCloseButton.value?.focus())
+    void nextTick(() => runCloseDialog.value?.focus())
   } else finishCloseProject(cluster)
 }
 
@@ -314,14 +260,6 @@ function finishCloseProject(cluster: RailCluster): void {
   )
 }
 
-function trapTab(e: KeyboardEvent): void {
-  if (e.key !== 'Tab') return
-  const buttons = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not([disabled])')]
-  const at = buttons.indexOf(document.activeElement as HTMLElement)
-  e.preventDefault()
-  buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus()
-}
-
 async function confirmRunClose(): Promise<void> {
   const pending = runClose.value
   if (!pending || runCloseBusy.value) return
@@ -335,23 +273,6 @@ async function confirmRunClose(): Promise<void> {
   finishCloseProject(pending.cluster)
 }
 
-const closing = computed(() => (workspace.pendingClose ?? []).map((k) => workspace.panes.find((p) => p.key === k)).filter((p): p is Pane => !!p))
-const confirmButton = ref<HTMLButtonElement | null>(null)
-const confirmSheet = ref<HTMLElement | null>(null)
-let confirmReturn: HTMLElement | null = null
-// v42 unsaved file editors in the close sheet: Save (then close) / Don't save / Cancel.
-const closingDirty = computed(() => closing.value.filter((p) => p.dirty))
-const closingBusy = computed(() => closing.value.filter((p) => isBusy(p)))
-const closeSaving = ref(false)
-const closeErrors = ref<string[]>([])
-async function saveAndClose(): Promise<void> {
-  if (closeSaving.value) return
-  closeSaving.value = true
-  const failed = await workspace.saveFiles(closingDirty.value.map((p) => p.key))
-  closeSaving.value = false
-  closeErrors.value = failed.map((f) => t('editor.close.failed', { name: baseName(paneOf(f.key)?.path ?? f.key), reason: f.error }))
-  if (!failed.length) await confirmPending()
-}
 // Quit (main process): it lists unsaved editors and may ask the page to save them all first.
 watch(
   () => [workspace.dirtyPanes.map((p) => `${p.key}\n${p.path}`).join('\n'), settings.autoSave],
@@ -362,34 +283,12 @@ watch(
   { immediate: true },
 )
 onSaveAllRequest(async () => (await workspace.saveFiles(workspace.dirtyPanes.map((p) => p.key))).length === 0)
-watch(
-  () => workspace.pendingClose,
-  async (keys, before) => {
-    closeErrors.value = []
-    if (keys && !before) confirmReturn = document.activeElement as HTMLElement | null
-    await nextTick()
-    if (keys) return confirmButton.value?.focus()
-    if (!before) return
-    const back = confirmReturn
-    confirmReturn = null
-    if (back?.isConnected && back.getClientRects().length) back.focus()
-    else focusActivePane()
-  },
-)
-
-function trapConfirm(e: KeyboardEvent): void {
-  if (e.key !== 'Tab' || !confirmSheet.value) return
-  const buttons = [...confirmSheet.value.querySelectorAll<HTMLElement>('button:not([disabled])')]
-  const at = buttons.indexOf(document.activeElement as HTMLElement)
-  const next = buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]
-  e.preventDefault()
-  next?.focus()
-}
 
 function focusActivePane(): void {
   const key = workspace.activeKey
   if (key) canvas.value?.querySelector<HTMLElement>(`[data-pane="${CSS.escape(key)}"] .xterm-helper-textarea`)?.focus()
 }
+
 
 /** Folder the focused pane works in: Changes, Quick open and "Open file…" start from it. */
 const contextCwd = computed(() => (workspace.active ? workCwd(workspace.active) : undefined))
@@ -468,8 +367,7 @@ function onQuickPick(target: { path: string; line?: number; split: boolean }): v
 
 /** Browser → agent target; several candidates in other tabs → a picker, none → a notice. */
 const agentChoices = ref<{ from: string; text: string | null; panes: Pane[] } | null>(null)
-const agentNotice = ref<string | null>(null)
-let noticeTimer: ReturnType<typeof setTimeout> | null = null
+const toasts = useToastsStore()
 
 function insertFromBrowser(browserKey: string, text: string | null): void {
   const res = workspace.resolveAgentPane(browserKey)
@@ -480,9 +378,7 @@ function insertFromBrowser(browserKey: string, text: string | null): void {
 }
 
 function showNotice(text: string): void {
-  agentNotice.value = text
-  if (noticeTimer) clearTimeout(noticeTimer)
-  noticeTimer = setTimeout(() => (agentNotice.value = null), 4000)
+  toasts.push({ id: 'ws-notice', kind: 'info', text, timeoutMs: 4000 })
 }
 
 const { rootOf, resolve } = useProjectRoots()
@@ -647,219 +543,6 @@ function deliver(paneKey: string, text: string | null): void {
   else workspace.insertInto(paneKey, text)
 }
 
-const choiceList = ref<HTMLElement | null>(null)
-watch(agentChoices, async (c) => {
-  if (!c) return
-  await nextTick()
-  choiceList.value?.querySelector<HTMLElement>('button')?.focus()
-})
-
-function onChoiceKey(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    e.stopPropagation()
-    agentChoices.value = null
-    return
-  }
-  const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0
-  if (!step || !choiceList.value) return
-  e.preventDefault()
-  const items = [...choiceList.value.querySelectorAll<HTMLElement>('button')]
-  const at = items.indexOf(document.activeElement as HTMLElement)
-  items[(at + step + items.length) % items.length]?.focus()
-}
-
-/** Panes that close without asking morph away; a confirmation sheet opens without one. */
-function closePanes(keys: string[], opts: { record?: boolean } = {}): void {
-  // v62: with auto save on, dirty file panes save first; only the ones that fail still ask.
-  if (settings.autoSave !== 'off' && keys.some((k) => paneOf(k)?.dirty)) {
-    void workspace.saveFiles(keys).then(() => closeNow(keys, opts))
-    return
-  }
-  closeNow(keys, opts)
-}
-
-function closeNow(keys: string[], opts: { record?: boolean }): void {
-  // v42: a file pane with unsaved edits asks too (Save / Don't save / Cancel in the same sheet).
-  const asksFor = (pane: Pane): boolean => isBusy(pane) || !!pane.dirty
-  const open = keys.filter((k) => !dusting.has(k))
-  if (!open.length) return
-  const asks = open.some((k) => {
-    const pane = paneOf(k)
-    return !!pane && asksFor(pane)
-  })
-  if (asks) return workspace.requestClose(open, asksFor, opts)
-  if (!canDust() || !open.some((k) => shownPane(k))) return removePanes(open, asksFor, opts)
-  void dustPanes(open, opts.record !== false).then((els) => {
-    removePanes(open, asksFor, opts, false)
-    if (workspace.pendingClose) revive(els)
-  })
-}
-
-function removePanes(keys: string[], asksFor: (pane: Pane) => boolean, opts: { record?: boolean }, morph = true): void {
-  markClosingTabs(keys)
-  if (morph) withViewTransition(() => workspace.requestClose(keys, asksFor, opts))
-  else workspace.requestClose(keys, asksFor, opts)
-}
-
-const dusting = new Set<string>()
-const closingTabs = new Set<string>()
-const closeOut = ref(false)
-const canDust = dustOn
-
-function shownPane(key: string): HTMLElement | null {
-  if (!props.visible || !tabBoxes.value.has(key)) return null
-  return canvas.value?.querySelector<HTMLElement>(`[data-pane="${CSS.escape(key)}"]`) ?? null
-}
-
-function markClosingTabs(keys: readonly string[]): void {
-  const gone = new Set(keys)
-  for (const tab of workspace.tabs) {
-    if (!leaves(tab.root).every((k) => gone.has(k))) continue
-    const key = tab.key
-    closingTabs.add(key)
-    setTimeout(() => closingTabs.delete(key), 2000)
-  }
-}
-
-function leavingChrome(keys: readonly string[]): Element[] {
-  const gone = new Set(keys)
-  const tabs = workspace.tabs.filter((tab) => leaves(tab.root).every((k) => gone.has(k))).map((tab) => tab.key)
-  const pick = (sel: string): Element[] => [...document.querySelectorAll(sel)]
-  return [
-    ...tabs.flatMap((k) => pick(`[data-tab-item="${CSS.escape(k)}"], li[data-leave-tab="${CSS.escape(k)}"]`)),
-    ...keys.flatMap((k) => pick(`li[data-leave-pane="${CSS.escape(k)}"]`)),
-  ].filter((el) => el.getClientRects().length > 0)
-}
-
-async function dustPanes(keys: readonly string[], keep = true): Promise<HTMLElement[]> {
-  const els = keys.map((k) => shownPane(k)).filter((el): el is HTMLElement => !!el)
-  for (const k of keys) dusting.add(k)
-  try {
-    await dustOutAll(els, leavingChrome(keys), keep ? { keep: (el) => el.dataset.pane } : undefined)
-  } finally {
-    for (const k of keys) dusting.delete(k)
-  }
-  return els
-}
-
-const undoShown = ref<number | null>(null)
-let undoSeen = 0
-watch(
-  () => workspace.closedStack.at(-1)?.id ?? 0,
-  (id) => {
-    if (id > undoSeen) {
-      undoSeen = id
-      undoShown.value = id
-    } else if (undoShown.value !== null && !workspace.closedStack.some((e) => e.id === undoShown.value)) undoShown.value = null
-  },
-)
-watch(
-  () => props.visible,
-  (shown) => {
-    if (!shown) undoShown.value = null
-  },
-)
-
-function closedText(entry: ClosedEntry, word: 'closed' | 'reopened'): string {
-  const list = closedPanes(entry)
-  return list.length === 1 ? t(`workspace.undo.${word}`, { name: list[0]!.name }) : t(`workspace.undo.${word}Many`, { n: list.length }, list.length)
-}
-
-const undoInfo = computed<UndoInfo | null>(() => {
-  const entry = workspace.closedStack.find((e) => e.id === undoShown.value)
-  if (!entry) return null
-  return { id: entry.id, text: closedText(entry, 'closed'), shells: closedPanes(entry).filter((p) => isTerm(p) && p.preset === 'shell').length }
-})
-const undoKeys = shortcutText('wsReopen', isMac)
-
-function dismissUndo(refocus: boolean): void {
-  undoShown.value = null
-  if (refocus) focusActivePane()
-}
-
-function cssVar(name: string, fallback: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
-}
-
-function fadeIn(el: HTMLElement): void {
-  const ms = motionMs(Number.parseFloat(cssVar('--ccm-dur-base', '220')) || 220)
-  if (!ms) return
-  el.animate([{ opacity: 0, transform: 'scale(0.98)' }, { opacity: 1, transform: 'none' }], { duration: ms, easing: cssVar('--ease-out-quint', 'ease-out') })
-}
-
-let reopening = false
-
-async function reopenLast(): Promise<void> {
-  const entry = workspace.closedStack.at(-1)
-  if (!entry || reopening) return
-  reopening = true
-  try {
-    const said = closedText(entry, 'reopened')
-    if (!canDust() || !props.visible || !closedPanes(entry).some((p) => hasKept(p.key))) {
-      withViewTransition(() => {
-        adoptNew(() => workspace.reopenClosed())
-        void nextTick(focusActivePane)
-      })
-      announce(said)
-      return
-    }
-    const res = adoptNew(() => workspace.reopenClosed())
-    announce(said)
-    if (!res?.keys.length) return
-    await nextTick()
-    const back = res.keys.map((key, i) => ({ el: shownPane(key), from: res.from[i]! }))
-    const holds = back.map(({ el }) => el?.animate({ opacity: [0, 0] }, { duration: 4000, fill: 'both' }))
-    focusActivePane()
-    await nextFrame()
-    await Promise.all(
-      back.map(async ({ el, from }, i) => {
-        if (!el) return dropKept(from)
-        const played = await dustIn(el, from).catch(() => false)
-        holds[i]?.cancel()
-        if (played) return
-        dropKept(from)
-        fadeIn(el)
-      }),
-    )
-  } finally {
-    reopening = false
-  }
-}
-
-function revive(els: readonly HTMLElement[]): void {
-  for (const el of els) Object.assign(el.style, { visibility: '', opacity: '', transition: '', animation: '' })
-}
-
-const wait = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms))
-const nextFrame = (): Promise<void> => new Promise((done) => requestAnimationFrame(() => done()))
-
-async function confirmPending(): Promise<void> {
-  const keys = [...(workspace.pendingClose ?? [])]
-  if (!keys.length || closeOut.value) return
-  const shown = keys.filter((k) => shownPane(k))
-  if (!shown.length) {
-    markClosingTabs(keys)
-    workspace.confirmClose()
-    return
-  }
-  const dust = canDust()
-  closeOut.value = true
-  await wait(motionMs(180))
-  await nextFrame()
-  if (dust) await dustPanes(shown)
-  markClosingTabs(keys)
-  if (dust) workspace.confirmClose()
-  else withViewTransition(() => workspace.confirmClose())
-  closeOut.value = false
-}
-
-function onTabLeave(el: Element, done: () => void): void {
-  const key = (el as HTMLElement).dataset.tabItem
-  if (key && closingTabs.delete(key) && canDust()) return onDustLeave(el, done)
-  setTimeout(done, motionMs(150))
-}
-
 function closeTab(tab: Tab): void {
   if (leaves(tab.root).length === 1) tips.mouse('closePane')
   closePanes(leaves(tab.root))
@@ -883,77 +566,7 @@ function toggleDropTerm(): void {
   }
   dropOpen.value = !dropOpen.value
 }
-const planRoot = ref<string | null>(null)
-watch(
-  () => ui.planBoard,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    planRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
-const envRoot = ref<string | null>(null)
-watch(
-  () => ui.envCheck,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    envRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
-const i18nRoot = ref<string | null>(null)
-watch(
-  () => ui.i18nScan,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    i18nRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
-const stringsRoot = ref<string | null>(null)
-watch(
-  () => ui.stringsTable,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    stringsRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
-const ctxTarget = ref<{ cwd: string | null; terminalId: string | null }>({ cwd: null, terminalId: null })
-watch(
-  () => ui.contextSources,
-  (open) => {
-    if (!open) return
-    const pane = workspace.active
-    const own = !open.cwd && pane && isTerm(pane) ? pane : null
-    ctxTarget.value = open.cwd ? { cwd: open.cwd, terminalId: open.terminalId } : { cwd: (own && workCwd(own)) ?? null, terminalId: own?.terminalId ?? null }
-  },
-  { immediate: true },
-)
-const releaseRoot = ref<string | null>(null)
-watch(
-  () => ui.releaseCheck,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    releaseRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
-const permRoot = ref<string | null>(null)
-watch(
-  () => ui.permAdvisor,
-  (open) => {
-    if (!open) return
-    const dir = open.dir ?? activeProject.value ?? workspace.recentDirs[0] ?? null
-    permRoot.value = dir ? (rootOf(dir) ?? dir) : null
-  },
-  { immediate: true },
-)
+const { planRoot, envRoot, i18nRoot, stringsRoot, releaseRoot, permRoot, ctxTarget } = useDialogRoots(activeProject)
 
 function mouseSplit(choice: SplitChoice, key: string): void {
   tips.mouse('split')
@@ -1032,7 +645,6 @@ watch(() => [props.visible, workspace.activeKey, workspace.active?.attention], c
 const MENU_ROW =
   'group/row flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none'
 
-const GAP = 8
 const MIN_PANE_PX = MIN_PANE.w
 const MIN_PANE_H_PX = MIN_PANE.h
 
@@ -1149,6 +761,21 @@ watch(
 
 const paneOf = (key: string): Pane | undefined => workspace.panes.find((p) => p.key === key)
 
+const {
+  closing,
+  closingDirty,
+  closingBusy,
+  closeSaving,
+  closeErrors,
+  closeDialog,
+  closeOut,
+  saveAndClose,
+  closePanes,
+  confirmPending,
+  onTabLeave,
+  reopenLast,
+} = useCloseFlow({ canvas, visible: () => props.visible, shownKeys: () => tabBoxes.value, paneOf, focusActivePane, announce, adoptNew })
+
 // The tab shows whoever needs the user most: a waiting agent beats a working one.
 const RANK: Record<string, number> = { waiting: 4, error: 3, working: 2, idle: 1 }
 interface TabState {
@@ -1178,29 +805,6 @@ function tabEnded(tab: Tab): boolean {
     const s = paneOf(k)?.state
     return s === 'exited' || s === 'error' || s === 'gone'
   })
-}
-
-function boxStyle(box: Box): Record<string, string> {
-  const edge = (v: number): boolean => v < 1e-6 || v > 1 - 1e-6
-  const left = edge(box.x) ? 0 : GAP / 2
-  const right = edge(box.x + box.w) ? 0 : GAP / 2
-  const top = edge(box.y) ? 0 : GAP / 2
-  const bottom = edge(box.y + box.h) ? 0 : GAP / 2
-  return {
-    left: `calc(${box.x * 100}% + ${left}px)`,
-    top: `calc(${box.y * 100}% + ${top}px)`,
-    width: `calc(${box.w * 100}% - ${left + right}px)`,
-    height: `calc(${box.h * 100}% - ${top + bottom}px)`,
-  }
-}
-
-function dividerStyle(d: Divider): Record<string, string> {
-  if (d.dir === 'row') {
-    const x = d.box.x + d.box.w * d.ratio
-    return { left: `calc(${x * 100}% - ${GAP / 2}px)`, top: `${d.box.y * 100}%`, width: `${GAP}px`, height: `${d.box.h * 100}%` }
-  }
-  const y = d.box.y + d.box.h * d.ratio
-  return { top: `calc(${y * 100}% - ${GAP / 2}px)`, left: `${d.box.x * 100}%`, height: `${GAP}px`, width: `${d.box.w * 100}%` }
 }
 
 /** Ratio bounds that keep both sides of a split at least the minimum pane size. */
@@ -1385,61 +989,8 @@ const lastSummary = computed(() => {
   }
 })
 
-// One highlight slides between tabs (as in SessionTabs) instead of each tab switching its own background.
 const tabStrip = ref<HTMLElement | null>(null)
-const tabPill = ref<{ x: number; w: number } | null>(null)
-const pillReady = ref(false)
-let pillTarget: HTMLElement | null = null
-const pillObserver = new ResizeObserver(() => measurePill())
-function measurePill(): void {
-  const el = tabStrip.value?.querySelector<HTMLElement>('[data-selected]') ?? null
-  if (el !== pillTarget) {
-    if (pillTarget) pillObserver.unobserve(pillTarget)
-    if (el) pillObserver.observe(el)
-    pillTarget = el
-  }
-  if (el && !el.offsetWidth) return
-  tabPill.value = el ? { x: el.offsetLeft, w: el.offsetWidth } : null
-  if (tabPill.value && !pillReady.value) requestAnimationFrame(() => (pillReady.value = true))
-}
-watch(() => [workspace.activeTab?.key, visibleTabKeys.value.join(), props.visible], measurePill, { flush: 'post' })
-
-// A plain mouse wheel only sends deltaY; the strip scrolls sideways. Trackpad sideways swipes keep their native path.
-function onStripWheel(e: WheelEvent): void {
-  const el = tabStrip.value
-  if (!el || e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY) || el.scrollWidth <= el.clientWidth) return
-  const step = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * el.clientWidth : e.deltaY
-  const before = el.scrollLeft
-  el.scrollLeft += step
-  if (el.scrollLeft !== before) e.preventDefault()
-}
-
-const stripFade = ref({ start: false, end: false })
-let fadeFrame = 0
-function measureFade(): void {
-  cancelAnimationFrame(fadeFrame)
-  fadeFrame = requestAnimationFrame(() => {
-    const el = tabStrip.value
-    const max = el ? el.scrollWidth - el.clientWidth : 0
-    const start = !!el && max > 1 && el.scrollLeft > 1
-    const end = !!el && max > 1 && el.scrollLeft < max - 1
-    if (start !== stripFade.value.start || end !== stripFade.value.end) stripFade.value = { start, end }
-  })
-}
-const stripObserver = new ResizeObserver(measureFade)
-watch(
-  tabStrip,
-  (el) => {
-    stripObserver.disconnect()
-    if (el) {
-      stripObserver.observe(el)
-      const list = el.querySelector(':scope > [role="presentation"]')
-      if (list) stripObserver.observe(list)
-    }
-    measureFade()
-  },
-  { flush: 'post' },
-)
+const { tabPill, pillReady, stripFade, onStripWheel, measureFade } = useTabStripVisuals(tabStrip, () => [workspace.activeTab?.key, visibleTabKeys.value.join(), props.visible])
 
 const tabPrimary = (tab: Tab): Pane | undefined => paneOf(primaryPaneKey(tab.root, paneOf))
 
@@ -1487,81 +1038,14 @@ function announce(text: string): void {
 
 const tabButton = (key: string): HTMLElement | null => tabStrip.value?.querySelector<HTMLElement>(`[data-tab="${CSS.escape(key)}"]`) ?? null
 
-const LABEL_FLASH_MS = 1700
-const TAB_FLASH_MS = 1000
-
-function settle<V>(map: { value: Record<string, V> }, key: string, value: V, ms: number): void {
-  map.value = { ...map.value, [key]: value }
-  setTimeout(() => {
-    if (toRaw(map.value[key]) !== value) return
-    const rest = { ...map.value }
-    delete rest[key]
-    map.value = rest
-  }, ms)
-}
-
-const labelFlash = ref<Record<string, number>>({})
-function highlightLabel(key: string): void {
-  settle(labelFlash, key, (labelFlash.value[key] ?? 0) + 1, LABEL_FLASH_MS)
-}
-watch(
-  () => [...tabNames.value],
-  (now, before) => {
-    const prev = new Map(before ?? [])
-    for (const [key, name] of now) if (prev.has(key) && prev.get(key) !== name) highlightLabel(key)
-  },
-)
-
-const FLASH_GAP_MS = 1500
-const FLASH_CLASS: Record<FlashKind, string> = { waiting: 'text-st-waiting', done: 'text-st-done', error: 'text-st-error' }
-const tabFlash = ref<Record<string, { n: number; kind: FlashKind }>>({})
-const lastFlash = new Map<string, { kind: FlashKind; at: number }>()
-watch(
-  () => visibleTabs.value.map((tab): [string, TabSignal] => [tab.key, { status: tabState(tab)?.status, attention: tabAttention(tab) }]),
-  (now, before) => {
-    const prev = new Map(before ?? [])
-    const at = performance.now()
-    for (const [key, signal] of now) {
-      const old = prev.get(key)
-      const kind = old ? flashKind(old, signal) : null
-      if (!kind) continue
-      const last = lastFlash.get(key)
-      if (last?.kind === kind && at - last.at < FLASH_GAP_MS) continue
-      lastFlash.set(key, { kind, at })
-      settle(tabFlash, key, { n: (tabFlash.value[key]?.n ?? 0) + 1, kind }, TAB_FLASH_MS)
-    }
-  },
-)
-
-const renaming = ref<string | null>(null)
-const renameWidth = ref(160)
-let renameFrom: { key: string; name?: string } | null = null
-
-function startRename(tab: Tab): void {
-  if (renaming.value === tab.key) return
-  renameWidth.value = Math.min(260, Math.max(140, tabButton(tab.key)?.offsetWidth ?? 0))
-  renameFrom = { key: tab.key, name: tab.name }
-  renaming.value = tab.key
-}
-
-async function onRenameDone(key: string, saved: boolean): Promise<void> {
-  const from = renameFrom?.key === key ? renameFrom : null
-  renameFrom = null
-  renaming.value = null
-  const tab = workspace.tabs.find((x) => x.key === key)
-  if (saved && tab && from) {
-    if (tab.name !== from.name) announce(t(tab.name ? 'workspace.tabName.renamed' : 'workspace.tabName.reset', { name: info.tabTitle(tab) }))
-    highlightLabel(key)
-  }
-  await nextTick()
-  const focused = document.activeElement
-  if (!focused || focused === document.body) tabButton(key)?.focus()
-}
-
-watch(visibleTabKeys, (keys) => {
-  if (!renaming.value || keys.includes(renaming.value)) return
-  renaming.value = null
-  renameFrom = null
+const { labelFlash, tabFlash, renaming, renameWidth, startRename, onRenameDone } = useTabFlashRename({
+  visibleTabs,
+  visibleTabKeys,
+  tabNames,
+  tabState,
+  tabAttention,
+  tabButton,
+  announce,
 })
 
 const tabCtx = ref<{ at: DOMRect; trigger: HTMLElement | null; label: string; entries: MenuEntry[]; pick: (id: string) => void } | null>(null)
@@ -1824,11 +1308,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onViewportResize)
   document.removeEventListener('pointerdown', onOutside, true)
   canvasObserver?.disconnect()
-  pillObserver.disconnect()
-  stripObserver.disconnect()
-  cancelAnimationFrame(fadeFrame)
   workspace.setClosedNamer(null)
-  if (noticeTimer) clearTimeout(noticeTimer)
 })
 </script>
 
@@ -1851,7 +1331,7 @@ onBeforeUnmount(() => {
         :max="sideMax"
         :label="t('workspace.side.panel')"
         @resize="resizeSide"
-        @commit="writeSideWidth(sideWidthPref)"
+        @commit="commitSide"
         @reset="resetSide"
       />
     </aside>
@@ -2299,9 +1779,6 @@ onBeforeUnmount(() => {
       <MissionControl :open="missionOpen && visible" :pane-rect="paneRect" @close="closeMission" />
     </div>
     <DropTerminal v-if="dropMounted" :open="dropOpen && visible" :cwd="dropCwd" @hide="dropOpen = false" />
-    <div class="pointer-events-none absolute inset-x-3 bottom-3 z-40 flex justify-center">
-      <UndoToast :info="visible ? undoInfo : null" :keys="undoKeys" @undo="reopenLast" @dismiss="dismissUndo" />
-    </div>
     </div>
     <aside
       v-if="workspace.tabs.length && explorerOpen"
@@ -2321,7 +1798,7 @@ onBeforeUnmount(() => {
         :max="explorerMax"
         :label="t('workspace.explorer.title')"
         @resize="resizeExplorer"
-        @commit="writeSideWidth(explorerWidthPref, EXPLORER_WIDTH_KEY)"
+        @commit="commitExplorer"
         @reset="resetExplorer"
       />
     </aside>
@@ -2343,97 +1820,19 @@ onBeforeUnmount(() => {
     <p class="sr-only" aria-live="polite">{{ dragAnnounce }}</p>
     <ContextMenu v-if="tabCtx" :at="tabCtx.at" :entries="tabCtx.entries" :label="tabCtx.label" :trigger="tabCtx.trigger" @pick="tabCtx.pick" @close="tabCtx = null" />
 
-    <Teleport to="body">
-      <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
-      <div v-if="closing.length && !closeOut" class="ccm-scrim fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="workspace.cancelClose()">
-        <div
-          ref="confirmSheet"
-          class="ccm-sheet flex w-full max-w-[440px] flex-col gap-3 p-5"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="ws-close-title"
-          aria-describedby="ws-close-body"
-          @keydown.esc.stop="workspace.cancelClose()"
-          @keydown="trapConfirm"
-        >
-          <template v-if="closingDirty.length">
-            <h2 id="ws-close-title" class="text-base font-semibold text-ink" data-close-unsaved>{{ t('editor.close.title', { n: closingDirty.length }, closingDirty.length) }}</h2>
-            <div id="ws-close-body" class="flex flex-col gap-2 text-sm text-ink-muted">
-              <p>{{ t('editor.close.body') }}</p>
-              <ul class="flex flex-col gap-1 rounded-inner bg-fill p-2 text-xs text-ink">
-                <li v-for="p in closingDirty" :key="p.key" class="flex min-w-0 items-center gap-1.5">
-                  <PaneIcon :pane="p" :size="13" class="shrink-0" />
-                  <span class="truncate" :title="p.path">{{ baseName(p.path ?? '') }}</span>
-                  <span class="shrink-0 text-warning" aria-hidden="true">●</span>
-                </li>
-              </ul>
-              <template v-if="closingBusy.length">
-                <p>{{ t('editor.close.busy') }}</p>
-                <ul class="flex flex-col gap-1 rounded-inner bg-fill p-2 text-xs text-ink">
-                  <li v-for="p in closingBusy" :key="p.key" class="flex min-w-0 items-center gap-1.5">
-                    <PaneIcon :pane="p" :size="13" class="shrink-0" />
-                    <span class="truncate" :title="p.cwd">{{ describe(p) }}</span>
-                  </li>
-                </ul>
-              </template>
-              <p v-for="(err, i) in closeErrors" :key="i" class="flex items-start gap-1.5 text-xs text-st-error" role="alert">
-                <X :size="13" class="mt-0.5 shrink-0" aria-hidden="true" /><span class="min-w-0">{{ err }}</span>
-              </p>
-            </div>
-            <div class="flex justify-end gap-2">
-              <button type="button" class="ccm-btn" @click="workspace.cancelClose()">{{ t('editor.close.cancel') }}</button>
-              <button type="button" class="ccm-btn ccm-btn-danger" :disabled="closeSaving" data-close-discard @click="confirmPending()">{{ t('editor.close.discard') }}</button>
-              <button ref="confirmButton" type="button" class="ccm-btn ccm-btn-primary" :disabled="closeSaving" data-close-save @click="saveAndClose">{{ t('editor.close.save') }}</button>
-            </div>
-          </template>
-          <template v-else>
-          <h2 id="ws-close-title" class="text-base font-semibold text-ink">{{ t('workspace.closeConfirm.title', { n: closing.length }, closing.length) }}</h2>
-          <div id="ws-close-body" class="flex flex-col gap-2 text-sm text-ink-muted">
-            <p>{{ t('workspace.closeConfirm.body') }}</p>
-            <ul class="flex flex-col gap-1 rounded-inner bg-fill p-2 text-xs text-ink">
-              <li v-for="p in closing" :key="p.key" class="flex min-w-0 items-center gap-1.5" :class="isBusy(p) ? '' : 'text-ink-muted'">
-                <PaneIcon :pane="p" :size="13" class="shrink-0" />
-                <span class="truncate" :title="p.cwd">{{ describe(p) }}</span>
-              </li>
-            </ul>
-          </div>
-          <div class="flex justify-end gap-2">
-            <button type="button" class="ccm-btn" @click="workspace.cancelClose()">{{ t('workspace.closeConfirm.cancel') }}</button>
-            <button ref="confirmButton" type="button" class="ccm-btn ccm-btn-danger" @click="confirmPending()">
-              {{ t('workspace.closeConfirm.action', { n: closing.length }, closing.length) }}
-            </button>
-          </div>
-          </template>
-        </div>
-      </div>
-      </Transition>
-    </Teleport>
-
-    <Teleport to="body">
-      <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
-        <div v-if="runClose" class="ccm-scrim fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="runClose = null">
-          <div
-            class="ccm-sheet flex w-full max-w-[440px] flex-col gap-3 p-5"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="ws-runclose-title"
-            aria-describedby="ws-runclose-body"
-            data-run-close
-            @keydown.esc.stop="runClose = null"
-            @keydown="trapTab"
-          >
-            <h2 id="ws-runclose-title" class="text-base font-semibold text-ink">{{ t('workspace.rail.runConfirm.title', { name: runClose.cluster.name || t('workspace.side.home') }) }}</h2>
-            <p id="ws-runclose-body" class="text-sm text-ink-muted">{{ t('workspace.rail.runConfirm.body') }}</p>
-            <div class="flex justify-end gap-2">
-              <button type="button" class="ccm-btn" @click="runClose = null">{{ t('workspace.rail.runConfirm.cancel') }}</button>
-              <button ref="runCloseButton" type="button" class="ccm-btn ccm-btn-danger" :disabled="runCloseBusy" @click="confirmRunClose">
-                {{ t('workspace.rail.runConfirm.action') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <CloseConfirmDialog
+      ref="closeDialog"
+      :closing="closing"
+      :dirty="closingDirty"
+      :busy="closingBusy"
+      :errors="closeErrors"
+      :saving="closeSaving"
+      :out="closeOut"
+      @cancel="workspace.cancelClose()"
+      @confirm="confirmPending()"
+      @save="saveAndClose"
+    />
+    <RunCloseDialog ref="runCloseDialog" :cluster="runClose?.cluster ?? null" :busy="runCloseBusy" @cancel="runClose = null" @confirm="confirmRunClose" />
 
     <PromptPicker v-if="prompts.open && visible" @close="prompts.open = false" />
     <NavPicker v-if="nav.picker && visible" @close="nav.picker = null" />
@@ -2468,39 +1867,7 @@ onBeforeUnmount(() => {
       @open="openLayout"
     />
 
-    <Teleport to="body">
-      <Transition name="ccm-dialog" @before-leave="(el) => retireOverlay(el.firstElementChild!)">
-        <div v-if="agentChoices" class="ccm-scrim fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="agentChoices = null">
-          <div class="ccm-sheet flex w-full max-w-[360px] flex-col gap-2 p-3" role="dialog" aria-modal="true" aria-labelledby="ws-agent-title" @keydown="onChoiceKey">
-            <h2 id="ws-agent-title" class="px-1 text-sm font-semibold text-ink">{{ t('workspace.handoff.pickTarget') }}</h2>
-            <ul ref="choiceList" class="flex flex-col" role="list">
-              <li v-for="p in agentChoices.panes" :key="p.key">
-                <button
-                  type="button"
-                  class="group flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-inner px-2 text-left text-sm text-ink hover:bg-fill focus-visible:bg-accent focus-visible:text-on-accent focus-visible:outline-none"
-                  @click="deliver(p.key, agentChoices!.text)"
-                >
-                  <PresetIcon :preset="presetOf(p)" :size="14" class="shrink-0 group-focus-visible:text-on-accent" />
-                  <span class="truncate" :title="p.cwd">{{ describe(p) }}</span>
-                </button>
-              </li>
-            </ul>
-            <div class="flex justify-end">
-              <button type="button" class="ccm-btn" @click="agentChoices = null">{{ t('workspace.closeConfirm.cancel') }}</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-    <Transition name="ccm-fade">
-      <p
-        v-if="agentNotice"
-        class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-control bg-raised px-3 py-2 text-xs text-ink shadow-pop"
-        role="status"
-      >
-        {{ agentNotice }}
-      </p>
-    </Transition>
+    <AgentChoiceDialog :choices="agentChoices" @cancel="agentChoices = null" @pick="deliver" />
     <ShortcutTip :visible="visible" />
   </main>
 </template>

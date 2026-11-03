@@ -59,6 +59,11 @@ import uiV79Settings from './ui-v79-settings'
 import uiV79Monitor from './ui-v79-monitor'
 import * as uiV79Header from './ui-v79-header'
 import uiV79Pages from './ui-v79-pages'
+import uiV80Limits from './ui-v80-limits'
+import uiV80Links from './ui-v80-links'
+import uiV80Palette from './ui-v80-palette'
+import uiV80Wp1 from './ui-v80-wp1'
+import uiV80Toast from './ui-v80-toast'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
@@ -119,6 +124,11 @@ const vi: typeof en = {
   ...uiV79Monitor.vi,
   ...uiV79Header.vi,
   ...uiV79Pages.vi,
+  ...uiV80Limits.vi,
+  ...uiV80Links.vi,
+  ...uiV80Palette.vi,
+  ...uiV80Wp1.vi,
+  ...uiV80Toast.vi,
   ...captureV76.vi,
   ...sensitiveV76.vi,
   ...agentDataV76.vi,

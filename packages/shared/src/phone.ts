@@ -1,5 +1,7 @@
 /** Phone notifications (v76 R6): collector episode → desktop main → ntfy / Discord. Off by default. */
-export const PHONE_REASONS = ['waiting', 'question', 'permission', 'done', 'job', 'limit', 'disk'] as const
+import { cleanNoteText } from './mcpCall'
+
+export const PHONE_REASONS = ['waiting', 'question', 'permission', 'done', 'job', 'limit', 'disk', 'note'] as const
 export type PhoneReason = (typeof PHONE_REASONS)[number]
 
 /** Collector → desktop main over the utilityProcess port; quiet hours and snooze are already applied. */
@@ -15,6 +17,8 @@ export interface PhoneEpisodeMessage {
   since?: number
   /** `disk`: free space left on the drive named by `name`. */
   freeBytes?: number
+  /** `note`: what the agent asked to tell the owner (notify_owner, ≤ 200 chars). */
+  text?: string
 }
 
 export const PHONE_CHANNELS = ['ntfy', 'discord'] as const
@@ -61,6 +65,8 @@ export function parsePhoneEpisode(raw: unknown): PhoneEpisodeMessage | null {
   const tool = typeof r.tool === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(r.tool) ? r.tool : undefined
   const since = typeof r.since === 'number' && Number.isFinite(r.since) && r.since > 0 && r.since < SINCE_MAX ? r.since : undefined
   const free = typeof r.freeBytes === 'number' && Number.isFinite(r.freeBytes) && r.freeBytes >= 0 ? r.freeBytes : undefined
+  const text = r.reason === 'note' ? cleanNoteText(r.text) : null
+  if (r.reason === 'note' && !text) return null
   return {
     type: 'phone',
     episode: r.episode,
@@ -69,6 +75,7 @@ export function parsePhoneEpisode(raw: unknown): PhoneEpisodeMessage | null {
     ...(tool ? { tool } : {}),
     ...(since ? { since } : {}),
     ...(free !== undefined ? { freeBytes: free } : {}),
+    ...(text ? { text } : {}),
   }
 }
 

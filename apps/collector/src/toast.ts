@@ -17,6 +17,7 @@ import {
   sanitizeStuck,
   type ActivityEvent,
   type BackgroundJob,
+  type AgentNoteMessage,
   type DiskAlertMessage,
   type JobState,
   type NotifySettings,
@@ -161,6 +162,8 @@ interface Texts {
   sensitiveBody: (rule: string, tool: string, path?: string) => string
   diskTitle: (label: string, free: string) => string
   diskBody: (danger: boolean) => string
+  noteTitle: (name: string, done: boolean) => string
+  noteMore: (n: number) => string
   testTitle: string
   testBody: string
   snooze: (minutes: number) => string
@@ -197,6 +200,8 @@ export const TEXT: Record<ToastLocale, Texts> = {
     sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'en')}${path ? ` · ${path}` : ''}`,
     diskTitle: (label, free) => `Drive ${label} almost full: ${free} left`,
     diskBody: (danger) => (danger ? 'Builds and agents may fail soon. Open Orrery to clean build output or agent data.' : 'Open Orrery to see what can be cleaned.'),
+    noteTitle: (name, done) => (done ? `${name} reports done` : `${name} asks for your attention`),
+    noteMore: (n) => ` (+${n} more)`,
     testTitle: 'Test notification',
     testBody: 'Windows notifications from Orrery work.',
     snooze: (minutes) => `Snooze ${minutes} min`,
@@ -231,6 +236,8 @@ export const TEXT: Record<ToastLocale, Texts> = {
     sensitiveBody: (rule, tool, path) => `${tool} · ${ruleLabel(rule, 'vi')}${path ? ` · ${path}` : ''}`,
     diskTitle: (label, free) => `Ổ ${label} sắp đầy: còn ${free}`,
     diskBody: (danger) => (danger ? 'Build và agent sắp lỗi vì hết chỗ. Mở Orrery để dọn đồ build hoặc dữ liệu agent.' : 'Mở Orrery để xem có thể dọn gì.'),
+    noteTitle: (name, done) => (done ? `${name} báo đã xong` : `${name} cần chủ nhân xem`),
+    noteMore: (n) => ` (+${n} tin nữa)`,
     testTitle: 'Thông báo thử',
     testBody: 'Thông báo Windows của Orrery đang chạy.',
     snooze: (minutes) => `Hoãn ${minutes} phút`,
@@ -518,7 +525,7 @@ export class Toaster {
   }
 
   hideFor(terminalId: string): void {
-    for (const kind of ['waiting', 'done', 'loop', 'stuck', 'context', 'sensitive'] as const) this.hideKey(`${kind}:${terminalId}`)
+    for (const kind of ['waiting', 'done', 'loop', 'stuck', 'context', 'sensitive', 'note'] as const) this.hideKey(`${kind}:${terminalId}`)
   }
 
   observe(snap: ToastSnapshot): void {
@@ -624,6 +631,18 @@ export class Toaster {
     if (!this.can('disk')) return
     const text = TEXT[this.localeValue]
     this.show(`disk:${m.label}`, { title: text.diskTitle(m.label, formatGb(m.freeBytes)), body: text.diskBody(m.level === 'danger'), url: this.linkFor(), open: text.openDashboard, persistent: false })
+  }
+
+  /** notify_owner (v80): `attention` follows the "needs you" switch, `done` the done one (off by default); `info` stays in the Inbox. */
+  observeNote(m: AgentNoteMessage): void {
+    if (m.level === 'info') return
+    const kind: ToastKind = m.level === 'done' ? 'done' : 'waiting'
+    const t = m.terminalId ? this.terms.get(m.terminalId) : undefined
+    const text = TEXT[this.localeValue]
+    const body = `${m.text}${m.merged ? text.noteMore(m.merged) : ''}`
+    this.phone({ episode: `n:${m.episode}`, reason: 'note', name: t ? phoneName(t) : m.name, text: body.slice(0, 200) }, kind)
+    if (!this.can(kind) || (t && this.snoozed(t))) return
+    this.show(`note:${t?.id ?? m.name}`, { title: text.noteTitle(t ? nameOf(t) : m.name, m.level === 'done'), body, url: this.linkFor(t?.id), open: t ? text.open : text.openDashboard, persistent: false })
   }
 
   private trackWork(t: TerminalSession, before: TerminalStatus | undefined, nowMs: number): number | null {

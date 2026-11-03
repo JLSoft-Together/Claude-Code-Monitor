@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useI18n } from 'vue-i18n'
-import { X } from 'lucide-vue-next'
-import { compactNumber, fullNumber, now, relativeTime } from '../lib/format'
+import { Check, CircleOff, Loader, X } from 'lucide-vue-next'
+import { toolRows } from '../lib/agentTools'
+import { clockTime, compactNumber, fullNumber, now, relativeTime } from '../lib/format'
 import { codexMode, isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
+import { formatMs } from '../lib/toolTimeline'
 import { useAgentsStore } from '../stores/agents'
+import { useConnectionStore } from '../stores/connection'
 import { useTerminalsStore } from '../stores/terminals'
+import { useToolSpansStore } from '../stores/toolSpans'
 import { useUiStore } from '../stores/ui'
 import KeyHint from './KeyHint.vue'
 import ProviderBadge from './ProviderBadge.vue'
@@ -64,6 +68,33 @@ const rows = computed(() => {
   }
   return out
 })
+
+const toolSpans = useToolSpansStore()
+const connection = useConnectionStore()
+const SPAN_LOOKBACK_MS = 2 * 60 * 60_000
+const asked = new Set<string>()
+
+const isSub = computed(() => agent.value?.role === 'subagent')
+const agentLive = computed(() => agent.value?.status === 'working' || agent.value?.status === 'waiting' || agent.value?.status === 'idle')
+const tools = computed(() => {
+  void toolSpans.version
+  const a = agent.value
+  if (!a || a.role !== 'subagent') return null
+  return toolRows(toolSpans.spansFor(a.terminalId), a.id, agentLive.value)
+})
+const toolIcon = { running: Loader, ok: Check, error: X, interrupted: CircleOff } as const
+const toolClass = { running: 'text-st-working', ok: 'text-ink-faint', error: 'text-st-error', interrupted: 'text-ink-muted' } as const
+
+// Spans arrive live only while the map is open; one request backfills a sub-agent opened later.
+watch(
+  () => agent.value?.id,
+  () => {
+    const a = agent.value
+    if (!a || a.role !== 'subagent' || asked.has(a.id) || tools.value?.rows.length) return
+    if (connection.loadToolSpans(a.terminalId, new Date(Date.now() - SPAN_LOOKBACK_MS).toISOString())) asked.add(a.id)
+  },
+  { immediate: true },
+)
 
 const { findNode, viewport, dimensions } = useVueFlow(props.flowId)
 const WIDTH = 300
@@ -153,6 +184,23 @@ const origin = computed(() => {
           </dd>
         </template>
       </dl>
+      <section v-if="isSub && tools" class="mt-4 border-t border-line pt-3" data-agent-tools :aria-label="t('paletteV80.tools.title')">
+        <h4 class="mb-1.5 text-2xs font-medium text-ink-faint">{{ t('paletteV80.tools.title') }}</h4>
+        <p v-if="!tools.rows.length" class="text-xs text-ink-faint">{{ t('paletteV80.tools.empty') }}</p>
+        <ul v-else class="flex flex-col gap-1">
+          <li v-for="row in tools.rows" :key="row.id" class="flex items-start gap-2" data-agent-tool :data-state="row.state">
+            <component :is="toolIcon[row.state]" :size="12" class="mt-1 shrink-0" :class="toolClass[row.state]" aria-hidden="true" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="min-w-0 flex-1 truncate font-mono text-2xs" :title="row.tool">{{ row.tool }}</span>
+                <span class="shrink-0 text-2xs" :class="toolClass[row.state]">{{ t(`tools.outcome.${row.state}`) }}</span>
+              </div>
+              <p class="tabular text-2xs text-ink-faint">{{ clockTime(row.start, locale) }}{{ row.ms === null ? '' : ` · ${formatMs(row.ms)}` }}</p>
+            </div>
+          </li>
+        </ul>
+        <p v-if="tools.older" class="mt-1.5 text-2xs text-ink-faint">{{ t('paletteV80.tools.more', { n: tools.older }) }}</p>
+      </section>
       </div>
     </aside>
   </Transition>

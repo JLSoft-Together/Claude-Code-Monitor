@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { TIMELINE_DIR, TimelineRecorder } from '@ccm/habblaud/server/history/timeline'
 import { NameStore } from '@ccm/habblaud/server/model/names'
-import { busyCounts, parseDeviceUsed, parseDiskAlert, type BusyMessage, type MonitorEvent } from '@ccm/shared'
+import { busyCounts, parseAgentNote, parseDeviceUsed, parseDiskAlert, type BusyMessage, type MonitorEvent } from '@ccm/shared'
 import { defaultProcReader } from './resources/procs'
 import { defaultPortTable } from './resources/ports'
 import { fixturePortTable, fixtureProcReader } from './resources/fixture'
@@ -334,7 +334,9 @@ async function main(): Promise<void> {
     const used = parseDeviceUsed(e.data)
     if (used) return sampler.deviceUsed(used)
     const disk = parseDiskAlert(e.data)
-    if (disk) toaster.observeDisk(disk)
+    if (disk) return toaster.observeDisk(disk)
+    const note = parseAgentNote(e.data)
+    if (note) toaster.observeNote(note)
   })
 
   await monitor.start()

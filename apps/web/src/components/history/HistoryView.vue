@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileDown, Search } from 'lucide-vue-next'
+import { FileDown, Play, Search } from 'lucide-vue-next'
+import { isAgentSessionId } from '@ccm/shared'
+import { hasTerminals } from '../../lib/desktop'
 import { compactNumber, duration, formatCost, relativeTime, shortPath, now } from '../../lib/format'
 import { modelLabel } from '../../lib/model'
 import { useConnectionStore } from '../../stores/connection'
 import { useExtrasStore } from '../../stores/extras'
 import { useHistoryStore } from '../../stores/history'
+import { useTerminalsStore } from '../../stores/terminals'
 import { useUiStore } from '../../stores/ui'
+import { useWorkspaceStore } from '../../stores/workspace'
 import ArtImage from '../ArtImage.vue'
 import Pager from '../Pager.vue'
 import TimelineChart from './TimelineChart.vue'
@@ -20,6 +24,8 @@ const history = useHistoryStore()
 const connection = useConnectionStore()
 const extras = useExtrasStore()
 const ui = useUiStore()
+const terminals = useTerminalsStore()
+const workspace = useWorkspaceStore()
 
 const PAGE_SIZE = 20
 let timer: number | undefined
@@ -84,6 +90,23 @@ const rows = computed(() =>
     cost: r.costUsd !== undefined ? formatCost(r.costUsd, locale.value) : '—',
   })),
 )
+const openPane = (id: string) => workspace.panes.find((p) => p.agentSessionId === id && (p.state === 'running' || p.state === 'starting'))
+const runningElsewhere = (id: string): boolean => terminals.list.some((tm) => tm.claudeSessionId === id && !tm.endedAt && tm.status !== 'stale')
+
+function resumeBlock(r: { sessionId?: string; cwd?: string }): string | null {
+  if (!hasTerminals) return t('promptSearch.noTerminals')
+  if (!r.sessionId || !isAgentSessionId(r.sessionId)) return t('linksV80.resumeNoId')
+  if (!r.cwd) return t('linksV80.resumeNoFolder')
+  if (runningElsewhere(r.sessionId) && !openPane(r.sessionId)) return t('linksV80.resumeRunning')
+  return null
+}
+
+function resume(r: { sessionId?: string; cwd?: string }): void {
+  if (resumeBlock(r) || !r.sessionId || !r.cwd) return
+  workspace.resumeSession('claude', r.cwd, r.sessionId)
+  ui.setView('workspace')
+}
+
 const rangeLabel = computed(() => {
   const total = filtered.value.length
   const from = page.value * PAGE_SIZE + 1
@@ -162,6 +185,7 @@ const rangeLabel = computed(() => {
             <col class="w-24" />
             <col class="hidden w-36 sm:table-column" />
             <col class="hidden w-20 md:table-column" />
+            <col class="w-28" />
           </colgroup>
           <thead class="text-left text-xs text-ink-muted">
             <tr class="border-b border-line">
@@ -172,6 +196,7 @@ const rangeLabel = computed(() => {
               <th scope="col" class="px-3 py-2 text-right font-medium">{{ t('history.col.tokens') }}</th>
               <th scope="col" class="hidden px-3 py-2 font-medium sm:table-cell">{{ t('history.col.time') }}</th>
               <th scope="col" class="hidden px-3 py-2 text-right font-medium md:table-cell">{{ t('history.col.cost') }}</th>
+              <th scope="col" class="px-3 py-2"><span class="sr-only">{{ t('linksV80.resume') }}</span></th>
             </tr>
           </thead>
           <TransitionGroup tag="tbody" name="ccm-list" class="ccm-list-inflow relative divide-y divide-line">
@@ -195,6 +220,18 @@ const rangeLabel = computed(() => {
                 <span v-if="!r.work && !r.wait" class="text-ink-faint">—</span>
               </td>
               <td class="hidden px-3 py-2.5 text-right text-ink-muted tabular md:table-cell">{{ r.cost }}</td>
+              <td class="px-3 py-2 text-right">
+                <button
+                  type="button"
+                  class="ccm-btn h-7 gap-1 text-xs"
+                  :disabled="!!resumeBlock(r)"
+                  :title="resumeBlock(r) ?? t('linksV80.resumeHint')"
+                  data-history-resume
+                  @click="resume(r)"
+                >
+                  <Play :size="12" aria-hidden="true" />{{ r.sessionId && openPane(r.sessionId) ? t('linksV80.resumeShow') : t('linksV80.resume') }}
+                </button>
+              </td>
             </tr>
           </TransitionGroup>
         </table>

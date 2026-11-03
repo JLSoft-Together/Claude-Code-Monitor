@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Inbox } from 'lucide-vue-next'
-import type { InboxReason } from '../../lib/inbox'
+import type { InboxItem, InboxReason } from '../../lib/inbox'
 import { duration, now } from '../../lib/format'
 import { displayTitle } from '../../lib/title'
 import { useInboxStore } from '../../stores/inbox'
@@ -19,7 +19,10 @@ const terminals = useTerminalsStore()
 const workspace = useWorkspaceStore()
 const ui = useUiStore()
 
-const STATUS: Record<InboxReason, string> = { waiting: 'waiting', loop: 'error', checks: 'error', stuck: 'working', done: 'completed' }
+const STATUS: Record<InboxReason, string> = { waiting: 'waiting', note: 'idle', loop: 'error', checks: 'error', stuck: 'working', done: 'completed' }
+const NOTE_STATUS = { info: 'idle', attention: 'waiting', done: 'completed' } as const
+const statusOf = (i: InboxItem): string => (i.note ? NOTE_STATUS[i.note.level] : STATUS[i.reason])
+const reasonOf = (i: InboxItem): string => (i.note ? (i.note.merged ? `${i.note.text} ${t('mcpNote.more', { n: i.note.merged })}` : i.note.text) : t(`inbox.reason.${i.reason}`))
 const root = ref<HTMLElement | null>(null)
 const active = ref(0)
 
@@ -28,7 +31,7 @@ const rows = computed(() =>
     const x = terminals.byId[i.id]
     if (!x) return []
     const since = i.since ? (duration(i.since, now.value)?.replace(/\s\d+s$/, '') ?? null) : null
-    return [{ item: i, title: displayTitle(x), reason: t(`inbox.reason.${i.reason}`), since }]
+    return [{ item: i, title: displayTitle(x), reason: reasonOf(i), status: statusOf(i), since }]
   }),
 )
 
@@ -109,10 +112,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside, tru
         @click="go(r.item.id)"
         @focus="active = i"
       >
-        <StatusIcon :status="STATUS[r.item.reason]" :size="14" class="shrink-0" />
+        <StatusIcon :status="r.status" :size="14" class="shrink-0" />
         <span class="flex min-w-0 flex-1 flex-col">
           <span class="truncate font-medium text-ink">{{ r.title }}</span>
-          <span class="truncate text-2xs text-ink-muted">{{ r.reason }}<template v-if="r.since"> · {{ r.since }}</template></span>
+          <span class="truncate text-2xs text-ink-muted" :title="r.item.note ? r.reason : undefined">{{ r.reason }}<template v-if="r.since"> · {{ r.since }}</template></span>
         </span>
         <button
           type="button"

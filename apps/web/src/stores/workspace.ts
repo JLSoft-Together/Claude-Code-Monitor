@@ -116,6 +116,8 @@ const zoomOf = (t: Partial<Tab>, root: LayoutNode): string | undefined => {
 
 export const CLOSED_MAX = 10
 export const OPENED_NOTE_MS = 120_000
+/** open_in_workspace: viewers one agent may keep open with unsaved edits before it is refused. */
+export const AGENT_VIEWERS_MAX = 4
 
 export interface ClosedPane {
   key: string
@@ -751,6 +753,49 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return { ok: true, paneKey: pane.key }
   }
 
+  /**
+   * open_in_workspace (v80): the file viewer, or Changes with the file selected, beside the calling pane. Nothing
+   * is activated and the view is not switched, so the owner's keyboard focus stays where it is (like open_session).
+   * `path` was already checked by the PTY host to be inside the caller's project.
+   */
+  function showForAgent(from: string, spec: { path: string; line?: number; diff: boolean; root?: string }): { paneKey: string; reused: boolean } | 'caller' | 'limit' {
+    const caller = from ? panes.value.find((p) => isTerm(p) && p.sessionId === from) : undefined
+    // Second check of the host's: the viewer must show a file of the caller's own folder.
+    // `root` is the host's real path of the same pane's folder (a project opened through a junction differs from `cwd`).
+    if (!caller?.cwd || !(within(spec.path, caller.cwd) || (!!spec.root && within(spec.path, spec.root)))) return 'caller'
+    const callerTab = tabOf(caller.key)
+    const project = (callerTab && tabProject(callerTab, paneOf)) ?? caller.cwd
+    const existing = spec.diff
+      ? panes.value.find((p) => p.kind === 'changes' && !!project && (sameDir(p.root, project) || sameDir(p.cwd, project)))
+      : panes.value.find((p) => p.kind === 'file' && sameDir(p.path, spec.path))
+    if (existing) {
+      if (spec.diff) existing.select = spec.path
+      else existing.line = spec.line
+      return { paneKey: existing.key, reused: true }
+    }
+    if (!spec.diff) {
+      // One viewer per calling agent: the next file replaces its last one unless that has unsaved edits.
+      const mine = panes.value.filter((p) => p.kind === 'file' && p.openedBy === caller.key)
+      const clean = mine.find((p) => !p.dirty)
+      if (clean) {
+        clean.path = spec.path
+        clean.line = spec.line
+        return { paneKey: clean.key, reused: true }
+      }
+      if (mine.length >= AGENT_VIEWERS_MAX) return 'limit'
+    }
+    const pane = spec.diff ? addView({ kind: 'changes' }, project) : addView({ kind: 'file', path: spec.path, line: spec.line }, project ?? dirOfPath(spec.path))
+    if (spec.diff) pane.select = spec.path
+    else pane.openedBy = caller.key
+    const size = canvasSize.value
+    const spot = callerTab && size.w && size.h ? dockSpot(callerTab.root, caller.key, size) : null
+    if (callerTab && spot) {
+      callerTab.root = splitLeaf(callerTab.root, spot.key, pane.key, spot.dir)
+      unzoom(callerTab)
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project })
+    return { paneKey: pane.key, reused: false }
+  }
+
   const freshOpened = new Map<string, number>()
 
   function markOpened(pane: Pane): Pane {
@@ -1305,6 +1350,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tabOf,
     open,
     openFromAgent,
+    showForAgent,
     openBrowser,
     openFile,
     openChanges,

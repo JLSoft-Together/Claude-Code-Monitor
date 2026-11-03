@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { CircleAlert, Gauge, HardDrive, OctagonAlert, WifiOff } from 'lucide-vue-next'
 import { hasDisk } from '../lib/buildClean'
 import { now, relativeTime } from '../lib/format'
-import { limitsStale, worstLimit } from '../lib/headerStatus'
+import { limitRisk, limitsStale, worstLimit } from '../lib/headerStatus'
 import { retireOverlay } from '../lib/motion'
 import { useAwakeStore } from '../stores/awake'
 import { useConnectionStore } from '../stores/connection'
@@ -41,6 +41,8 @@ const warn = computed(() => worst.value?.level === 'warn' && !worstStale.value)
 const worstLabel = computed(() => (worst.value ? `${t(`limits.${worst.value.key}`)} ${t('headerV79.left', { pct: worst.value.left })}` : ''))
 const worstTone = computed(() => (alert.value ? 'text-st-error' : warn.value ? 'text-warning' : worstStale.value ? 'text-ink-muted' : 'text-ink'))
 
+const risk = computed(() => limitRisk(extras.limits, extras.codexLimits, now.value))
+
 const offline = computed(() => connection.state !== 'connected' && (connection.state !== 'connecting' || connection.hasData))
 const connectionView = computed(() => {
   switch (connection.state) {
@@ -67,6 +69,7 @@ const awakeOn = computed(() => !!awake.state?.holding)
 const label = computed(() => {
   const parts = [worst.value ? t('headerV79.buttonLimit', { label: t(`limits.${worst.value.key}Long`), pct: worst.value.left }) : t('headerV79.button')]
   if (offline.value) parts.push(offlineText.value)
+  if (risk.value) parts.push(t('limitsV80.dot'))
   if (diskLow.value) parts.push(diskText.value)
   return parts.join('. ')
 })
@@ -147,6 +150,7 @@ onBeforeUnmount(() => {
       aria-hidden="true"
       data-status-dot
     />
+    <span v-if="risk" class="absolute right-0.5 bottom-0.5 size-2 rounded-full bg-warning ring-2 ring-surface" aria-hidden="true" data-status-risk />
   </button>
 
   <Transition name="ccm-menu" @before-leave="retireOverlay">

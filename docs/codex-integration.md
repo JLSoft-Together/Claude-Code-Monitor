@@ -119,3 +119,21 @@ start from the newest rollout of today/yesterday; forecast via `LimitHistory` (`
 | unknown | `sqlite/` (a second set of `logs_2` / `state_5` / `codex-dev.db`, 253 MB), `ambient-suggestions`, `tui-thread-reference-capabilities`, `visualizations`, … | unknown | | move only |
 
 Moving `~/.codex` follows docs/claude-code-integration.md §11al (refused while any `codex` / `codex.exe` process runs, including the Codex desktop app). Not verified: Codex's Windows sandbox grants its sandbox user access to `CODEX_HOME` (`.sandbox`, `cap_sid`); the copy does not carry ACLs, so the first sandboxed run after a move may set them up again.
+
+## 8. MCP `orrery` in a Codex pane (v80 WP-2, verified 2026-11-03 on codex-cli 0.162.1)
+
+Codex supports streamable HTTP MCP servers with a bearer token read from an env var, and `-c key=value` overrides at start (no write to `~/.codex/config.toml`):
+
+```
+codex mcp add --help        -> --url <URL> (streamable HTTP), --bearer-token-env-var <ENV_VAR>
+codex -c "mcp_servers.orrery.url=http://127.0.0.1:4317/mcp" -c mcp_servers.orrery.bearer_token_env_var=ORRERY_TOKEN mcp get orrery
+  -> enabled: true / transport: streamable_http / url: http://127.0.0.1:4317/mcp / bearer_token_env_var: ORRERY_TOKEN
+```
+
+- The url must be literal (config has no `${VAR}` expansion), so the shell expands `ORRERY_API` in the launch line; a `-c` value that is not valid TOML is read as a raw string, so no inner quotes.
+- The token never appears on the command line: Codex reads it from `ORRERY_TOKEN` (set by the PTY host in the pane env).
+- `pty/presets.ts` `agentCommand` adds both `-c` flags for the codex preset when `opts.mcp` (new and `codex resume`, before the subcommand). Same per-pane token and tools as §11w of claude-code-integration.md.
+- Not run: a real Codex session (no prompt sent, zero token cost); only `codex mcp get` and unit tests (`apps/desktop/test/pty.test.ts`).
+- v80 WP-5 tools `preview_layout`, `list_servers`, `free_port` (§11w "Main-side tools") work the same from a Codex pane: same token, the pane's starting folder and shell process tree decide what is inside the project / `mine`; `free_port` still needs the owner's native confirm.
+- v80 WP-4 tools `run_app`, `run_status`, `run_log`, `device_screenshot` (§11w "Run / device tools") work the same from a Codex pane: the Run root is the Codex pane's starting folder, the page must know the pane, shared Run configurations still need the owner's trust confirm.
+- Tools (v80 WP-1): `open_session`, `notify_owner`, `open_in_workspace`, `who_is_editing` all work from a Codex pane: Codex sends `Authorization: Bearer <ORRERY_TOKEN>` to `http://127.0.0.1:<port>/mcp`, which is exactly what `mcpGate` accepts (Host `127.0.0.1:<port>`, no `Origin`, 64-hex bearer) and the host maps to the calling pane like a Claude pane (`ORRERY_TOKEN` is set for every preset in `pty/host.ts` `spawn`). Paths resolve inside the Codex pane's starting folder; `who_is_editing` already lists Codex panes. Checked by code + the HTTP E2E (`e2e/v80-mcp.cjs`, same token path); not yet driven from a real Codex session.

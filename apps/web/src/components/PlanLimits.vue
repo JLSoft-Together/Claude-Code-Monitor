@@ -147,6 +147,9 @@ onBeforeUnmount(() => {
         <span class="col-span-3 inline-flex items-center gap-1 text-2xs text-ink-faint tabular" :title="w.resetsIn ? t('limits.resetsIn', { in: w.resetsIn }) : undefined">
           <RotateCcw :size="10" aria-hidden="true" />{{ w.resetAt ? `${w.resetAt} (${w.resetsIn})` : '—' }}
         </span>
+        <span v-if="w.risk && !stale" class="col-span-3 inline-flex items-center gap-1 text-2xs font-medium text-warning tabular" data-limit-forecast>
+          <TrendingUp :size="11" aria-hidden="true" />{{ t('limitsV80.runsOutAt', { at: w.fullAt }) }}
+        </span>
       </div>
     </div>
     <button

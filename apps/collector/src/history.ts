@@ -12,6 +12,7 @@ function parseRecord(v: unknown): SessionRecord | null {
   if (!str(r.id) || !str(r.title) || !str(r.endedAt) || !Number.isFinite(Date.parse(r.endedAt))) return null
   return {
     id: r.id,
+    sessionId: str(r.sessionId) ? r.sessionId : undefined,
     title: r.title,
     cwd: str(r.cwd) ? r.cwd : undefined,
     gitBranch: str(r.gitBranch) ? r.gitBranch : undefined,

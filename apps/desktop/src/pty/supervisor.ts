@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { app, utilityProcess, type UtilityProcess } from 'electron'
+import type { McpPageCall } from '../../../../packages/shared/src/mcpCall'
+import type { McpDeskCall } from '../../../../packages/shared/src/mcpDesk'
 import { PTY_PROTOCOL_PREFIX, type PaneOpenRequest, type PaneOpenResult, type PtyEndpoint, type PtySessionInfo } from '../../../../packages/shared/src/pty'
 
 export interface PtySupervisorOptions {
@@ -11,6 +13,10 @@ export interface PtySupervisorOptions {
   /** zsh startup wrappers that report the current folder (posix only). */
   shellInitDir?: string
   onOpen?: (req: PaneOpenRequest) => Promise<PaneOpenResult>
+  /** v80 MCP tools that need the page (notify_owner, open_in_workspace, who_is_editing); the host re-checks the reply. */
+  onMcp?: (call: McpPageCall) => Promise<unknown>
+  /** v80 WP-5 tools main answers itself (preview_layout, list_servers, free_port); the host re-checks the reply. */
+  onDesk?: (call: McpDeskCall) => Promise<unknown>
   mcpConfig?: string
 }
 
@@ -66,8 +72,10 @@ export class PtySupervisor {
         child.kill()
         reject(new Error('pty host did not start'))
       }, START_TIMEOUT_MS)
-      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[]; req?: PaneOpenRequest }) => {
+      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[]; req?: PaneOpenRequest; call?: McpPageCall }) => {
         if (data?.t === 'open' && typeof data.req?.id === 'string') this.relayOpen(child, data.req)
+        else if (data?.t === 'mcp' && typeof data.call?.id === 'string') this.relayMcp(child, data.call)
+        else if (data?.t === 'mcp-desk' && typeof data.call?.id === 'string') this.relayDesk(child, data.call as unknown as McpDeskCall)
         else if (data?.t === 'listening' && data.port) {
           clearTimeout(timer)
           resolve({ url: `ws://127.0.0.1:${data.port}/pty`, protocol: `${PTY_PROTOCOL_PREFIX}${this.token}` })
@@ -96,6 +104,24 @@ export class PtySupervisor {
       .catch((): PaneOpenResult => ({ ok: false, error: 'failed' }))
       .then((result) => {
         if (this.child === child) child.postMessage({ t: 'open-reply', id: req.id, result })
+      })
+  }
+
+  private relayMcp(child: UtilityProcess, call: McpPageCall): void {
+    void Promise.resolve()
+      .then(() => this.opts.onMcp?.(call) ?? { ok: false, error: 'unavailable' })
+      .catch(() => ({ ok: false, error: 'failed' }))
+      .then((result) => {
+        if (this.child === child) child.postMessage({ t: 'mcp-reply', id: call.id, result })
+      })
+  }
+
+  private relayDesk(child: UtilityProcess, call: McpDeskCall): void {
+    void Promise.resolve()
+      .then(() => this.opts.onDesk?.(call) ?? { ok: false, error: 'unavailable' })
+      .catch(() => ({ ok: false, error: 'failed' }))
+      .then((result) => {
+        if (this.child === child) child.postMessage({ t: 'mcp-reply', id: call.id, result })
       })
   }
 

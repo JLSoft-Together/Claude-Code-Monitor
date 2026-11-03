@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppToasts } from './composables/useAppToasts'
 import { useBreakReminder } from './composables/useBreakReminder'
 import { useNotifications } from './composables/useNotifications'
 import { startClock } from './lib/format'
@@ -12,18 +13,13 @@ import { useUiStore } from './stores/ui'
 import { useWorkspaceStore } from './stores/workspace'
 import AppHeader from './components/AppHeader.vue'
 import CommandPalette from './components/CommandPalette.vue'
-import RecapDialog from './components/RecapDialog.vue'
-import DiagnosticsDialog from './components/DiagnosticsDialog.vue'
-import ResourcesDialog from './components/ResourcesDialog.vue'
 import OnboardingTour from './components/OnboardingTour.vue'
-import BreakToast from './components/BreakToast.vue'
-import PhoneFailToast from './components/PhoneFailToast.vue'
-import { hasPhone } from './lib/phone'
+import ToastHost from './components/ToastHost.vue'
 import { hasBuildClean } from './lib/buildClean'
-import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import QuickSetup from './components/QuickSetup.vue'
 import WhatsNewDialog from './components/WhatsNewDialog.vue'
-import UpdateDialog from './components/UpdateDialog.vue'
+import { lazyOverlay } from './lib/lazyOverlay'
+import { useResourcesStore } from './stores/resources'
 import { useUpdateStore } from './stores/update'
 import ZoomHud from './components/ZoomHud.vue'
 import { useWheelZoom } from './composables/useWheelZoom'
@@ -52,9 +48,19 @@ useSettingsStore()
 useTurnCheckpoints()
 useNotifications()
 useBreakReminder()
+useAppToasts()
 useWheelZoom()
 useAwayStore().install()
-useUpdateStore().start()
+const update = useUpdateStore()
+update.start()
+const resources = useResourcesStore()
+
+// Opened only by a menu / shortcut / palette entry; QuickSetup, OnboardingTour and WhatsNewDialog stay eager because they open themselves at launch, CommandPalette because it owns Ctrl+K.
+const recap = lazyOverlay(() => import('./components/RecapDialog.vue'), () => ui.recapOpen)
+const diagnostics = lazyOverlay(() => import('./components/DiagnosticsDialog.vue'), () => ui.diagnosticsOpen)
+const resourcesDialog = lazyOverlay(() => import('./components/ResourcesDialog.vue'), () => resources.open)
+const shortcuts = lazyOverlay(() => import('./components/ShortcutsDialog.vue'), () => ui.shortcutsOpen)
+const updateDialog = lazyOverlay(() => import('./components/UpdateDialog.vue'), () => update.dialogOpen)
 
 // Windows toast buttons reach the app through agent-monitor://; a session running in a pane opens that pane.
 const reveal = useRevealInWorkspace()
@@ -151,18 +157,17 @@ onBeforeUnmount(() => {
       </Transition>
     </div>
     <CommandPalette />
-    <RecapDialog />
+    <component :is="recap.Comp" v-if="recap.mounted.value" />
     <DevToolsDialog v-if="ui.devTools" :tool="ui.devTools" @close="ui.devTools = null" />
-    <DiagnosticsDialog />
-    <ResourcesDialog />
+    <component :is="diagnostics.Comp" v-if="diagnostics.mounted.value" />
+    <component :is="resourcesDialog.Comp" v-if="resourcesDialog.mounted.value" />
     <BuildCleanDialog v-if="ui.buildClean && hasBuildClean" :dir="ui.buildClean.dir" @close="ui.buildClean = null" />
     <QuickSetup />
     <OnboardingTour />
     <WhatsNewDialog />
-    <UpdateDialog />
-    <BreakToast />
-    <PhoneFailToast v-if="hasPhone" />
-    <ShortcutsDialog />
+    <component :is="updateDialog.Comp" v-if="updateDialog.mounted.value" />
+    <ToastHost />
+    <component :is="shortcuts.Comp" v-if="shortcuts.mounted.value" />
     <ZoomHud />
   </div>
 </template>

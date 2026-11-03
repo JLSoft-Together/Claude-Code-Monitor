@@ -35,6 +35,42 @@ export function worstLimit(claude: PlanLimits | null | undefined, codex: PlanLim
   return best
 }
 
+export interface LimitRisk {
+  provider: Provider
+  key: LimitKey
+  fullAtMs: number
+}
+
+/**
+ * Earliest window the forecast says will fill before it resets. Only real forecast data counts, and a stale report
+ * is skipped because its projection is out of date; `withinMs` narrows it to "soon".
+ */
+export function limitRisk(
+  claude: PlanLimits | null | undefined,
+  codex: PlanLimits | null | undefined,
+  nowMs: number,
+  withinMs = Infinity,
+  only?: Provider,
+): LimitRisk | null {
+  let best: LimitRisk | null = null
+  const sources: [Provider, PlanLimits | null | undefined][] = [
+    ['claude', claude],
+    ['codex', codex],
+  ]
+  for (const [provider, limits] of sources) {
+    if (!limits || (only && provider !== only) || limitsStale(limits, nowMs)) continue
+    for (const key of ['fiveHour', 'sevenDay'] as const) {
+      const w = limits[key]
+      const f = w?.forecast
+      const fullAtMs = f?.fullAt ? Date.parse(f.fullAt) : NaN
+      if (!w || !f || f.beforeReset !== true || !Number.isFinite(w.usedPct) || w.usedPct >= 100) continue
+      if (!Number.isFinite(fullAtMs) || fullAtMs <= nowMs || fullAtMs - nowMs > withinMs) continue
+      if (!best || fullAtMs < best.fullAtMs) best = { provider, key, fullAtMs }
+    }
+  }
+  return best
+}
+
 export function limitsStale(limits: PlanLimits | null | undefined, nowMs: number): boolean {
   const at = limits ? Date.parse(limits.updatedAt) : NaN
   return Number.isFinite(at) && nowMs - at > LIMITS_STALE_MS

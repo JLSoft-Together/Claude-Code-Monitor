@@ -7,6 +7,13 @@ const bridge = vi.hoisted(() => ({
   onRunEvent: vi.fn(),
   runSessions: vi.fn(),
   runStart: vi.fn(),
+  devSnapshot: vi.fn(),
+  devConnectMany: vi.fn(),
+}))
+
+vi.mock('../lib/devices', () => ({
+  devSnapshot: () => bridge.devSnapshot(),
+  devConnectMany: (ids: string[]) => bridge.devConnectMany(ids),
 }))
 
 vi.mock('../lib/desktop', () => ({
@@ -61,6 +68,8 @@ describe('run store', () => {
     bridge.onRunEvent.mockClear()
     bridge.runSessions.mockReset().mockResolvedValue([])
     bridge.runStart.mockReset()
+    bridge.devSnapshot.mockReset().mockResolvedValue(null)
+    bridge.devConnectMany.mockReset().mockResolvedValue([])
   })
 
   it('keeps only the last LOG_CAP lines per session and bumps the version once per flush', () => {
@@ -139,6 +148,48 @@ describe('run store', () => {
 
     setActivePinia(createPinia())
     expect(useRunStore().selected['c:\\work\\app']).toEqual({ config: 'b', device: 'd2' })
+  })
+
+  it('prefers the remembered device only while it is ready', () => {
+    const run = useRunStore()
+    run.handleEvent({ type: 'configs', root: ROOT, configs: [flutterCfg('a')] })
+    const dev = (id: string, state: RunDevice['state']): RunDevice => ({ id, name: id, platform: 'android-arm64', emulator: false, state, source: 'flutter' })
+    run.select(ROOT, { device: 'd2' })
+    run.handleEvent({ type: 'devices', devices: [dev('d1', 'ready'), dev('d2', 'ready')] })
+    expect(run.selectedDevice(ROOT)?.id).toBe('d2')
+    run.handleEvent({ type: 'devices', devices: [dev('d1', 'ready'), dev('d2', 'offline')] })
+    expect(run.selectedDevice(ROOT)?.id).toBe('d1')
+    run.handleEvent({ type: 'devices', devices: [dev('d2', 'offline')] })
+    expect(run.selectedDevice(ROOT)?.id).toBe('d2')
+    run.handleEvent({ type: 'devices', devices: [] })
+    expect(run.selectedDevice(ROOT)).toBeNull()
+  })
+
+  it('reconnects a dropped remembered Wi-Fi device once when a Run pane opens', async () => {
+    const run = useRunStore()
+    const row = (over: object) => ({ id: '192.168.1.5:5555', online: false, transport: 'wifi', ...over })
+    run.select(ROOT, { device: '192.168.1.5:5555' })
+    bridge.devSnapshot.mockResolvedValue({ adb: 'adb', autoConnect: true, devices: [row({})] })
+    run.hold(ROOT)
+    await vi.waitFor(() => expect(bridge.devConnectMany).toHaveBeenCalledWith(['192.168.1.5:5555']))
+    run.hold(ROOT)
+    await Promise.resolve()
+    expect(bridge.devConnectMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reconnect when auto-connect is off, the device is online or not Wi-Fi', async () => {
+    const run = useRunStore()
+    run.select(ROOT, { device: 'abc' })
+    for (const snap of [
+      { autoConnect: false, devices: [{ id: 'abc', online: false, transport: 'wifi' }] },
+      { autoConnect: true, devices: [{ id: 'abc', online: true, transport: 'wifi' }] },
+      { autoConnect: true, devices: [{ id: 'abc', online: false, transport: 'usb' }] },
+    ]) {
+      bridge.devSnapshot.mockResolvedValue({ adb: 'adb', ...snap })
+      run.hold(ROOT)
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    expect(bridge.devConnectMany).not.toHaveBeenCalled()
   })
 
   it('keeps a start refusal as the project notice', async () => {

@@ -127,3 +127,8 @@ Shape-checked in collector `server.ts` (unknown / malformed dropped, `maxPayload
 
 ## v77 (2026-11-01)
 - shared `buildClean.ts` (`BuildKind`, `BUILD_DIR_NAMES`, `buildDirKind`, `isBuildRel`, `BuildProject` / `BuildDir` / `BuildCleanRequest` / `BuildCleanResult` / `BuildProgress`, `parseBuildRoots` / `parseBuildClean`) and `disk.ts` (`DISK_WARN_CHOICES`, `diskLevel`, `diskRearmed`, `DiskState` / `DiskDrive`, desktop → collector `DiskAlertMessage` + `parseDiskAlert`, `formatGb`); `ToastKind` + `disk`; `PHONE_REASONS` + `disk`, `PhoneEpisodeMessage.freeBytes`.
+
+## v80 (2026-11-03)
+
+- `packages/shared/src/mcpCall.ts` (`McpPageCall` / `McpPageResult` union, `cleanNoteText`, `parseMcpPageResult`, `parseAgentNote`; exported). `mcpRun.ts` (`McpRunCall` / `McpRunResult`, `isMcpRunId`, `runPhase`, `cleanRunText`, `parseMcpRunResult`; exported). `mcpDesk.ts` (`McpDeskCall` / `McpDeskResult`, `DESK_ERRORS`, `parseMcpDeskResult`; imported by relative path, not exported from index). `phone.ts` reason `note` + `text`.
+- Collector -> desktop: `agent.note` (desktop host posts, collector parses again). `SessionRecord.sessionId?` (monitor `recordOf` -> `history.json`) lets History resume.

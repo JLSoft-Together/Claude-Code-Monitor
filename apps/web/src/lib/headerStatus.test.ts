@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PlanLimits } from '@ccm/shared'
-import { limitsStale, worstLimit } from './headerStatus'
+import { limitRisk, limitsStale, worstLimit } from './headerStatus'
 import { canOfferWhatsNew } from './onboardingGate'
 
 const lim = (five?: number, seven?: number, updatedAt = '2026-11-03T10:00:00Z'): PlanLimits => ({
@@ -35,6 +35,32 @@ describe('limitsStale', () => {
     expect(limitsStale(lim(1), at + 29 * 60_000)).toBe(false)
     expect(limitsStale(lim(1), at + 31 * 60_000)).toBe(true)
     expect(limitsStale(null, at)).toBe(false)
+  })
+})
+
+describe('limitRisk', () => {
+  const NOW = Date.parse('2026-11-03T10:00:00Z')
+  const fc = (usedPct: number, fullInMin: number, beforeReset = true, updatedAt = '2026-11-03T10:00:00Z'): PlanLimits =>
+    ({ fiveHour: { usedPct, forecast: { pctPerHour: 40, fullAt: new Date(NOW + fullInMin * 60_000).toISOString(), beforeReset } }, updatedAt }) as PlanLimits
+
+  it('is null without a forecast (never invented)', () => {
+    expect(limitRisk(lim(50), null, NOW)).toBeNull()
+    expect(limitRisk(null, undefined, NOW)).toBeNull()
+  })
+  it('flags only a fill before the reset, in the future, below 100%', () => {
+    expect(limitRisk(fc(60, 40), null, NOW)?.key).toBe('fiveHour')
+    expect(limitRisk(fc(60, 40, false), null, NOW)).toBeNull()
+    expect(limitRisk(fc(60, -5), null, NOW)).toBeNull()
+    expect(limitRisk(fc(100, 40), null, NOW)).toBeNull()
+  })
+  it('narrows to a window and to one provider', () => {
+    expect(limitRisk(fc(60, 45), null, NOW, 30 * 60_000)).toBeNull()
+    expect(limitRisk(fc(60, 20), null, NOW, 30 * 60_000)?.provider).toBe('claude')
+    expect(limitRisk(fc(60, 20), null, NOW, 30 * 60_000, 'codex')).toBeNull()
+    expect(limitRisk(fc(60, 90), fc(60, 20), NOW)?.provider).toBe('codex')
+  })
+  it('skips a stale report', () => {
+    expect(limitRisk(fc(60, 20, true, '2026-11-03T09:00:00Z'), null, NOW)).toBeNull()
   })
 })
 
