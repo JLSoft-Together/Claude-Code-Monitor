@@ -27,6 +27,7 @@ describe('names and ids', () => {
   it('session id follows the provider', () => {
     expect(sessionIdOf(term)).toBe('abc-123')
     expect(sessionIdOf({ ...term, provider: 'codex', codexSessionId: 'rollout-1' })).toBe('rollout-1')
+    expect(sessionIdOf({ ...term, provider: 'deepseek', deepseekSessionId: 'th-1' })).toBe('th-1')
     expect(sessionIdOf(undefined)).toBeUndefined()
   })
   it('duration runs to now, or stops at the end', () => {

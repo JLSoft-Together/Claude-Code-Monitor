@@ -28,7 +28,7 @@ export function issueKey(issue: EnvIssue, groups: readonly string[], te: (key: s
 /** Empty `({detail})` / trailing `:` left by a missing detail are dropped. */
 export const tidyIssueText = (text: string): string => text.replace(/\s*\(\)/, '').replace(/:\s*$/, '').replace(/:\s*\./, '.')
 
-/** Running Claude / Codex pane inside the run root, most recently focused first (TermPane drops inserts into a starting pane). */
+/** Running agent pane inside the run root, most recently focused first (TermPane drops inserts into a starting pane). */
 export function agentPaneFor(panes: readonly Pane[], root: string): Pane | null {
   const list = panes.filter((p) => isTerm(p) && presetOf(p) !== 'shell' && p.state === 'running' && !!p.cwd && inRoot(p.cwd, root))
   list.sort((a, b) => (b.focusedAt ?? 0) - (a.focusedAt ?? 0))

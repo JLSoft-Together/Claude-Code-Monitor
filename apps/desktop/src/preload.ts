@@ -6,6 +6,23 @@ function subscribe(channel: string, handler: (payload: unknown) => void): () => 
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+// Owner pause (2026-11-03): without CCM_DEEPSEEK_FEATURE=1 main registers no DeepSeek IPC and the page gets no DeepSeek bridge.
+const deepseek =
+  ipcRenderer.sendSync('ccm:deepseek-enabled') === true
+    ? {
+      deepseekStatus: (fresh?: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-status', fresh === true),
+      deepseekCheckUpdate: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-check-update'),
+      deepseekUpdate: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-update'),
+      deepseekInstall: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-install'),
+      deepseekCancel: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-cancel'),
+      deepseekLogin: (key: string): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-login', key),
+      deepseekLogout: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-logout'),
+      deepseekTelemetry: (on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-telemetry', on),
+      deepseekSync: (): Promise<unknown> => ipcRenderer.invoke('ccm:deepseek-sync'),
+      onDeepSeek: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:deepseek-event', handler),
+    }
+    : {}
+
 // Sandboxed preload: only this narrow surface reaches the page. The main process re-checks the caller's origin.
 contextBridge.exposeInMainWorld('ccmDesktop', {
   platform: process.platform,
@@ -220,6 +237,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   extRemove: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:ext-remove', req),
   extSource: (req: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:ext-source', req),
   extLogin: (name: string, dir?: string): Promise<unknown> => ipcRenderer.invoke('ccm:ext-login', name, dir),
+  ...deepseek,
   runDetect: (root: string): Promise<unknown> => ipcRenderer.invoke('ccm:run-detect', root),
   runEnv: (dir: string, kind: 'flutter' | 'android'): Promise<unknown> => ipcRenderer.invoke('ccm:run-env', dir, kind),
   runDevices: (): Promise<unknown> => ipcRenderer.invoke('ccm:run-devices'),

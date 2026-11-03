@@ -20,6 +20,7 @@ import { RootWatcher } from './preview/watch'
 import { FULL_ACCESS_FILE, FullAccess, GrantStore, GRANTS_FILE } from './preview/grants'
 import { LayoutStore, LAYOUTS_FILE, registerLayoutsIpc } from './layouts'
 import { registerExtensionsIpc } from './extensions/ipc'
+import { registerDeepSeekIpc } from './deepseek/ipc'
 import { GH_ACCOUNTS_FILE, GitHubAccounts } from './github/accounts'
 import { registerGitHubIpc } from './github/ipc'
 import { createAndroidRunner } from './run/android/runner'
@@ -153,6 +154,9 @@ const previewWatch = new RootWatcher()
 let previewIpc: PreviewIpc | null = null
 let disposeLayouts: (() => void) | null = null
 let disposeExtensions: (() => void) | null = null
+let disposeDeepSeek: (() => void) | null = null
+// Owner pause (2026-11-03): the release never runs Codewhale / calls DeepSeek unless started with CCM_DEEPSEEK_FEATURE=1.
+const DEEPSEEK_FEATURE = process.env.CCM_DEEPSEEK_FEATURE === '1'
 let disposeHttp: (() => void) | null = null
 let disposeGitHub: (() => void) | null = null
 let runManager: RunManager | null = null
@@ -270,6 +274,8 @@ function stopPreview(): Promise<void> {
   disposeLayouts = null
   disposeExtensions?.()
   disposeExtensions = null
+  disposeDeepSeek?.()
+  disposeDeepSeek = null
   disposeHttp?.()
   disposeHttp = null
   disposeGitHub?.()
@@ -899,7 +905,7 @@ async function openLinkPane(link: OpenLink): Promise<void> {
     return
   }
   const result = await pageOpen({ id: randomUUID(), preset: link.preset, cwd, resume: link.resume })
-  if (!result.ok) await dialog.showMessageBox(win, { type: 'warning', message: result.error === 'live' ? t.linkOpenLive : t.linkOpenFailed })
+  if (!result.ok && result.error !== 'setup') await dialog.showMessageBox(win, { type: 'warning', message: result.error === 'live' ? t.linkOpenLive : t.linkOpenFailed })
 }
 
 /** agent-monitor://focus?k=&t= and agent-monitor://snooze?k=&t=&m= from toast buttons (key checked by the collector). */
@@ -1330,6 +1336,9 @@ async function ready(): Promise<void> {
   // The token is the only gate on a shell; hand it out to top-level app frames only.
   // Any other process that grabbed the port serves its own page: no shell for it.
   ipcMain.handle('ccm:pty-endpoint', (event) => (isAppFrame(event) ? (ptys?.endpoint() ?? null) : null))
+  ipcMain.on('ccm:deepseek-enabled', (event) => {
+    event.returnValue = DEEPSEEK_FEATURE && isAppFrame(event)
+  })
   ipcMain.handle('ccm:window-bg', (event, color: unknown) => {
     if (!isAppFrame(event) || typeof color !== 'string' || !HEX_COLOR.test(color)) return false
     setWindowBackground(color)
@@ -1906,6 +1915,30 @@ async function ready(): Promise<void> {
         noLink: true,
       }
       return confirmBox(win, opts)
+    },
+  })
+  // Settings → DeepSeek: the native confirm shows the exact install command / files written and is the consent.
+  if (DEEPSEEK_FEATURE) disposeDeepSeek = registerDeepSeekIpc({
+    ipcMain,
+    isAppFrame,
+    confirm: async (event, plan) => {
+      const d = t.deepseek
+      const opts: Electron.MessageBoxOptions =
+        plan.kind === 'logout'
+          ? { type: 'warning', message: d.logoutTitle, detail: d.logoutDetail, buttons: [d.logoutConfirm, d.cancel] }
+          : plan.kind === 'sync'
+            ? { type: 'question', message: d.syncTitle, detail: d.syncDetail(plan.files, plan.mcpAdded, plan.outboxAdded), buttons: [d.syncConfirm, d.cancel] }
+            : {
+                type: 'question',
+                message: plan.kind === 'download' ? d.downloadTitle : plan.kind === 'update' ? d.updateTitle : d.installTitle,
+                detail: plan.kind === 'update' ? d.updateDetail(plan.commands) : d.installDetail(plan.commands),
+                buttons: [plan.kind === 'download' ? d.downloadConfirm : plan.kind === 'update' ? d.updateConfirm : d.installConfirm, d.cancel],
+              }
+      return confirmBox(BrowserWindow.fromWebContents(event.sender), { ...opts, defaultId: 0, cancelId: 1, noLink: true })
+    },
+    dataDir: DATA_DIR,
+    emit: (progress) => {
+      for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:deepseek-event', progress)
     },
   })
   // .http files: any host (owner decision); one native confirm per public host per app session.

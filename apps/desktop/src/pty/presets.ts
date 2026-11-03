@@ -31,6 +31,8 @@ function agentCommand(preset: Exclude<PtyPreset, 'shell'>, win: boolean, resume?
     const mcp = opts.mcp ? ` -c ${win ? '"mcp_servers.orrery.url=$env:ORRERY_API/mcp"' : '"mcp_servers.orrery.url=$ORRERY_API/mcp"'} -c mcp_servers.orrery.bearer_token_env_var=ORRERY_TOKEN` : ''
     return resumed ? `codex${mcp} resume ${resume}` : `codex${mcp}`
   }
+  // A positional prompt would be submitted at once; the page types it into the input box instead. MCP comes via DEEPSEEK_MCP_CONFIG.
+  if (preset === 'deepseek') return resumed ? `codewhale --skip-onboarding -r ${resume}` : 'codewhale --skip-onboarding'
   const base = resumed
     ? `claude --resume ${resume}`
     : `claude${isAgentSessionId(opts.sessionId) ? ` --session-id ${opts.sessionId}` : ''}${isPaneName(opts.name) ? ` -n '${opts.name}'` : ''}`
@@ -41,13 +43,18 @@ export interface AgentOptions {
   sessionId?: string
   name?: string
   mcp?: boolean
+  /** DeepSeek panes with `mcp`: the per-host Codewhale MCP file (user's servers + orrery), see deepseekMcp.ts. */
+  deepseekMcpConfig?: string
   /** Shell panes only: per-session secret that turns on command marks; an E mark without it is not trusted. */
   shellNonce?: string
 }
 
 const isNonce = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{16,64}$/.test(v)
 
-export const isPaneName = (v: unknown): v is string => typeof v === 'string' && v.trim() === v && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(v)
+/** Owner pause (2026-11-03): without CCM_DEEPSEEK_FEATURE=1 no DeepSeek pane is spawned, so Codewhale never runs. */
+export const presetEnabled = (preset: PtyPreset, deepseek: boolean): boolean => preset !== 'deepseek' || deepseek
+
+export const isPaneName =(v: unknown): v is string => typeof v === 'string' && v.trim() === v && /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$/u.test(v)
 
 export const MCP_CONFIG_JSON = JSON.stringify({
   mcpServers: { orrery: { type: 'http', url: '${ORRERY_API}/mcp', headers: { Authorization: 'Bearer ${ORRERY_TOKEN}' } } },
@@ -64,8 +71,9 @@ export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env:
     if (nonce)
       return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(`${PS_CWD_HOOK}\n${PS_SHELL_INTEGRATION}`)], env: { ORRERY_SI_NONCE: nonce }, integrated: true }
     const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, true, resume, opts)}`
+    const extra = agentEnv(preset, opts)
     // Encoded: no quoting rules between node-pty's command line and PowerShell's parser to get wrong.
-    return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)] }
+    return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)], ...(extra ? { env: extra } : {}) }
   }
   const shell = safeShell(env.SHELL, platform)
   const hook = posixHook(shell, env, initDir)
@@ -77,7 +85,31 @@ export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env:
     if (nonce && name === 'zsh' && hook.env?.ZDOTDIR) return { file: shell, args: ['-l'], env: { ...hook.env, ORRERY_SI_NONCE: nonce }, integrated: true }
     return { file: shell, args: ['-l'], env: hook.env }
   }
-  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, false, resume, opts)}; ${hook.reexec}${shell} -l`], env: hook.env }
+  const extra = agentEnv(preset, opts)
+  return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, false, resume, opts)}; ${hook.reexec}${shell} -l`], env: extra ? { ...hook.env, ...extra } : hook.env }
+}
+
+/**
+ * Codewhale installed from Settings after the app started is missing from the PATH the app inherited (winget / npm
+ * update the registry or profile only), so DeepSeek panes also look in the install locations that exist.
+ */
+export function codewhalePath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, home: string, exists: (dir: string) => boolean): Record<string, string> {
+  const win = platform === 'win32'
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? (win ? 'Path' : 'PATH')
+  const sep = win ? ';' : ':'
+  const p = win ? path.win32 : path.posix
+  const current = (env[key] ?? '').split(sep).filter(Boolean)
+  const have = new Set(current.map((d) => (win ? d.toLowerCase().replace(/[\\/]+$/, '') : d)))
+  const dirs = win
+    ? [env.APPDATA && p.join(env.APPDATA, 'npm'), env.LOCALAPPDATA && p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links')]
+    : [p.join(home, '.codewhale', 'bin'), p.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
+  const extra = dirs.filter((d): d is string => !!d && p.isAbsolute(d) && !have.has(win ? d.toLowerCase() : d) && exists(d))
+  return extra.length ? { [key]: [...current, ...extra].join(sep) } : {}
+}
+
+function agentEnv(preset: PtyPreset, opts: AgentOptions | undefined): Record<string, string> | undefined {
+  const file = opts?.deepseekMcpConfig
+  return preset === 'deepseek' && opts?.mcp && file && path.isAbsolute(file) ? { DEEPSEEK_MCP_CONFIG: file } : undefined
 }
 
 // Wraps whatever prompt the profile defined (oh-my-posh, starship…) and appends the folder; the visible prompt is unchanged.

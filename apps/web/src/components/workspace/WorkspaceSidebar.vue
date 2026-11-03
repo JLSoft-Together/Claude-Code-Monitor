@@ -8,7 +8,7 @@ import { useCompact } from '../../composables/useCompact'
 import { useOpenProject } from '../../composables/useOpenProject'
 import { RAIL_TAB_STOP, useRail } from '../../composables/useRail'
 import { useRailDrag, type RailDrop } from '../../composables/useRailDrag'
-import { hasRun } from '../../lib/desktop'
+import { hasDeepSeek, hasRun } from '../../lib/desktop'
 import { onDustLeave } from '../../lib/dust'
 import type { MenuEntry } from '../../lib/menu'
 import { motionMs, pinLeaving, retireOverlay } from '../../lib/motion'
@@ -234,7 +234,7 @@ function closeRow(row: RailRow): void {
 function openCheckout(k: RailCheckout): void {
   const row = k.rows.find((r) => r.focused) ?? k.rows.find((r) => r.tabActive) ?? k.rows[0]
   if (row) workspace.activate(row.paneKey)
-  else if (k.path) workspace.open(workspace.preset, k.path)
+  else if (k.path) workspace.launch(workspace.preset, k.path)
 }
 
 function forget(c: RailCluster): void {
@@ -386,6 +386,7 @@ async function showProjectMenu(shownCluster: RailCluster, k: RailCheckout | unde
   const entries = buildProjectMenu(
     {
       mac: isMac,
+      deepseek: hasDeepSeek,
       dir,
       home: c.key === 'home',
       live: c.live,
@@ -421,7 +422,7 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
       const path = await pickFile('any', cwd)
       if (path && /\.html?$/i.test(path)) workspace.openBrowser(path, { cwd })
       else if (path) workspace.openFile(path, undefined, { cwd })
-    } else workspace.open(choice as PtyPreset, cwd)
+    } else workspace.launch(choice as PtyPreset, cwd)
     return
   }
   if (id.startsWith('layout:')) {
@@ -504,6 +505,7 @@ function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): vo
       others: tab ? leaves(tab.root).length - 1 : 0,
       targets: rail.projectTabs(row.tabKey),
       compact: compactFlow.stateOf(row.pane),
+      deepseek: hasDeepSeek,
     },
     t,
   )
@@ -745,7 +747,7 @@ function pickNew(choice: SplitChoice): void {
   if (!newMenu.value) return
   const dir = newMenu.value.dir ?? undefined
   if (choice === 'browser') workspace.openBrowser('', { cwd: dir })
-  else workspace.open(choice, dir)
+  else workspace.launch(choice, dir)
 }
 </script>
 

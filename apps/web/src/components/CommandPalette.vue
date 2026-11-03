@@ -76,7 +76,7 @@ import { isMac } from '../lib/platform'
 import { keyCombo } from '../lib/shortcuts'
 import { statusMeta } from '../lib/status'
 import { APP_VERSION } from '../lib/changelog'
-import { isCodex } from '../lib/provider'
+import { badgeOf } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
 import { useFavoritesStore } from '../stores/favorites'
@@ -157,7 +157,7 @@ function openProject(entry: ProjectEntry, newTab: boolean): void {
   ui.setView('workspace')
   const tabKey = newTab ? undefined : landingTab(entry.tabKeys, tabFocusedAt)
   if (tabKey) workspace.activateTab(tabKey)
-  else workspace.open(workspace.preset, entry.dir, undefined, { tab: newTab })
+  else workspace.launch(workspace.preset, entry.dir, undefined, { tab: newTab })
 }
 
 const projectItem = (e: ProjectEntry, marks?: number[]): Item => ({
@@ -209,7 +209,8 @@ const items = computed<Item[]>(() => {
     .map((x) => {
       const title = displayTitle(x)
       const live = x.status !== 'stale'
-      const provider = isCodex(x) ? t('provider.codex') : null
+      const badge = badgeOf(x)
+      const provider = badge ? t(`provider.${badge}`) : null
       const reopen = !live && reveal.canReopen(x)
       return {
         id: `s:${x.id}`,

@@ -3,8 +3,11 @@ import type { MenuEntry } from '../menu'
 
 const M = 'workspace.rail.menu.'
 
-export const NEW_CHOICES = ['claude', 'codex', 'shell', 'browser'] as const
+export const NEW_CHOICES = ['claude', 'codex', 'deepseek', 'shell', 'browser'] as const
 export type NewChoice = (typeof NEW_CHOICES)[number]
+
+/** DeepSeek only with the desktop's CCM_DEEPSEEK_FEATURE bridge (owner pause, 2026-11-03). */
+export const newChoices = (deepseek: boolean): NewChoice[] => NEW_CHOICES.filter((c) => c !== 'deepseek' || deepseek)
 
 export interface ProjectMenuCtx {
   mac: boolean
@@ -34,6 +37,8 @@ export interface ProjectMenuCtx {
   canUp: boolean
   canDown: boolean
   collapsed: boolean
+  /** Offer DeepSeek panes (desktop bridge present). */
+  deepseek?: boolean
 }
 
 type T = (key: string, params?: Record<string, unknown>) => string
@@ -41,7 +46,7 @@ type T = (key: string, params?: Record<string, unknown>) => string
 /** Header / checkout line menu; ids: `new:<choice|file|changes|log>`, `layout:<id>`, plain ids otherwise. */
 export function projectMenu(ctx: ProjectMenuCtx, t: T): MenuEntry[] {
   const noDir = !ctx.dir
-  const newKids: MenuEntry[] = NEW_CHOICES.map((c) => ({ id: `new:${c}`, label: t(c === 'browser' ? 'workspace.open.browser' : `workspace.preset.${c}`) }))
+  const newKids: MenuEntry[] = newChoices(!!ctx.deepseek).map((c) => ({ id: `new:${c}`, label: t(c === 'browser' ? 'workspace.open.browser' : `workspace.preset.${c}`) }))
   if (ctx.viewers.file) newKids.push({ id: 'new:file', label: t('workspace.open.openFile') })
   if (ctx.viewers.changes && ctx.dir) newKids.push({ id: 'new:changes', label: t('workspace.open.changes') })
   if (ctx.viewers.log && ctx.dir) newKids.push({ id: 'new:log', label: t('workspace.log.open') })
@@ -79,6 +84,8 @@ export function projectMenu(ctx: ProjectMenuCtx, t: T): MenuEntry[] {
 }
 
 export interface RowMenuCtx {
+  /** Offer DeepSeek panes (desktop bridge present). */
+  deepseek?: boolean
   /** Row stands for a whole tab without agent / run panes (✕ closes the tab). */
   tabRow: boolean
   cwd: string | null
@@ -95,16 +102,16 @@ export interface RowMenuCtx {
   compact?: CompactState | null
 }
 
-const splitKids = (dir: 'row' | 'col', t: T): MenuEntry[] =>
-  NEW_CHOICES.map((c) => ({ id: `split:${dir}:${c}`, label: t(c === 'browser' ? 'workspace.open.browser' : `workspace.preset.${c}`) }))
+const splitKids = (dir: 'row' | 'col', deepseek: boolean, t: T): MenuEntry[] =>
+  newChoices(deepseek).map((c) => ({ id: `split:${dir}:${c}`, label: t(c === 'browser' ? 'workspace.open.browser' : `workspace.preset.${c}`) }))
 
 /** Session / pane row menu; split ids `split:<row|col>:<choice>`. */
 export function rowMenu(ctx: RowMenuCtx, t: T): MenuEntry[] {
   const entries: MenuEntry[] = [
     { id: 'focus', label: t(`${M}focus`) },
     { separator: true },
-    { id: 'split-right', label: t(`${M}splitRight`), children: splitKids('row', t) },
-    { id: 'split-down', label: t(`${M}splitDown`), children: splitKids('col', t) },
+    { id: 'split-right', label: t(`${M}splitRight`), children: splitKids('row', !!ctx.deepseek, t) },
+    { id: 'split-down', label: t(`${M}splitDown`), children: splitKids('col', !!ctx.deepseek, t) },
     { separator: true },
     { id: 'rename-tab', label: t('workspace.railGroup.renameTab'), shortcut: 'F2' },
     {

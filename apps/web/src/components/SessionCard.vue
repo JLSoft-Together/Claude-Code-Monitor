@@ -11,7 +11,7 @@ import { folderName, projectOf } from '../lib/sidebarRows'
 import { modeMeta } from '../lib/mode'
 import { openAppKey } from '../lib/platform'
 import { effortLabel, modelLabel } from '../lib/model'
-import { contextPctOf, isCodex } from '../lib/provider'
+import { contextPctOf, isCodex, isDeepseek } from '../lib/provider'
 import { statusMeta } from '../lib/status'
 import { nodeMenu, type NodeAction } from '../lib/mapMenu'
 import { isMac } from '../lib/platform'
@@ -70,7 +70,7 @@ const menuEntries = computed(() => {
   const own = cardMenu(
     {
       ended: ended.value,
-      codex: codex.value,
+      codex: codex.value || isDeepseek(props.terminal),
       pinned: settings.pinned.has(term.id),
       starred: favorites.has(term.cwd),
       hasCwd: !!term.cwd,

@@ -14,7 +14,7 @@ const WIN_DRIVE = /^[A-Za-z]:[\\/]/
 const CWD_MAX = 1024
 const LINK_RATE_MAX = 10
 const LINK_RATE_MS = 60_000
-const PANE_OPEN_ERRORS: readonly PaneOpenError[] = ['unavailable', 'limit', 'cwd', 'preset', 'rate', 'failed', 'resume', 'live']
+const PANE_OPEN_ERRORS: readonly PaneOpenError[] = ['unavailable', 'limit', 'cwd', 'preset', 'rate', 'failed', 'resume', 'live', 'setup']
 
 export function parseOpenLink(raw: string, platform: NodeJS.Platform): OpenLink | null {
   let url: URL

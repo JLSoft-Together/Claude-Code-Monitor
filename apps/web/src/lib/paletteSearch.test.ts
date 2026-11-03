@@ -26,6 +26,7 @@ const env: SettingsEnv = {
   statusLine: true,
   toast: true,
   notifyData: true,
+  deepseek: true,
 }
 
 describe('parsePrefix', () => {

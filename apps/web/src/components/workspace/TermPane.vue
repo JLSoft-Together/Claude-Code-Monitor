@@ -25,7 +25,7 @@ import { PtyConnection, type PtyStart } from '../../lib/ptyClient'
 import { spawnQueue, type SpawnTicket } from '../../lib/spawnQueue'
 import { imagePasteKey, usePaneAttachments, type PaneScreen } from '../../composables/usePaneAttachments'
 import { SCAN_ROWS } from '../../lib/promptAttachments'
-import { desktop } from '../../lib/desktop'
+import { desktop, hasDeepSeek, presetEnabled } from '../../lib/desktop'
 import { clipboardImageBlob, imageData } from '../../lib/imageData'
 import { dragPaths, hasDragPath } from '../../lib/explorer/dragPath'
 import { hasAttachments, pathForFile } from '../../lib/preview'
@@ -822,6 +822,10 @@ function restart(): void {
 
 async function spawn(): Promise<void> {
   ticket?.release(false)
+  if (!presetEnabled(props.pane.preset, hasDeepSeek)) {
+    workspace.update(props.pane.key, { state: 'error', error: t('workspace.error.preset') })
+    return
+  }
   const mine = spawnQueue.enter(props.visible)
   ticket = mine
   queued.value = true

@@ -1,6 +1,6 @@
 import { isAgentSessionId, type TerminalSession } from '@ccm/shared'
-import { hasTerminals } from '../lib/desktop'
-import { isCodex } from '../lib/provider'
+import { hasDeepSeek, hasTerminals, presetEnabled } from '../lib/desktop'
+import { sessionIdOf } from '../lib/mapText'
 import { useUiStore } from '../stores/ui'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -10,7 +10,7 @@ export function useRevealInWorkspace() {
   const workspace = useWorkspaceStore()
 
   const paneOf = (terminalId: string) => workspace.paneByTerminal.get(terminalId)
-  const resumeIdOf = (t: TerminalSession) => (isCodex(t) ? t.codexSessionId : t.claudeSessionId)
+  const resumeIdOf = (t: TerminalSession) => sessionIdOf(t)
 
   function show(terminalId: string): boolean {
     const pane = paneOf(terminalId)
@@ -21,13 +21,13 @@ export function useRevealInWorkspace() {
   }
 
   function canReopen(t: TerminalSession): boolean {
-    return hasTerminals && !paneOf(t.id) && !!t.cwd && isAgentSessionId(resumeIdOf(t))
+    return hasTerminals && presetEnabled(t.provider ?? 'claude', hasDeepSeek) && !paneOf(t.id) && !!t.cwd && isAgentSessionId(resumeIdOf(t))
   }
 
   /** Callers ask first when the session still runs: two live instances would append to one transcript. */
   function reopen(t: TerminalSession): boolean {
     if (!canReopen(t)) return false
-    workspace.resumeSession(isCodex(t) ? 'codex' : 'claude', t.cwd!, resumeIdOf(t)!)
+    workspace.resumeSession(t.provider ?? 'claude', t.cwd!, resumeIdOf(t)!)
     ui.setView('workspace')
     return true
   }

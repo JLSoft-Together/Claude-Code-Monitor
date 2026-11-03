@@ -21,6 +21,8 @@ import {
   type SplitDir,
 } from '../lib/splitLayout'
 import type { SavedLayout } from '../lib/projects'
+import { hasDeepSeek, presetEnabled } from '../lib/desktop'
+import { useDeepSeekStore } from './deepseek'
 import { dirKey } from './favorites'
 import { openedLinkId, usePeersStore } from './peers'
 
@@ -118,6 +120,7 @@ export const CLOSED_MAX = 10
 export const OPENED_NOTE_MS = 120_000
 /** open_in_workspace: viewers one agent may keep open with unsaved edits before it is refused. */
 export const AGENT_VIEWERS_MAX = 4
+const HAND_BACK_TO = new Set<PtyPreset>(['claude', 'codex'])
 
 export interface ClosedPane {
   key: string
@@ -479,7 +482,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const last = ref<LastWorkspace | null>(panes.value.length ? null : loadLast())
   const recentDirs = ref<string[]>(loadRecent())
   const storedPreset = readLocal(PRESET_KEY)
-  const preset = ref<PtyPreset>(isPtyPreset(storedPreset) ? storedPreset : 'claude')
+  const preset = ref<PtyPreset>(isPtyPreset(storedPreset) && presetEnabled(storedPreset, hasDeepSeek) ? storedPreset : 'claude')
   watch(preset, (p) => writeLocal(PRESET_KEY, p))
 
   const tabOf = (paneKey: string): Tab | undefined => tabs.value.find((t) => leaves(t.root).includes(paneKey))
@@ -710,6 +713,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return joinProject(addPane(preset, cwd, resume), opts)
   }
 
+  /** `open` for a pane the owner picked: null when the agent is not set up (Settings › DeepSeek opens instead). */
+  function launch(preset: PtyPreset, cwd?: string, resume?: string, opts: { tab?: boolean } = {}): Pane | null {
+    return !presetEnabled(preset, hasDeepSeek) || useDeepSeekStore().gate(preset) ? null : open(preset, cwd, resume, opts)
+  }
+
   function joinProject(pane: Pane, opts: { tab?: boolean } = {}): Pane {
     const tab = opts.tab ? undefined : projectTab(pane.cwd)
     const spot = tab ? dockSpot(tab.root, tab.focus, canvasSize.value) : null
@@ -722,8 +730,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
-  function openFromAgent(req: PaneOpenRequest, opts: { liveElsewhere?: (sessionId: string) => boolean } = {}): PaneOpenResult {
-    if (!isPtyPreset(req.preset)) return { ok: false, error: 'preset' }
+  /** `setupBlocked`: the caller found DeepSeek not installed / not logged in (it already told the owner). */
+  function openFromAgent(req: PaneOpenRequest, opts: { liveElsewhere?: (sessionId: string) => boolean; setupBlocked?: boolean } = {}): PaneOpenResult {
+    if (!isPtyPreset(req.preset) || !presetEnabled(req.preset, hasDeepSeek)) return { ok: false, error: 'preset' }
+    if (req.preset === 'deepseek' && opts.setupBlocked) return { ok: false, error: 'setup' }
     if (typeof req.cwd !== 'string' || !req.cwd.trim()) return { ok: false, error: 'cwd' }
     const resume = req.resume === undefined || req.resume === '' ? undefined : req.preset !== 'shell' && isAgentSessionId(req.resume) ? req.resume : null
     if (resume === null) return { ok: false, error: 'resume' }
@@ -796,6 +806,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return { paneKey: pane.key, reused: false }
   }
 
+  /**
+   * hand_back (v81): queue `prompt` as a submitting prefill on the Claude / Codex pane that opened the calling
+   * DeepSeek pane; TermPane sends it once that agent is idle. One pending prompt per origin: a second hand-back,
+   * or one landing while a Compact flow owns the prefill, is refused instead of overwriting it.
+   */
+  function handBack(from: string, prompt: string): Pane | 'caller' | 'limit' {
+    const caller = from ? panes.value.find((p) => isTerm(p) && p.sessionId === from) : undefined
+    if (!caller || caller.preset !== 'deepseek' || !caller.openedBy) return 'caller'
+    const origin = paneOf(caller.openedBy)
+    if (!origin || !isTerm(origin) || origin.state !== 'running' || !HAND_BACK_TO.has(presetOf(origin))) return 'caller'
+    if (origin.prefill || origin.compact) return 'limit'
+    origin.prefill = prompt
+    origin.prefillSubmit = true
+    return origin
+  }
+
   const freshOpened = new Map<string, number>()
 
   function markOpened(pane: Pane): Pane {
@@ -844,7 +870,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const tab = tabOf(targetKey)
     const target = panes.value.find((p) => p.key === targetKey)
     if (!tab || !target) return null
-    const pane = addSpec(spec ?? { kind: 'term', preset: isTerm(target) ? target.preset : preset.value }, workCwd(target))
+    const chosen: PaneSpec = spec ?? { kind: 'term', preset: isTerm(target) ? target.preset : preset.value }
+    if (chosen.kind === 'term' && (!presetEnabled(chosen.preset, hasDeepSeek) || useDeepSeekStore().gate(chosen.preset))) return null
+    const pane = addSpec(chosen, workCwd(target))
     tab.root = splitLeaf(tab.root, targetKey, pane.key, dir)
     tab.focus = pane.key
     unzoom(tab)
@@ -1349,8 +1377,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingClose,
     tabOf,
     open,
+    launch,
     openFromAgent,
     showForAgent,
+    handBack,
     openBrowser,
     openFile,
     openChanges,

@@ -28,6 +28,7 @@ import { COMPACT_STALE_MS, HookReader, type HookRecord } from './hooks'
 import type { MonitorStore } from './store'
 import { SessionTracker, terminalIdOf, type ActivityDraft, type ContextHints, type SyncScope } from './tracker'
 import { CodexMonitor } from './codex/monitor'
+import { DeepseekMonitor } from './deepseek/monitor'
 import type { ClaudeTarget } from './codex/link'
 
 /** A watcher that errored is dead (dir deleted / handle lost); close it so the next setupWatchers() starts a fresh one. */
@@ -119,6 +120,8 @@ export class Monitor {
   private readonly peers: PeerLinkStore
   /** Codex sessions live in their own monitor; session actions on `codex:` ids are delegated to it. */
   codex: CodexMonitor | null = null
+  /** DeepSeek (Codewhale) sessions from its lifecycle outbox; `deepseek:` ids are delegated to it. */
+  deepseek: DeepseekMonitor | null = null
 
   constructor(
     private readonly config: CollectorConfig,
@@ -306,6 +309,7 @@ export class Monitor {
   stop(): void {
     this.stopped = true
     this.codex?.stop()
+    this.deepseek?.stop()
     this.peers.stop()
     for (const w of this.watchers) w.close()
     for (const t of this.timers) clearInterval(t)
@@ -539,7 +543,7 @@ export class Monitor {
 
   /** Returns how many ended sessions were removed. */
   dismissEnded(terminalId?: string): number {
-    let removed = this.codex?.dismissEnded(terminalId) ?? 0
+    let removed = (this.codex?.dismissEnded(terminalId) ?? 0) + (this.deepseek?.dismissEnded(terminalId) ?? 0)
     for (const tracker of [...this.trackers.values()]) {
       if (!tracker.ended || (terminalId !== undefined && tracker.terminalId !== terminalId)) continue
       this.forget(tracker)
@@ -678,7 +682,11 @@ export class Monitor {
 
   /** Opens the tracked session's own cwd; the client only names the session. */
   async openFolder(terminalId: string, app: OpenApp, reply: Reply): Promise<void> {
-    const cwd = CodexMonitor.isCodexTerminal(terminalId) ? this.codex?.cwdOf(terminalId) : this.trackers.get(terminalId)?.record.cwd
+    const cwd = CodexMonitor.isCodexTerminal(terminalId)
+      ? this.codex?.cwdOf(terminalId)
+      : DeepseekMonitor.isDeepseekTerminal(terminalId)
+        ? this.deepseek?.cwdOf(terminalId)
+        : this.trackers.get(terminalId)?.record.cwd
     const open = this.deps.openFolder
     let result: OpenResult
     if (!cwd) result = 'notFound'
@@ -704,6 +712,7 @@ export class Monitor {
       watchers: { sessions: this.sessionsWatched, projects: this.projectsWatched },
       verifyProcesses: this.config.verifyProcesses,
       codex: this.codex?.diagnostics(),
+      deepseek: this.deepseek?.diagnostics(),
       sessions: { live, ended },
       statusLine: { reports: this.statusReports.count, lastAt: this.statusReports.lastAt },
     }
@@ -755,7 +764,13 @@ export class Monitor {
     let outcome: FocusWindowResult = 'failed'
     const run = async () => {
       const tracker = this.trackers.get(terminalId)
-      const pid = CodexMonitor.isCodexTerminal(terminalId) ? this.codex?.pidOf(terminalId) : tracker && !tracker.ended ? tracker.record.pid : undefined
+      const pid = CodexMonitor.isCodexTerminal(terminalId)
+        ? this.codex?.pidOf(terminalId)
+        : DeepseekMonitor.isDeepseekTerminal(terminalId)
+          ? this.deepseek?.pidOf(terminalId)
+          : tracker && !tracker.ended
+            ? tracker.record.pid
+            : undefined
       const focus = this.deps.focusWindow
       let result: FocusWindowResult
       if (pid === undefined) result = 'notFound'

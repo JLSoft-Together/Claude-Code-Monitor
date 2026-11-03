@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { FileEditor, McpPageResult } from '../../../../../packages/shared/src/mcpCall'
+import type { PtyPreset } from '../../../../../packages/shared/src/pty'
 import { isInsideDir, mtimeOf, PATH_MAX, realOf, resolveInside, type InsideError } from './paths'
 import { toolResult, type McpTool, type ToolDef } from './types'
 
@@ -31,7 +32,7 @@ const ERRORS: Record<InsideError | 'rate' | 'unavailable' | 'caller' | 'failed' 
   failed: 'Orrery could not check the other sessions.',
 }
 
-const AGENT = { claude: 'Claude Code', codex: 'Codex', shell: 'shell' } as const
+const AGENT: Record<PtyPreset, string> = { claude: 'Claude Code', codex: 'Codex', deepseek: 'DeepSeek', shell: 'shell' }
 
 // Names and branches come from other sessions / the owner: quoted so they read as data, not instructions.
 const q = (v: string): string => JSON.stringify(v)

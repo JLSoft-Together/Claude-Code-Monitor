@@ -258,7 +258,9 @@ export class OfficeModel {
       used.add(person.name)
     }
     const status = this.statusOf(e)
-    const provider = agent.provider ?? terminal?.provider ?? 'claude'
+    const own = agent.provider ?? terminal?.provider ?? 'claude'
+    // Habblaud knows two providers; DeepSeek sits with the other non-Claude CLI.
+    const provider = own === 'deepseek' ? 'codex' : own
     const log = this.spanLogs.get(agent.id)
     const startedAt = this.ts(agent.startedAt ?? terminal?.startedAt, now)
     const lastEventAt = this.ts(agent.updatedAt ?? terminal?.lastActivityAt, now)

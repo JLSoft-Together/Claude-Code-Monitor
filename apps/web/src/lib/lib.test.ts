@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Agent, TerminalSession } from '@ccm/shared'
 import { cacheState, quietFor } from './attention'
 import { effortLabel, modelLabel } from './model'
-import { codexMode, contextPctOf, isCodex } from './provider'
+import { badgeOf, codexMode, contextPctOf, isCodex, isDeepseek } from './provider'
 import { sortSessions } from './sessionSort'
 
 const term = (id: string, patch: Partial<TerminalSession> = {}): TerminalSession => ({ id, title: id, status: 'working', ...patch })
@@ -70,6 +70,14 @@ describe('provider', () => {
     expect(contextPctOf(base)).toBeCloseTo(29.94, 1)
     expect(contextPctOf({ ...base, provider: 'codex', contextPct: 31 })).toBe(31)
     expect(contextPctOf({ provider: 'codex' })).toBeUndefined()
+  })
+
+  it('badges only the CLIs that are not Claude Code', () => {
+    expect(badgeOf({ provider: 'codex' })).toBe('codex')
+    expect(badgeOf({ provider: 'deepseek' })).toBe('deepseek')
+    expect(badgeOf({ provider: 'claude' })).toBeNull()
+    expect(badgeOf(undefined)).toBeNull()
+    expect(isDeepseek({ provider: 'deepseek' })).toBe(true)
   })
 
   it('recognizes Codex modes', () => {

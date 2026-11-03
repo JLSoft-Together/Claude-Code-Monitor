@@ -155,6 +155,8 @@ describe('workspace viewer panes', () => {
     // Shell pane: the typed agent while it lives, nothing after.
     expect(agentNow({ preset: 'shell', terminalId: 't1' }, live)).toBe('claude')
     expect(agentNow({ preset: 'shell', terminalId: 't1' }, { status: 'working', provider: 'codex' })).toBe('codex')
+    expect(agentNow({ preset: 'shell', terminalId: 't1' }, { status: 'idle', provider: 'deepseek' })).toBe('deepseek')
+    expect(agentNow({ preset: 'deepseek', terminalId: 't1' }, { status: 'idle', provider: 'deepseek' })).toBeUndefined()
     expect(agentNow({ preset: 'shell', terminalId: 't1', agent: 'claude' }, stale)).toBeUndefined()
     expect(agentNow({ preset: 'shell' }, undefined)).toBeUndefined()
     // Agent pane: its own agent needs no override; not linked yet is still the agent.
@@ -847,5 +849,27 @@ describe('opened by another pane', () => {
     ws.requestClose([b], () => false)
     const again = ws.reopenClosed()!
     expect(ws.panes.find((p) => p.key === again.keys[0])!.openedBy).toBe(opener)
+  })
+})
+
+describe('DeepSeek feature flag off (no desktop bridge)', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('falls back from a remembered deepseek default to claude', () => {
+    localStorage.setItem('ccm.workspace.preset', 'deepseek')
+    expect(useWorkspaceStore().preset).toBe('claude')
+  })
+
+  it('refuses DeepSeek from the owner and from agents', () => {
+    const ws = useWorkspaceStore()
+    expect(ws.launch('deepseek', 'C:\repo')).toBeNull()
+    const claude = ws.launch('claude', 'C:\repo')!
+    expect(ws.split(claude.key, 'row', { kind: 'term', preset: 'deepseek' })).toBeNull()
+    expect(ws.openFromAgent({ id: 't', preset: 'deepseek', cwd: 'C:\repo' })).toEqual({ ok: false, error: 'preset' })
+    expect(ws.panes).toHaveLength(1)
   })
 })

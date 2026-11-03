@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { Check, CircleOff, Loader, X } from 'lucide-vue-next'
 import { toolRows } from '../lib/agentTools'
 import { clockTime, compactNumber, fullNumber, now, relativeTime } from '../lib/format'
-import { codexMode, isCodex } from '../lib/provider'
+import { badgeOf, codexMode, isCodex } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { formatMs } from '../lib/toolTimeline'
 import { useAgentsStore } from '../stores/agents'
@@ -27,6 +27,7 @@ const agent = computed(() => (ui.selectedAgentId ? agents.byId[ui.selectedAgentI
 const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
 const terminalTitle = computed(() => displayTitle(terminal.value))
 const codex = computed(() => isCodex(agent.value))
+const badge = computed(() => badgeOf(agent.value))
 const heading = computed(() => {
   const a = agent.value
   if (!a) return ''
@@ -163,7 +164,7 @@ const origin = computed(() => {
           <h3 class="truncate text-base font-semibold" :title="heading">{{ heading }}</h3>
           <div class="mt-1 flex flex-wrap items-center gap-2">
             <StatusBadge :status="agent.status" />
-            <ProviderBadge v-if="codex" variant="short" :mode="agent.type" />
+            <ProviderBadge v-if="badge" variant="short" :mode="agent.type" :provider="badge" />
           </div>
         </div>
         <button

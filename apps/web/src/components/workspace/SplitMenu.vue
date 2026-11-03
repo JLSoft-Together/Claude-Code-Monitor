@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PtyPreset } from '@ccm/shared'
+import { hasDeepSeek, presetEnabled } from '../../lib/desktop'
 import { isMac } from '../../lib/platform'
 import { openedByKey } from '../../lib/inputModality'
 import { Globe } from 'lucide-vue-next'
@@ -13,7 +14,7 @@ const props = defineProps<{ anchor: DOMRect; current: PtyPreset | null; trigger?
 const emit = defineEmits<{ pick: [choice: SplitChoice]; close: [] }>()
 
 const { t } = useI18n()
-const PRESETS: SplitChoice[] = ['claude', 'codex', 'shell', 'browser']
+const PRESETS: SplitChoice[] = (['claude', 'codex', 'deepseek', 'shell', 'browser'] as const).filter((p) => presetEnabled(p, hasDeepSeek))
 const WIDTH = 220
 const root = ref<HTMLElement | null>(null)
 const items = ref<HTMLButtonElement[]>([])

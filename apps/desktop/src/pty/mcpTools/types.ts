@@ -23,6 +23,8 @@ export type NoteOutcome = { ok: true; sent: true; name: string; inbox: boolean }
 export interface ToolHost {
   /** The calling pane's starting folder (real path): every path argument must resolve inside it. */
   root: string
+  /** The calling pane's program; absent in hosts that do not know it (tools gated on it then refuse). */
+  preset?: PtyPreset
   /** Sliding window per pane and key; false = over the limit. */
   take: (key: string, max: number, windowMs: number) => boolean
   openSession: (args: OpenArgs) => Promise<OpenOutcome>

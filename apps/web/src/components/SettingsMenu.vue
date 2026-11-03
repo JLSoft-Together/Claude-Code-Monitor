@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bell, BellOff, ChevronRight, Database, GitBranch, Info, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
+import { Bell, BellOff, Bot, ChevronRight, Database, GitBranch, Info, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
 import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
 import { hasAgentData } from '../lib/agentData'
 import { hasBackup } from '../lib/backup'
 import { hasAwake, hasCapture } from '../lib/capture'
 import { hasDisk } from '../lib/buildClean'
-import { desktop, hasRun, hasTerminals } from '../lib/desktop'
+import { desktop, hasDeepSeek, hasRun, hasTerminals } from '../lib/desktop'
 import { hasGitHub } from '../lib/github'
 import { hasPhone } from '../lib/phone'
 import { hasGrants } from '../lib/preview'
@@ -23,6 +23,7 @@ import SettingsAbout from './settings/SettingsAbout.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsAppearance from './settings/SettingsAppearance.vue'
 import SettingsData from './settings/SettingsData.vue'
+import SettingsDeepSeek from './settings/SettingsDeepSeek.vue'
 import SettingsEditor from './settings/SettingsEditor.vue'
 import SettingsGeneral from './settings/SettingsGeneral.vue'
 import SettingsIntegrations from './settings/SettingsIntegrations.vue'
@@ -53,6 +54,7 @@ const pageIcons: Record<SettingsPage, Component> = {
   reminders: Timer,
   github: GitBranch,
   integrations: Plug,
+  deepseek: Bot,
   access: ShieldCheck,
   data: Database,
   about: Info,
@@ -76,6 +78,7 @@ const env = computed<SettingsEnv>(() => ({
   statusLine: Boolean(extras.statusLineCommand),
   toast: extras.toast === 'on' || extras.toast === 'off',
   notifyData: Boolean(extras.notify),
+  deepseek: hasDeepSeek,
 }))
 const pages = computed(() => SETTINGS_PAGES.filter((p) => pageVisible(p, env.value)))
 const allEntries = computed(() => entries(isMac))
@@ -306,6 +309,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                   <SettingsReminders v-else-if="page === 'reminders'" />
                   <SettingEmbed v-else-if="page === 'github'" id="github"><GitHubAccountsSettings :open="ui.settingsOpen" /></SettingEmbed>
                   <SettingsIntegrations v-else-if="page === 'integrations'" />
+                  <SettingsDeepSeek v-else-if="page === 'deepseek'" />
                   <SettingsAccess v-else-if="page === 'access'" />
                   <SettingsData v-else-if="page === 'data'" />
                   <SettingsAbout v-else-if="page === 'about'" />

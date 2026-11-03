@@ -70,6 +70,44 @@ export type HooksState = 'ours' | 'partial' | 'none' | 'unreadable'
 
 export type StatusLineState = 'ours' | 'other' | 'none' | 'unreadable'
 
+/** Settings › DeepSeek (v81): Codewhale CLI state as main reports it; never carries a key. */
+export interface DeepSeekStatus {
+  installed: boolean
+  needsDownload: boolean
+  version: string | null
+  loggedIn: boolean | null
+  telemetry: boolean | null
+  installRoute: 'winget' | 'npm' | 'script' | null
+  origin: 'npm' | 'winget' | 'standalone' | null
+  /** Fingerprint of Claude rules + MCP names + Orrery templates against the last sync. */
+  sync: 'never' | 'current' | 'stale'
+  syncedAt: number | null
+  busy: 'install' | 'login' | 'logout' | 'telemetry' | 'sync' | 'update' | null
+}
+
+export interface DeepSeekUpdateCheck extends DeepSeekResult {
+  current?: string
+  latest?: string
+  newer?: boolean
+}
+
+export type DeepSeekCode = 'badInput' | 'busy' | 'cancelled' | 'notInstalled' | 'noInstaller' | 'installed' | 'timeout' | 'failed' | 'notFound'
+
+export interface DeepSeekResult {
+  ok: boolean
+  code?: DeepSeekCode
+  detail?: string
+}
+
+export type DeepSeekSyncId = 'agents' | 'config' | 'mcp' | 'skill-handoff' | 'skill-delegate-claude' | 'skill-delegate-codex'
+
+export interface DeepSeekSyncResult extends DeepSeekResult {
+  files?: { id: DeepSeekSyncId; file: string; action: 'create' | 'update' | 'unchanged' | 'skip'; reason?: 'notManaged' | 'unreadable' | 'nothingToAdd' }[]
+  mcpAdded?: string[]
+}
+
+export type DeepSeekEvent = { phase: 'install'; line: string } | { phase: 'download'; mb: number; totalMb: number | null; pct: number | null }
+
 interface DesktopBridge {
   platform: string
   titleBar?: string
@@ -120,6 +158,21 @@ interface DesktopBridge {
   extRemove?: (req: ExtRemoveRequest) => Promise<ExtResult>
   extSource?: (req: ExtSourceRequest) => Promise<(ExtResult & { marketplace?: string; plugins?: AvailablePlugin[] }) | null>
   extLogin?: (name: string, dir?: string) => Promise<ExtResult>
+  /** Main keeps the CLI part for 60 s; `fresh` asks again now. */
+  deepseekStatus?: (fresh?: boolean) => Promise<DeepSeekStatus | null>
+  /** `codewhale doctor --check-updates` (contacts the release service, changes nothing). */
+  deepseekCheckUpdate?: () => Promise<DeepSeekUpdateCheck>
+  /** Native confirm with the route's command; progress via onDeepSeek like install. */
+  deepseekUpdate?: () => Promise<DeepSeekResult>
+  /** Native confirm with the exact command first; progress via onDeepSeek. */
+  deepseekInstall?: () => Promise<DeepSeekResult>
+  deepseekCancel?: () => Promise<boolean>
+  /** The key goes to `codewhale auth set --api-key-stdin` in main and is never sent back. */
+  deepseekLogin?: (key: string) => Promise<DeepSeekResult>
+  deepseekLogout?: () => Promise<DeepSeekResult>
+  deepseekTelemetry?: (on: boolean) => Promise<DeepSeekResult>
+  deepseekSync?: () => Promise<DeepSeekSyncResult>
+  onDeepSeek?: (handler: (event: DeepSeekEvent) => void) => () => void
   /** Run pane (v31): desktop main detects, spawns and streams; the page only sends ids and config fields. */
   runDetect?: (root: string) => Promise<RunDetectResult | null>
   runEnv?: (dir: string, kind: Exclude<RunKind, 'custom'>) => Promise<RunEnv | null>
@@ -181,5 +234,11 @@ export const titleBar: 'mac' | 'overlay' | null = desktop?.titleBar === 'mac' ||
 export const hasTerminals = typeof desktop?.ptyEndpoint === 'function'
 
 export const hasExtensions = typeof desktop?.extStatus === 'function'
+
+/** Off unless the app runs with CCM_DEEPSEEK_FEATURE=1: preload then exposes no DeepSeek bridge (owner pause, 2026-11-03). */
+export const hasDeepSeek = typeof desktop?.deepseekStatus === 'function'
+
+/** Whether a pane of this preset may be offered or started; callers pass `hasDeepSeek` (tests mock it). */
+export const presetEnabled = (preset: string, deepseek: boolean): boolean => preset !== 'deepseek' || deepseek
 
 export const hasRun = typeof desktop?.runDetect === 'function'

@@ -9,14 +9,24 @@ const CHUNK_BYTES = 1024 * 1024
  */
 export type LineFilter = (line: Buffer, end: number, size: number) => unknown
 
+export interface TailOptions {
+  /** First read starts this many bytes before the end; the partial line there is dropped. */
+  fromEnd?: number
+  /** A line longer than this is dropped whole instead of buffered. */
+  maxLine?: number
+}
+
 export class JsonlTailer {
   private offset = 0
   private remainder: Buffer = Buffer.alloc(0)
   private reading: Promise<void> | null = null
+  private started = false
+  private skipping = false
 
   constructor(
     readonly file: string,
     private readonly chunkBytes = CHUNK_BYTES,
+    private readonly options: TailOptions = {},
   ) {}
 
   async read(): Promise<unknown[]> {
@@ -44,9 +54,17 @@ export class JsonlTailer {
     } catch {
       return
     }
-    if (size < this.offset) {
+    if (!this.started) {
+      this.started = true
+      const from = this.options.fromEnd
+      if (from !== undefined && size > from) {
+        this.offset = size - from
+        this.skipping = true
+      }
+    } else if (size < this.offset) {
       this.offset = 0
       this.remainder = Buffer.alloc(0)
+      this.skipping = false
     }
     if (size === this.offset) return
 
@@ -66,12 +84,20 @@ export class JsonlTailer {
   }
 
   private consume(chunk: Buffer, base: number, size: number, onRecord: (record: unknown) => void, filter?: LineFilter): void {
-    const data = this.remainder.length ? Buffer.concat([this.remainder, chunk]) : chunk
     let start = 0
+    if (this.skipping) {
+      const nl = chunk.indexOf(NEWLINE)
+      if (nl === -1) return
+      this.skipping = false
+      start = nl + 1
+    }
+    const data = this.remainder.length ? Buffer.concat([this.remainder, chunk]) : chunk
+    const maxLine = this.options.maxLine ?? Number.POSITIVE_INFINITY
     let idx: number
     while ((idx = data.indexOf(NEWLINE, start)) !== -1) {
       const raw = data.subarray(start, idx)
       start = idx + 1
+      if (raw.length > maxLine) continue
       if (filter) {
         const verdict = filter(raw, base + start, size)
         if (verdict === null) continue
@@ -90,6 +116,12 @@ export class JsonlTailer {
       }
       onRecord(record)
     }
-    this.remainder = Buffer.from(data.subarray(start))
+    const rest = data.subarray(start)
+    if (rest.length > maxLine) {
+      this.remainder = Buffer.alloc(0)
+      this.skipping = true
+    } else {
+      this.remainder = Buffer.from(rest)
+    }
   }
 }

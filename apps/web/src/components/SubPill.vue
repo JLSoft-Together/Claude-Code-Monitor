@@ -15,7 +15,7 @@ const props = defineProps<{ id: string; data: { agentId: string }; picked?: bool
 
 const { t, locale } = useI18n()
 const extras = useExtrasStore()
-const { flowId, mapCtx, agent, meta, codex, selected, quiet, working, tabbable, findHit, dimmed, kids, folded, foldLabel, foldedCount, flash, popDelay, toggleFold } =
+const { flowId, mapCtx, agent, meta, codex, badge, selected, quiet, working, tabbable, findHit, dimmed, kids, folded, foldLabel, foldedCount, flash, popDelay, toggleFold } =
   useMapNode(props)
 
 const name = computed(() => {
@@ -91,7 +91,7 @@ const tip = computed(() => {
         <span v-if="flash" :key="flash" class="ccm-flash pointer-events-none absolute inset-0 rounded-full" :class="meta.text" aria-hidden="true" />
         <span :key="agent.status" class="ccm-glyph-pop inline-flex shrink-0"><StatusIcon :status="agent.status" :size="14" /></span>
         <span class="nodrag max-w-[60%] shrink-0 cursor-text truncate font-semibold select-text">{{ name }}</span>
-        <ProviderBadge v-if="codex" :mode="agent.type" variant="icon" />
+        <ProviderBadge v-if="badge" :mode="agent.type" variant="icon" :provider="badge" />
         <span :key="detail" class="ccm-swap-in nodrag min-w-0 flex-1 cursor-text truncate text-ink-muted select-text">{{ detail }}</span>
         <span v-if="elapsed" class="shrink-0 tabular-nums text-ink-faint">{{ elapsed }}</span>
         <button

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Asterisk, FileText, Folder, FolderOpen, GitCompare, GitGraph, Globe, Hexagon, House, SquareTerminal, Star, TrendingUp, X } from 'lucide-vue-next'
+import { Asterisk, CircleAlert, FileText, Fish, Folder, FolderOpen, GitCompare, GitGraph, Globe, Hexagon, House, SquareTerminal, Star, TrendingUp, X } from 'lucide-vue-next'
 import type { PtyPreset } from '@ccm/shared'
-import { desktop } from '../../lib/desktop'
+import { desktop, hasDeepSeek } from '../../lib/desktop'
 import { devUrlLabel, lastDevUrl } from '../../lib/devServer'
 import { now, shortPath } from '../../lib/format'
 import { limitRisk } from '../../lib/headerStatus'
@@ -12,6 +12,7 @@ import { useExtrasStore } from '../../stores/extras'
 import { dirKey, useFavoritesStore } from '../../stores/favorites'
 import { useTerminalsStore } from '../../stores/terminals'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { useDeepSeekStore } from '../../stores/deepseek'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 
 /** `cwd`: folder of the focused pane, for Changes and the remembered dev server URL. */
@@ -23,6 +24,11 @@ const workspace = useWorkspaceStore()
 const favorites = useFavoritesStore()
 const terminals = useTerminalsStore()
 const extras = useExtrasStore()
+const deepseek = useDeepSeekStore()
+if (hasDeepSeek) void deepseek.refresh().catch(() => null)
+
+const dsAttention = computed(() => deepseek.blocker ?? (deepseek.stale ? 'stale' : null))
+const dsNote = computed(() => (hasDeepSeek && workspace.preset === 'deepseek' && dsAttention.value ? t(`deepseekSetup.launchNote.${dsAttention.value}`) : null))
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
 const SOON_MS = 30 * 60_000
@@ -35,6 +41,17 @@ onBeforeUnmount(() => (unmounted = true))
 const presetOptions = computed(() => [
   { value: 'claude' as PtyPreset, label: t('workspace.preset.claude'), icon: Asterisk, iconClass: 'text-agent-claude' },
   { value: 'codex' as PtyPreset, label: t('workspace.preset.codex'), icon: Hexagon, iconClass: 'text-agent-codex' },
+  ...(hasDeepSeek
+    ? [
+        {
+          value: 'deepseek' as PtyPreset,
+          label: t('workspace.preset.deepseek'),
+          icon: dsAttention.value === 'stale' ? CircleAlert : Fish,
+          iconClass: dsAttention.value === 'stale' ? 'text-warning' : 'text-ink',
+          ...(dsAttention.value === 'stale' ? { title: t('deepseekSetup.launchNote.stale') } : {}),
+        },
+      ]
+    : []),
   { value: 'shell' as PtyPreset, label: t('workspace.preset.shell'), icon: SquareTerminal, iconClass: 'text-agent-shell' },
 ])
 
@@ -115,6 +132,13 @@ defineExpose({ focusFirst })
 <template>
   <div ref="root" class="flex min-h-0 flex-col gap-2" @keydown="onKey">
     <SegmentedControl v-model="workspace.preset" :options="presetOptions" :label="t('workspace.launch.agent')" fill />
+    <p v-if="dsNote" class="flex items-start gap-1.5 px-1 text-2xs text-ink-muted" role="status" data-launch-deepseek-note>
+      <CircleAlert :size="12" class="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ dsNote }}</span>
+      <button type="button" class="ccm-btn-plain -my-0.5 shrink-0 text-2xs" data-launch-deepseek-setup @click="deepseek.showSetup(deepseek.blocker ?? 'stale')">
+        {{ t('deepseekSetup.openSetup') }}
+      </button>
+    </p>
     <p v-if="soon" class="flex items-start gap-1.5 px-1 text-2xs text-warning" role="status" data-launch-limit-warn>
       <TrendingUp :size="12" class="mt-0.5 shrink-0" aria-hidden="true" />{{ t('limitsV80.launchWarn', soon) }}
     </p>

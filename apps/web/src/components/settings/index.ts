@@ -1,6 +1,6 @@
 import type { ToastKind } from '@ccm/shared'
 
-export const SETTINGS_PAGES = ['general', 'appearance', 'editor', 'notify', 'reminders', 'github', 'integrations', 'access', 'data', 'about'] as const
+export const SETTINGS_PAGES = ['general', 'appearance', 'editor', 'notify', 'reminders', 'github', 'integrations', 'deepseek', 'access', 'data', 'about'] as const
 export type SettingsPage = (typeof SETTINGS_PAGES)[number]
 
 export const isSettingsPage = (v: unknown): v is SettingsPage => typeof v === 'string' && (SETTINGS_PAGES as readonly string[]).includes(v)
@@ -44,6 +44,7 @@ export interface SettingsEnv {
   statusLine: boolean
   toast: boolean
   notifyData: boolean
+  deepseek: boolean
 }
 
 export interface SettingsEntry {
@@ -54,7 +55,7 @@ export interface SettingsEntry {
   needs?: keyof SettingsEnv
 }
 
-const PAGE_NEEDS: Partial<Record<SettingsPage, keyof SettingsEnv>> = { editor: 'terminals', github: 'github' }
+const PAGE_NEEDS: Partial<Record<SettingsPage, keyof SettingsEnv>> = { editor: 'terminals', github: 'github', deepseek: 'deepseek' }
 
 export const pageVisible = (page: SettingsPage, env: SettingsEnv): boolean => {
   const need = PAGE_NEEDS[page]
@@ -122,6 +123,13 @@ export const entries = (mac: boolean): SettingsEntry[] => [
   { page: 'integrations', id: 'statusLine', labelKey: 'limits.setupTitle', hintKey: 'limits.setupHint', needs: 'statusLine' },
   { page: 'integrations', id: 'run', labelKey: 'run.sdk.section', needs: 'run' },
   { page: 'integrations', id: 'capture', labelKey: 'capture.section', hintKey: 'capture.folderHint', needs: 'capture' },
+
+  { page: 'deepseek', id: 'dsStatus', labelKey: 'deepseekSetup.status', hintKey: 'deepseekSetup.intro', needs: 'deepseek' },
+  { page: 'deepseek', id: 'dsUpdate', labelKey: 'deepseekSetup.update.check', needs: 'deepseek' },
+  { page: 'deepseek', id: 'dsKey', labelKey: 'deepseekSetup.apiKey', hintKey: 'deepseekSetup.apiKeyHint', needs: 'deepseek' },
+  { page: 'deepseek', id: 'dsLogout', labelKey: 'deepseekSetup.logout', hintKey: 'deepseekSetup.logoutHint', needs: 'deepseek' },
+  { page: 'deepseek', id: 'dsTelemetry', labelKey: 'deepseekSetup.telemetry', hintKey: 'deepseekSetup.telemetryHint', needs: 'deepseek' },
+  { page: 'deepseek', id: 'dsSync', labelKey: 'deepseekSetup.sync', hintKey: 'deepseekSetup.syncHint', needs: 'deepseek' },
 
   { page: 'access', id: 'sensitive', labelKey: 'sensitive.section', hintKey: 'sensitive.hint' },
   { page: 'access', id: 'fullAccess', labelKey: 'settings.fullAccess', hintKey: 'settings.fullAccessHint', needs: 'grants' },

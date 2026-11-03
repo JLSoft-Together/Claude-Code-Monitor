@@ -63,6 +63,7 @@ import uiV80Links from './ui-v80-links'
 import uiV80Palette from './ui-v80-palette'
 import uiV80Wp1 from './ui-v80-wp1'
 import uiV80Toast from './ui-v80-toast'
+import deepseekV81 from './deepseek-v81'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
@@ -128,6 +129,7 @@ export default {
   ...uiV80Palette.en,
   ...uiV80Wp1.en,
   ...uiV80Toast.en,
+  ...deepseekV81.en,
   ...captureV76.en,
   ...sensitiveV76.en,
   ...agentDataV76.en,
@@ -180,7 +182,8 @@ export default {
     restart: 'Restart',
     reconnect: 'Reconnect',
     ended: '(ended)',
-    preset: { claude: 'Claude Code', codex: 'Codex', shell: 'Shell' },
+    preset: { claude: 'Claude Code', codex: 'Codex', deepseek: 'DeepSeek', shell: 'Shell' },
+    handBack: { said: 'DeepSeek handed its work back to {name}' },
     state: {
       starting: 'Starting…',
       parked: 'Asleep',
@@ -482,7 +485,9 @@ export default {
   provider: {
     claude: 'Claude',
     codex: 'Codex',
+    deepseek: 'DeepSeek',
     codexTitle: 'Codex CLI',
+    deepseekTitle: 'DeepSeek CLI (Codewhale)',
     mode: { exec: 'exec', tui: 'terminal', plugin: 'plugin', subagent: 'subagent', 'app-server': 'app server' },
     modeTitle: {
       exec: 'Codex run started with codex exec',
@@ -588,6 +593,10 @@ export default {
     agent_failed: 'Subagent {name} failed',
     agent_cancelled: 'Subagent {name} stopped',
     codex_started: 'Codex run {name} started',
+    turn_started: '{title}: turn started',
+    turn_completed: '{title}: turn finished',
+    turn_failed: '{title}: turn failed',
+    turn_interrupted: '{title}: turn interrupted',
     codex_completed: 'Codex run {name} completed',
     codex_failed: 'Codex run {name} failed',
     codex_cancelled: 'Codex run {name} stopped',

@@ -266,6 +266,25 @@ It runs in ${cwd} with a made-up JSON input on stdin and a minimal environment, 
     confirm: 'Delete',
     confirmTrash: 'Move to Trash',
   },
+  deepseek: {
+    cancel: 'Cancel',
+    installTitle: 'Install the DeepSeek CLI (Codewhale)?',
+    downloadTitle: 'Download the Codewhale program?',
+    installDetail: (commands: string[]) =>
+      `Orrery will run:\n\n${commands.map(clip).join('\n')}\n\nThe first run of codewhale downloads its program (about 130 MB) from GitHub Releases.`,
+    installConfirm: 'Install',
+    downloadConfirm: 'Download',
+    updateTitle: 'Update the DeepSeek CLI (Codewhale)?',
+    updateDetail: (commands: string[]) => `Orrery will run:\n\n${commands.map(clip).join('\n')}\n\nDeepSeek panes that are open keep the old version until they restart.`,
+    updateConfirm: 'Update',
+    logoutTitle: 'Log out of DeepSeek?',
+    logoutDetail: 'Codewhale deletes the saved DeepSeek API key (codewhale auth clear --provider deepseek). DeepSeek panes stop working until you add a key again.',
+    logoutConfirm: 'Log out',
+    syncTitle: 'Copy rules, skills and MCP servers from Claude?',
+    syncDetail: (files: { file: string; action: 'create' | 'update' }[], servers: string[], outbox = false) =>
+      `${files.map((f) => `${f.action === 'create' ? 'Create' : 'Update'} ${f.file}`).join('\n')}${servers.length ? `\n\nMCP servers added to ~/.codewhale/mcp.json: ${servers.join(', ')}` : ''}${outbox ? '\n\nconfig.toml: turn on the lifecycle outbox ([lifecycle_outbox] path = ~/.codewhale/notifications/outbox.jsonl) so the Monitor shows DeepSeek session status.' : ''}\n\nEach file that already exists is backed up once as <file>.orrery-backup. In AGENTS.md only the Orrery block changes.`,
+    syncConfirm: 'Write files',
+  },
 }
 
 const vi: typeof en = {
@@ -525,6 +544,25 @@ Lệnh chạy trong ${cwd} với input JSON giả trên stdin và môi trường
       `${lines.join('\n')}${more ? `\n…và ${more} thư mục nữa` : ''}\n\n${reinstall ? 'Phải cài lại gói (node_modules / .venv), và lần build sau sẽ lâu hơn.' : 'Lần build sau sẽ tạo lại và lâu hơn.'} ${trash ? 'Chúng được chuyển vào Thùng rác.' : 'Chúng bị xoá hẳn, không vào Thùng rác.'} Mã nguồn không bao giờ bị đụng tới.`,
     confirm: 'Xoá',
     confirmTrash: 'Chuyển vào Thùng rác',
+  },
+  deepseek: {
+    cancel: 'Huỷ',
+    installTitle: 'Cài DeepSeek CLI (Codewhale)?',
+    downloadTitle: 'Tải chương trình Codewhale?',
+    installDetail: (commands) =>
+      `Orrery sẽ chạy:\n\n${commands.map(clip).join('\n')}\n\nLần chạy codewhale đầu tiên sẽ tải chương trình (khoảng 130 MB) từ GitHub Releases.`,
+    installConfirm: 'Cài',
+    downloadConfirm: 'Tải về',
+    updateTitle: 'Cập nhật DeepSeek CLI (Codewhale)?',
+    updateDetail: (commands) => `Orrery sẽ chạy:\n\n${commands.map(clip).join('\n')}\n\nPane DeepSeek đang mở vẫn dùng bản cũ cho tới khi khởi động lại.`,
+    updateConfirm: 'Cập nhật',
+    logoutTitle: 'Đăng xuất DeepSeek?',
+    logoutDetail: 'Codewhale xoá API key DeepSeek đã lưu (codewhale auth clear --provider deepseek). Pane DeepSeek sẽ không chạy được cho tới khi bạn thêm key lại.',
+    logoutConfirm: 'Đăng xuất',
+    syncTitle: 'Chép rule, skill và MCP server từ Claude?',
+    syncDetail: (files, servers, outbox = false) =>
+      `${files.map((f) => `${f.action === 'create' ? 'Tạo' : 'Cập nhật'} ${f.file}`).join('\n')}${servers.length ? `\n\nMCP server thêm vào ~/.codewhale/mcp.json: ${servers.join(', ')}` : ''}${outbox ? '\n\nconfig.toml: bật lifecycle outbox ([lifecycle_outbox] path = ~/.codewhale/notifications/outbox.jsonl) để Monitor hiện trạng thái phiên DeepSeek.' : ''}\n\nMỗi file đã có được sao lưu một lần thành <file>.orrery-backup. Trong AGENTS.md chỉ khối Orrery thay đổi.`,
+    syncConfirm: 'Ghi file',
   },
 }
 

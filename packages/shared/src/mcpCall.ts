@@ -24,6 +24,8 @@ export type McpPageCall =
   | { id: string; tool: 'notify_owner'; from: string; cwd: string; text: string; level: AgentNoteLevel; merged: number }
   | { id: string; tool: 'open_in_workspace'; from: string; cwd: string; path: string; line?: number; diff: boolean }
   | { id: string; tool: 'who_is_editing'; from: string; cwd: string; path: string }
+  /** v81: a DeepSeek pane hands its finished work back; `report` was checked by the host (inside cwd, existing .md). */
+  | { id: string; tool: 'hand_back'; from: string; cwd: string; report: string; summary: string }
   | McpRunCall
 
 export type McpPageTool = McpPageCall['tool']
@@ -51,6 +53,8 @@ export type McpPageResult =
   | { ok: true; tool: 'notify_owner'; name: string; terminalId?: string; inbox: boolean }
   | { ok: true; tool: 'open_in_workspace'; paneKey: string; reused: boolean }
   | { ok: true; tool: 'who_is_editing'; repo: boolean; editors: FileEditor[] }
+  /** `origin`: shown name of the pane that will receive the prompt once it is idle. */
+  | { ok: true; tool: 'hand_back'; origin: string }
   | McpRunResult
   | { ok: false; error: McpPageError }
 
@@ -92,6 +96,10 @@ export function parseMcpPageResult(raw: unknown, tool: McpPageTool): McpPageResu
     const terminalId = str(raw.terminalId, 200)
     return name ? { ok: true, tool, name, ...(terminalId ? { terminalId } : {}), inbox: raw.inbox === true } : { ok: false, error: 'failed' }
   }
+  if (tool === 'hand_back') {
+    const origin = cleanNoteText(str(raw.origin, 400))?.slice(0, 80)
+    return origin ? { ok: true, tool, origin } : { ok: false, error: 'failed' }
+  }
   if (tool === 'open_in_workspace') {
     const paneKey = str(raw.paneKey, 100)
     return paneKey ? { ok: true, tool, paneKey, reused: raw.reused === true } : { ok: false, error: 'failed' }
@@ -122,4 +130,13 @@ export function parseAgentNote(raw: unknown): AgentNoteMessage | null {
   const terminalId = str(raw.terminalId, 200)
   const merged = typeof raw.merged === 'number' && Number.isInteger(raw.merged) && raw.merged > 0 && raw.merged < 10_000 ? raw.merged : 0
   return { type: 'agent.note', episode, level: raw.level, text, name: name.slice(0, 80), ...(terminalId ? { terminalId } : {}), merged }
+}
+
+/**
+ * v81: the prompt submitted into the origin pane (owner-approved second exception to "prompts are only prefilled",
+ * docs §11am). Fixed wording: the DeepSeek session only picks the report file and a one-line summary.
+ */
+export function handBackPrompt(report: string, summary: string): string {
+  return `Hand-back from the DeepSeek session: ${summary}
+Read its report ${report}, review the changes it lists and continue the task.`
 }

@@ -111,6 +111,20 @@ describe('presets', () => {
     expect(decodePs(shell.args[3]!)).toBe(PS_CWD_HOOK)
   })
 
+  it('starts codewhale without a prompt and points it at the DeepSeek MCP file', () => {
+    const file = path.resolve('/data/orrery-mcp-deepseek.json')
+    const win = presetCommand('deepseek', 'win32', {}, undefined, undefined, { mcp: true, deepseekMcpConfig: file, name: 'x', sessionId: uuid })
+    expect(decodePs(win.args[3]!).endsWith('; codewhale --skip-onboarding')).toBe(true)
+    expect(win.env).toEqual({ DEEPSEEK_MCP_CONFIG: file })
+    const posix = presetCommand('deepseek', 'linux', { SHELL: '/bin/bash' }, uuid, undefined, { mcp: true, deepseekMcpConfig: file })
+    expect(posix.args[3]).toBe(`codewhale --skip-onboarding -r ${uuid}; exec /bin/bash -l`)
+    expect(posix.env).toEqual({ PROMPT_COMMAND: BASH_PROMPT_COMMAND, DEEPSEEK_MCP_CONFIG: file })
+    const bad = presetCommand('deepseek', 'linux', { SHELL: '/bin/bash' }, '--yolo', undefined, { mcp: false, deepseekMcpConfig: file })
+    expect(bad.args[3]).toBe('codewhale --skip-onboarding; exec /bin/bash -l')
+    expect(bad.env).toEqual({ PROMPT_COMMAND: BASH_PROMPT_COMMAND })
+    expect(presetCommand('claude', 'win32', {}, undefined, undefined, { mcp: true, deepseekMcpConfig: file }).env).toBeUndefined()
+  })
+
   it('accepts only plain pane names', () => {
     for (const ok of ['Review bot', 'api-v2.1', 'Tầng_2', 'a'.repeat(40)]) expect(isPaneName(ok)).toBe(true)
     for (const bad of ['', ' lead', 'trail ', "it's", 'a"b', 'a$b', 'a;b', 'a`b', 'a\nb', '-x', '--dangerously-skip-permissions', '.hidden', 'a'.repeat(41), 42, null]) expect(isPaneName(bad)).toBe(false)

@@ -53,7 +53,14 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 - `reader.ts` `readSessionMeta`, `RolloutTailer` (8 MB tail start).
 - `processes.ts` `listCodexProcesses` / `windowsCodexProcesses`, `modeOfCommandLine`, orphan detection.
 - `link.ts` `matchProcesses`, `claudeTargetFor`, `callerOf`: links a Codex run to the Claude agent that launched it.
+- `processes.ts` also holds the shared walker: `CliProcess`, `listProcessesNamed`, `windowsProcessesNamed`, `unixProcessesNamed`, `parseWindowsRows`, `topLevel` (used by `deepseek/`).
 - `monitor.ts` `CodexMonitor`: watches `sessions/` + `session_index.jsonl`, publishes `codex:<id>` agents under the Claude terminal (or own terminal), limits via `LimitHistory` (`codex-limit-history.json`). Glue: `Monitor.codex` / `claudeTargets`.
+
+## DeepSeek CLI (Codewhale) — `deepseek/` (docs `docs/deepseek-integration.md` Status)
+
+- `outbox.ts` `codewhaleHome`, `outboxPathFrom` (only `[lifecycle_outbox] path`), `parseOutboxLine` (ids / fixed kinds only), `DeepseekThreadState` (turn / stalled / subagents / ended).
+- `processes.ts` `parseCodewhaleArgs` (`-C` / `-r` only), `toDeepseekProcesses`, `listDeepseekProcesses`, `matchDeepseekProcesses` (resume id → workspace → start time → lone process).
+- `monitor.ts` `DeepseekMonitor`: `JsonlTailer` (`fromEnd` 256 KB, `maxLine`) on the outbox, watches its folder + home `config.toml`, publishes `deepseek:<thread_id>` terminals (+ `:main`, `:sub:<id>`), activity `turn.*`; scan on new session + every `processVerifyMs`. Glue: `Monitor.deepseek` (`pidOf` / `cwdOf` / `dismissEnded` / diagnostics), `config.ts` `codewhaleHome` / `deepseek` (`CCM_DEEPSEEK`). `tailer.ts` `TailOptions`. Test `deepseek.test.ts`.
 
 ## Usage, history, limits
 
@@ -70,7 +77,7 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 
 ## Tests
 
-`units`, `tracker` (+ snapshot), `monitor`, `tailer`, `usage`, `extras`, `context`, `codex`, `peers`, `tool-spans`, `job-actions`, `favorites`, `daystart`, `datadir`, `toast`, `toast-electron`, `focus-mac`, `win-procs`, `hardening` (origin, bad URI, port clash), `csp` — all `*.test.ts` in `test/`.
+`units`, `tracker` (+ snapshot), `monitor`, `tailer`, `usage`, `extras`, `context`, `codex`, `deepseek`, `peers`, `tool-spans`, `job-actions`, `favorites`, `daystart`, `datadir`, `toast`, `toast-electron`, `focus-mac`, `win-procs`, `hardening` (origin, bad URI, port clash), `csp` — all `*.test.ts` in `test/`.
 
 ## Hook bridge + heatmap (2026-10-29)
 

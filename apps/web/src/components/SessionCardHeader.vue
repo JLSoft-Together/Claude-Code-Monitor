@@ -6,7 +6,7 @@ import type { TerminalSession } from '@ccm/shared'
 import { openAppKey } from '../lib/platform'
 import { useInlineEdit } from '../composables/useInlineEdit'
 import { useRevealInWorkspace } from '../composables/useRevealInWorkspace'
-import { isCodex } from '../lib/provider'
+import { badgeOf } from '../lib/provider'
 import { statusMeta } from '../lib/status'
 import { displayTitle, isAutoNamed } from '../lib/title'
 import { useConnectionStore } from '../stores/connection'
@@ -29,7 +29,9 @@ const reveal = useRevealInWorkspace()
 const ended = computed(() => props.terminal.status === 'stale')
 const focused = computed(() => ui.focusedTerminalId === props.terminal.id)
 const title = computed(() => displayTitle(props.terminal))
-const codex = computed(() => isCodex(props.terminal))
+// Rename, notes and favourites are kept per Claude session; other CLIs are read-only here.
+const badge = computed(() => badgeOf(props.terminal))
+const codex = computed(() => badge.value !== null)
 const autoNamed = computed(() => !codex.value && isAutoNamed(props.terminal))
 const statusText = computed(() => t(statusMeta(props.terminal.status).labelKey))
 
@@ -110,7 +112,7 @@ defineExpose({
       <Pin v-if="pinned && !ended" :size="13" fill="currentColor" class="text-accent-ink" aria-hidden="true" />
       <Star v-if="starred && terminal.cwd && !codex" :size="13" fill="currentColor" class="text-favorite" aria-hidden="true" />
     </span>
-    <ProviderBadge v-if="codex" :mode="terminal.entrypoint" />
+    <ProviderBadge v-if="badge" :mode="terminal.entrypoint" :provider="badge" />
     <span
       v-if="terminal.kind && terminal.kind !== 'interactive'"
       class="shrink-0 rounded-inner bg-fill px-1.5 py-px font-mono text-2xs text-ink-muted"

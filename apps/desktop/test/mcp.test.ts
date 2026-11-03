@@ -44,13 +44,13 @@ describe('mcp json-rpc', () => {
   it('lists open_session first with a closed schema', async () => {
     const res = await handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, never, '0')
     const tools = (res.json as { result: { tools: (typeof OPEN_SESSION_TOOL)[] } }).result.tools
-    expect(tools.map((t) => t.name)).toEqual(['open_session', 'notify_owner', 'open_in_workspace', 'who_is_editing', 'preview_layout', 'list_servers', 'free_port', 'run_app', 'run_status', 'run_log', 'device_screenshot'])
+    expect(tools.map((t) => t.name)).toEqual(['open_session', 'notify_owner', 'open_in_workspace', 'who_is_editing', 'preview_layout', 'list_servers', 'free_port', 'run_app', 'run_status', 'run_log', 'device_screenshot', 'hand_back'])
     const tool = tools[0]!
     expect(tool.name).toBe('open_session')
     expect(tool.description).toContain('instead of starting a terminal window')
     expect(tool.inputSchema).toMatchObject({ type: 'object', additionalProperties: false })
     expect(Object.keys(tool.inputSchema.properties).sort()).toEqual(['agent', 'cwd', 'name', 'prompt', 'resume'])
-    expect(tool.inputSchema.properties.agent.enum).toEqual(['claude', 'codex', 'shell'])
+    expect(tool.inputSchema.properties.agent.enum).toEqual(['claude', 'codex', 'deepseek', 'shell'])
     expect(tool.inputSchema.properties.prompt.maxLength).toBe(8000)
     expect(tool.annotations).toEqual({ title: 'Open Orrery session', readOnlyHint: false, destructiveHint: false, openWorldHint: false })
   })

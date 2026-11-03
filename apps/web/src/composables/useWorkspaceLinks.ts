@@ -1,4 +1,5 @@
 import { onBeforeUnmount, watch } from 'vue'
+import { isAgentSessionId } from '@ccm/shared'
 import { PtyConnection } from '../lib/ptyClient'
 import { effectiveStatus, runningSubagents } from '../lib/subagents'
 import { useAgentsStore } from '../stores/agents'
@@ -70,7 +71,9 @@ export function useWorkspaceLinks(viewShown: () => boolean): void {
   watch(
     () => workspace.panes.map((p) => {
       const term = p.terminalId ? terminals.byId[p.terminalId] : undefined
-      return [p.key, term?.claudeSessionId ?? term?.codexSessionId] as const
+      // Codewhale's id format is not verified; only a UUID is ever handed to `-r`.
+      const deepseek = isAgentSessionId(term?.deepseekSessionId) ? term?.deepseekSessionId : undefined
+      return [p.key, term?.claudeSessionId ?? term?.codexSessionId ?? deepseek] as const
     }),
     (pairs) => {
       for (const [key, id] of pairs) {

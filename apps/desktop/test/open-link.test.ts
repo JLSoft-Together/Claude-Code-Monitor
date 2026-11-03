@@ -64,6 +64,7 @@ describe('parseOpenLink', () => {
     expect(parsed).toEqual({ preset: 'codex', cwd: POSIX, resume: id })
     expect(Object.keys(parsed ?? {})).toEqual(['preset', 'cwd', 'resume'])
     expect(parseOpenLink(link(`cwd=${enc(POSIX)}&prompt=x`), 'darwin')).toEqual({ preset: 'claude', cwd: POSIX })
+    expect(parseOpenLink(link(`agent=deepseek&cwd=${enc(POSIX)}&resume=${id}`), 'darwin')).toEqual({ preset: 'deepseek', cwd: POSIX, resume: id })
   })
 
   it('refuses a resume id that is not a session uuid or targets a shell', () => {

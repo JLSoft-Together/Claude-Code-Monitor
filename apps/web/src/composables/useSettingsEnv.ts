@@ -3,7 +3,7 @@ import { hasAgentData } from '../lib/agentData'
 import { hasBackup } from '../lib/backup'
 import { hasDisk } from '../lib/buildClean'
 import { hasAwake, hasCapture } from '../lib/capture'
-import { desktop, hasRun, hasTerminals } from '../lib/desktop'
+import { desktop, hasDeepSeek, hasRun, hasTerminals } from '../lib/desktop'
 import { hasGitHub } from '../lib/github'
 import { hasPhone } from '../lib/phone'
 import { isMac } from '../lib/platform'
@@ -33,5 +33,6 @@ export function useSettingsEnv() {
     statusLine: Boolean(extras.statusLineCommand),
     toast: extras.toast === 'on' || extras.toast === 'off',
     notifyData: Boolean(extras.notify),
+    deepseek: hasDeepSeek,
   }))
 }

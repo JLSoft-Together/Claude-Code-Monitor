@@ -51,7 +51,7 @@ function input(over: Partial<RailInput> = {}): RailInput {
     sessionOf: () => undefined,
     factsOf: (d) => FACTS[d],
     labelOf: (p) => p.command ?? (p.kind === 'run' ? 'Run' : 'Shell'),
-    agentLabel: (p) => ({ claude: 'Claude', codex: 'Codex', shell: 'Shell' })[p],
+    agentLabel: (p) => ({ claude: 'Claude', codex: 'Codex', deepseek: 'DeepSeek', shell: 'Shell' })[p],
     history: [],
     order: [],
     ...over,

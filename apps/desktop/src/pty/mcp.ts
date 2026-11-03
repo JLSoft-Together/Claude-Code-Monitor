@@ -7,6 +7,9 @@ export type { OpenArgs, OpenOutcome, ToolHost } from './mcpTools/types'
 export const MCP_PROTOCOL_VERSION = '2025-06-18'
 
 export const MCP_INSTRUCTIONS =
+  'This server connects you to the Orrery workspace you run in. Use open_session to open new Claude Code, Codex, DeepSeek or shell sessions as panes instead of launching terminal windows; notify_owner to leave the user a short note; open_in_workspace to show the user a file or its diff; who_is_editing before editing a file other sessions may be changing; run_app, run_status and run_log to run the project app and read its log; device_screenshot to see a connected device; preview_layout to render an Android XML layout; list_servers and free_port for ports your session left listening; hand_back, in a DeepSeek session another agent opened, to return the finished work to that agent.'
+
+const MCP_INSTRUCTIONS_NO_DEEPSEEK =
   'This server connects you to the Orrery workspace you run in. Use open_session to open new Claude Code, Codex or shell sessions as panes instead of launching terminal windows; notify_owner to leave the user a short note; open_in_workspace to show the user a file or its diff; who_is_editing before editing a file other sessions may be changing; run_app, run_status and run_log to run the project app and read its log; device_screenshot to see a connected device; preview_layout to render an Android XML layout; list_servers and free_port for ports your session left listening.'
 
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -33,7 +36,7 @@ async function answer(msg: unknown, host: ToolHost, version: string, tools: read
         protocolVersion: typeof asked === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'orrery', version },
-        instructions: MCP_INSTRUCTIONS,
+        instructions: tools.some((t) => t.def.name === 'hand_back') ? MCP_INSTRUCTIONS : MCP_INSTRUCTIONS_NO_DEEPSEEK,
       })
     }
     case 'ping':

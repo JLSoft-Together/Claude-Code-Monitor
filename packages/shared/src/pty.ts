@@ -1,5 +1,5 @@
 /** Fixed launch presets: the client only ever names one of these, never a command string. */
-export const PTY_PRESETS = ['claude', 'codex', 'shell'] as const
+export const PTY_PRESETS = ['claude', 'codex', 'deepseek', 'shell'] as const
 export type PtyPreset = (typeof PTY_PRESETS)[number]
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -78,7 +78,7 @@ export interface PaneOpenRequest {
   resume?: string
 }
 
-export type PaneOpenError = 'unavailable' | 'limit' | 'cwd' | 'preset' | 'rate' | 'failed' | 'resume' | 'live'
+export type PaneOpenError = 'unavailable' | 'limit' | 'cwd' | 'preset' | 'rate' | 'failed' | 'resume' | 'live' | 'setup'
 
 export type PaneOpenResult = { ok: true; paneKey: string } | { ok: false; error: PaneOpenError }
 

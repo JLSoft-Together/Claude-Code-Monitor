@@ -23,11 +23,13 @@ import { hasGit, isBranchName, isDir, isInside, parseWorktrees, readHeadBranch, 
 import { copySetupFiles } from './wtCopy'
 import { parseMcpPageResult, type AgentNoteLevel, type McpPageCall, type McpPageResult } from '../../../../packages/shared/src/mcpCall'
 import { parseMcpDeskResult, type McpDeskCall, type McpDeskResult } from '../../../../packages/shared/src/mcpDesk'
+import { writeDeepseekMcpConfig } from './deepseekMcp'
 import { handleMcp, mcpGate, toOpenResult, type OpenArgs, type OpenOutcome, type ToolHost } from './mcp'
+import { mcpToolsFor } from './mcpTools'
 import { NoteQueue } from './mcpTools/notifyOwner'
 import type { NoteOutcome } from './mcpTools/types'
 import { ownersOf, readPidTable } from './owners'
-import { childEnv, clampDim, earlyExitNote, isPaneName, MCP_CONFIG_JSON, presetCommand, taskkillPath } from './presets'
+import { childEnv, clampDim, codewhalePath, earlyExitNote, isPaneName, MCP_CONFIG_JSON, presetCommand, presetEnabled, taskkillPath } from './presets'
 import { writeShellInit } from './shellInit'
 
 // Native module ships outside the bundle (resources/pty in a packaged app), so it is required by path.
@@ -46,6 +48,10 @@ const RESUME_AT = 128 * 1024
 const INIT_DIR = !IS_WIN && process.env.CCM_PTY_INIT_DIR && writeShellInit(process.env.CCM_PTY_INIT_DIR) ? process.env.CCM_PTY_INIT_DIR : undefined
 const MCP_FILE = process.env.CCM_PTY_MCP_CONFIG ?? ''
 const MCP_READY = writeMcpConfig(MCP_FILE)
+// Owner pause (2026-11-03): no DeepSeek pane, MCP tool or Codewhale run until CCM_DEEPSEEK_FEATURE=1.
+const DEEPSEEK = process.env.CCM_DEEPSEEK_FEATURE === '1'
+const MCP_TOOL_SET = mcpToolsFor(DEEPSEEK)
+const DEEPSEEK_MCP_FILE = MCP_FILE ? path.join(path.dirname(MCP_FILE), 'orrery-mcp-deepseek.json') : ''
 const APP_VERSION = process.env.CCM_APP_VERSION ?? '0'
 const BODY_MAX = 64 * 1024
 const TICKET_TTL_MS = 60_000
@@ -160,8 +166,10 @@ function flush(s: Session): void {
 function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket, integrate = false): Session {
   const token = randomBytes(32).toString('hex')
   const shellNonce = preset === 'shell' && integrate ? randomBytes(16).toString('hex') : undefined
-  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp: MCP_READY, shellNonce })
-  const env = { ...childEnv(process.env), ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
+  const mcp = preset === 'deepseek' ? DEEPSEEK && MCP_READY && writeDeepseekMcpConfig(DEEPSEEK_MCP_FILE, PORT, process.env, os.homedir()) : MCP_READY
+  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp, deepseekMcpConfig: DEEPSEEK_MCP_FILE, shellNonce })
+  const pathFix = preset === 'deepseek' && DEEPSEEK ? codewhalePath(process.env, process.platform, os.homedir(), isDir) : {}
+  const env = { ...childEnv(process.env), ...pathFix, ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
   const startedAt = Date.now()
   const s: Session = { id: randomUUID(), preset, cwd, liveCwd: null, proc, pid: proc.pid, ring: '', pending: [], timer: null, ws: null, exitCode: null, exitedAt: 0, paused: false, branch: null, headWatcher: null, branchGen: 0, token, opens: [], siNonce: spec.integrated && shellNonce ? shellNonce : null, rates: new Map(), notes: null }
@@ -378,7 +386,7 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
     return target === current ? null : current
   }
   if (msg.t === 'spawn' && !current) {
-    if (!isPtyPreset(msg.preset)) return send(ws, { t: 'error', message: 'preset' }), null
+    if (!isPtyPreset(msg.preset) || !presetEnabled(msg.preset, DEEPSEEK)) return send(ws, { t: 'error', message: 'preset' }), null
     const cwd = resolveCwd(msg.cwd)
     if (!cwd) return send(ws, { t: 'error', message: 'cwd' }), null
     if (liveCount() >= MAX_LIVE) return send(ws, { t: 'error', message: 'limit' }), null
@@ -442,7 +450,7 @@ function askPage(req: PaneOpenRequest): Promise<PaneOpenResult> {
 
 async function openFrom(s: Session, args: OpenArgs): Promise<OpenOutcome> {
   const preset = args.agent ?? 'claude'
-  if (!isPtyPreset(preset)) return { ok: false, error: 'preset' }
+  if (!isPtyPreset(preset) || !presetEnabled(preset, DEEPSEEK)) return { ok: false, error: 'preset' }
   const asked = args.cwd
   const cwd = asked === undefined || asked === null ? resolveCwd(s.liveCwd ?? s.cwd) : typeof asked === 'string' && path.isAbsolute(asked) ? resolveCwd(asked) : null
   if (!cwd) return { ok: false, error: 'cwd' }
@@ -505,6 +513,7 @@ async function noteFrom(s: Session, text: string, level: AgentNoteLevel, merged:
 function toolHost(s: Session): ToolHost {
   return {
     root: s.cwd,
+    preset: s.preset,
     take: (key, max, windowMs) => {
       const now = Date.now()
       const times = (s.rates.get(key) ?? []).filter((t) => now - t < windowMs)
@@ -553,7 +562,7 @@ async function onRequest(req: http.IncomingMessage, res: http.ServerResponse): P
   } catch {
     return replyJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
   }
-  const out = await handleMcp(body, toolHost(caller), APP_VERSION)
+  const out = await handleMcp(body, toolHost(caller), APP_VERSION, MCP_TOOL_SET)
   if (out.json === undefined) res.writeHead(out.status).end()
   else replyJson(res, out.status, out.json)
 }

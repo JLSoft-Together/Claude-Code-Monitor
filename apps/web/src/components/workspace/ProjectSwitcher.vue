@@ -106,7 +106,7 @@ function choose(hit: ProjectHit | undefined, newTab: boolean): void {
   restoreFocus = null
   emit('close')
   if (tabKey) workspace.activateTab(tabKey)
-  else workspace.open(workspace.preset, entry.dir, undefined, { tab: newTab })
+  else workspace.launch(workspace.preset, entry.dir, undefined, { tab: newTab })
 }
 
 function forget(hit: ProjectHit | undefined): void {

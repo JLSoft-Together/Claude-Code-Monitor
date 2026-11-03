@@ -13,7 +13,7 @@ export function useOpenProject() {
     picking.value = true
     try {
       const dir = await desktop.pickFolder(workspace.recentDirs[0])
-      if (dir) workspace.open(workspace.preset, dir)
+      if (dir) workspace.launch(workspace.preset, dir)
     } finally {
       picking.value = false
     }

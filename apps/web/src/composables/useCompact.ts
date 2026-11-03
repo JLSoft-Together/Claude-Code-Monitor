@@ -1,9 +1,13 @@
 import { effectScope, ref, watch } from 'vue'
+import type { PtyPreset } from '@ccm/shared'
 import { useI18n } from 'vue-i18n'
 import { compactState, compactTick, handoffFile, type CompactFlow, type CompactState } from '../lib/compactHandoff'
 import { desktop } from '../lib/desktop'
 import { isTerm, presetOf, useWorkspaceStore, type Pane } from '../stores/workspace'
 import { usePaneInfo } from './usePaneInfo'
+
+// The flow waits on collector status and the agent's own /compact; DeepSeek panes have neither yet.
+const COMPACTS = new Set<PtyPreset>(['claude', 'codex'])
 
 function createCompact() {
   const { t } = useI18n()
@@ -20,7 +24,7 @@ function createCompact() {
   const compactionsOf = (pane: Pane): number => info.sessionOf(pane)?.compactions ?? 0
 
   function stateOf(pane: Pane | undefined): CompactState | null {
-    if (!pane || !isTerm(pane) || presetOf(pane) === 'shell') return null
+    if (!pane || !isTerm(pane) || !COMPACTS.has(presetOf(pane))) return null
     return compactState(info.statusOf(pane), pane.compact)
   }
 

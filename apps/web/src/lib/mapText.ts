@@ -14,10 +14,11 @@ export interface MapTextLabels {
   codexRun: string
 }
 
-type Term = Pick<TerminalSession, 'title' | 'alias' | 'cwd' | 'gitBranch' | 'claudeSessionId' | 'codexSessionId' | 'provider' | 'status'>
+type Term = Pick<TerminalSession, 'title' | 'alias' | 'cwd' | 'gitBranch' | 'claudeSessionId' | 'codexSessionId' | 'deepseekSessionId' | 'provider' | 'status'>
 
 export function sessionIdOf(terminal: Term | undefined): string | undefined {
   if (!terminal) return undefined
+  if (terminal.provider === 'deepseek') return terminal.deepseekSessionId
   return isCodex(terminal) ? terminal.codexSessionId : terminal.claudeSessionId
 }
 

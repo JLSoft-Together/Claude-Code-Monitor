@@ -707,7 +707,7 @@ watch(
 
 function launch(cwd: string | undefined): void {
   closeMenu(false)
-  workspace.open(workspace.preset, cwd)
+  workspace.launch(workspace.preset, cwd)
 }
 
 async function openMenu(): Promise<void> {

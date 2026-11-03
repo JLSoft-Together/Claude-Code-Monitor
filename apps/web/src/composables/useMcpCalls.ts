@@ -1,4 +1,5 @@
-import { cleanNoteText, isAgentNoteLevel, type McpPageCall, type McpPageResult, type TerminalSession } from '@ccm/shared'
+import { cleanNoteText, cleanPanePrompt, handBackPrompt, isAgentNoteLevel, type McpPageCall, type McpPageResult, type TerminalSession } from '@ccm/shared'
+import { i18n } from '../i18n'
 import { desktop } from '../lib/desktop'
 import { createRunCalls } from '../lib/mcpRun'
 import { rootKey, type CheckoutChanges } from '../lib/overlap'
@@ -7,14 +8,16 @@ import { whoIsEditing, type EditorPane } from '../lib/whoIsEditing'
 import { useInboxStore } from '../stores/inbox'
 import { useRunStore } from '../stores/run'
 import { useTerminalsStore } from '../stores/terminals'
+import { useToastsStore } from '../stores/toasts'
 import { isTerm, presetOf, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
 
 const DIRS_MAX = 12
+const HAND_BACK_TOAST_MS = 8000
 let installed = false
 
 /**
  * Page side of the v80 MCP tools (docs §11w). The PTY host already checked the token, the arguments and that
- * paths are inside the caller's project; nothing here submits input to any agent.
+ * paths are inside the caller's project. Only hand_back submits input, into the pane that opened the caller (docs §11am).
  */
 export function installMcpCalls(): void {
   if (installed || !desktop?.onMcpCall) return
@@ -22,6 +25,7 @@ export function installMcpCalls(): void {
   const workspace = useWorkspaceStore()
   const terminals = useTerminalsStore()
   const inbox = useInboxStore()
+  const toasts = useToastsStore()
   const runCalls = createRunCalls(useRunStore())
 
   const callerOf = (from: string): Pane | undefined => (from ? workspace.panes.find((p) => isTerm(p) && p.sessionId === from) : undefined)
@@ -47,6 +51,16 @@ export function installMcpCalls(): void {
     return typeof out === 'object' ? { ok: true, tool: 'open_in_workspace', ...out } : { ok: false, error: out }
   }
 
+  function handBack(call: Extract<McpPageCall, { tool: 'hand_back' }>): McpPageResult {
+    const prompt = cleanPanePrompt(handBackPrompt(call.report, call.summary))
+    if (!prompt) return { ok: false, error: 'failed' }
+    const out = workspace.handBack(call.from, prompt)
+    if (typeof out === 'string') return { ok: false, error: out }
+    const origin = nameOf(out)
+    toasts.push({ kind: 'info', text: i18n.global.t('workspace.handBack.said', { name: origin }), detail: call.report, timeoutMs: HAND_BACK_TOAST_MS })
+    return { ok: true, tool: 'hand_back', origin }
+  }
+
   async function who(call: Extract<McpPageCall, { tool: 'who_is_editing' }>): Promise<McpPageResult> {
     const caller = callerOf(call.from)
     const callerDir = caller ? (workCwd(caller) ?? caller.cwd) : undefined
@@ -70,6 +84,7 @@ export function installMcpCalls(): void {
     if (call.tool === 'notify_owner') return notify(call)
     if (call.tool === 'open_in_workspace') return show(call)
     if (call.tool === 'who_is_editing') return who(call)
+    if (call.tool === 'hand_back') return handBack(call)
     if (call.tool === 'run_app' || call.tool === 'run_status' || call.tool === 'run_log') {
       if (!callerOf(call.from)) return { ok: false, error: 'caller' }
       return call.tool === 'run_app' ? runCalls.app(call) : call.tool === 'run_status' ? runCalls.status(call) : runCalls.log(call)

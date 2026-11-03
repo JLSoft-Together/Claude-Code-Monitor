@@ -1,14 +1,18 @@
 import { PANE_OPEN_PROMPT_MAX, type PaneOpenError, type PaneOpenResult, type PtyPreset } from '../../../../../packages/shared/src/pty'
 import { toolResult, type McpTool, type OpenOutcome, type ToolDef } from './types'
 
-export const OPEN_SESSION_TOOL = {
+/** `deepseek` off (v81 owner pause, `CCM_DEEPSEEK_FEATURE` unset): agents cannot open DeepSeek panes. */
+export const openSessionDef = (deepseek: boolean) =>
+  ({
   name: 'open_session',
   description:
-    'Open a new Claude Code (default), Codex or shell session as a pane in the Orrery workspace, next to the calling session. Use it instead of starting a terminal window (wt.exe, powershell, cmd start, Terminal.app, iTerm) whenever the user asks to open, start or spawn another session, agent or terminal.',
+    deepseek
+      ? 'Open a new Claude Code (default), Codex, DeepSeek (Codewhale) or shell session as a pane in the Orrery workspace, next to the calling session. Use it instead of starting a terminal window (wt.exe, powershell, cmd start, Terminal.app, iTerm) whenever the user asks to open, start or spawn another session, agent or terminal. DeepSeek is for side code, generating tests and running the clone-app-re skill; when you hand it work, the prompt should state the goal, the files it may change, the test command and when it is done, and ask it to call hand_back when finished so its report comes back to you.'
+      : 'Open a new Claude Code (default), Codex or shell session as a pane in the Orrery workspace, next to the calling session. Use it instead of starting a terminal window (wt.exe, powershell, cmd start, Terminal.app, iTerm) whenever the user asks to open, start or spawn another session, agent or terminal.',
   inputSchema: {
     type: 'object',
     properties: {
-      agent: { type: 'string', enum: ['claude', 'codex', 'shell'], default: 'claude', description: 'Program to run in the new pane.' },
+      agent: { type: 'string', enum: deepseek ? ['claude', 'codex', 'deepseek', 'shell'] : ['claude', 'codex', 'shell'], default: 'claude', description: 'Program to run in the new pane.' },
       cwd: { type: 'string', description: "Absolute path of an existing local folder. Defaults to the calling session's current folder." },
       prompt: {
         type: 'string',
@@ -19,25 +23,29 @@ export const OPEN_SESSION_TOOL = {
       resume: {
         type: 'string',
         description:
-          'Session id (UUID) of an earlier Claude Code or Codex session to continue instead of starting a new one; cwd must be the project folder of that session. If an Orrery pane already runs it, that pane is shown instead.',
+          'Session id (UUID) of an earlier Claude Code, Codex or DeepSeek session to continue instead of starting a new one; cwd must be the project folder of that session. If an Orrery pane already runs it, that pane is shown instead.',
       },
     },
     additionalProperties: false,
   },
   annotations: { title: 'Open Orrery session', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-} satisfies ToolDef
+}) satisfies ToolDef
 
-const LABELS: Record<PtyPreset, string> = { claude: 'Claude Code', codex: 'Codex', shell: 'a shell' }
+export const OPEN_SESSION_TOOL = openSessionDef(true)
+
+const LABELS: Record<PtyPreset, string> = { claude: 'Claude Code', codex: 'Codex', deepseek: 'DeepSeek (Codewhale)', shell: 'a shell' }
 
 const ERRORS: Record<PaneOpenError, string> = {
   limit: 'Orrery already runs 16 terminals; the user has to close one first.',
   cwd: 'That folder does not exist or is not allowed; cwd must be an absolute path to an existing local folder.',
   rate: 'Too many sessions were opened from this pane in the last minute; wait before opening another one.',
   unavailable: 'The Orrery window is not ready to open a pane right now.',
-  preset: 'Unknown agent; use claude, codex or shell.',
+  preset: 'Unknown agent; use claude, codex or shell (deepseek only while the user has it turned on).',
   failed: 'Orrery could not open the pane.',
-  resume: 'resume must be the UUID of a Claude Code or Codex session.',
+  resume: 'resume must be the UUID of a Claude Code, Codex or DeepSeek session.',
   live: 'That session is still running in another terminal; it has to be closed there first, two instances would write into the same transcript.',
+  setup:
+    'DeepSeek (Codewhale) is not installed or not logged in on this machine; Orrery showed the user a notice with a button to the setup page. Do the task yourself or ask the user to finish the setup, do not open an external terminal.',
 }
 
 const PANE_ERRORS = Object.keys(ERRORS)

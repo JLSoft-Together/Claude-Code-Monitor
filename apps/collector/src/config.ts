@@ -1,12 +1,16 @@
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defaultDataDir } from './datadir'
+import { codewhaleHome } from './deepseek/outbox'
 
 export interface CollectorConfig {
   claudeRoot: string
   codexHome: string
   codex: boolean
+  codewhaleHome: string
+  deepseek: boolean
   host: string
   port: number
   staleTtlMs: number
@@ -46,6 +50,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, platform: NodeJ
     claudeRoot: env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
     codexHome: env.CODEX_HOME || path.join(os.homedir(), '.codex'),
     codex: env.CCM_CODEX !== '0',
+    codewhaleHome: codewhaleHome(env, existsSync),
+    deepseek: env.CCM_DEEPSEEK !== '0',
     host: '127.0.0.1',
     port: intFromEnv(env.CCM_PORT, 4317),
     staleTtlMs: intFromEnv(env.CCM_STALE_TTL_MIN, 120) * 60_000,

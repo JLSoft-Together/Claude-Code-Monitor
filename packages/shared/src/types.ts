@@ -17,7 +17,7 @@ export type AgentStatus =
 export type AgentRole = 'main' | 'subagent'
 
 /** Which CLI produced the session / agent; absent means Claude Code. */
-export type Provider = 'claude' | 'codex'
+export type Provider = 'claude' | 'codex' | 'deepseek'
 
 export interface TerminalSession {
   id: string
@@ -39,6 +39,8 @@ export interface TerminalSession {
   /** Codex thread id (rollout file name) and CLI version, for Codex sessions. */
   codexSessionId?: string
   codexVersion?: string
+  /** DeepSeek CLI (Codewhale) session id from its lifecycle outbox (`thread_id`). */
+  deepseekSessionId?: string
 
   rawStatus?: string
   status: TerminalStatus
@@ -164,6 +166,11 @@ export type ActivityKind =
   | 'peer.message'
   /** v76 R5: a tool call touched a sensitive file or ran a risky command (warning only). */
   | 'sensitive'
+  /** DeepSeek sessions (lifecycle outbox): a turn began / ended. */
+  | 'turn.started'
+  | 'turn.completed'
+  | 'turn.failed'
+  | 'turn.interrupted'
 
 export interface ActivityEvent {
   id: string
@@ -447,6 +454,7 @@ export interface Diagnostics {
   watchers: { sessions: boolean; projects: boolean }
   verifyProcesses: boolean
   codex?: { home: string; watching: boolean; threads: number; processes: number }
+  deepseek?: { outbox: string | null; threads: number; processes: number }
   sessions: { live: number; ended: number }
   statusLine: { reports: number; lastAt?: string }
   usage?: UsageScan

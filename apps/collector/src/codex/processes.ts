@@ -93,29 +93,40 @@ export function modeOfCommandLine(cmd: string): { mode: ProcessMode; resumeId?: 
   return { mode: 'tui' }
 }
 
-/** Drops helper processes started by another codex process (sandbox runners re-exec the same binary). */
-function topLevel(list: CodexProcess[]): CodexProcess[] {
+/** Drops helper processes started by another process of the same CLI (sandbox runners re-exec the same binary). */
+export function topLevel<T extends { pid: number; ancestors: number[] }>(list: T[]): T[] {
   const pids = new Set(list.map((p) => p.pid))
   return list.filter((p) => !p.ancestors.some((a) => pids.has(a)))
 }
 
-const WINDOWS_SCRIPT = [
-  `$all = @{}`,
-  `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,Name | ForEach-Object { $all[[int]$_.ProcessId] = $_ }`,
-  `$out = @(Get-CimInstance Win32_Process -Filter "Name='codex.exe'" -Property ProcessId,ParentProcessId,CreationDate,CommandLine | ForEach-Object {`,
-  `  $anc = New-Object System.Collections.Generic.List[int]; $c = $_; $cut = $false`,
-  `  for ($i = 0; $i -lt ${MAX_ANCESTORS}; $i++) { $p = $all[[int]$c.ParentProcessId]; if (-not $p -or $p.CreationDate -gt $c.CreationDate) { $cut = [int]$c.ParentProcessId -gt 4; break }; $anc.Add([int]$p.ProcessId); $c = $p }`,
-  `  [pscustomobject]@{ pid = [int]$_.ProcessId; ft = $_.CreationDate.ToFileTimeUtc().ToString(); anc = $anc.ToArray(); cut = $cut; top = [string]$c.Name; cmd = [string]$_.CommandLine }`,
-  `})`,
-  `ConvertTo-Json -Compress -Depth 3 -InputObject $out`,
-].join('\n')
+/** A process of one CLI with its command line; callers derive what they keep from `cmd` and drop it. */
+export interface CliProcess {
+  pid: number
+  /** Creation time in ms (1 s resolution on macOS / Linux). */
+  start: number
+  ancestors: number[]
+  orphan: boolean
+  cmd: string
+}
 
-export function parseWindowsProcesses(stdout: string): CodexProcess[] {
+const cimScript = (exeNames: readonly string[]): string =>
+  [
+    `$all = @{}`,
+    `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,Name | ForEach-Object { $all[[int]$_.ProcessId] = $_ }`,
+    `$out = @(Get-CimInstance Win32_Process -Filter "${exeNames.map((n) => `Name='${n}'`).join(' OR ')}" -Property ProcessId,ParentProcessId,CreationDate,CommandLine | ForEach-Object {`,
+    `  $anc = New-Object System.Collections.Generic.List[int]; $c = $_; $cut = $false`,
+    `  for ($i = 0; $i -lt ${MAX_ANCESTORS}; $i++) { $p = $all[[int]$c.ParentProcessId]; if (-not $p -or $p.CreationDate -gt $c.CreationDate) { $cut = [int]$c.ParentProcessId -gt 4; break }; $anc.Add([int]$p.ProcessId); $c = $p }`,
+    `  [pscustomobject]@{ pid = [int]$_.ProcessId; ft = $_.CreationDate.ToFileTimeUtc().ToString(); anc = $anc.ToArray(); cut = $cut; top = [string]$c.Name; cmd = [string]$_.CommandLine }`,
+    `})`,
+    `ConvertTo-Json -Compress -Depth 3 -InputObject $out`,
+  ].join('\n')
+
+export function parseWindowsRows(stdout: string): CliProcess[] {
   const text = stdout.trim()
   if (!text) return []
   const parsed: unknown = JSON.parse(text)
   const rows = Array.isArray(parsed) ? parsed : [parsed]
-  const out: CodexProcess[] = []
+  const out: CliProcess[] = []
   for (const row of rows) {
     if (typeof row !== 'object' || row === null) continue
     const r = row as Record<string, unknown>
@@ -124,24 +135,30 @@ export function parseWindowsProcesses(stdout: string): CodexProcess[] {
     out.push({
       pid: r.pid,
       start: Number(BigInt(r.ft) / 10_000n - FILETIME_EPOCH_OFFSET),
-      ...modeOfCommandLine(typeof r.cmd === 'string' ? r.cmd : ''),
+      cmd: typeof r.cmd === 'string' ? r.cmd : '',
       ancestors: anc.filter((a): a is number => typeof a === 'number' && a > 0),
       orphan: r.cut === true && isShellish(typeof r.top === 'string' ? r.top : undefined),
     })
   }
-  return topLevel(out)
+  return out
+}
+
+const toCodex = ({ cmd, ...p }: CliProcess): CodexProcess => ({ ...p, ...modeOfCommandLine(cmd) })
+
+export function parseWindowsProcesses(stdout: string): CodexProcess[] {
+  return topLevel(parseWindowsRows(stdout).map(toCodex))
 }
 
 /**
- * The CIM script's walk over a native table. Null when a codex.exe can't be opened (elevated / other user): the
- * caller then asks CIM, which reads every process.
+ * The CIM script's walk over a native table, for exe names (lower case) in `exeNames`. Null when one of them can't be
+ * opened (elevated / other user): the caller then asks CIM, which reads every process.
  */
-export function windowsCodexProcesses(table: WinProc[], commandLine: (pid: number) => string | null): CodexProcess[] | null {
+export function windowsProcessesNamed(table: WinProc[], exeNames: ReadonlySet<string>, commandLine: (pid: number) => string | null): CliProcess[] | null {
   const all = new Map(table.map((p) => [p.pid, p]))
   const newer = (a: WinProc, b: WinProc): boolean => a.start !== null && b.start !== null && a.start > b.start
-  const out: CodexProcess[] = []
+  const out: CliProcess[] = []
   for (const proc of table) {
-    if (proc.name.toLowerCase() !== 'codex.exe') continue
+    if (!exeNames.has(proc.name.toLowerCase())) continue
     const cmd = proc.start === null ? null : commandLine(proc.pid)
     if (proc.start === null || cmd === null) return null
     const ancestors: number[] = []
@@ -159,18 +176,26 @@ export function windowsCodexProcesses(table: WinProc[], commandLine: (pid: numbe
     out.push({
       pid: proc.pid,
       start: Number(proc.start / 10_000n - FILETIME_EPOCH_OFFSET),
-      ...modeOfCommandLine(cmd),
+      cmd,
       ancestors: ancestors.filter((a) => a > 0),
       orphan: cut && isShellish(cur.name),
     })
   }
-  return topLevel(out)
+  return out
+}
+
+const CODEX_EXE = ['codex.exe']
+const CODEX_NAMES = ['codex']
+
+export function windowsCodexProcesses(table: WinProc[], commandLine: (pid: number) => string | null): CodexProcess[] | null {
+  const rows = windowsProcessesNamed(table, new Set(CODEX_EXE), commandLine)
+  return rows && topLevel(rows.map(toCodex))
 }
 
 const PS_ALL_ROW = /^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d\d:\d\d:\d\d\s+\d{4})\s+(.+)$/
 const PS_ARGS_ROW = /^\s*(\d+)\s+(.*)$/
 
-interface PsRow {
+export interface PsRow {
   ppid: number
   start: number
   name: string
@@ -189,15 +214,15 @@ export function parsePsAll(stdout: string): Map<number, PsRow> {
   return rows
 }
 
-export function unixCodexProcesses(all: Map<number, PsRow>, argsOut: string): CodexProcess[] {
+export function unixProcessesNamed(all: Map<number, PsRow>, argsOut: string, names: ReadonlySet<string>): CliProcess[] {
   const args = new Map<number, string>()
   for (const line of argsOut.split(/\r?\n/)) {
     const m = PS_ARGS_ROW.exec(line)
     if (m) args.set(Number(m[1]), m[2]!)
   }
-  const out: CodexProcess[] = []
+  const out: CliProcess[] = []
   for (const [pid, row] of all) {
-    if (row.name !== 'codex') continue
+    if (!names.has(row.name)) continue
     const ancestors: number[] = []
     let cur = row
     let cut = false
@@ -211,9 +236,13 @@ export function unixCodexProcesses(all: Map<number, PsRow>, argsOut: string): Co
       ancestors.push(cur.ppid)
       cur = parent
     }
-    out.push({ pid, start: row.start, ...modeOfCommandLine(args.get(pid) ?? ''), ancestors, orphan: cut && isShellish(cur.name) })
+    out.push({ pid, start: row.start, cmd: args.get(pid) ?? '', ancestors, orphan: cut && isShellish(cur.name) })
   }
-  return topLevel(out)
+  return out
+}
+
+export function unixCodexProcesses(all: Map<number, PsRow>, argsOut: string): CodexProcess[] {
+  return topLevel(unixProcessesNamed(all, argsOut, new Set(CODEX_NAMES)).map(toCodex))
 }
 
 function run(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string | null> {
@@ -224,16 +253,19 @@ function run(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<str
   })
 }
 
-/** All running Codex CLI processes, or null when the platform query failed (callers keep their last view). */
-export async function listCodexProcesses(platform: NodeJS.Platform = process.platform): Promise<CodexProcess[] | null> {
+/**
+ * Processes of one CLI by exe name (Windows, lower case with `.exe`) or `comm` (macOS / Linux), command lines
+ * included; null when the platform query failed (callers keep their last view).
+ */
+export async function listProcessesNamed(names: { win: readonly string[]; unix: readonly string[] }, platform: NodeJS.Platform = process.platform): Promise<CliProcess[] | null> {
   if (platform === 'win32') {
     const table = nativeProcessTable()
-    const native = table && windowsCodexProcesses(table, nativeCommandLine)
+    const native = table && windowsProcessesNamed(table, new Set(names.win), nativeCommandLine)
     if (native) return native
-    const out = await run(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_SCRIPT])
+    const out = await run(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', cimScript(names.win)])
     if (out === null) return null
     try {
-      return parseWindowsProcesses(out)
+      return parseWindowsRows(out)
     } catch {
       return null
     }
@@ -243,7 +275,14 @@ export async function listCodexProcesses(platform: NodeJS.Platform = process.pla
   const all = await run('ps', ['-A', '-o', 'pid=,ppid=,lstart=,comm='], env)
   if (all === null) return null
   const table = parsePsAll(all)
-  const pids = [...table].filter(([, r]) => r.name === 'codex').map(([pid]) => pid)
+  const wanted = new Set(names.unix)
+  const pids = [...table].filter(([, r]) => wanted.has(r.name)).map(([pid]) => pid)
   const argsOut = pids.length ? ((await run('ps', ['-o', 'pid=,args=', '-p', pids.join(',')], env)) ?? '') : ''
-  return unixCodexProcesses(table, argsOut)
+  return unixProcessesNamed(table, argsOut, wanted)
+}
+
+/** All running Codex CLI processes, or null when the platform query failed (callers keep their last view). */
+export async function listCodexProcesses(platform: NodeJS.Platform = process.platform): Promise<CodexProcess[] | null> {
+  const rows = await listProcessesNamed({ win: CODEX_EXE, unix: CODEX_NAMES }, platform)
+  return rows && topLevel(rows.map(toCodex))
 }

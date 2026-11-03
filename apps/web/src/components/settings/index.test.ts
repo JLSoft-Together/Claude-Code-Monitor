@@ -26,6 +26,7 @@ const all: SettingsEnv = {
   statusLine: true,
   toast: true,
   notifyData: true,
+  deepseek: true,
 }
 
 function translator(locale: 'en' | 'vi') {

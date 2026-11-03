@@ -64,6 +64,7 @@ import uiV80Links from './ui-v80-links'
 import uiV80Palette from './ui-v80-palette'
 import uiV80Wp1 from './ui-v80-wp1'
 import uiV80Toast from './ui-v80-toast'
+import deepseekV81 from './deepseek-v81'
 import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
@@ -129,6 +130,7 @@ const vi: typeof en = {
   ...uiV80Palette.vi,
   ...uiV80Wp1.vi,
   ...uiV80Toast.vi,
+  ...deepseekV81.vi,
   ...captureV76.vi,
   ...sensitiveV76.vi,
   ...agentDataV76.vi,
@@ -181,7 +183,8 @@ const vi: typeof en = {
     restart: 'Chạy lại',
     reconnect: 'Kết nối lại',
     ended: '(đã kết thúc)',
-    preset: { claude: 'Claude Code', codex: 'Codex', shell: 'Shell' },
+    preset: { claude: 'Claude Code', codex: 'Codex', deepseek: 'DeepSeek', shell: 'Shell' },
+    handBack: { said: 'DeepSeek đã bàn giao kết quả cho {name}' },
     state: {
       starting: 'Đang khởi động…',
       parked: 'Đang ngủ',
@@ -483,7 +486,9 @@ const vi: typeof en = {
   provider: {
     claude: 'Claude',
     codex: 'Codex',
+    deepseek: 'DeepSeek',
     codexTitle: 'Codex CLI',
+    deepseekTitle: 'DeepSeek CLI (Codewhale)',
     mode: { exec: 'exec', tui: 'terminal', plugin: 'plugin', subagent: 'agent con', 'app-server': 'app server' },
     modeTitle: {
       exec: 'Lượt chạy Codex bằng codex exec',
@@ -589,6 +594,10 @@ const vi: typeof en = {
     agent_failed: 'Subagent {name} lỗi',
     agent_cancelled: 'Subagent {name} đã dừng',
     codex_started: 'Codex {name} bắt đầu',
+    turn_started: '{title}: bắt đầu lượt',
+    turn_completed: '{title}: xong lượt',
+    turn_failed: '{title}: lượt bị lỗi',
+    turn_interrupted: '{title}: lượt bị ngắt',
     codex_completed: 'Codex {name} completed',
     codex_failed: 'Codex {name} lỗi',
     codex_cancelled: 'Codex {name} đã dừng',

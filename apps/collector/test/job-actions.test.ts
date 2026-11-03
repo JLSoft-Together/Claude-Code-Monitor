@@ -57,6 +57,8 @@ describe('Monitor job actions', () => {
     claudeRoot: root,
     codexHome: root,
     codex: false,
+    codewhaleHome: root,
+    deepseek: false,
     host: '127.0.0.1',
     port: 0,
     toast: false,

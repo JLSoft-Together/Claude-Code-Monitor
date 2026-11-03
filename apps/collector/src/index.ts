@@ -30,6 +30,8 @@ import { openFolder } from './opener'
 import { PromptSearcher } from './prompt-search'
 import { CodexMonitor } from './codex/monitor'
 import { listCodexProcesses } from './codex/processes'
+import { DeepseekMonitor } from './deepseek/monitor'
+import { listDeepseekProcesses } from './deepseek/processes'
 import { isPidAlive } from './process'
 import { SENSITIVE_FILE, SensitiveWatch } from './sensitive/watch'
 
@@ -68,6 +70,13 @@ async function main(): Promise<void> {
       () => monitor.claudeTargets(),
       { listProcesses: () => listCodexProcesses(), isPidAlive, now: () => Date.now() },
       codexLimitHistory,
+    )
+  }
+  if (config.deepseek) {
+    monitor.deepseek = new DeepseekMonitor(
+      { codewhaleHome: config.codewhaleHome, staleTtlMs: config.staleTtlMs, reconcileMs: config.reconcileMs, verifyMs: config.processVerifyMs, verifyProcesses: config.verifyProcesses },
+      store,
+      { listProcesses: () => listDeepseekProcesses(), isPidAlive, now: () => Date.now() },
     )
   }
   const sensitive = new SensitiveWatch({ claudeRoot: config.claudeRoot, rootOf: (cwd) => store.projectRoot(cwd) }, path.join(config.dataDir, SENSITIVE_FILE))
@@ -358,6 +367,8 @@ async function main(): Promise<void> {
   }
   if (closing) return
   await monitor.codex?.start()
+  if (closing) return
+  await monitor.deepseek?.start()
   if (closing) return
   await usage.start()
   usageStarted = true

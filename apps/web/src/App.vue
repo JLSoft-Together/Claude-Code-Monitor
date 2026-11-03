@@ -11,6 +11,7 @@ import { useSettingsStore } from './stores/settings'
 import { useTerminalsStore } from './stores/terminals'
 import { useUiStore } from './stores/ui'
 import { useWorkspaceStore } from './stores/workspace'
+import { useDeepSeekStore } from './stores/deepseek'
 import AppHeader from './components/AppHeader.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import OnboardingTour from './components/OnboardingTour.vue'
@@ -27,7 +28,7 @@ import CompactView from './components/CompactView.vue'
 import MonitorView from './components/MonitorView.vue'
 import UsageView from './components/usage/UsageView.vue'
 import HistoryView from './components/history/HistoryView.vue'
-import { desktop, hasExtensions, hasTerminals } from './lib/desktop'
+import { desktop, hasDeepSeek, hasExtensions, hasTerminals } from './lib/desktop'
 import { hasDevices } from './lib/devices'
 import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
 import { useTurnCheckpoints } from './composables/useTurnCheckpoints'
@@ -81,10 +82,14 @@ watch(showWorkspace, (shown) => shown && (workspaceOpened.value = true), { immed
 
 const workspace = useWorkspaceStore()
 const terminals = useTerminalsStore()
+const deepseek = useDeepSeekStore()
+// Warm the launch gate's cache in the background (three short codewhale runs, only when it is installed).
+if (hasDeepSeek && !ui.compact) window.setTimeout(() => void deepseek.refresh().catch(() => null), 4_000)
 const liveElsewhere = (sessionId: string): boolean =>
-  terminals.list.some((t) => (t.claudeSessionId === sessionId || t.codexSessionId === sessionId) && t.status !== 'stale' && !workspace.paneByTerminal.get(t.id))
-desktop?.onPaneOpen?.((req) => {
-  const result = workspace.openFromAgent(req, { liveElsewhere })
+  terminals.list.some((t) => (t.claudeSessionId === sessionId || t.codexSessionId === sessionId || t.deepseekSessionId === sessionId) && t.status !== 'stale' && !workspace.paneByTerminal.get(t.id))
+desktop?.onPaneOpen?.(async (req) => {
+  const setupBlocked = hasDeepSeek && req.preset === 'deepseek' && (await deepseek.gateAgent())
+  const result = workspace.openFromAgent(req, { liveElsewhere, setupBlocked })
   if (!result.ok) return result
   if (req.from) workspaceOpened.value = true
   else ui.setView('workspace')

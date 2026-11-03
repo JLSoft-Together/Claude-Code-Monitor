@@ -6,7 +6,7 @@ import type { TerminalSession } from '@ccm/shared'
 import { AlarmClock, AppWindow, BellOff, BellRing, Hand, Info, LoaderCircle } from 'lucide-vue-next'
 import { duration, now } from '../lib/format'
 import { statusMeta } from '../lib/status'
-import { isCodex } from '../lib/provider'
+import { badgeOf, type BadgeProvider } from '../lib/provider'
 import { displayTitle } from '../lib/title'
 import { waitDisplay } from '../lib/wait'
 import { useAgentsStore } from '../stores/agents'
@@ -46,7 +46,7 @@ interface Row {
   since: number
   job: boolean
   canJump: boolean
-  codex?: boolean
+  badge?: BadgeProvider | null
   mode?: string
 }
 
@@ -66,7 +66,7 @@ function row(x: TerminalSession): Row {
     since,
     job: false,
     canJump: !!x.processId,
-    codex: isCodex(x),
+    badge: badgeOf(x),
     mode: x.entrypoint,
   }
 }
@@ -199,7 +199,7 @@ const openLabel = (r: Row) => (r.canJump ? t('terminal.jump', { title: r.title }
           >
             <StatusIcon :status="r.status" :size="17" />
             <span class="min-w-0 flex-1 truncate text-base font-medium">{{ r.title }}</span>
-            <ProviderBadge v-if="r.codex" variant="short" :mode="r.mode" />
+            <ProviderBadge v-if="r.badge" variant="short" :mode="r.mode" :provider="r.badge" />
             <span v-if="r.detail" class="hidden max-w-[22ch] items-center gap-1 text-sm text-ink-muted sm:inline-flex">
               <component :is="r.icon" v-if="r.icon" :size="14" class="shrink-0" aria-hidden="true" />
               <span class="truncate">{{ r.detail }}</span>

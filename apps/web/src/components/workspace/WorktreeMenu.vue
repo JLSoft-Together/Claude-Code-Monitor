@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Asterisk, Check, GitBranch, GitCompareArrows, GitMerge, Hexagon, LoaderCircle, Plus, SquareTerminal, Trash2 } from 'lucide-vue-next'
+import { Asterisk, Check, Fish, GitBranch, GitCompareArrows, GitMerge, Hexagon, LoaderCircle, Plus, SquareTerminal, Trash2 } from 'lucide-vue-next'
+import { hasDeepSeek } from '../../lib/desktop'
 import type { PtyPreset, PtyServerMessage, PtyWorktree, WorktreeError } from '@ccm/shared'
 import { shortPath } from '../../lib/format'
 import { hasWtCompare, hasWtMerge, wtCompare, wtMerge, type WtCompare } from '../../lib/preview'
@@ -118,6 +119,7 @@ const style = computed(() => {
 const presetOptions = computed(() => [
   { value: 'claude' as PtyPreset, label: t('workspace.preset.claude'), icon: Asterisk, iconClass: 'text-agent-claude' },
   { value: 'codex' as PtyPreset, label: t('workspace.preset.codex'), icon: Hexagon, iconClass: 'text-agent-codex' },
+  ...(hasDeepSeek ? [{ value: 'deepseek' as PtyPreset, label: t('workspace.preset.deepseek'), icon: Fish, iconClass: 'text-ink' }] : []),
   { value: 'shell' as PtyPreset, label: t('workspace.preset.shell'), icon: SquareTerminal, iconClass: 'text-agent-shell' },
 ])
 
@@ -147,7 +149,7 @@ async function load(): Promise<void> {
 }
 
 function openIn(path: string): void {
-  workspace.open(workspace.preset, path)
+  workspace.launch(workspace.preset, path)
   emit('close')
 }
 

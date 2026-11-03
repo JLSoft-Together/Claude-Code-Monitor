@@ -9,10 +9,10 @@ const kids = (e: MenuEntry[], id: string) => ids(findAction(e, id)?.children ?? 
 const project = (p: Partial<ProjectMenuCtx> = {}): ProjectMenuCtx => ({
   mac: false, dir: 'C:\\r\\alpha', home: false, live: true, anchored: true,
   viewers: { file: true, changes: true, log: true }, scripts: true, run: true,
-  layouts: [], explorer: true, env: true, i18n: true, reveal: true, canUp: true, canDown: true, collapsed: false, ...p,
+  layouts: [], explorer: true, env: true, i18n: true, reveal: true, canUp: true, canDown: true, collapsed: false, deepseek: true, ...p,
 })
 const row = (p: Partial<RowMenuCtx> = {}): RowMenuCtx => ({
-  tabRow: false, cwd: 'C:\\r\\alpha', explorer: true, agent: true, linked: true, others: 1, targets: [{ key: 't2', title: 'Review' }], ...p,
+  tabRow: false, cwd: 'C:\\r\\alpha', explorer: true, agent: true, linked: true, others: 1, targets: [{ key: 't2', title: 'Review' }], deepseek: true, ...p,
 })
 
 describe('projectMenu', () => {
@@ -23,8 +23,12 @@ describe('projectMenu', () => {
   })
   it('new tab offers agents, browser and the viewers that exist', () => {
     const m = projectMenu(project(), t)
-    expect(kids(m, 'new')).toEqual(['new:claude', 'new:codex', 'new:shell', 'new:browser', 'new:file', 'new:changes', 'new:log'])
-    expect(kids(projectMenu(project({ viewers: { file: false, changes: false, log: false } }), t), 'new')).toEqual(['new:claude', 'new:codex', 'new:shell', 'new:browser'])
+    expect(kids(m, 'new')).toEqual(['new:claude', 'new:codex', 'new:deepseek', 'new:shell', 'new:browser', 'new:file', 'new:changes', 'new:log'])
+    expect(kids(projectMenu(project({ viewers: { file: false, changes: false, log: false } }), t), 'new')).toEqual(['new:claude', 'new:codex', 'new:deepseek', 'new:shell', 'new:browser'])
+  })
+  it('no DeepSeek without the feature flag', () => {
+    expect(kids(projectMenu(project({ deepseek: false, viewers: { file: false, changes: false, log: false } }), t), 'new')).toEqual(['new:claude', 'new:codex', 'new:shell', 'new:browser'])
+    expect(kids(rowMenu(row({ deepseek: undefined }), t), 'split-down')).toEqual(['split:col:claude', 'split:col:codex', 'split:col:shell', 'split:col:browser'])
   })
   it('layouts: save always, manage + saved ones when any', () => {
     expect(kids(projectMenu(project(), t), 'layouts')).toEqual(['layout-save'])
@@ -77,7 +81,7 @@ describe('rowMenu', () => {
     expect(ids(m)).toEqual([
       'focus', '-', 'split-right', 'split-down', '-', 'rename-tab', 'move-to', 'move-out', '-', 'copy-cwd', 'explorer', 'monitor', '-', 'close', 'close-others',
     ])
-    expect(kids(m, 'split-right')).toEqual(['split:row:claude', 'split:row:codex', 'split:row:shell', 'split:row:browser'])
+    expect(kids(m, 'split-right')).toEqual(['split:row:claude', 'split:row:codex', 'split:row:deepseek', 'split:row:shell', 'split:row:browser'])
     expect(kids(m, 'split-down')[0]).toBe('split:col:claude')
   })
   it('Show in Monitor only for agent rows, disabled until linked', () => {

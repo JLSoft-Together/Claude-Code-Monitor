@@ -4,7 +4,7 @@ import { useVueFlow } from '@vue-flow/core'
 import type { PeerLinkKind } from '@ccm/shared'
 import type { MapNodeContext } from '../lib/mapNav'
 import { bootNodeDelay } from '../lib/motion'
-import { isCodex } from '../lib/provider'
+import { badgeOf, isCodex } from '../lib/provider'
 import { isQuiet, statusMeta } from '../lib/status'
 import { displayTitle } from '../lib/title'
 import { useAgentsStore } from '../stores/agents'
@@ -68,6 +68,7 @@ export function useMapNode(props: { id: string; data: { agentId: string } }) {
   const terminal = computed(() => (agent.value ? terminals.byId[agent.value.terminalId] : undefined))
   const meta = computed(() => statusMeta(agent.value?.status))
   const codex = computed(() => isCodex(agent.value))
+  const badge = computed(() => badgeOf(agent.value))
   const selected = computed(() => ui.selectedAgentId === props.data.agentId)
   const quiet = computed(() => (agent.value ? isQuiet(agent.value.status) : false))
   const working = computed(() => agent.value?.status === 'working')
@@ -108,6 +109,7 @@ export function useMapNode(props: { id: string; data: { agentId: string } }) {
     terminal,
     meta,
     codex,
+    badge,
     selected,
     quiet,
     working,
