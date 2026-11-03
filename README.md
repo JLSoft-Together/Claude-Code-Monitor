@@ -28,6 +28,7 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 - Usage (token, chi phí ước tính, giới hạn gói) và History (heatmap, recap, tìm session cũ rồi Resume).
 - Thông báo khi session chờ bạn; báo ra điện thoại qua ntfy / Discord khi bạn rời máy.
 - Office pixel-art: mỗi dự án một phòng, mỗi agent một nhân vật.
+- Session DeepSeek CLI (Codewhale) hiện trong Monitor khi Codewhale bật `[lifecycle_outbox]` (chỉ đọc file, không gọi DeepSeek).
 
 **Workspace**
 - Terminal trong app (Claude Code / Codex / shell): tab, chia ô, nhóm tab, phóng ô, hoàn tác đóng, Mission Control, worktree.
@@ -95,6 +96,8 @@ Tải bản mới nhất ở [GitHub Releases](https://github.com/JLSoft-Togethe
 | `CODEX_HOME` / `CCM_CODEX` | `~/.codex` / `1` | Data Codex; `CCM_CODEX=0` tắt theo dõi Codex |
 | `CCM_DATA_DIR` | `%LOCALAPPDATA%/ccm` (macOS `~/Library/Application Support/ccm`) | Cache, tên session, lịch sử |
 | `CCM_TOAST` | `1` | `0` = tắt toast / cảnh báo hệ thống |
+| `CCM_DEEPSEEK` | `1` | `0` = không đọc outbox Codewhale (Monitor) |
+| `CCM_DEEPSEEK_FEATURE` | tắt | `1` = bật thử nghiệm DeepSeek CLI: pane Codewhale, Cài đặt › DeepSeek, MCP `hand_back` |
 
 Gặp lỗi: mở **Cài đặt → Chẩn đoán**, **Lưu file log…** để gửi kèm.
 

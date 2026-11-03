@@ -18,6 +18,15 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.1.1',
+    date: '2026-11-03',
+    items: [
+      { en: 'Monitor shows DeepSeek CLI (Codewhale) sessions from its outbox file', vi: 'Monitor hiện session DeepSeek CLI (Codewhale) từ file outbox' },
+      { en: 'DeepSeek panes and setup are built in but off; nothing calls DeepSeek', vi: 'Pane và cài đặt DeepSeek có sẵn nhưng tắt; app không gọi DeepSeek' },
+      { en: 'Internal: Codex process scan shared with other agent CLIs', vi: 'Nội bộ: quét process Codex dùng chung cho các CLI agent khác' },
+    ],
+  },
+  {
     version: '3.1.0',
     date: '2026-11-03',
     items: [
