@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   store.setNotify(toaster.settings())
   const observe = () => {
     if (snoozes.prune(store.terminalList())) store.setSnoozes(snoozes.all())
-    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id), replyOf: (id) => monitor.replyOf(id) })
+    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id), replyOf: (id) => monitor.replyOf(id), askOf: (id) => monitor.askOf(id) })
   }
   store.subscribe(observe)
   store.subscribe((message) => {

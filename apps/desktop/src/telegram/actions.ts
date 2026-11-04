@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx' | 'qa'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,11 +24,16 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx|qa):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip', qa: '🔹' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua', qa: '🔹' },
+}
+
+export const PLAN_LABELS: Record<TelegramLocale, { ap: string; dn: string }> = {
+  en: { ap: '✅ Approve plan', dn: '❌ Reject plan' },
+  vi: { ap: '✅ Duyệt plan', dn: '❌ Từ chối plan' },
 }
 
 export const MORE_TEXT: Record<TelegramLocale, {
@@ -131,6 +136,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
   expired: string
   approved: (name: string) => string
   denied: (name: string) => string
+  chose: (name: string, label: string) => string
   stopAsk: (name: string) => string
   sessionClosed: (name: string) => string
   stopped: (name: string) => string
@@ -159,6 +165,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
     expired: 'This button is no longer valid.',
     approved: (n) => `✅ Allowed in <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Denied in <b>${escapeHtml(n)}</b>.`,
+    chose: (n, l) => `🔹 Chose “${escapeHtml(l)}” in <b>${escapeHtml(n)}</b>.`,
     stopAsk: (n) => `Stop the agent in <b>${escapeHtml(n)}</b>?`,
     sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> of this topic is not open in Orrery. Send <code>resume</code> to reopen it.`,
     stopped: (n) => `⏹ Sent Esc to <b>${escapeHtml(n)}</b>.`,
@@ -187,6 +194,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
     expired: 'Nút này không còn hiệu lực.',
     approved: (n) => `✅ Đã cho phép ở <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Đã từ chối ở <b>${escapeHtml(n)}</b>.`,
+    chose: (n, l) => `🔹 Đã chọn “${escapeHtml(l)}” ở <b>${escapeHtml(n)}</b>.`,
     stopAsk: (n) => `Dừng agent ở <b>${escapeHtml(n)}</b>?`,
     sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> gắn với topic này chưa mở trong Orrery. Gõ <code>resume</code> để mở lại.`,
     stopped: (n) => `⏹ Đã gửi Esc vào <b>${escapeHtml(n)}</b>.`,

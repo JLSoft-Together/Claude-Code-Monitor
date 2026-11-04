@@ -10,6 +10,7 @@ import {
   type ActivityEvent,
   type Agent,
   type AgentStatus,
+  type TelegramAsk,
   type TerminalSession,
   type ToolSpan,
 } from '@ccm/shared'
@@ -255,6 +256,10 @@ export class SessionTracker {
 
   get lastReply(): string | undefined {
     return this.main.lastReply
+  }
+
+  get pendingAsk(): TelegramAsk | undefined {
+    return this.main.pendingAsk()
   }
 
   setRecord(record: RegistryRecord): { sessionChanged: boolean } {

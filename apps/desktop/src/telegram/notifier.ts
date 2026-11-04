@@ -34,7 +34,7 @@ import {
 } from '@ccm/shared'
 import { createHash, randomInt, randomUUID } from 'node:crypto'
 import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
-import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
+import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PLAN_LABELS, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
 import { COMMAND_MENU, commandOf, paneStatus, readMessage, resultHtml, tailHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
@@ -49,6 +49,7 @@ import {
   bigFailedHtml,
   bigUploadingHtml,
   bigDoneHtml,
+  clean,
   quote,
   chatsFrom,
   episodeHtml,
@@ -1029,16 +1030,18 @@ export class TelegramNotifier {
       await this.post(where, resultHtml(result, locale))
       return
     }
-    const key: TelegramKey = kind === 'ap' ? 'approve' : kind === 'dn' ? 'deny' : 'stop'
-    const episode = { ...(entry.since !== undefined ? { since: entry.since } : {}), ...(entry.tool && key !== 'stop' ? { tool: entry.tool } : {}) }
-    const result = await ask({ id: randomUUID(), action: 'keys', project: entry.project, key, target, ...episode }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+    const key: TelegramKey = kind === 'ap' ? 'approve' : kind === 'dn' ? 'deny' : kind === 'qa' ? 'option' : 'stop'
+    const option = kind === 'qa' ? Number(entry.extra) : undefined
+    const episode = { ...(entry.since !== undefined ? { since: entry.since } : {}), ...(entry.tool && key !== 'stop' && key !== 'option' ? { tool: entry.tool } : {}) }
+    const result = await ask({ id: randomUUID(), action: 'keys', project: entry.project, key, ...(option ? { option } : {}), target, ...episode }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
     if (!result.ok) {
       await this.answer(id, result.error === 'state' ? a.state : result.error === 'busy' ? a.keysBusy : resultHtml(result, locale))
       return
     }
     this.actions.delete(m[2]!)
+    if (kind === 'qa') for (const [k, e] of this.actions) if (e.kind === 'qa' && e.terminalId === entry.terminalId && e.since === entry.since) this.actions.delete(k)
     if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
-    const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : a.stopped(entry.name)
+    const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : kind === 'qa' ? a.chose(entry.name, entry.label ?? String(option)) : a.stopped(entry.name)
     await this.answer(id)
     await this.post(where, done)
   }
@@ -1548,11 +1551,27 @@ export class TelegramNotifier {
     if (this.sent.size > MAX_EPISODES) this.sent.delete(this.sent.values().next().value as string)
     const locale = this.deps.locale()
     let keys: Markup | undefined
-    if (this.receiving && (e.reason === 'permission' || e.reason === 'done')) {
+    if (this.receiving && (e.reason === 'permission' || e.reason === 'done' || e.reason === 'question')) {
       const entry = { terminalId: e.terminalId, project: route.project, cwd: e.cwd, name: e.name, chatId: route.chatId, threadId: route.threadId, ...(e.since !== undefined ? { since: e.since } : {}), ...(e.tool ? { tool: e.tool } : {}) }
       const k = (kind: ActionKind) => this.addAction({ kind, ...entry })
       if (e.reason === 'done') keys = markup(locale, [[['go', k('go')], ['ts', k('ts')], ['df', k('df')]]])
-      else if (e.since !== undefined) keys = markup(locale, [[['ap', k('ap')], ['dn', k('dn')]]])
+      else if (e.reason === 'question') {
+        const ask = e.ask
+        if (ask && !ask.multi && !ask.more && e.since !== undefined) {
+          const rows = ask.options.map((o, i): [ActionKind, string, string][] => {
+            const label = clean(o, this.masker)
+            return [['qa', this.addAction({ kind: 'qa', ...entry, extra: String(i + 1), label }), `${i + 1} · ${label}`]]
+          })
+          keys = markup(locale, rows)
+        }
+      } else if (e.since !== undefined) {
+        keys = markup(locale, [[['ap', k('ap')], ['dn', k('dn')]]])
+        if (e.tool === 'ExitPlanMode') {
+          const [approve, deny] = keys.inline_keyboard[0]!
+          approve!.text = PLAN_LABELS[locale].ap
+          deny!.text = PLAN_LABELS[locale].dn
+        }
+      }
     }
     return (await this.sendText(route, episodeHtml(e, locale, this.masker, this.data.includeReply), { kind: 'terminal', terminalId: e.terminalId }, keys)) === null
   }

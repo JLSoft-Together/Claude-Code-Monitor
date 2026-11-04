@@ -4,7 +4,7 @@ import path from 'node:path'
 import type { CollectorConfig } from './config'
 import { isPidAlive, procStartMatches, queryProcesses, type ProcessInfo } from './process'
 import { autocompactBufferPct } from '@ccm/shared'
-import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchErrorCode, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord, TerminalApp, TerminalSession } from '@ccm/shared'
+import type { BackgroundJob, Diagnostics, FocusWindowResult, FolderPickResult, GitDiffStat, JobStopResult, LaunchErrorCode, LaunchMode, MonitorEvent, OpenApp, OpenResult, SessionRecord, TelegramAsk, TerminalApp, TerminalSession } from '@ccm/shared'
 import { AliasStore, MAX_NOTE_LENGTH, sanitizeAlias } from './aliases'
 import { readSettingsModel } from './claude-settings'
 import { FavoriteStore } from './favorites'
@@ -487,6 +487,10 @@ export class Monitor {
     } catch (err) {
       console.error('[collector] sync failed:', (err as Error).message)
     }
+  }
+
+  askOf(terminalId: string): TelegramAsk | undefined {
+    return this.trackers.get(terminalId)?.pendingAsk
   }
 
   replyOf(terminalId: string): string | undefined {

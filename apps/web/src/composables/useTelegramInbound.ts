@@ -13,6 +13,7 @@ import { isTerm, presetOf, useWorkspaceStore, workCwd, type Pane } from '../stor
 
 const TOAST_MS = 6000
 const KEYS = { approve: '1', deny: '\x1b', stop: '\x1b' } as const
+export const keyOf = (req: { key: TelegramKey; option?: number }): string => (req.key === 'option' ? String(req.option ?? 0) : KEYS[req.key])
 const RESUME_MAX = 8
 const TYPED_MS = 1500
 let installed = false
@@ -23,12 +24,13 @@ const dirKey = (p: string): string => p.replace(/[\\/]+$/, '').replace(/\//g, '\
 const within = (dir: string, root: string): boolean => dirKey(dir) === dirKey(root) || dirKey(dir).startsWith(`${dirKey(root)}\\`)
 const owns = (dir: string, project: string, nested: string[] = []): boolean => within(dir, project) && !nested.some((n) => within(n, project) && within(dir, n))
 
-export function keysReady(req: { key: TelegramKey; since?: number; tool?: string }, s: Pick<TerminalSession, 'status' | 'statusSince' | 'waitingFor'> | undefined, claude: boolean, tool?: string): boolean {
+export function keysReady(req: { key: TelegramKey; option?: number; since?: number; tool?: string }, s: Pick<TerminalSession, 'status' | 'statusSince' | 'waitingFor'> | undefined, claude: boolean, tool?: string): boolean {
   if (!s) return false
-  const ready = req.key === 'stop' ? s.status === 'working' : s.status === 'waiting' && waitReason(s.waitingFor) === 'permission' && claude
+  const reason = req.key === 'option' ? 'question' : 'permission'
+  const ready = req.key === 'stop' ? s.status === 'working' : s.status === 'waiting' && waitReason(s.waitingFor) === reason && claude
   if (!ready) return false
   if (req.since !== undefined && (!s.statusSince || Date.parse(s.statusSince) !== req.since)) return false
-  return req.key === 'stop' || !req.tool || !tool || req.tool === tool
+  return req.key === 'stop' || req.key === 'option' || !req.tool || !tool || req.tool === tool
 }
 
 export function resumeItems(list: readonly TerminalSession[], project: string, nested: string[], open: Set<string>): TelegramResumeItem[] {
@@ -79,12 +81,12 @@ export function installTelegramInbound(): void {
     const s = sessionOf(pane)
     const tool = s ? agents.mainOf(s.id)?.currentTool : undefined
     if (!keysReady(req, s, presetOf(pane) === 'claude', tool) || !pane.terminalId) return { ok: false, error: 'state' }
-    const out = workspace.telegramKeys(req.project, KEYS[req.key], { terminalId: pane.terminalId }, req.nested)
+    const out = workspace.telegramKeys(req.project, keyOf(req), { terminalId: pane.terminalId }, req.nested)
     if (out === 'busy') return { ok: false, error: 'busy', panes: [info(pane)] }
     if (typeof out === 'string') return { ok: false, error: out }
     if (!(await workspace.telegramTyped(out.key, TYPED_MS))) return { ok: false, error: 'unavailable' }
-    log(out, 'Telegram', req.key)
-    return { ok: true, action: 'keys', name: nameOf(out), key: req.key }
+    log(out, 'Telegram', req.key === 'option' ? `option ${req.option}` : req.key)
+    return { ok: true, action: 'keys', name: nameOf(out), key: req.key, ...(req.option ? { option: req.option } : {}) }
   }
 
   function tail(req: Req<'tail'>): TelegramInboundResult {

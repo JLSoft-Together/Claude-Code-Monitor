@@ -1,4 +1,4 @@
-import { maskSecrets, type TelegramChat, type TelegramEpisodeMessage, type TelegramError, type TelegramTopic } from '@ccm/shared'
+import { maskSecrets, type TelegramAsk, type TelegramChat, type TelegramEpisodeMessage, type TelegramError, type TelegramTopic } from '@ccm/shared'
 
 export type TelegramLocale = 'en' | 'vi'
 
@@ -95,7 +95,7 @@ export interface Masker {
   platform: string
 }
 
-const clean = (s: string, m: Masker): string => maskSecrets(s, m.home, m.platform)
+export const clean = (s: string, m: Masker): string => maskSecrets(s, m.home, m.platform)
 
 function clip(html: string, max: number): string {
   if (html.length <= max) return html
@@ -120,7 +120,14 @@ export function episodeHtml(e: TelegramEpisodeMessage, locale: TelegramLocale, m
   else if (e.reason === 'question') head = t.question(name)
   else if (e.reason === 'permission') head = t.permission(name, e.tool)
   else head = t.waiting(name)
+  if (e.reason === 'question' && e.ask) return `${head}${askBlock(e.ask, m)}`
   return reply && e.reply ? `${head}${quote(e.reply, m, MESSAGE_MAX - head.length)}` : head
+}
+
+function askBlock(ask: TelegramAsk, m: Masker): string {
+  const lines = ask.options.map((o, i) => `${i + 1}. ${escapeHtml(clean(o, m))}`)
+  if (ask.more) lines.push('…')
+  return `\n${escapeHtml(clean(ask.question, m))}\n${lines.join('\n')}`
 }
 
 export function reportHtml(name: string, text: string, locale: TelegramLocale, m: Masker, max = MESSAGE_MAX): string {

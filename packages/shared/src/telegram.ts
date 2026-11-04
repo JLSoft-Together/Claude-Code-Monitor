@@ -14,6 +14,40 @@ export interface TelegramEpisodeMessage {
   worked?: number
   tool?: string
   reply?: string
+  ask?: TelegramAsk
+}
+
+/** First AskUserQuestion question only: question + option labels, never description / preview. Goes to the owner's Telegram, never to the page (docs §11an-f). */
+export interface TelegramAsk {
+  question: string
+  options: string[]
+  multi: boolean
+  /** More options than `TELEGRAM_ASK_OPTIONS_MAX`: the extra labels are dropped and no buttons are offered. */
+  more?: true
+}
+
+export const TELEGRAM_ASK_QUESTION_MAX = 200
+export const TELEGRAM_ASK_OPTIONS_MAX = 6
+export const TELEGRAM_ASK_LABEL_MAX = 60
+
+const oneLine = (v: string, max: number) => v.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, max)
+
+export function parseTelegramAsk(raw: unknown): TelegramAsk | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  if (typeof r.question !== 'string' || !Array.isArray(r.options) || typeof r.multi !== 'boolean') return undefined
+  const question = oneLine(r.question, TELEGRAM_ASK_QUESTION_MAX)
+  if (!question) return undefined
+  const options: string[] = []
+  for (const o of r.options) {
+    if (typeof o !== 'string') return undefined
+    const label = oneLine(o, TELEGRAM_ASK_LABEL_MAX)
+    if (!label) return undefined
+    options.push(label)
+  }
+  if (!options.length) return undefined
+  const more = options.length > TELEGRAM_ASK_OPTIONS_MAX || r.more === true
+  return { question, options: options.slice(0, TELEGRAM_ASK_OPTIONS_MAX), multi: r.multi, ...(more ? { more: true as const } : {}) }
 }
 
 export const TELEGRAM_DONE_CHOICES = [0, 1, 3, 5, 10] as const
@@ -216,6 +250,7 @@ export function parseTelegramEpisode(raw: unknown): TelegramEpisodeMessage | nul
   const worked = ms(r.worked, SINCE_MAX)
   const tool = typeof r.tool === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(r.tool) ? r.tool : undefined
   const reply = typeof r.reply === 'string' && r.reply.trim() ? r.reply.slice(0, TELEGRAM_REPLY_MAX) : undefined
+  const ask = parseTelegramAsk(r.ask)
   return {
     type: 'telegram',
     episode: r.episode,
@@ -227,6 +262,7 @@ export function parseTelegramEpisode(raw: unknown): TelegramEpisodeMessage | nul
     ...(worked !== undefined ? { worked } : {}),
     ...(tool ? { tool } : {}),
     ...(reply ? { reply } : {}),
+    ...(ask ? { ask } : {}),
   }
 }
 
@@ -299,7 +335,7 @@ export function sanitizeCreateTopic(raw: unknown): TelegramCreateTopicInput | nu
 
 export const TELEGRAM_INBOUND_MAX = 2000
 
-export const TELEGRAM_KEYS = ['approve', 'deny', 'stop'] as const
+export const TELEGRAM_KEYS = ['approve', 'deny', 'stop', 'option'] as const
 export type TelegramKey = (typeof TELEGRAM_KEYS)[number]
 
 export type TelegramTarget = { kind: 'terminal'; terminalId: string } | { kind: 'pane'; sessionId: string }
@@ -309,7 +345,7 @@ export const TELEGRAM_NESTED_MAX = 20
 export type TelegramInbound = (
   | { id: string; action: 'send'; project: string; text: string; target?: TelegramTarget; from: string }
   | { id: string; action: 'status'; project: string }
-  | { id: string; action: 'keys'; project: string; key: TelegramKey; target?: TelegramTarget; since?: number; tool?: string }
+  | { id: string; action: 'keys'; project: string; key: TelegramKey; option?: number; target?: TelegramTarget; since?: number; tool?: string }
   | { id: string; action: 'new'; project: string; text?: string; from: string }
   | { id: string; action: 'all'; project: string; text: string; from: string }
   | { id: string; action: 'resumeList'; project: string }
@@ -339,7 +375,7 @@ export interface TelegramPaneInfo {
 export type TelegramInboundResult =
   | { ok: true; action: 'send'; name: string; queued: boolean; terminalId?: string }
   | { ok: true; action: 'status'; panes: TelegramPaneInfo[] }
-  | { ok: true; action: 'keys'; name: string; key: TelegramKey }
+  | { ok: true; action: 'keys'; name: string; key: TelegramKey; option?: number }
   | { ok: true; action: 'new'; name: string }
   | { ok: true; action: 'all'; names: string[] }
   | { ok: true; action: 'resumeList'; items: TelegramResumeItem[] }
@@ -347,7 +383,9 @@ export type TelegramInboundResult =
   | { ok: true; action: 'tail'; name: string; text: string }
   | { ok: false; error: 'none' | 'many' | 'busy' | 'gone' | 'unavailable' | 'state'; panes?: TelegramPaneInfo[] }
 
-const INBOUND_ERRORS = ['none', 'many', 'busy', 'gone', 'unavailable', 'state'] as const
+const optionOf = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= TELEGRAM_ASK_OPTIONS_MAX ? v : undefined)
+
+const INBOUND_ERRORS =['none', 'many', 'busy', 'gone', 'unavailable', 'state'] as const
 
 function paneInfos(raw: unknown): TelegramPaneInfo[] {
   if (!Array.isArray(raw)) return []
@@ -373,7 +411,9 @@ export function parseInboundResult(raw: unknown): TelegramInboundResult {
   if (r.action === 'status') return { ok: true, action: 'status', panes: paneInfos(r.panes) }
   if (r.action === 'keys') {
     if (typeof r.name !== 'string' || !r.name || !(TELEGRAM_KEYS as readonly unknown[]).includes(r.key)) return { ok: false, error: 'unavailable' }
-    return { ok: true, action: 'keys', name: r.name.slice(0, NAME_MAX), key: r.key as TelegramKey }
+    const option = optionOf(r.option)
+    if (r.key === 'option' && !option) return { ok: false, error: 'unavailable' }
+    return { ok: true, action: 'keys', name: r.name.slice(0, NAME_MAX), key: r.key as TelegramKey, ...(option && r.key === 'option' ? { option } : {}) }
   }
   const nm = (v: unknown) => (typeof v === 'string' && v ? v.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, NAME_MAX) : null)
   if (r.action === 'tail') {
@@ -428,7 +468,9 @@ function parseInboundBody(raw: unknown): TelegramInbound | null {
     if (!(TELEGRAM_KEYS as readonly unknown[]).includes(r.key)) return null
     const since = typeof r.since === 'number' && Number.isFinite(r.since) && r.since > 0 && r.since < SINCE_MAX ? r.since : undefined
     const tool = typeof r.tool === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(r.tool) ? r.tool : undefined
-    return { id: r.id, action: 'keys', project: r.project, key: r.key as TelegramKey, ...(t0 ? { target: t0 } : {}), ...(since !== undefined ? { since } : {}), ...(tool ? { tool } : {}) }
+    const option = optionOf(r.option)
+    if (r.key === 'option' && !option) return null
+    return { id: r.id, action: 'keys', project: r.project, key: r.key as TelegramKey, ...(option && r.key === 'option' ? { option } : {}), ...(t0 ? { target: t0 } : {}), ...(since !== undefined ? { since } : {}), ...(tool ? { tool } : {}) }
   }
   if (r.action === 'resumeList') return { id: r.id, action: 'resumeList', project: r.project }
   if (r.action === 'tail') {

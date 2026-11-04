@@ -1,10 +1,10 @@
-import type { CacheTtl, LimitHit } from '@ccm/shared'
+import { parseTelegramAsk, type CacheTtl, type LimitHit, type TelegramAsk } from '@ccm/shared'
 import { socketKey } from './registry'
 import { portConflictIn } from './resources/ports'
 import { touchOf, type ToolTouch } from './sensitive/rules'
 
 export type Signal =
-  | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true; device?: true; touch?: ToolTouch }
+  | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true; device?: true; touch?: ToolTouch; ask?: TelegramAsk }
   | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string; portConflict?: number }
   | { k: 'turn_end'; at?: string }
   | { k: 'assistant_end'; messageId?: string; at?: string }
@@ -49,6 +49,15 @@ const REPLY_MAX = 3000
 // Only a yes/no leaves this function: the command text itself is never stored.
 function mentionsCodex(name: string, input: unknown): boolean {
   return SHELL_TOOLS.has(name) && isObj(input) && typeof input.command === 'string' && CODEX_COMMAND_RE.test(input.command)
+}
+
+/** Only the first question's text and option labels survive; description / preview / header never leave this function. */
+export function askOf(name: string, input: unknown): TelegramAsk | undefined {
+  if (name !== 'AskUserQuestion' || !isObj(input) || !Array.isArray(input.questions)) return undefined
+  const q = input.questions[0]
+  if (!isObj(q) || !Array.isArray(q.options)) return undefined
+  const labels = q.options.map((o) => (isObj(o) ? o.label : undefined))
+  return parseTelegramAsk({ question: q.question, options: labels, multi: q.multiSelect === true })
 }
 
 const DEVICE_COMMAND_RE = /\badb\b|\bflutter\s+run\b|\binstall\w*Debug\b/
@@ -169,6 +178,7 @@ export function extractSignals(rec: unknown): Signal[] {
       for (const b of msg.content) {
         if (isObj(b) && b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string') {
           const touch = touchOf(b.name, b.input)
+          const ask = askOf(b.name, b.input)
           out.push({
             k: 'tool_use',
             id: b.id,
@@ -177,6 +187,7 @@ export function extractSignals(rec: unknown): Signal[] {
             ...(mentionsCodex(b.name, b.input) ? { codex: true as const } : {}),
             ...(mentionsDevice(b.name, b.input) ? { device: true as const } : {}),
             ...(touch ? { touch } : {}),
+            ...(ask ? { ask } : {}),
           })
           if (b.name === 'SendMessage' && isObj(b.input) && b.input.to === 'main') out.push({ k: 'send_main', key: b.id, at })
         }
@@ -254,6 +265,8 @@ export interface UsageTotals {
 
 export class TranscriptState {
   readonly openTools = new Map<string, string>()
+  /** AskUserQuestion calls without a tool_result yet; memory only, read by the Telegram episode and nowhere else. */
+  private readonly openAsks = new Map<string, TelegramAsk>()
   /** When shell calls that mention codex were made, newest last (links Codex runs to the agent that started them). */
   readonly codexCalls: string[] = []
   /** Newest shell call mentioning adb / flutter run / installDebug. */
@@ -319,6 +332,7 @@ export class TranscriptState {
           break
         case 'tool_use':
           this.openTools.set(s.id, s.name)
+          if (s.ask) this.openAsks.set(s.id, s.ask)
           this.ended = false
           if (s.codex && s.at) {
             this.codexCalls.push(s.at)
@@ -328,11 +342,13 @@ export class TranscriptState {
           break
         case 'tool_result':
           this.openTools.delete(s.toolUseId)
+          this.openAsks.delete(s.toolUseId)
           this.ended = false
           if (s.portConflict && s.at && (!this.portConflict || s.at > this.portConflict.at)) this.portConflict = { port: s.portConflict, at: s.at }
           break
         case 'turn_end':
           this.openTools.clear()
+          this.openAsks.clear()
           break
         case 'reply_text':
           if (s.messageId === this.replyId) this.replyText = `${this.replyText}\n${s.text}`.slice(0, REPLY_MAX)
@@ -350,11 +366,18 @@ export class TranscriptState {
           this.replyId = undefined
           this.replyText = ''
           this.lastReply = undefined
+          this.openAsks.clear()
           break
         default:
           break
       }
     }
+  }
+
+  pendingAsk(): TelegramAsk | undefined {
+    let last: TelegramAsk | undefined
+    for (const a of this.openAsks.values()) last = a
+    return last
   }
 
   currentTool(): string | undefined {

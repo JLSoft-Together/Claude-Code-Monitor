@@ -916,6 +916,14 @@ Details of the CLI: `docs/deepseek-integration.md`. Plan `.planning/PLAN-v81-dee
 - **Linked glyph**: rail rows and Workspace tabs whose Claude session is connected show a paper plane, tooltip "Telegram: Group › Topic"; the tab menu also has *Connect to Telegram…*.
 - **Bundle**: GramJS is built as `stage/gramjs.cjs` (esbuild plugin `gramjs-apart`, `dynamic-import` off so it is a `require`), so `main.cjs` dropped from 2.9 MB to 1.4 MB.
 
+### 11an-f. Claude's question as buttons (2026-11-05, `.planning/wp/tg2/WP-C.md`)
+
+- **Exception to §9**: while an `AskUserQuestion` `tool_use` has no `tool_result` yet, the collector keeps in memory only the first question's `question` (≤ 200) and `options[].label` (≤ 6 labels, each ≤ 60) plus `multiSelect` (`transcript.ts` `askOf`, `TranscriptState.pendingAsk`). `description`, `preview`, `header` and further questions are never kept. It leaves the collector once, inside the Telegram episode of a `question` wait (`TelegramEpisodeMessage.ask`, `parseTelegramAsk` in shared), never in the snapshot or any WebSocket event, so the page never sees it. The desktop main masks it (`maskSecrets`) and sends it to the owner's paired Telegram topic only.
+- **Buttons**: a single-select question with ≤ 6 options gets one button per option (kind `qa`, only while receiving). `multiSelect`, more than 6 options or no ask → the question and the numbered list, no buttons (the owner replies with text as usual). A press asks the page for `keys` `key: 'option'` + `option: n`; the page types `String(n)` only if the pane still waits (`waitReason` question) in the same episode (`since`). Then the buttons are removed and "Chose …" is posted; a second press says the button is no longer valid.
+- **ExitPlanMode** permission: same Allow / Deny keys as other permissions (`1` / Esc), only the labels read "Approve plan" / "Reject plan". No "keep the plan and give feedback" key was added.
+- **Not verified on the real TUI**: that a digit key selects option n of the AskUserQuestion dialog (assumed from the permission prompt, where `1` allows), and that it needs no Enter. QA by hand with a real Claude pane before relying on it.
+- **Timing**: the ask is read when the wait starts. If the transcript line is not tailed yet at that moment the message goes without options (text reply still works).
+
 ## 12. Open items
 
 | Item | State |

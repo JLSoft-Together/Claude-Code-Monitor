@@ -26,6 +26,7 @@ import {
   type PlanLimits,
   type QuietHours,
   type ResourceReport,
+  type TelegramAsk,
   type TelegramEpisodeMessage,
   type ServerRes,
   type TerminalSession,
@@ -321,6 +322,7 @@ export interface ToastSnapshot {
   contextPct?: (terminalId: string) => number | null
   toolOf?: (terminalId: string) => string | undefined
   replyOf?: (terminalId: string) => string | undefined
+  askOf?: (terminalId: string) => TelegramAsk | undefined
 }
 
 export interface NotifyPatch {
@@ -560,7 +562,7 @@ export class Toaster {
       }
       if (before !== 'waiting') {
         this.reminded.set(episode, 0)
-        this.showWaiting(t, nowMs, snap.toolOf?.(t.id))
+        this.showWaiting(t, nowMs, snap.toolOf?.(t.id), snap.askOf?.(t.id))
         continue
       }
       this.remind(t, episode, nowMs, snap.toolOf?.(t.id))
@@ -676,16 +678,16 @@ export class Toaster {
     this.phone({ episode: `w:${t.id}|${t.statusSince ?? ''}`, reason, name: phoneName(t), ...(tool ? { tool } : {}), since: Number.isFinite(since) ? since : nowMs }, 'waiting')
   }
 
-  private telegram(t: TerminalSession, reason: TelegramEpisodeMessage['reason'], extra: { worked?: number; since?: number; tool?: string; reply?: string }): void {
+  private telegram(t: TerminalSession, reason: TelegramEpisodeMessage['reason'], extra: { worked?: number; since?: number; tool?: string; reply?: string; ask?: TelegramAsk }): void {
     if (!this.onTelegram || !t.cwd) return
     const episode = `t${reason === 'done' ? 'd' : 'w'}:${t.id}|${t.statusSince ?? ''}`
     this.onTelegram({ type: 'telegram', episode, reason, terminalId: t.id, name: phoneName(t), cwd: t.cwd, ...extra })
   }
 
-  private showWaiting(t: TerminalSession, nowMs: number, tool?: string): void {
+  private showWaiting(t: TerminalSession, nowMs: number, tool?: string, ask?: TelegramAsk): void {
     const kind = waitReason(t.waitingFor)
     const since = t.statusSince ? Date.parse(t.statusSince) : nowMs
-    this.telegram(t, kind === 'question' ? 'question' : kind === 'permission' ? 'permission' : 'waiting', { since: Number.isFinite(since) ? since : nowMs, ...(tool ? { tool } : {}) })
+    this.telegram(t, kind === 'question' ? 'question' : kind === 'permission' ? 'permission' : 'waiting', { since: Number.isFinite(since) ? since : nowMs, ...(tool ? { tool } : {}), ...(kind === 'question' && ask ? { ask } : {}) })
     this.phoneWaiting(t, nowMs, tool)
     if (!this.can('waiting') || this.snoozed(t)) return
     if (nowMs - (this.lastAt.get(t.id) ?? -Infinity) < TOAST_THROTTLE_MS) return
