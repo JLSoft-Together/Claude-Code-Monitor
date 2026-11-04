@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
+import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, Send, X } from 'lucide-vue-next'
 import { isSessionId, type TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { installMcpCalls } from '../../composables/useMcpCalls'
 import { installTelegramInbound } from '../../composables/useTelegramInbound'
+import { useTelegramLinks } from '../../composables/useTelegramLinks'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
 import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
@@ -1077,7 +1078,8 @@ function parkedIn(tab: Tab): string[] {
 }
 
 const telegram = useTelegramStore()
-telegram.start()
+const telegramLink = useTelegramLinks()
+const telegramWhere = (tab: Tab): string | null => telegramLink(agentPaneOf(tab))
 
 function telegramOf(pane: Pane | undefined): 'linked' | 'unlinked' | undefined {
   if (!hasTelegram || !pane || !isSessionId(pane.agentSessionId) || !workCwd(pane)) return undefined
@@ -1298,7 +1300,8 @@ function tabTip(tab: Tab): string | undefined {
   const dock = tabDraggable() && tab !== workspace.activeTab ? t('workspace.drag.tabHint') : ''
   const subs = tabState(tab)?.subagents ?? 0
   const running = subs ? t('workspace.subagentState.count', { n: subs }, subs) : ''
-  return [tabName(tab), running, ...tabPeerLines(tab), tabDetail(tab), hints, dock].filter(Boolean).join('\n') || undefined
+  const where = telegramWhere(tab)
+  return [tabName(tab), running, ...tabPeerLines(tab), tabDetail(tab), where ? t('telegram.connect.linkedTo', { where }) : '', hints, dock].filter(Boolean).join('\n') || undefined
 }
 
 function tabDetail(tab: Tab): string | undefined {
@@ -1481,6 +1484,10 @@ onBeforeUnmount(() => {
                 <span class="sr-only">{{ tabNewsOf(tab)!.label }}</span>
               </span>
             </Transition>
+            <span v-if="telegramWhere(tab)" class="inline-flex shrink-0 text-ink-faint" data-tab-telegram>
+              <Send :size="10" aria-hidden="true" />
+              <span class="sr-only">{{ t('telegram.connect.linkedTo', { where: telegramWhere(tab) }) }}</span>
+            </span>
             <span v-if="leaves(tab.root).some((k) => paneOf(k)?.dirty)" class="shrink-0 text-warning" :title="t('editor.unsaved')" data-tab-dirty>
               <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>
             </span>

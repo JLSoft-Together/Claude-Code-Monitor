@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { LoaderCircle, Network, X } from 'lucide-vue-next'
+import { LoaderCircle, Network, Send, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
+import { useTelegramLinks } from '../../../composables/useTelegramLinks'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
 import { isBusyState, needsUser, peerSlot, RAIL_BADGE, rowId, rowLines, stateWord, type RailRow, type RailState } from '../../../lib/rail/railModel'
@@ -17,6 +18,9 @@ const emit = defineEmits<{ focus: [paneKey: string]; close: [row: RailRow]; menu
 const { t } = useI18n()
 const { sessionOf, activityOf, peerView, peerLines, coordinatingOf } = usePaneInfo()
 const isStop = useRailTabStop()
+const telegramOf = useTelegramLinks()
+const telegram = computed(() => (props.row.run ? null : telegramOf(props.row.pane)))
+const telegramLabel = computed(() => (telegram.value ? t('telegram.connect.linkedTo', { where: telegram.value }) : ''))
 const stop = computed(() => (isStop(rowId(props.row.key)) ? 0 : -1))
 
 const word = computed(() => {
@@ -56,9 +60,9 @@ const spoken = computed(() => {
   const base = tool.value ? `${lines.value.second} (${word.value})` : lines.value.second
   return slot.value === 'badge' && peer.value ? `${base}, ${peer.value.label}` : base
 })
-const label = computed(() => [t('workspace.rail.rowLabel', { first: lines.value.first, second: spoken.value }), coordinating.value?.label].filter(Boolean).join(', '))
+const label = computed(() => [t('workspace.rail.rowLabel', { first: lines.value.first, second: spoken.value }), coordinating.value?.label, telegramLabel.value].filter(Boolean).join(', '))
 const attention = computed(() => needsUser(props.row.state))
-const tip = computed(() => [...new Set([lines.value.first, spoken.value, elapsed.value ?? '', diffTitle.value, ...relations.value].filter(Boolean))].join('\n'))
+const tip = computed(() => [...new Set([lines.value.first, spoken.value, elapsed.value ?? '', diffTitle.value, ...relations.value, telegramLabel.value].filter(Boolean))].join('\n'))
 const tone = computed(() =>
   props.row.state === 'failed'
     ? 'text-st-error'
@@ -183,6 +187,7 @@ const unstamp = (el: Element): void => el.removeAttribute('data-rail-second')
           ><Network :size="11"
         /></span>
       </Transition>
+      <span v-if="telegram" class="inline-flex items-center text-ink-faint" aria-hidden="true" data-rail-telegram><Send :size="10" /></span>
     </span>
     <button
       type="button"

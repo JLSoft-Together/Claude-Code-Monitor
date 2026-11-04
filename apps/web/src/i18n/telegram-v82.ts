@@ -45,6 +45,7 @@ const en = {
     connect: {
       menu: 'Connect to Telegram…',
       menuLinked: 'Telegram topic…',
+      linkedTo: 'Telegram: {where}',
       title: 'Telegram for {name}',
       scope: 'Connect',
       session: 'Only this session',
@@ -271,6 +272,7 @@ const vi: typeof en = {
     connect: {
       menu: 'Kết nối Telegram…',
       menuLinked: 'Topic Telegram…',
+      linkedTo: 'Telegram: {where}',
       title: 'Telegram cho {name}',
       scope: 'Kết nối',
       session: 'Chỉ session này',
