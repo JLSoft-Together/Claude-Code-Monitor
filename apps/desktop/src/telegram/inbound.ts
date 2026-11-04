@@ -13,6 +13,8 @@ export interface TgMessage {
   replyTo: number | null
   replyToBot: boolean
   file?: TgFile
+  /** Telegram `media_group_id`: every photo of an album arrives as its own update, only the first has the caption. */
+  group?: string
 }
 
 export interface TgFile {
@@ -68,6 +70,7 @@ export function readMessage(update: unknown, botId: number | null): TgMessage | 
     replyTo: reply && !topicStart && typeof reply.message_id === 'number' ? reply.message_id : null,
     replyToBot: !!replyFrom && botId !== null && replyFrom.id === botId,
     ...(file ? { file } : {}),
+    ...(file && typeof m.media_group_id === 'string' && m.media_group_id.length < 64 ? { group: m.media_group_id } : {}),
   }
 }
 
@@ -83,7 +86,7 @@ export type Command =
   | { kind: 'last' }
   | { kind: 'screen'; serial?: string }
   | { kind: 'send'; text: string }
-  | { kind: 'file'; file: TgFile; text: string }
+  | { kind: 'file'; file: TgFile; text: string; more?: TgFile[] }
 
 export function commandOf(msg: TgMessage, bot: string): Command | null {
   const at = `@${bot}`.toLowerCase()

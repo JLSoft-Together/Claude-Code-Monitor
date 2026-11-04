@@ -201,8 +201,8 @@ export const ACT_TEXT: Record<TelegramLocale, {
 }
 
 export const FILE_KIND: Record<TelegramLocale, Record<string, string>> = {
-  en: { photo: 'a photo', voice: 'a voice message', audio: 'an audio file', video: 'a video', document: 'a file' },
-  vi: { photo: 'ảnh', voice: 'tin nhắn thoại', audio: 'file âm thanh', video: 'video', document: 'file' },
+  en: { photo: 'a photo', voice: 'a voice message', audio: 'an audio file', video: 'a video', document: 'a file', album: 'several files' },
+  vi: { photo: 'ảnh', voice: 'tin nhắn thoại', audio: 'file âm thanh', video: 'video', document: 'file', album: 'nhiều file' },
 }
 
 export function markup(locale: TelegramLocale, rows: ([ActionKind, string] | [ActionKind, string, string])[][]): Markup {

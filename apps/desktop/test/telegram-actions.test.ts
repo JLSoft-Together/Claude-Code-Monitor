@@ -195,4 +195,41 @@ describe('files from Telegram', () => {
     expect((asked[0] as { text: string }).text).toContain('màn này lỗi')
     tg.stop()
   })
+
+  it('gathers an album into one prompt: only the first photo carries the caption', async () => {
+    const saved: string[] = []
+    const { tg, asked } = setup({
+      answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }),
+      extra: {
+        albumMs: 5,
+        saveFile: async (p, name) => {
+          saved.push(name)
+          return path.join(p, `${saved.length}-${name}`)
+        },
+      },
+    })
+    await receiving(tg)
+    const photo = (id: number, extra: Record<string, unknown> = {}) => ({ update_id: id, message: { message_id: id, chat: { id: CHAT, type: 'supergroup' }, message_thread_id: 7, is_topic_message: true, from: { id: OWNER }, media_group_id: 'g1', photo: [{ file_id: `f${id}`, file_size: 3 }], ...extra } })
+    await tg.onUpdate(photo(70, { caption: '@orrery_bot so sánh 3 màn' }))
+    await tg.onUpdate(photo(71))
+    await tg.onUpdate(photo(72))
+    expect(asked).toEqual([])
+    await new Promise((r) => setTimeout(r, 40))
+    expect(saved).toHaveLength(3)
+    expect(asked).toHaveLength(1)
+    const text = (asked[0] as { text: string }).text
+    expect(text).toContain('nhiều file')
+    expect(text).toContain(`${path.join(project, '3-photo.jpg')}`)
+    expect(text).toContain('so sánh 3 màn')
+    tg.stop()
+  })
+
+  it('drops an album nobody addressed to the bot', async () => {
+    const { tg, asked } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { albumMs: 5, saveFile: async (p, n) => path.join(p, n) } })
+    await receiving(tg)
+    await tg.onUpdate({ update_id: 80, message: { message_id: 80, chat: { id: CHAT, type: 'supergroup' }, message_thread_id: 7, is_topic_message: true, from: { id: OWNER }, media_group_id: 'g2', caption: 'ảnh đi chơi', photo: [{ file_id: 'x', file_size: 3 }] } })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(asked).toEqual([])
+    tg.stop()
+  })
 })

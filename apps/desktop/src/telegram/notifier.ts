@@ -36,7 +36,7 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
 import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
-import { commandOf, paneStatus, readMessage, resultHtml, TEXT as INBOUND_TEXT, type TgMessage } from './inbound'
+import { commandOf, paneStatus, readMessage, resultHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
 import { RateLimiter } from '../phone/send'
 import type { BigUploadCreds, BigUploader } from './mtproto'
@@ -79,6 +79,9 @@ const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
 const SENT_MAP_MAX = 500
 const REPLIES_MAX = 300
+const ALBUM_MS = 1500
+const ALBUM_MAX = 10
+const HEAVY_AT_ONCE = 2
 
 interface KnownChat {
   title: string
@@ -130,6 +133,7 @@ export interface TelegramDeps {
   receiveInstalled?: () => boolean
   askPage?: (req: TelegramInbound) => Promise<TelegramInboundResult>
   sleep?: (ms: number) => Promise<void>
+  albumMs?: number
   onInbound?: (entry: { from: string; project: string; result: TelegramInboundResult }) => void
   screenshot?: (serial?: string) => Promise<{ ok: true; png: string; device: string } | { ok: false; error: 'none' | 'failed' }>
   diff?: (cwd: string) => Promise<{ ok: true; text: string; files: number } | { ok: false; error: 'not-repo' | 'clean' | 'failed' }>
@@ -297,6 +301,10 @@ export class TelegramNotifier {
   private readonly agentOfPane = new Map<string, string>()
   private readonly agentOfTerminal = new Map<string, string>()
   private readonly terminalOfAgent = new Map<string, string>()
+  private readonly albums = new Map<string, { items: TgMessage[]; timer?: ReturnType<typeof setTimeout> }>()
+  private lightChain: Promise<void> = Promise.resolve()
+  private heavyRunning = 0
+  private readonly heavyWaiting: (() => void)[] = []
 
   constructor(private readonly deps: TelegramDeps) {
     this.data = readShape(deps.file)
@@ -533,8 +541,28 @@ export class TelegramNotifier {
         if (this.pollRun !== run) break
         const id = (u as { update_id?: unknown })?.update_id
         if (typeof id === 'number' && id >= offset) offset = id + 1
-        await this.onUpdate(u).catch(() => undefined)
+        this.dispatch(u)
       }
+    }
+  }
+
+  /** Buttons and file / screen work run beside the poll so a 20 MB download never holds back ⏹; plain messages stay in order. */
+  private dispatch(update: unknown): void {
+    const u = update as { callback_query?: unknown; message?: Record<string, unknown> } | null
+    const m = u?.message
+    const heavy = !!m && (Array.isArray(m.photo) || ['document', 'video', 'audio', 'voice'].some((k) => !!m[k]) || (typeof m.text === 'string' && /screen(shot)?/i.test(m.text)))
+    if (u?.callback_query || heavy) return void this.onUpdate(update).catch(() => undefined)
+    this.lightChain = this.lightChain.then(() => this.onUpdate(update)).catch(() => undefined)
+  }
+
+  private async heavySlot<T>(work: () => Promise<T>): Promise<T> {
+    if (this.heavyRunning >= HEAVY_AT_ONCE) await new Promise<void>((r) => this.heavyWaiting.push(r))
+    this.heavyRunning++
+    try {
+      return await work()
+    } finally {
+      this.heavyRunning--
+      this.heavyWaiting.shift()?.()
     }
   }
 
@@ -544,6 +572,28 @@ export class TelegramNotifier {
     if (cb && typeof cb === 'object') return this.onCallback(cb as Record<string, unknown>)
     const msg = readMessage(update, this.botId)
     if (!msg || msg.fromBot || !this.data.bot) return
+    if (msg.group) return this.collectAlbum(msg)
+    return this.onMessage(msg)
+  }
+
+  private collectAlbum(msg: TgMessage): void {
+    const key = `${msg.chatId}:${msg.group}`
+    const album = this.albums.get(key) ?? { items: [] }
+    if (album.items.length < ALBUM_MAX) album.items.push(msg)
+    if (album.timer) clearTimeout(album.timer)
+    album.timer = setTimeout(() => {
+      this.albums.delete(key)
+      const bot = this.data.bot
+      const head = bot ? album.items.find((m) => commandOf(m, bot)?.kind === 'file') : undefined
+      if (!head) return
+      const more = album.items.filter((m) => m !== head && m.fromId === head.fromId && m.file).map((m) => m.file!)
+      void this.onMessage(head, more).catch(() => undefined)
+    }, this.deps.albumMs ?? ALBUM_MS)
+    this.albums.set(key, album)
+  }
+
+  private async onMessage(msg: TgMessage, more: TgFile[] = []): Promise<void> {
+    if (!this.data.bot) return
     const cmd = commandOf(msg, this.data.bot)
     if (!cmd) return
     const locale = this.deps.locale()
@@ -598,7 +648,7 @@ export class TelegramNotifier {
     const target: TelegramTarget | undefined = replied ?? (sessionTerminal ? { kind: 'terminal', terminalId: sessionTerminal } : undefined)
     if (repliedAgent && !replied && SESSION_BOUND.has(cmd.kind)) return void (await this.reply(msg, a.sessionClosed(this.data.sessionRoutes.find((r) => r.session === repliedAgent)?.name ?? '')))
     if (session && !sessionTerminal && SESSION_BOUND.has(cmd.kind)) return void (await this.reply(msg, a.sessionClosed(session.name)))
-    if (cmd.kind === 'screen') return this.sendScreen(msg, cmd.serial)
+    if (cmd.kind === 'screen') return this.heavySlot(() => this.sendScreen(msg, cmd.serial))
     const m = MORE_TEXT[locale]
     const askSafe = (req: TelegramInbound) => ask(req).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
     const panesOf = async (): Promise<TelegramPaneInfo[]> => {
@@ -672,10 +722,12 @@ export class TelegramNotifier {
     let req: TelegramInbound
     if (cmd.kind === 'status') req = { id: randomUUID(), action: 'status', project: route.project }
     else if (cmd.kind === 'file') {
-      const saved = await this.download(route.project, cmd.file)
-      if (!saved.ok) return void (await this.reply(msg, saved.error === 'big' ? a.fileTooBig : a.fileFail))
+      const results = await Promise.all([cmd.file, ...more].map((f) => this.heavySlot(() => this.download(route.project, f))))
+      const paths = results.flatMap((r) => (r.ok ? [r.path] : []))
+      if (!paths.length) return void (await this.reply(msg, results.some((r) => !r.ok && r.error === 'big') ? a.fileTooBig : a.fileFail))
       const caption = inboundPrompt(cmd.text)
-      const text = viaTelegram(inboundPrompt(a.filePrompt(FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind, saved.path, caption)), locale)
+      const kind = more.length ? FILE_KIND[locale].album! : FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind
+      const text = viaTelegram(inboundPrompt(a.filePrompt(kind, paths.join(', '), caption)), locale)
       req = { id: randomUUID(), action: 'send', project: route.project, text, from: msg.fromName, ...(target ? { target } : {}) }
     } else {
       const text = viaTelegram(inboundPrompt(cmd.text), locale)
