@@ -90,6 +90,7 @@ export interface Pane {
   openTicket?: string
   prefill?: string
   prefillSubmit?: boolean
+  typeKeys?: string
   compact?: CompactFlow
   openedBy?: string
   state: PaneState
@@ -822,6 +823,67 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return origin
   }
 
+  function telegramPanes(project: string, nested: string[] = []): Pane[] {
+    return panes.value.filter((p) => {
+      const dir = isTerm(p) ? (workCwd(p) ?? p.cwd) : undefined
+      return !!dir && p.state === 'running' && HAND_BACK_TO.has(presetOf(p)) && telegramOwns(dir, project, nested)
+    })
+  }
+
+  function telegramOwns(dir: string, project: string, nested: string[] = []): boolean {
+    return within(dir, project) && !nested.some((n) => within(n, project) && within(dir, n))
+  }
+
+  function telegramInbound(project: string, prompt: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []): Pane | 'none' | 'many' | 'gone' | { busy: Pane } {
+    const candidates = telegramPanes(project, nested)
+    let pane: Pane | undefined
+    if (target?.terminalId || target?.sessionId) {
+      pane = candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId))
+      if (!pane) return 'gone'
+    } else if (candidates.length === 1) pane = candidates[0]
+    if (!pane) return candidates.length ? 'many' : 'none'
+    if (pane.prefill || pane.compact) return { busy: pane }
+    pane.prefill = prompt
+    pane.prefillSubmit = true
+    return pane
+  }
+
+  function telegramKeys(project: string, keys: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []): Pane | 'none' | 'many' | 'gone' | 'busy' {
+    const candidates = telegramPanes(project, nested)
+    let pane: Pane | undefined
+    if (target?.terminalId || target?.sessionId) {
+      pane = candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId))
+      if (!pane) return 'gone'
+    } else if (candidates.length !== 1) return candidates.length ? 'many' : 'none'
+    else pane = candidates[0]!
+    if (pane.typeKeys) return 'busy'
+    pane.typeKeys = keys
+    return pane
+  }
+
+  function telegramTyped(paneKey: string, ms: number): Promise<boolean> {
+    const state = (): 'gone' | 'wait' | 'typed' => {
+      const p = paneOf(paneKey)
+      return !p ? 'gone' : p.typeKeys ? 'wait' : 'typed'
+    }
+    if (state() !== 'wait') return Promise.resolve(state() === 'typed')
+    return new Promise((resolve) => {
+      const finish = (ok: boolean): void => {
+        clearTimeout(timer)
+        stop()
+        if (!ok) {
+          const p = paneOf(paneKey)
+          if (p) p.typeKeys = undefined
+        }
+        resolve(ok)
+      }
+      const timer = setTimeout(() => finish(false), ms)
+      const stop = watch(state, (s) => {
+        if (s !== 'wait') finish(s === 'typed')
+      })
+    })
+  }
+
   const freshOpened = new Map<string, number>()
 
   function markOpened(pane: Pane): Pane {
@@ -1381,6 +1443,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFromAgent,
     showForAgent,
     handBack,
+    telegramPanes,
+    telegramInbound,
+    telegramKeys,
+    telegramTyped,
     openBrowser,
     openFile,
     openChanges,

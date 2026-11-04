@@ -986,6 +986,16 @@ watch(
 )
 
 watch(
+  () => props.pane.typeKeys,
+  (keys) => {
+    if (!keys || !conn?.isOpen || props.pane.state !== 'running') return
+    conn.write(keys)
+    workspace.update(props.pane.key, { typeKeys: undefined })
+  },
+  { immediate: true },
+)
+
+watch(
   () => props.pane.state,
   (state) => {
     if (state !== 'exited' && state !== 'error' && state !== 'gone') return

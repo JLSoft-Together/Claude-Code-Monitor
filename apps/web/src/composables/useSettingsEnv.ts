@@ -6,6 +6,7 @@ import { hasAwake, hasCapture } from '../lib/capture'
 import { desktop, hasDeepSeek, hasRun, hasTerminals } from '../lib/desktop'
 import { hasGitHub } from '../lib/github'
 import { hasPhone } from '../lib/phone'
+import { hasTelegram } from '../lib/telegram'
 import { isMac } from '../lib/platform'
 import { hasGrants } from '../lib/preview'
 import { hasUpdater } from '../lib/update'
@@ -26,6 +27,7 @@ export function useSettingsEnv() {
     capture: hasCapture,
     agentData: hasAgentData,
     phone: hasPhone,
+    telegram: hasTelegram,
     disk: hasDisk,
     updater: hasUpdater,
     backup: hasBackup,

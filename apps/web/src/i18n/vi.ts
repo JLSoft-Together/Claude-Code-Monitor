@@ -69,6 +69,7 @@ import captureV76 from './capture-v76'
 import sensitiveV76 from './sensitive-v76'
 import agentDataV76 from './agentdata-v76'
 import diskV77 from './disk-v77'
+import telegramV82 from './telegram-v82'
 import workspaceV77 from './workspace-v77'
 import projectsV78 from './projects-v78'
 import libsV75 from './libs-v75'
@@ -135,6 +136,7 @@ const vi: typeof en = {
   ...sensitiveV76.vi,
   ...agentDataV76.vi,
   ...diskV77.vi,
+  ...telegramV82.vi,
   ...workspaceV77.vi,
   ...projectsV78.vi,
   app: {

@@ -37,6 +37,7 @@ export interface SettingsEnv {
   capture: boolean
   agentData: boolean
   phone: boolean
+  telegram: boolean
   disk: boolean
   updater: boolean
   backup: boolean
@@ -113,6 +114,7 @@ export const entries = (mac: boolean): SettingsEntry[] => [
   { page: 'notify', id: 'idle', labelKey: 'resources.idleSetting', hintKey: 'resources.idleSettingHint', needs: 'notifyData' },
   { page: 'notify', id: 'disk', labelKey: 'disk.setting', hintKey: 'disk.settingHint', needs: 'disk' },
   { page: 'notify', id: 'phone', labelKey: 'phone.section', needs: 'phone' },
+  { page: 'notify', id: 'telegram', labelKey: 'telegram.section', hintKey: 'telegram.enable', needs: 'telegram' },
 
   { page: 'reminders', id: 'break', labelKey: 'settings.breakReminder', hintKey: 'settings.breakHint' },
   { page: 'reminders', id: 'stuck', labelKey: 'settings.stuck', hintKey: 'settings.stuckHint' },

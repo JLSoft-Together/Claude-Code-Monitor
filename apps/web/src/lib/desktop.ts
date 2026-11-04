@@ -26,6 +26,8 @@ import type {
   RunSession,
   RunStartRequest,
   RunTemplates,
+  TelegramInbound,
+  TelegramInboundResult,
   ToolchainReport,
 } from '@ccm/shared'
 import type { FileView, PreviewChange, PreviewTarget } from './preview'
@@ -138,6 +140,7 @@ interface DesktopBridge {
   onPaneOpen?: (handler: (req: PaneOpenRequest) => PaneOpenResult | Promise<PaneOpenResult>) => void
   /** v80 MCP tools that need the workspace; the PTY host re-validates whatever the handler answers. */
   onMcpCall?: (handler: (call: McpPageCall) => McpPageResult | Promise<McpPageResult>) => void
+  onTelegramInbound?: (handler: (req: TelegramInbound) => TelegramInboundResult | Promise<TelegramInboundResult>) => void
   captureRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<Uint8Array | null>
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>

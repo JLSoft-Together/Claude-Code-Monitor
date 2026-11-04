@@ -19,6 +19,7 @@ const all: SettingsEnv = {
   capture: true,
   agentData: true,
   phone: true,
+  telegram: true,
   disk: true,
   updater: true,
   backup: true,

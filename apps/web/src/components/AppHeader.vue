@@ -8,6 +8,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useWorkspaceStore } from '../stores/workspace'
 import { hasExtensions, hasTerminals, titleBar } from '../lib/desktop'
 import { hasDevices } from '../lib/devices'
+import { hasTelegram } from '../lib/telegram'
 import type { MenuEntry, Rect } from '../lib/menu'
 import { isMac } from '../lib/platform'
 import { formatKeys } from '../lib/shortcuts'
@@ -16,6 +17,7 @@ import { useInboxStore } from '../stores/inbox'
 import { useUpdateStore } from '../stores/update'
 import { useUiStore, type View } from '../stores/ui'
 import HeaderStatusPopover from './HeaderStatusPopover.vue'
+import TelegramToggle from './TelegramToggle.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ContextMenu from './ui/ContextMenu.vue'
 
@@ -167,6 +169,7 @@ function onTabKey(e: KeyboardEvent): void {
           <CircleArrowDown :size="14" aria-hidden="true" />
           <span class="hidden tabular-nums sm:inline">{{ t('update.pill', { version: updateVersion }) }}</span>
         </button>
+        <TelegramToggle v-if="hasTelegram" />
         <HeaderStatusPopover />
         <button
           ref="inboxBtn"

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { BREAK_MINUTES, breakAnchor, nextBreakAt } from '../lib/breaks'
 import { now } from '../lib/format'
 import { hasPhone, onPhone } from '../lib/phone'
+import { hasTelegram, onTelegram } from '../lib/telegram'
 import { useExtrasStore } from '../stores/extras'
 import { useSettingsStore } from '../stores/settings'
 import { useToastsStore } from '../stores/toasts'
@@ -10,6 +11,7 @@ import { useUiStore } from '../stores/ui'
 
 const BREAK_ID = 'break'
 const PHONE_ID = 'phone-fail'
+const TELEGRAM_ID = 'telegram-fail'
 
 // Break reminder and failed phone sends reach the shared stack from here, so App.vue only mounts the host.
 export function useAppToasts(): void {
@@ -54,6 +56,35 @@ export function useAppToasts(): void {
     (due) => (due ? showBreak(due.minutes) : toasts.remove(BREAK_ID)),
     { immediate: true },
   )
+
+  if (hasTelegram) {
+    const offTelegram = onTelegram((e) => {
+      if ('state' in e && !e.state.lastError) {
+        toasts.remove(TELEGRAM_ID)
+        return
+      }
+      if (!('failed' in e)) return
+      toasts.push({
+        id: TELEGRAM_ID,
+        kind: 'phoneFail',
+        title: t('telegram.failTitle'),
+        text: t(`telegram.error.${e.failed}`),
+        timeoutMs: 0,
+        attrs: { 'data-telegram-fail': '' },
+        actions: [
+          {
+            label: t('telegram.openSettings'),
+            run: () => {
+              toasts.dismiss(TELEGRAM_ID, 'close')
+              ui.settingsPage = 'notify'
+              ui.settingsOpen = true
+            },
+          },
+        ],
+      })
+    })
+    onBeforeUnmount(offTelegram)
+  }
 
   if (!hasPhone) return
   // Desktop main reports only the first failure of a run of failed sends, so one toast per run.

@@ -7,6 +7,7 @@ import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { installMcpCalls } from '../../composables/useMcpCalls'
+import { installTelegramInbound } from '../../composables/useTelegramInbound'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
 import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
@@ -103,6 +104,7 @@ const { t } = useI18n()
 const workspace = useWorkspaceStore()
 useWorkspaceLinks(() => props.visible)
 installMcpCalls()
+installTelegramInbound()
 const info = usePaneInfo()
 const { describe, isBusy, viewDetail } = info
 const settings = useSettingsStore()
