@@ -907,6 +907,14 @@ Details of the CLI: `docs/deepseek-integration.md`. Plan `.planning/PLAN-v81-dee
 - **Large files (≤ 2000 MB)**: the Bot API caps bot uploads at 50 MB. Settings › Telegram › Large files takes an `api_id` + `api_hash` (my.telegram.org, sealed by safeStorage like the token) and uploads files over 50 MB from `telegram_send` over MTProto as the same bot (npm `telegram` = GramJS 2.26.22, pinned; `telegram/mtproto.ts`). The MCP call returns at once with `uploading`; the bot posts "⏫ uploading" and later the file or a failure line. The group is resolved with `getInputEntity` (bots may call `channels.getChannels` with access hash 0 to learn the real hash; sending with hash 0 fails as a chat error). The MTProto session is sealed in `telegram.json`, dropped on a token / key change, re-made once on an auth error; the client closes after 2 idle minutes; one upload at a time.
 - **Topic listing is not possible for bots**: `channels.getForumTopics` answers `BOT_METHOD_INVALID` (tried 2026-11-05), so topics still come from messages seen by the bot or a pasted link.
 - **Daily summary**: when Orrery starts after the summary time it skips that day and marks it done, so moving the time later the same day sends nothing until tomorrow (by design).
+- **Replies follow the session**: a bot message sent for a session is remembered as chat:message → Claude session id (`telegram.json` `replies`, last 300), so replying to it reaches that session after an app restart or a resume into another terminal; if the session is not open the bot says so.
+- **Albums**: Telegram sends each photo of an album as its own update and only the first carries the caption. Items with the same `media_group_id` are gathered for 1.5 s; when one is addressed to the bot, all files (max 10) are saved and sent as one prompt.
+- **Poll never waits on heavy work**: buttons and messages with a file or `screen` run beside the poll (downloads / screenshots 2 at a time), plain messages keep their order. A 20 MB download no longer holds back ⏹.
+- **Large file progress**: the "⏫ Uploading" message is edited with the percentage at most every 15 s, then becomes ✅ sent or ⚠️ failed (a failure also posts a new message so it notifies).
+- **Connect from Telegram**: tagging the bot in a topic that is not connected answers with 🔗 one button per open session and 📁 one per project (the page sends name + cwd with `ccm:telegram-panes`).
+- **Pinned status per session topic**: with pinned status on, a session topic gets its own pin listing only that session (pin key `s:<session>`); disconnecting unpins it.
+- **Linked glyph**: rail rows and Workspace tabs whose Claude session is connected show a paper plane, tooltip "Telegram: Group › Topic"; the tab menu also has *Connect to Telegram…*.
+- **Bundle**: GramJS is built as `stage/gramjs.cjs` (esbuild plugin `gramjs-apart`, `dynamic-import` off so it is a `require`), so `main.cjs` dropped from 2.9 MB to 1.4 MB.
 
 ## 12. Open items
 
