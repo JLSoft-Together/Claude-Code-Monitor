@@ -1,4 +1,4 @@
-import type { TelegramInboundResult, TelegramPaneInfo } from '@ccm/shared'
+import { maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, type TelegramInboundResult, type TelegramPaneInfo } from '@ccm/shared'
 import { escapeHtml, type TelegramLocale } from './api'
 
 export interface TgMessage {
@@ -87,6 +87,7 @@ export type Command =
   | { kind: 'run'; config: string }
   | { kind: 'all'; text: string }
   | { kind: 'last' }
+  | { kind: 'tail'; lines: number }
   | { kind: 'screen'; serial?: string }
   | { kind: 'send'; text: string }
   | { kind: 'file'; file: TgFile; text: string; more?: TgFile[] }
@@ -94,7 +95,9 @@ export type Command =
 export function commandOf(msg: TgMessage, bot: string): Command | null {
   const at = `@${bot}`.toLowerCase()
   const lower = msg.text.toLowerCase()
-  const mentioned = lower.includes(at)
+  // Picking from the "/" menu in a group with one bot sends `/status` without `@bot`; only the bot's own menu commands count as addressed.
+  const menuCommand = /^\/([a-z]+)(\s|$)/.exec(lower)?.[1]
+  const mentioned = lower.includes(at) || (!!menuCommand && COMMAND_MENU.en.some(([name]) => name === menuCommand))
   if (!mentioned && !msg.replyToBot && msg.chatType !== 'private') return null
   const stripped = msg.text
     .replace(new RegExp(`@${bot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ')
@@ -113,6 +116,7 @@ export function commandOf(msg: TgMessage, bot: string): Command | null {
   if (head === 'run') return { kind: 'run', config: rest.slice(0, 80) }
   if (head === 'all') return rest ? { kind: 'all', text: rest } : { kind: 'help' }
   if (head === 'last' && !rest) return { kind: 'last' }
+  if (head === 'tail' && /^\d{0,4}$/.test(rest)) return { kind: 'tail', lines: Math.min(TELEGRAM_TAIL_MAX, Math.max(1, Number(rest) || TELEGRAM_TAIL_DEFAULT)) }
   if ((head === 'screen' || head === 'screenshot') && /^[A-Za-z0-9._:-]{0,80}$/.test(rest)) return { kind: 'screen', ...(rest ? { serial: rest } : {}) }
   return stripped ? { kind: 'send', text: stripped } : { kind: 'help' }
 }
@@ -158,6 +162,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>new [prompt]</code> — open a new Claude session',
       '<code>resume</code> — reopen a finished session',
       '<code>last</code> — last reply of the session',
+      '<code>tail [lines]</code> — last lines of the session terminal (default 30, max 80)',
       '<code>stop</code> — stop the running work (Esc)',
       '',
       '📱 <b>App</b>',
@@ -195,6 +200,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>new [prompt]</code> — mở session Claude mới',
       '<code>resume</code> — mở lại session đã kết thúc',
       '<code>last</code> — câu trả lời cuối của session',
+      '<code>tail [số dòng]</code> — các dòng cuối của terminal session (mặc định 30, tối đa 80)',
       '<code>stop</code> — dừng việc đang chạy (Esc)',
       '',
       '📱 <b>App</b>',
@@ -216,9 +222,65 @@ export const TEXT: Record<TelegramLocale, {
   },
 }
 
+export const COMMAND_MENU: Record<TelegramLocale, [string, string][]> = {
+  en: [
+    ['status', 'Open sessions of this project'],
+    ['new', 'Open a new Claude session'],
+    ['stop', 'Stop the running work (Esc)'],
+    ['last', 'Last reply of the session'],
+    ['tail', 'Last lines of the session terminal'],
+    ['resume', 'Reopen a finished session'],
+    ['run', 'Run the app with a Run config'],
+    ['all', 'Send a message to every session'],
+    ['screen', 'Screenshot of the Android device'],
+    ['help', 'List the commands'],
+  ],
+  vi: [
+    ['status', 'Các session đang mở của project'],
+    ['new', 'Mở session Claude mới'],
+    ['stop', 'Dừng việc đang chạy (Esc)'],
+    ['last', 'Câu trả lời cuối của session'],
+    ['tail', 'Các dòng cuối của terminal session'],
+    ['resume', 'Mở lại session đã kết thúc'],
+    ['run', 'Chạy app theo Run config'],
+    ['all', 'Gửi tin vào mọi session'],
+    ['screen', 'Chụp màn hình máy Android'],
+    ['help', 'Danh sách lệnh'],
+  ],
+}
+
+const TAIL_HTML_MAX = 3500
+const TAIL_ESCAPED_MAX = 3900
+
+const TAIL_TEXT: Record<TelegramLocale, { head: (name: string) => string; empty: string }> = {
+  en: { head: (n) => `📜 Terminal of <b>${escapeHtml(n)}</b>`, empty: 'The terminal screen is empty.' },
+  vi: { head: (n) => `📜 Terminal của <b>${escapeHtml(n)}</b>`, empty: 'Màn hình terminal đang trống.' },
+}
+
+/** Masks first (a secret cut in half would escape the masker), then keeps the end of the text and escapes it. */
+export function tailHtml(name: string, text: string, locale: TelegramLocale, home: string, platform: string, token?: string | null): string {
+  const t = TAIL_TEXT[locale]
+  let raw = maskSecrets(token ? text.split(token).join('[masked]') : text, home, platform).replace(/\s+$/, '')
+  if (!raw.trim()) return `${t.head(name)}\n${t.empty}`
+  let cut = false
+  if (raw.length > TAIL_HTML_MAX) {
+    raw = raw.slice(-TAIL_HTML_MAX)
+    cut = true
+  }
+  let html = escapeHtml(raw)
+  while (html.length > TAIL_ESCAPED_MAX) {
+    raw = raw.slice(Math.ceil((html.length - TAIL_ESCAPED_MAX) / 5) + 1)
+    cut = true
+    html = escapeHtml(raw)
+  }
+  if (cut && raw.includes('\n')) html = escapeHtml(raw.slice(raw.indexOf('\n') + 1))
+  return `${t.head(name)}\n<pre>${html}</pre>`
+}
+
 export function resultHtml(res: TelegramInboundResult, locale: TelegramLocale): string {
   const t = TEXT[locale]
   if (res.ok) {
+    if (res.action === 'tail') return TAIL_TEXT[locale].head(res.name)
     if (res.action === 'status') return res.panes.length ? t.status(res.panes.map((p) => paneLine(p, locale)).join('\n')) : t.statusEmpty
     if (res.action === 'send') return res.queued ? t.queued(res.name) : t.sent(res.name)
     if (res.action === 'all') return res.names.length ? t.sent(res.names.join(', ')) : t.none

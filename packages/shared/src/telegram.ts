@@ -314,7 +314,12 @@ export type TelegramInbound = (
   | { id: string; action: 'all'; project: string; text: string; from: string }
   | { id: string; action: 'resumeList'; project: string }
   | { id: string; action: 'resume'; project: string; sessionId: string; cwd: string }
+  | { id: string; action: 'tail'; project: string; lines: number; target?: TelegramTarget }
 ) & { nested?: string[] }
+
+export const TELEGRAM_TAIL_DEFAULT = 30
+export const TELEGRAM_TAIL_MAX = 80
+const TAIL_TEXT_MAX = 20_000
 
 export interface TelegramResumeItem {
   id: string
@@ -339,6 +344,7 @@ export type TelegramInboundResult =
   | { ok: true; action: 'all'; names: string[] }
   | { ok: true; action: 'resumeList'; items: TelegramResumeItem[] }
   | { ok: true; action: 'resume'; name: string }
+  | { ok: true; action: 'tail'; name: string; text: string }
   | { ok: false; error: 'none' | 'many' | 'busy' | 'gone' | 'unavailable' | 'state'; panes?: TelegramPaneInfo[] }
 
 const INBOUND_ERRORS = ['none', 'many', 'busy', 'gone', 'unavailable', 'state'] as const
@@ -370,6 +376,11 @@ export function parseInboundResult(raw: unknown): TelegramInboundResult {
     return { ok: true, action: 'keys', name: r.name.slice(0, NAME_MAX), key: r.key as TelegramKey }
   }
   const nm = (v: unknown) => (typeof v === 'string' && v ? v.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, NAME_MAX) : null)
+  if (r.action === 'tail') {
+    const name = nm(r.name)
+    if (!name || typeof r.text !== 'string') return { ok: false, error: 'unavailable' }
+    return { ok: true, action: 'tail', name, text: r.text.replace(/[\x00-\x09\x0b-\x1f\x7f]+/g, '').slice(-TAIL_TEXT_MAX) }
+  }
   if (r.action === 'new' || r.action === 'resume') {
     const name = nm(r.name)
     return name ? { ok: true, action: r.action, name } : { ok: false, error: 'unavailable' }
@@ -420,6 +431,10 @@ function parseInboundBody(raw: unknown): TelegramInbound | null {
     return { id: r.id, action: 'keys', project: r.project, key: r.key as TelegramKey, ...(t0 ? { target: t0 } : {}), ...(since !== undefined ? { since } : {}), ...(tool ? { tool } : {}) }
   }
   if (r.action === 'resumeList') return { id: r.id, action: 'resumeList', project: r.project }
+  if (r.action === 'tail') {
+    const n = typeof r.lines === 'number' && Number.isFinite(r.lines) ? Math.floor(r.lines) : TELEGRAM_TAIL_DEFAULT
+    return { id: r.id, action: 'tail', project: r.project, lines: Math.min(TELEGRAM_TAIL_MAX, Math.max(1, n)), ...(t0 ? { target: t0 } : {}) }
+  }
   if (r.action === 'resume') {
     if (typeof r.sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(r.sessionId) || typeof r.cwd !== 'string' || !r.cwd || r.cwd.length > 4096 || /[\0\r\n]/.test(r.cwd)) return null
     return { id: r.id, action: 'resume', project: r.project, sessionId: r.sessionId, cwd: r.cwd }

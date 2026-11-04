@@ -26,7 +26,7 @@ function setup(opts: { answer?: (req: TelegramInbound) => TelegramInboundResult;
     if (method === 'getUpdates') return new Promise(() => undefined)
     if (url.includes('/file/bot')) return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new TextEncoder().encode('img').buffer as ArrayBuffer }
     const body = init.body instanceof FormData ? init.body : typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
-    sent.push({ method, body, url })
+    if (method !== 'setMyCommands') sent.push({ method, body, url })
     const result =
       method === 'getMe' ? { id: 42, username: 'orrery_bot' } : method === 'sendMessage' ? { message_id: nextId++ } : method === 'getFile' ? { file_path: 'photos/file_1.jpg', file_size: 3 } : true
     return { ok: true, status: 200, json: async () => ({ ok: true, result }) }

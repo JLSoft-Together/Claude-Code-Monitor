@@ -2,6 +2,7 @@ import { watch } from 'vue'
 import { cleanNoteText, isSessionId, parseInbound, uniquePaneNames, type TelegramPaneLink, waitReason, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramPaneInfo, type TelegramResumeItem, type TerminalSession } from '@ccm/shared'
 import { i18n } from '../i18n'
 import { desktop } from '../lib/desktop'
+import { hasSnapshot, snapshotOf } from '../lib/paneSnapshots'
 import { telegramPanes } from '../lib/telegram'
 import { baseName } from '../lib/preview'
 import { useAgentsStore } from '../stores/agents'
@@ -61,7 +62,7 @@ export function installTelegramInbound(): void {
     return { name: nameOf(p), status: s?.status ?? 'unknown', ...(s ? { terminalId: s.id } : {}), ...(tool ? { tool } : {}), ...(Number.isFinite(since) ? { since } : {}) }
   }
   const infos = (panes: Pane[]): TelegramPaneInfo[] => uniquePaneNames(panes.map(info))
-  const targetOf = (req: Req<'send'> | Req<'keys'>) =>
+  const targetOf = (req: Req<'send'> | Req<'keys'> | Req<'tail'>) =>
     req.target ? (req.target.kind === 'terminal' ? { terminalId: req.target.terminalId } : { sessionId: req.target.sessionId }) : undefined
   const log = (p: Pane, from: string, text: string) => {
     const s = sessionOf(p)
@@ -84,6 +85,15 @@ export function installTelegramInbound(): void {
     if (!(await workspace.telegramTyped(out.key, TYPED_MS))) return { ok: false, error: 'unavailable' }
     log(out, 'Telegram', req.key)
     return { ok: true, action: 'keys', name: nameOf(out), key: req.key }
+  }
+
+  function tail(req: Req<'tail'>): TelegramInboundResult {
+    const target = targetOf(req)
+    const candidates = workspace.telegramPanes(req.project, req.nested)
+    const pane = target ? candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId)) : candidates.length === 1 ? candidates[0] : undefined
+    if (!pane) return target ? { ok: false, error: 'gone' } : { ok: false, error: candidates.length ? 'many' : 'none', ...(candidates.length ? { panes: infos(candidates) } : {}) }
+    if (!hasSnapshot(pane.key)) return { ok: false, error: 'gone' }
+    return { ok: true, action: 'tail', name: nameOf(pane), text: snapshotOf(pane.key, req.lines) }
   }
 
   function send(req: Req<'send'>): TelegramInboundResult {
@@ -156,6 +166,8 @@ export function installTelegramInbound(): void {
         return { ok: true, action: 'status', panes: infos(workspace.telegramPanes(req.project, req.nested)) }
       case 'keys':
         return keys(req)
+      case 'tail':
+        return tail(req)
       case 'send':
         return send(req)
       case 'all':

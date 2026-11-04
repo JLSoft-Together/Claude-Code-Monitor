@@ -1,4 +1,4 @@
-// Mission Control pane text: memory only, read on demand from mounted xterm buffers; never stored or sent over IPC.
+// Mission Control pane text: memory only, read on demand from mounted xterm buffers; never stored. Only the owner's Telegram `tail` sends it over IPC (main masks it).
 const readers = new Map<string, (rows: number) => string[]>()
 
 export function lastRows(lines: readonly string[], n: number): string {
@@ -13,6 +13,8 @@ export function registerSnapshot(key: string, read: (rows: number) => string[]):
     if (readers.get(key) === read) readers.delete(key)
   }
 }
+
+export const hasSnapshot = (key: string): boolean => readers.has(key)
 
 export function snapshotOf(key: string, rows: number): string {
   const read = readers.get(key)

@@ -32,11 +32,11 @@ import {
   type TelegramState,
   type TelegramTestResult,
 } from '@ccm/shared'
-import { randomInt, randomUUID } from 'node:crypto'
-import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
+import { createHash, randomInt, randomUUID } from 'node:crypto'
+import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
 import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
-import { commandOf, paneStatus, readMessage, resultHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
+import { COMMAND_MENU, commandOf, paneStatus, readMessage, resultHtml, tailHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
 import { RateLimiter } from '../phone/send'
 import type { BigUploadCreds, BigUploader } from './mtproto'
@@ -74,7 +74,7 @@ const KNOWN_TOPICS_MAX = 200
 export const INBOUND_PER_CHAT_MIN = 10
 const strangerHtml = (custom: string, owner: string, fallback: (owner: string) => string): string =>
   custom ? escapeHtml(custom).split('{owner}').join(escapeHtml(owner)) : fallback(owner)
-const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last'])
+const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last', 'tail'])
 const sessionPinKey = (session: string): string => `s:${session}`
 export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
@@ -122,6 +122,8 @@ interface FileShape {
   replies: Record<string, string>
   /** Telegram confirms an update only on the next getUpdates, so the last batch before quitting comes back; this keeps it from being offered again. */
   lastUpdate?: number
+  /** Hash of the "/" menu last accepted by Telegram for the current token; setMyCommands is skipped while it matches. */
+  commandsHash?: string
   apiId?: number
   apiHash?: string
   mtSession?: string
@@ -269,6 +271,7 @@ function readShape(file: string | undefined): FileShape {
       stranger: readStranger(raw.stranger),
       replies: readReplies(raw.replies),
       ...(Number.isSafeInteger(raw.lastUpdate) && (raw.lastUpdate as number) >= 0 ? { lastUpdate: raw.lastUpdate } : {}),
+      ...(typeof raw.commandsHash === 'string' && /^[0-9a-f]{16}$/.test(raw.commandsHash) ? { commandsHash: raw.commandsHash } : {}),
       ...(Number.isSafeInteger(raw.apiId) && (raw.apiId as number) > 0 ? { apiId: raw.apiId } : {}),
       ...(typeof raw.apiHash === 'string' && raw.apiHash.length < 4096 ? { apiHash: raw.apiHash } : {}),
       ...(typeof raw.mtSession === 'string' && raw.mtSession.length < 8192 ? { mtSession: raw.mtSession } : {}),
@@ -291,6 +294,7 @@ export class TelegramNotifier {
   private receiving = false
   private pollRun = 0
   private pollConflict = false
+  private commandsBusy = false
   private conflictRuns = 0
   private readonly backlogs = new Map<string, unknown[]>()
   private pollSeen: ScanSeen | null = null
@@ -436,6 +440,7 @@ export class TelegramNotifier {
       this.data.mtSession = undefined
       this.data.lastUpdate = undefined
       this.data.bot = undefined
+      this.data.commandsHash = undefined
       this.botId = null
       this.pollRun = 0
       if (!patch.token) {
@@ -465,7 +470,30 @@ export class TelegramNotifier {
     const result = this.commit(patch.token !== undefined)
     if (patch.token) void this.whoAmI()
     this.syncPoll(patch.receiving === true || !!patch.token)
+    if (this.receiving && (patch.receiving === true || patch.token)) void this.syncCommands()
     return result
+  }
+
+  private async syncCommands(): Promise<void> {
+    if (this.commandsBusy) return
+    const sets = [{ lang: '', list: COMMAND_MENU.en }, ...(this.deps.locale() === 'vi' ? [{ lang: 'vi', list: COMMAND_MENU.vi }] : [])]
+    const hash = createHash('sha256').update(JSON.stringify(sets)).digest('hex').slice(0, 16)
+    if (this.data.commandsHash === hash) return
+    const sealed = this.data.token
+    this.commandsBusy = true
+    try {
+      for (const s of sets) {
+        const res = await this.call('setMyCommands', { commands: s.list.map(([command, description]) => ({ command, description })), scope: { type: 'all_group_chats' }, ...(s.lang ? { language_code: s.lang } : {}) })
+        if (!res.ok) return
+      }
+      if (this.data.token !== sealed) return
+      this.data.commandsHash = hash
+      this.save()
+    } catch {
+      // the menu is a convenience; typed commands keep working
+    } finally {
+      this.commandsBusy = false
+    }
   }
 
   get isReceiving(): boolean {
@@ -810,6 +838,16 @@ export class TelegramNotifier {
       }
       return void (await this.reply(msg, this.lastHtml(pick, route.project)))
     }
+    if (cmd.kind === 'tail') {
+      const panes = await panesOf()
+      const pick = target?.kind === 'terminal' ? target.terminalId : panes.length === 1 ? panes[0]!.terminalId : undefined
+      if (!pick) {
+        const open = panes.filter((p) => p.terminalId)
+        if (open.length > 1) return void (await this.reply(msg, m.pick(open.length, 'tail'), this.pickMarkup('tl', open, route.project, msg, String(cmd.lines))))
+        return void (await this.reply(msg, resultHtml({ ok: false, error: 'none' }, locale)))
+      }
+      return void (await this.reply(msg, await this.tailText(pick, route.project, cmd.lines)))
+    }
     if (cmd.kind === 'run') {
       const configs = this.deps.runConfigs ? await this.deps.runConfigs(route.project).catch(() => []) : []
       if (!configs.length) return void (await this.reply(msg, m.runNone))
@@ -871,7 +909,15 @@ export class TelegramNotifier {
     return markup(this.deps.locale(), rows)
   }
 
-  private pickMarkup(kind: 'st' | 'lt' | 'np', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
+  private async tailText(terminalId: string, project: string, lines: number): Promise<string> {
+    const locale = this.deps.locale()
+    const ask = this.asker()
+    if (!ask) return INBOUND_TEXT[locale].unavailable
+    const res = await ask({ id: randomUUID(), action: 'tail', project, lines, target: { kind: 'terminal', terminalId } }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+    return res.ok && res.action === 'tail' ? tailHtml(res.name, res.text, locale, this.deps.home, this.deps.platform, this.token()) : resultHtml(res, locale)
+  }
+
+  private pickMarkup(kind: 'st' | 'lt' | 'tl' | 'np', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
     const locale = this.deps.locale()
     const rows = panes.slice(0, 8).map((p): [ActionKind, string, string][] => [
       [kind, this.addAction({ kind, terminalId: p.terminalId!, project, cwd: project, name: p.name, chatId: msg.chatId, threadId: msg.threadId, ...(p.since ? { since: p.since } : {}), ...(text !== undefined ? { extra: text } : {}) }), `${p.name} · ${paneStatus(p.status, locale)}`],
@@ -958,6 +1004,10 @@ export class TelegramNotifier {
     if (kind === 'lt') {
       await this.answer(id)
       return void (await this.post(where, this.lastHtml(entry.terminalId, entry.project)))
+    }
+    if (kind === 'tl') {
+      await this.answer(id)
+      return void (await this.post(where, await this.tailText(entry.terminalId, entry.project, Math.min(TELEGRAM_TAIL_MAX, Math.max(1, Number(entry.extra) || TELEGRAM_TAIL_DEFAULT)))))
     }
     if (kind === 'nw' || kind === 'np') {
       for (const [k, e] of this.actions) if ((e.kind === 'nw' || e.kind === 'np') && e.chatId === entry.chatId && e.extra === entry.extra && e.threadId === entry.threadId) this.actions.delete(k)

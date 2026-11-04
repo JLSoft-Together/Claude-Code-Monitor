@@ -24,7 +24,7 @@ function setup(answer: (req: TelegramInbound) => TelegramInboundResult = () => (
     const method = url.split('/').pop()!
     if (method === 'getUpdates') return new Promise(() => undefined)
     const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
-    sent.push({ method, body })
+    if (method !== 'setMyCommands') sent.push({ method, body })
     const result = method === 'getMe' ? { id: 42, username: 'orrery_bot' } : method === 'sendMessage' ? { message_id: nextId++ } : []
     return { ok: true, status: 200, json: async () => ({ ok: true, result }) }
   }

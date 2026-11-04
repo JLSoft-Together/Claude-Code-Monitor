@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'lk' | 'lp' | 'bg' | 'bx'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,11 +24,11 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|lk|lp|bg|bx):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua' },
 }
 
 export const MORE_TEXT: Record<TelegramLocale, {
@@ -46,7 +46,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
   allSent: (names: string[]) => string
   allNone: string
   lastNone: string
-  pick: (count: number, what: 'send' | 'stop' | 'last') => string
+  pick: (count: number, what: 'send' | 'stop' | 'last' | 'tail') => string
   linkPick: string
   linked: (name: string) => string
   last: (name: string) => string
@@ -73,7 +73,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
     lastNone: 'No finished reply of that session yet.',
     linkPick: 'This topic is not connected yet. Connect it to an open session (🔗) or a whole project (📁):',
     linked: (n) => `🔗 This topic is now connected to <b>${escapeHtml(n)}</b>. Tag me here to talk to it.`,
-    pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : 'Last reply of which one?'}`,
+    pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : w === 'tail' ? 'Terminal of which one?' : 'Last reply of which one?'}`,
     last: (n) => `💬 Last reply of <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'No session open in Orrery.',
@@ -98,7 +98,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
     lastNone: 'Session này chưa có câu trả lời xong nào.',
     linkPick: 'Topic này chưa nối với gì. Nối với session đang mở (🔗) hoặc cả project (📁):',
     linked: (n) => `🔗 Đã nối topic này với <b>${escapeHtml(n)}</b>. Tag bot ở đây để làm việc với nó.`,
-    pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
+    pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : w === 'tail' ? 'Xem terminal của session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
     last: (n) => `💬 Câu trả lời cuối của <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'Không có session nào mở trong Orrery.',
