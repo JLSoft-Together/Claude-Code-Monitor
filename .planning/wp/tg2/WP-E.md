@@ -1,0 +1,16 @@
+## WP-E: gom báo "xong" thành 1 tin sửa dần
+- Mục tiêu: tuỳ chọn mới `digest` (mặc định tắt) ở Settings › Telegram tab Báo cáo: "Gom báo xong: mỗi session một tin trong ngày, sửa lại thay vì gửi tin mới".
+  - Khi bật: episode `done` của một terminal/Claude session (key theo Claude session id nếu có — `agentOfTerminal`, else terminalId) mà hôm nay (theo giờ máy) đã có tin "xong" → `editMessageText` tin đó: dòng đầu "✅ <tên> · xong N lần · HH:MM", rồi nội dung episode mới nhất (giữ `episodeHtml` + nút go/ts/df mới như bình thường; nút của lần cũ bị thay). Edit lỗi (tin bị xoá…) → gửi tin mới và nhớ id mới.
+  - Episode `permission` / `waiting` luôn là tin mới (cần chú ý).
+  - Nhớ `digestMsgs: {key: {chatId, messageId, day, n}}` trong bộ nhớ (không cần lưu file; khởi động lại thì tin đầu tiên mới).
+  - Đếm thống kê ngày (`countsFor`), `reportedAt`, rate limit giữ như cũ (edit không trừ `take()` nhưng không quá 1 edit / 10 s mỗi tin — nếu dày hơn thì bỏ qua edit đó? Không: chỉ edit khi có done mới, done cách nhau ≥ `doneMinutes` nên ổn).
+- Phạm vi file: `apps/desktop/src/telegram/notifier.ts` (+ `api.ts`/`actions.ts` nếu cần text), `packages/shared/src/telegram.ts` (state/patch `digest`), `apps/web/src/components/TelegramSettings.vue`, `apps/web/src/i18n/telegram-v82.ts`, tests.
+- Skill: `.code_index/_meta.md`, docs §11an–e; đọc skill `frontend-design:frontend-design` trước khi sửa Vue.
+- Tiêu chí nghiệm thu:
+  - [ ] Test: digest tắt → 2 done = 2 sendMessage (như cũ).
+  - [ ] Test: digest bật → done 1 sendMessage, done 2 → editMessageText cùng message_id, text có "xong 2 lần"; permission giữa chừng → sendMessage mới; ngày mới → sendMessage mới.
+  - [ ] Test: edit lỗi → sendMessage mới.
+  - [ ] Patch/sanitizer `digest` boolean; state hiện `digest`.
+  - [ ] typecheck sạch; test desktop telegram + web pass.
+- Nhìn thấy được: có (1 công tắc) → CHƯA NHÌN; main kiểm.
+- Báo cáo: `.planning/wp/tg2/WP-E-report.md`

@@ -1,0 +1,14 @@
+## WP-A — DONE
+- Đã đổi:
+  - apps/desktop/src/telegram/notifier.ts: pollLoop lần đầu `getUpdates offset:0 limit:100` (tối đa 5 trang), `offerBacklog` (chỉ owner, group chat, topic đã gán, lệnh qua commandOf trừ pair/help, <= 60 phút theo `message.date`, tối đa 8 dòng/topic; mask secret, cắt 80 ký tự, escape HTML) + `onBacklog` (nút bg chạy lần lượt qua `onUpdate`, bx bỏ qua); `pollFailed`/`pollOk` (3 conflict liên tiếp -> `pollRun=0`, cờ `pollConflict`), `syncPoll(retry)` chỉ khởi động lại poll đã dừng khi `set({receiving:true})` hoặc đổi token.
+  - actions.ts: ActionKind `bg`/`bx`, ACTION_RE, LABELS en/vi, MORE_TEXT `backlogHead`/`backlogSkipped`. inbound.ts: `TgMessage.date` (ms, optional).
+  - packages/shared/src/telegram.ts: `TelegramState.pollConflict`.
+  - Web: TelegramSettings.vue (banner `data-telegram-conflict` + nút Thử lại = `patch({receiving:true})`, KHÔNG cần IPC mới; ẩn dòng lastError trùng), i18n telegram-v82.ts `telegram.setup.conflict` / `retry` (en + vi).
+  - Test: mới apps/desktop/test/telegram-backlog.test.ts (4 test); sửa telegram-review.test.ts (fake getUpdates offset -1 -> 0, chỉ trả [] lần đầu vì offset 0 rỗng làm fake quay vòng vô hạn).
+- Tiêu chí: 5/5 đạt (10 phút -> hỏi + 2 nút, ▶️ đúng thứ tự, 🗑 không chạy; 2 giờ/người lạ/callback cũ/pair cũ -> bỏ im lặng; 3x409 -> pollConflict + dừng, retry chạy lại, poll ok -> cờ false; en+vi, escape, mask; typecheck sạch).
+- Audit: không debug log/code chết; chỉ file trong phạm vi.
+- Review: không update -> offset 0, không hỏi; update không phải message -> readMessage null, bỏ; lỗi mạng giữ backoff cũ (không tính conflict); album: chỉ tin đầu (có caption) vào backlog, tin ảnh phụ không có caption bị bỏ.
+- Test: `npm test -w @ccm/desktop -- test/telegram` -> 72 pass / 0 fail; `npm test -w @ccm/web` -> 1693 pass / 0 fail; `npm run typecheck` sạch.
+- Nhìn: CHƯA NHÌN: subagent không chạy app (banner conflict trong Settings cần main kiểm bản dev).
+- Hot file / ngoài phạm vi: không cần thêm. Lưu ý: lệnh `stop` cũ cũng vào backlog (vẫn qua nút xác nhận); `.code_index` + docs §11an chưa cập nhật (ngoài phạm vi).
+- Commit đề xuất: ✨ Telegram: commands sent while Orrery was off are offered with Run all / Skip, and a bot polled elsewhere stops after 3 conflicts with a Retry button

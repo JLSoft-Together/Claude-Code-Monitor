@@ -924,6 +924,15 @@ Details of the CLI: `docs/deepseek-integration.md`. Plan `.planning/PLAN-v81-dee
 - **Not verified on the real TUI**: that a digit key selects option n of the AskUserQuestion dialog (assumed from the permission prompt, where `1` allows), and that it needs no Enter. QA by hand with a real Claude pane before relying on it.
 - **Timing**: the ask is read when the wait starts. If the transcript line is not tailed yet at that moment the message goes without options (text reply still works).
 
+### 11an-g. Backlog, conflicts, menu, tail, members, digest (2026-11-05, `.planning/PLAN-2026-11-05-telegram-7.md`)
+
+- **Commands sent while Orrery was off**: the first poll reads the pending updates (Telegram keeps them 24 h, up to 5 pages of 100) instead of skipping to the newest. Owner commands of a known topic from the last 60 min are listed per topic (masked, 80 chars, ≤ 8) with `▶️ Run all` / `🗑 Skip` (kinds `bg` / `bx`); nothing runs by itself. `telegram.json` `lastUpdate` keeps the last handled update id, because Telegram confirms an update only on the next getUpdates and the last batch before quitting would come back; it is cleared with a new token.
+- **Bot polled elsewhere (409)**: 3 conflicts in a row stop this app's poll and set state `pollConflict`; Settings › Telegram shows a banner with Retry (`receiving: true` again restarts the poll).
+- **"/" menu**: `setMyCommands` (scope `all_group_chats`, en + the app locale) once per command list (`telegram.json` `commandsHash`, reset with a new token). A bare `/status` (what the menu sends in a group with one bot) counts as addressed when it is one of the menu commands; `/status@other_bot` does not.
+- **`tail [n]`**: the last n (default 30, max 80) plain lines of the session's xterm buffer (`lib/paneSnapshots.ts`), masked in main, cut to the last 3500 chars, `<pre>`. Session picked like `last` (reply / session topic / one pane / buttons `tl`).
+- **Members**: the owner adds people who recently mentioned the bot (memory only, last 20) as `read` (status / last / tail / help, buttons 💬 📜 📄) or `full` (everything but Allow / Deny, topic links, backlog and pairing). `telegram.json` `members` (≤ 20, sanitized); the role is read on every message and button press; a member's prompt carries the name saved in the app, not their Telegram name (DECISIONS 2026-11-05).
+- **Digest** (off by default): a session's "done" reports of the day are one message edited with a counter (`digestHtml`); permission / question / waiting stay new messages; a failed edit sends a new message.
+
 ## 12. Open items
 
 | Item | State |
