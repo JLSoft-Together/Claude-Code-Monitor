@@ -1,6 +1,7 @@
 // Top-level `settingsV79` of en.ts / vi.ts (v79): Settings window with a page sidebar, search and the notification table.
 const en = {
   settingsV79: {
+    resize: 'Resize Settings: drag or use arrow keys, double-click to reset',
     pages: {
       general: 'General',
       appearance: 'Appearance',
@@ -51,6 +52,7 @@ const en = {
 
 const vi = {
   settingsV79: {
+    resize: 'Đổi kích thước Cài đặt: kéo hoặc dùng phím mũi tên, nhấp đúp để đặt lại',
     pages: {
       general: 'Chung',
       appearance: 'Giao diện',

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bell, BellOff, Bot, ChevronRight, Database, GitBranch, Info, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
+import { Bell, BellOff, Bot, ChevronRight, Database, GitBranch, Info, MoveDiagonal2, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
+import { clampDialogSize, readDialogSize, saveDialogSize, type DialogSize } from '../lib/dialogSize'
 import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
 import { hasAgentData } from '../lib/agentData'
@@ -11,6 +12,7 @@ import { hasDisk } from '../lib/buildClean'
 import { desktop, hasDeepSeek, hasRun, hasTerminals } from '../lib/desktop'
 import { hasGitHub } from '../lib/github'
 import { hasPhone } from '../lib/phone'
+import { hasTelegram } from '../lib/telegram'
 import { hasGrants } from '../lib/preview'
 import { hasUpdater } from '../lib/update'
 import { useExtrasStore } from '../stores/extras'
@@ -39,6 +41,66 @@ const ui = useUiStore()
 const update = useUpdateStore()
 
 const panel = ref<HTMLElement | null>(null)
+
+const SIZE_KEY = 'ccm.settings.size'
+const DEFAULT_SIZE: DialogSize = { w: 1040, h: 760 }
+const MIN_SIZE: DialogSize = { w: 560, h: 420 }
+const EDGE = 16
+const size = ref<DialogSize | null>(readDialogSize(SIZE_KEY))
+const resizing = ref(false)
+const panelStyle = computed(() => {
+  const s = size.value ?? DEFAULT_SIZE
+  return { width: `min(${s.w}px, calc(100vw - ${2 * EDGE}px))`, height: `min(${s.h}px, calc(100dvh - ${2 * EDGE}px))` }
+})
+const view = (): DialogSize => ({ w: window.innerWidth, h: window.innerHeight })
+
+let endResize: (() => void) | null = null
+
+function startResize(e: PointerEvent): void {
+  if (!panel.value) return
+  endResize?.()
+  const handle = e.currentTarget as HTMLElement
+  handle.focus({ preventScroll: true })
+  handle.setPointerCapture(e.pointerId)
+  const rect = panel.value.getBoundingClientRect()
+  const start = { x: e.clientX, y: e.clientY }
+  resizing.value = true
+  const move = (ev: PointerEvent) => (size.value = clampDialogSize(rect.width + 2 * (ev.clientX - start.x), rect.height + 2 * (ev.clientY - start.y), MIN_SIZE, view(), EDGE))
+  const up = () => {
+    handle.removeEventListener('pointermove', move)
+    handle.removeEventListener('pointerup', up)
+    handle.removeEventListener('pointercancel', up)
+    handle.removeEventListener('lostpointercapture', up)
+    endResize = null
+    resizing.value = false
+    saveDialogSize(SIZE_KEY, size.value)
+  }
+  endResize = up
+  handle.addEventListener('pointermove', move)
+  handle.addEventListener('pointerup', up)
+  handle.addEventListener('pointercancel', up)
+  handle.addEventListener('lostpointercapture', up)
+}
+
+watch(
+  () => ui.settingsOpen,
+  (open) => {
+    if (!open) endResize?.()
+  },
+)
+onBeforeUnmount(() => endResize?.())
+
+function nudgeSize(dw: number, dh: number): void {
+  if (!panel.value) return
+  const rect = panel.value.getBoundingClientRect()
+  size.value = clampDialogSize(rect.width + dw, rect.height + dh, MIN_SIZE, view(), EDGE)
+  saveDialogSize(SIZE_KEY, size.value)
+}
+
+function resetSize(): void {
+  size.value = null
+  saveDialogSize(SIZE_KEY, null)
+}
 const content = ref<HTMLElement | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
 const page = ref<SettingsPage>('general')
@@ -71,6 +133,7 @@ const env = computed<SettingsEnv>(() => ({
   capture: hasCapture,
   agentData: hasAgentData,
   phone: hasPhone,
+  telegram: hasTelegram,
   disk: hasDisk,
   updater: hasUpdater,
   backup: hasBackup,
@@ -231,7 +294,9 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
           role="dialog"
           aria-modal="true"
           aria-labelledby="settings-title"
-          class="ccm-sheet flex h-[min(620px,88vh)] w-[min(880px,92vw)] flex-col overflow-hidden bg-canvas"
+          class="ccm-sheet relative flex flex-col overflow-hidden bg-canvas"
+          :class="resizing ? '' : 'transition-[width,height] duration-(--ccm-dur-base) ease-out-quint'"
+          :style="panelStyle"
           data-settings-dialog
           @keydown="onKey"
         >
@@ -283,7 +348,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                 </button>
               </header>
 
-              <div ref="content" class="ccm-scroll ccm-set-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-4 pb-6" :data-settings-current="searching ? 'search' : page">
+              <div ref="content" class="ccm-scroll ccm-set-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-4 pb-6 sm:mb-5" :data-settings-current="searching ? 'search' : page">
                 <template v-if="searching">
                   <ul v-if="hits.length" class="ccm-group overflow-hidden" data-settings-results>
                     <li v-for="h in hits" :key="`${h.page}:${h.id}`">
@@ -318,6 +383,22 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
             </div>
           </div>
           </div>
+          <span
+            role="button"
+            tabindex="0"
+            :aria-label="t('settingsV79.resize')"
+            :title="t('settingsV79.resize')"
+            class="absolute right-0.5 bottom-0.5 hidden size-5cursor-nwse-resize touch-none items-center justify-center rounded-md text-ink-faint outline-none hover:text-accent-ink focus-visible:text-accent-ink focus-visible:ring-2 focus-visible:ring-focus sm:inline-flex"
+            data-settings-resize
+            @pointerdown.prevent="startResize"
+            @dblclick="resetSize"
+            @keydown.left.prevent="nudgeSize(-32, 0)"
+            @keydown.right.prevent="nudgeSize(32, 0)"
+            @keydown.up.prevent="nudgeSize(0, -32)"
+            @keydown.down.prevent="nudgeSize(0, 32)"
+          >
+            <MoveDiagonal2 :size="14" class="rotate-90" aria-hidden="true" />
+          </span>
         </div>
       </div>
     </Transition>
