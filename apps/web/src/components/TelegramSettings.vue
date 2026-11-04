@@ -775,6 +775,7 @@ const overview = computed(() => {
       <div class="ccm-group divide-y divide-line overflow-hidden">
         <ToggleSwitch :model-value="state.includeReply" :label="t('telegram.includeReply')" :hint="t('telegram.includeReplyHint')" class="px-3" data-telegram-reply @update:model-value="(on: boolean) => patch({ includeReply: on })" />
         <ToggleSwitch :model-value="state.waiting" :label="t('telegram.waiting')" :hint="t('telegram.waitingHint')" class="px-3" data-telegram-waiting @update:model-value="(on: boolean) => patch({ waiting: on })" />
+        <ToggleSwitch :model-value="state.digest" :label="t('telegram.digest')" :hint="t('telegram.digestHint')" class="px-3" data-telegram-digest @update:model-value="(on: boolean) => patch({ digest: on })" />
         <div class="px-3 py-2">
           <p class="text-sm">{{ t('telegram.done') }}</p>
           <p class="mt-0.5 text-2xs text-ink-faint">{{ t('telegram.doneHint') }}</p>

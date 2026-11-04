@@ -86,6 +86,7 @@ export interface TelegramState {
   keychain: boolean
   bot: string | null
   includeReply: boolean
+  digest: boolean
   waiting: boolean
   doneMinutes: number
   routes: TelegramRoute[]
@@ -196,6 +197,7 @@ export interface TelegramPatch {
   enabled?: boolean
   token?: string
   includeReply?: boolean
+  digest?: boolean
   waiting?: boolean
   doneMinutes?: number
   quiet?: TelegramQuiet
@@ -309,7 +311,7 @@ export function sanitizeTelegramPatch(raw: unknown): TelegramPatch | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   const out: TelegramPatch = {}
-  for (const k of ['enabled', 'includeReply', 'waiting', 'receiving', 'alerts', 'pinStatus', 'bigFiles'] as const) {
+  for (const k of ['enabled', 'includeReply', 'digest', 'waiting', 'receiving', 'alerts', 'pinStatus', 'bigFiles'] as const) {
     if (r[k] === undefined) continue
     if (typeof r[k] !== 'boolean') return null
     out[k] = r[k] as boolean

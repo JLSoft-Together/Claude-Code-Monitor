@@ -58,6 +58,7 @@ import {
   quote,
   chatsFrom,
   episodeHtml,
+  digestHtml,
   reportHtml,
   scanUpdates,
   testHtml,
@@ -111,6 +112,7 @@ interface FileShape {
   token?: string
   bot?: string
   includeReply: boolean
+  digest: boolean
   waiting: boolean
   doneMinutes: number
   routes: TelegramRoute[]
@@ -170,7 +172,7 @@ export interface TelegramDeps {
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
 
-const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {}, members: [] }
+const DEFAULTS: FileShape = { enabled: false, includeReply: false, digest: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {}, members: [] }
 
 function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
@@ -282,6 +284,7 @@ function readShape(file: string | undefined): FileShape {
       token: typeof raw.token === 'string' && raw.token.length < 4096 ? raw.token : undefined,
       bot: typeof raw.bot === 'string' ? raw.bot.slice(0, 64) : undefined,
       includeReply: raw.includeReply === true,
+      digest: raw.digest === true,
       waiting: raw.waiting !== false,
       doneMinutes: (TELEGRAM_DONE_CHOICES as readonly unknown[]).includes(raw.doneMinutes) ? (raw.doneMinutes as number) : DEFAULT_TELEGRAM_DONE_MIN,
       routes,
@@ -344,6 +347,7 @@ export class TelegramNotifier {
   private readonly lastReplies = new Map<string, { name: string; reply: string }>()
   private readonly runWatch = new Map<string, { project: string; chatId: string; threadId: number | null; config: string; shot: boolean }>()
   private readonly pinText = new Map<string, string>()
+  private readonly digestMsgs = new Map<string, { chatId: string; messageId: number; day: string; n: number }>()
   private pinBusy = false
   private health: TelegramHealth = { lastSentAt: null, lastReceivedAt: null, lastPollAt: null, sentToday: 0, errorsToday: 0 }
   private healthDay = ''
@@ -431,6 +435,7 @@ export class TelegramNotifier {
       keychain: this.deps.crypt.available(),
       bot: this.data.bot ?? null,
       includeReply: this.data.includeReply,
+      digest: this.data.digest,
       waiting: this.data.waiting,
       doneMinutes: this.data.doneMinutes,
       routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r) })),
@@ -508,6 +513,7 @@ export class TelegramNotifier {
     }
     if (patch.receiving !== undefined) this.receiving = patch.receiving && this.token() !== null && this.data.owner !== undefined
     if (patch.includeReply !== undefined) this.data.includeReply = patch.includeReply
+    if (patch.digest !== undefined) this.data.digest = patch.digest
     if (patch.waiting !== undefined) this.data.waiting = patch.waiting
     if (patch.doneMinutes !== undefined) this.data.doneMinutes = patch.doneMinutes
     if (patch.enabled !== undefined) this.data.enabled = patch.enabled
@@ -1645,7 +1651,40 @@ export class TelegramNotifier {
         }
       }
     }
-    return (await this.sendText(route, episodeHtml(e, locale, this.masker, this.data.includeReply), { kind: 'terminal', terminalId: e.terminalId }, keys)) === null
+    const target: TelegramTarget = { kind: 'terminal', terminalId: e.terminalId }
+    if (e.reason === 'done' && this.data.digest) return this.digestDone(route, e, locale, target, keys)
+    return (await this.sendText(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys)) === null
+  }
+
+  private async digestDone(route: TelegramRoute, e: TelegramEpisodeMessage, locale: TelegramLocale, target: TelegramTarget, keys: Markup | undefined): Promise<boolean> {
+    const key = this.agentOfTerminal.get(e.terminalId) ?? e.terminalId
+    const at = new Date(this.now)
+    const day = dayKey(at)
+    const prev = this.digestMsgs.get(key)
+    if (prev && prev.day === day && prev.chatId === route.chatId) {
+      const n = prev.n + 1
+      const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+      const edit = await this.call('editMessageText', {
+        chat_id: route.chatId,
+        message_id: prev.messageId,
+        text: digestHtml(e, locale, this.masker, this.data.includeReply, n, hhmm),
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: keys ?? { inline_keyboard: [] },
+      })
+      if (edit.ok) {
+        this.ok()
+        prev.n = n
+        this.track(route.chatId, { message_id: prev.messageId }, target)
+        return true
+      }
+    }
+    const sent = await this.sendTextId(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys)
+    if (sent.id !== null) {
+      this.digestMsgs.set(key, { chatId: route.chatId, messageId: sent.id, day, n: 1 })
+      if (this.digestMsgs.size > SENT_MAP_MAX) this.digestMsgs.delete(this.digestMsgs.keys().next().value as string)
+    } else this.digestMsgs.delete(key)
+    return sent.error === null
   }
 
   async report(cwd: string, text: string, file?: string, sessionId?: string): Promise<SendOutcome> {

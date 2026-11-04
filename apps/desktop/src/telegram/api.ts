@@ -124,6 +124,18 @@ export function episodeHtml(e: TelegramEpisodeMessage, locale: TelegramLocale, m
   return reply && e.reply ? `${head}${quote(e.reply, m, MESSAGE_MAX - head.length)}` : head
 }
 
+const DIGEST_HEAD: Record<TelegramLocale, (name: string, n: number, at: string) => string> = {
+  en: (name, n, at) => `✅ <b>${name}</b> · done ${n} time${n === 1 ? '' : 's'} · ${at}`,
+  vi: (name, n, at) => `✅ <b>${name}</b> · xong ${n} lần · ${at}`,
+}
+
+/** Edited "finished" message of the digest: counter line on top, the latest episode below. */
+export function digestHtml(e: TelegramEpisodeMessage, locale: TelegramLocale, m: Masker, reply: boolean, n: number, at: string): string {
+  const head = DIGEST_HEAD[locale](escapeHtml(clean(e.name, m)), n, at)
+  const full = `${head}\n${episodeHtml(e, locale, m, reply)}`
+  return full.length <= MESSAGE_MAX || !reply ? full : `${head}\n${episodeHtml(e, locale, m, false)}`
+}
+
 function askBlock(ask: TelegramAsk, m: Masker): string {
   const lines = ask.options.map((o, i) => `${i + 1}. ${escapeHtml(clean(o, m))}`)
   if (ask.more) lines.push('…')
