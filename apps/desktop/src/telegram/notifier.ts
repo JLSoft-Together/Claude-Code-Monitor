@@ -75,6 +75,7 @@ export const INBOUND_PER_CHAT_MIN = 10
 const strangerHtml = (custom: string, owner: string, fallback: (owner: string) => string): string =>
   custom ? escapeHtml(custom).split('{owner}').join(escapeHtml(owner)) : fallback(owner)
 const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last'])
+const sessionPinKey = (session: string): string => `s:${session}`
 export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
@@ -157,7 +158,7 @@ function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
   const msgId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0
   if (!raw || typeof raw !== 'object') return out
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, TELEGRAM_ROUTES_MAX)) {
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, TELEGRAM_ROUTES_MAX + TELEGRAM_SESSION_ROUTES_MAX)) {
     const o = v as Partial<Pin> | null
     if (o && typeof o === 'object' && isChatId(o.chatId) && msgId(o.messageId)) out[k] = { chatId: o.chatId, messageId: o.messageId }
     else if (msgId(v)) {
@@ -1019,26 +1020,41 @@ export class TelegramNotifier {
     try {
       const m = MORE_TEXT[this.deps.locale()]
       const locale = this.deps.locale()
-      for (const r of this.data.routes) {
-        const res = await ask({ id: randomUUID(), action: 'status', project: r.project }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
-        if (!res.ok || res.action !== 'status') continue
+      const statuses = new Map<string, TelegramPaneInfo[] | null>()
+      const panesOf = async (project: string): Promise<TelegramPaneInfo[] | null> => {
+        if (!statuses.has(project)) {
+          const res = await ask({ id: randomUUID(), action: 'status', project }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+          statuses.set(project, res.ok && res.action === 'status' ? res.panes : null)
+        }
+        return statuses.get(project) ?? null
+      }
+      // Project topics pin every pane of the project; a session topic pins only its own session.
+      const targets = [
+        ...this.data.routes.map((r) => ({ key: r.project, route: r, agent: undefined as string | undefined })),
+        ...this.data.sessionRoutes.map((s) => ({ key: sessionPinKey(s.session), route: { project: s.project, label: s.name, chatId: s.chatId, threadId: s.threadId }, agent: s.session as string | undefined })),
+      ]
+      for (const { key, route: r, agent } of targets) {
+        const all = await panesOf(r.project)
+        if (!all) continue
+        const terminal = agent ? this.terminalOfAgent.get(agent) : undefined
+        const panes = agent ? all.filter((p) => !!terminal && p.terminalId === terminal) : all
         const status = (s: string) => (locale === 'vi' ? ({ working: 'đang làm', idle: 'rảnh', waiting: 'đang chờ', unknown: 'không rõ' } as Record<string, string>)[s] ?? s : s)
-        const lines = res.panes.map((p) => m.pinLine(p.name, status(p.status), p.tool, p.since ? Math.max(0, Math.round((this.now - p.since) / 60_000)) : null))
+        const lines = panes.map((p) => m.pinLine(p.name, status(p.status), p.tool, p.since ? Math.max(0, Math.round((this.now - p.since) / 60_000)) : null))
         const html = [m.pinHead(r.label), ...(lines.length ? lines : [m.pinEmpty])].join('\n')
-        if (this.pinText.get(r.project) === html) continue
-        const pin = this.data.pins[r.project]
+        if (this.pinText.get(key) === html) continue
+        const pin = this.data.pins[key]
         if (pin && pin.chatId === r.chatId) {
           const edit = await this.call('editMessageText', { chat_id: r.chatId, message_id: pin.messageId, text: html, parse_mode: 'HTML', disable_web_page_preview: true })
           if (edit.ok || edit.error === 'status') {
-            this.pinText.set(r.project, html)
+            this.pinText.set(key, html)
             continue
           }
           if (edit.error !== 'chat') continue
         }
         const sent = await this.post({ chatId: r.chatId, threadId: r.threadId }, html, { disable_notification: true })
         if (sent === null) continue
-        this.pinText.set(r.project, html)
-        this.data.pins = { ...this.data.pins, [r.project]: { chatId: r.chatId, messageId: sent } }
+        this.pinText.set(key, html)
+        this.data.pins = { ...this.data.pins, [key]: { chatId: r.chatId, messageId: sent } }
         this.save()
         await this.call('pinChatMessage', { chat_id: r.chatId, message_id: sent, disable_notification: true })
       }
@@ -1169,11 +1185,14 @@ export class TelegramNotifier {
     if (!isSessionId(route.session)) return { ok: false, error: 'invalid-project' }
     const rest = this.data.sessionRoutes.filter((r) => r.session !== route.session)
     if (rest.length >= TELEGRAM_SESSION_ROUTES_MAX) return { ok: false, error: 'too-many' }
+    const old = this.data.sessionRoutes.find((r) => r.session === route.session)
+    if (old && (old.chatId !== route.chatId || old.threadId !== route.threadId)) this.dropPin(sessionPinKey(route.session))
     this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId }]
     return this.commit()
   }
 
   removeSessionRoute(session: string): TelegramSetResult {
+    this.dropPin(sessionPinKey(session.toLowerCase()))
     this.data.sessionRoutes = this.data.sessionRoutes.filter((r) => r.session !== session.toLowerCase())
     return this.commit()
   }

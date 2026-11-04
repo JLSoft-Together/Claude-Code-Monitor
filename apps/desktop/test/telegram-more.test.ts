@@ -306,4 +306,21 @@ describe('pinned status and health', () => {
     expect(gone.sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(2)
     expect(gone.tg.state().health.errorsToday).toBe(1)
   })
+
+  it('pins a session topic with only its own session', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes: [{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'B', status: 'working', terminalId: 't2' }] }))
+    tg.set({ pinStatus: true })
+    tg.setSessionRoute({ session: AGENT, name: 'B', project, link: 't.me/c/1234567890/9/100' })
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }])
+    await tg.pinTick()
+    const posts = sent.filter((s) => s.method === 'sendMessage').map((s) => s.body as Record<string, unknown>)
+    expect(posts.map((p) => p.message_thread_id)).toEqual([7, 9])
+    expect(String(posts[0]!.text)).toContain('A — rảnh')
+    expect(String(posts[1]!.text)).toContain('B — đang làm')
+    expect(String(posts[1]!.text)).not.toContain('A — rảnh')
+    expect(sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(2)
+    tg.removeSessionRoute(AGENT)
+    expect(sent.at(-1)!.method).toBe('unpinChatMessage')
+  })
 })
