@@ -17,3 +17,4 @@
 - [x] main sửa: `pty/host.ts` `deskReplyMs` 600 s cho `telegram_receive`; docs §11an-d; `.code_index/_meta.md`
 - [x] Commit 5 phần — hash ở trên
 - [x] QA bản dev (main, CDP + chủ nhân nhắn từ Telegram Desktop) — RESULT.md
+- [x] 23:26 Handoff mới: `.planning/HANDOFF-2026-11-04-2326.md` (HANDOFF-latest.md cùng nội dung)
