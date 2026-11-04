@@ -29,3 +29,6 @@ Chờ chủ nhân: (a) push — mặc định chưa; (b) xoá `test-60mb.bin` �
 
 ## 5. File cần đọc lại
 1. `.planning/PROGRESS-2026-11-05-telegram-7.md` 2. `docs/claude-code-integration.md` §11an-e/f/g 3. `.planning/DECISIONS.md` (dòng 2026-11-05) 4. `docs/qa/telegram-2026-11-04/RESULT.md`
+
+## Cập nhật sau handoff
+- Bản dev QA đã TẮT, hook toàn cục đã trả về bản cài. Dữ liệu dev còn ở `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/` (dựng lại bản dev theo mục 1 nếu QA tiếp). Đã push lên origin/master.

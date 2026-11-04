@@ -23,3 +23,4 @@ Trước đó: `PROGRESS-2026-11-05-telegram.md`.
 - [x] Docs §11an-g, `.code_index/_meta.md`, DECISIONS (thành viên).
 - [ ] QA tay chủ nhân: lệnh lúc app tắt (tắt app, nhắn, mở lại), menu "/" trong group, `tail`, câu hỏi AskUserQuestion bấm nút (phím số chưa xác minh), thêm thành viên bằng tài khoản khác, gom báo xong.
 - [x] Handoff mới: `.planning/HANDOFF-2026-11-05-0400.md`
+- [x] Tắt bản dev QA, trả hook `~/.claude/settings.json` về `C:/Users/dauph/AppData/Local/ccm/bin/hook-bridge.mjs`; chủ nhân bảo commit + push.
