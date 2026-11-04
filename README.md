@@ -15,10 +15,10 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 ## Nguyên tắc
 
 - **Chỉ quan sát**: đọc file local của Claude Code / Codex (session, transcript, hook).
-- Không gọi API, không gửi prompt, không chạy LLM khác: **không tốn thêm token**. Ngoại lệ do bạn bấm: **Compact…**.
+- Không gọi API, không gửi prompt, không chạy LLM khác: **không tốn thêm token**. Ngoại lệ do bạn yêu cầu: **Compact…** và lệnh bạn gửi qua **bot Telegram** (chỉ tài khoản đã ghép hoặc thành viên bạn thêm).
 - **Chỉ local**: collector bind `127.0.0.1`, từ chối request không mang khoá của app.
 - Không đưa nội dung prompt, tham số tool, env hay secret ra giao diện. Token chỉ hiện khi có số liệu thật.
-- Không gửi gì ra ngoài, trừ **Báo ra điện thoại** (Cài đặt › Thông báo, mặc định tắt).
+- Không gửi gì ra ngoài, trừ **Báo ra điện thoại** (Cài đặt › Thông báo) và **Telegram** (Cài đặt › Telegram), cả hai mặc định tắt; nội dung gửi đi luôn che bí mật.
 
 ## Tính năng
 
@@ -29,6 +29,13 @@ Tên cũ: Claude Code Monitor, Agent Monitor, GolAIm. Mã nội bộ giữ nguy�
 - Thông báo khi session chờ bạn; báo ra điện thoại qua ntfy / Discord khi bạn rời máy.
 - Office pixel-art: mỗi dự án một phòng, mỗi agent một nhân vật.
 - Session DeepSeek CLI (Codewhale) hiện trong Monitor khi Codewhale bật `[lifecycle_outbox]` (chỉ đọc file, không gọi DeepSeek).
+
+**Telegram** (Cài đặt › Telegram, mặc định tắt; bot của riêng bạn trong group có topic)
+- Báo cáo về topic của từng dự án hoặc từng session: xong việc, chờ bạn, xin quyền, câu hỏi của Claude; tin ghim trạng thái, tổng kết cuối ngày, gom báo xong.
+- Ra lệnh từ điện thoại: `status`, `new`, `stop`, `last`, `tail`, `resume`, `run`, `all`, `screen`, menu "/"; nút Cho phép / Từ chối, chọn đáp án câu hỏi, chọn session.
+- Gửi ảnh, file, album vào session; agent gửi lại file (APK…) bằng `telegram_send`, tới 2 GB khi bật File lớn (`api_id` / `api_hash`).
+- Nối topic với session hoặc dự án từ menu chuột phải hoặc ngay trong Telegram; reply tin của bot là vào đúng session.
+- Chỉ tài khoản đã ghép ra lệnh; thêm thành viên mức Xem / Đầy đủ; người lạ nhận câu trả lời cố định. Lệnh gửi lúc app tắt được hỏi trước khi chạy.
 
 **Workspace**
 - Terminal trong app (Claude Code / Codex / shell): tab, chia ô, nhóm tab, phóng ô, hoàn tác đóng, Mission Control, worktree.
@@ -123,5 +130,6 @@ packages/shared     Kiểu dữ liệu + protocol dùng chung
 ## Ghi công
 
 - [Habblaud](https://github.com/marmottajr/habblaud) (MIT): Office pixel-art, vendored trong `packages/habblaud`.
+- [GramJS](https://github.com/gram-js/gramjs) (MIT): gửi file lớn qua Telegram MTProto.
 - [Atom Material Icons](https://github.com/AtomMaterialUI/iconGenerator) (MIT): icon file / thư mục.
 - Font mở kèm app: SIL OFL / Ubuntu Font Licence, xem `apps/web/public/fonts-LICENSES.txt`.

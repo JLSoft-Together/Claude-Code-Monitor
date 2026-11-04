@@ -18,6 +18,20 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.2.0',
+    date: '2026-11-05',
+    items: [
+      { en: 'Telegram bot: reports go to each project or session topic, with a pinned status', vi: 'Bot Telegram: báo vào topic của từng dự án hoặc session, kèm tin ghim trạng thái' },
+      { en: 'Command sessions from Telegram: status, new, stop, last, tail, run, screen and the "/" menu', vi: 'Ra lệnh từ Telegram: status, new, stop, last, tail, run, screen và menu "/"' },
+      { en: 'Telegram buttons allow / deny tools and answer Claude\'s questions', vi: 'Nút Telegram cho phép / từ chối tool và trả lời câu hỏi của Claude' },
+      { en: 'Send photos and files into a session; agents send files back, up to 2 GB', vi: 'Gửi ảnh, file vào session; agent gửi file về, tới 2 GB' },
+      { en: 'Connect a topic to a session or project from its menu or from Telegram itself', vi: 'Nối topic với session hoặc dự án từ menu chuột phải hoặc ngay trong Telegram' },
+      { en: 'Only your paired account commands the bot; add members with view or full access', vi: 'Chỉ tài khoản đã ghép ra lệnh; thêm thành viên quyền xem hoặc đầy đủ' },
+      { en: 'Commands sent while Orrery was off are asked about before they run', vi: 'Lệnh gửi lúc Orrery tắt được hỏi lại trước khi chạy' },
+      { en: 'Settings window is larger and resizable; Telegram has its own page', vi: 'Cửa sổ Cài đặt lớn hơn, kéo giãn được; Telegram có trang riêng' },
+    ],
+  },
+  {
     version: '3.1.1',
     date: '2026-11-03',
     items: [
