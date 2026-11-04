@@ -89,6 +89,28 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
         .then(reply, () => reply({ ok: false, error: 'failed' }))
     })
   },
+  onTelegramInbound: (() => {
+    let current: ((req: unknown) => unknown) | null = null
+    ipcRenderer.on('ccm:telegram-inbound', (_event, req: unknown) => {
+      const id = typeof req === 'object' && req !== null && typeof (req as { id?: unknown }).id === 'string' ? (req as { id: string }).id : null
+      if (id === null) return
+      const reply = (result: unknown): void => {
+        try {
+          ipcRenderer.send('ccm:telegram-inbound-reply', id, result)
+        } catch {
+          ipcRenderer.send('ccm:telegram-inbound-reply', id, { ok: false, error: 'unavailable' })
+        }
+      }
+      if (!current) return reply({ ok: false, error: 'unavailable' })
+      const handler = current
+      void Promise.resolve()
+        .then(() => handler(req))
+        .then(reply, () => reply({ ok: false, error: 'unavailable' }))
+    })
+    return (handler: (req: unknown) => unknown): void => {
+      current = handler
+    }
+  })(),
   /** v80 MCP tools (notify_owner, open_in_workspace, who_is_editing); one handler, the last one set wins. */
   onMcpCall: (() => {
     let current: ((call: unknown) => unknown) | null = null
@@ -304,6 +326,18 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   phoneSet: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:phone-set', patch),
   phoneTest: (): Promise<unknown> => ipcRenderer.invoke('ccm:phone-test'),
   onPhone: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:phone-event', handler),
+  telegramState: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-state'),
+  telegramSet: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-set', patch),
+  telegramRouteSet: (input: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-route-set', input),
+  telegramRouteRemove: (project: string): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-route-remove', project),
+  telegramTest: (project?: string): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-test', project),
+  telegramInstallCommand: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-command'),
+  telegramDiscover: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-discover'),
+  telegramCreateTopic: (input: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-create-topic', input),
+  telegramPair: (on: boolean): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-pair', on),
+  telegramUnpair: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-unpair'),
+  telegramInstallReceive: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-receive-command'),
+  onTelegram: (handler: (event: unknown) => void): (() => void) => subscribe('ccm:telegram-event', handler),
   agentDataState: (): Promise<unknown> => ipcRenderer.invoke('ccm:agentdata-state'),
   agentDataScan: (): Promise<unknown> => ipcRenderer.invoke('ccm:agentdata-scan'),
   agentDataCancel: (): Promise<unknown> => ipcRenderer.invoke('ccm:agentdata-cancel'),

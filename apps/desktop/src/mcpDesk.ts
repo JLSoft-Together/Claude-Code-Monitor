@@ -9,6 +9,7 @@ import type { LayoutDevice } from './layout/types'
 import { paneScope, planFreePort, serversFor } from './resources/agentPorts'
 import type { ProcRow } from './run/proc'
 import { stringsFor } from './strings'
+import type { TelegramNotifier } from './telegram/notifier'
 
 export interface DeskDeps {
   render: ((file: string, opts: { device: LayoutDevice; night: boolean; slot: string }) => Promise<AgentRenderOutcome>) | null
@@ -24,6 +25,8 @@ export interface DeskDeps {
   kill: (targets: ResKillTarget[], ask: { message: string; detail: (lines: string[]) => string; confirm: string }) => Promise<ResKillResult>
   now?: () => number
   platform?: NodeJS.Platform
+  telegram?: () => TelegramNotifier | null
+  confirm?: (spec: { message: string; detail: string; buttons: string[] }) => Promise<number>
 }
 
 export const LAYOUT_PRESETS: Record<'phone' | 'tablet', LayoutDevice> = {
@@ -96,9 +99,53 @@ export function createDesk(deps: DeskDeps): (call: McpDeskCall) => Promise<McpDe
     return { ok: true, tool: 'free_port', port: call.port, stopped: plan.targets.map((t) => ({ pid: t.pid, name: (t.label ?? String(t.pid)).replace(/ :\d+$/, '') })) }
   }
 
+  async function telegram(call: Extract<McpDeskCall, { tool: 'telegram_notify' | 'telegram_send' | 'telegram_receive' }>): Promise<McpDeskResult> {
+    const tg = deps.telegram?.()
+    if (!tg) return { ok: false, error: 'unavailable' }
+    const cwd = realOr(call.cwd)
+    if (call.tool === 'telegram_send') {
+      const res = await tg.report(cwd, call.text, call.file ? realOr(call.file) : undefined, call.from)
+      if (!res.ok) return { ok: false, error: deskError(res.error), detail: res.error }
+      return { ok: true, tool: 'telegram_send', topic: res.topic, ...(res.file ? { file: res.file } : {}), ...(res.linkOnly ? { linkOnly: true } : {}) }
+    }
+    if (call.tool === 'telegram_receive') {
+      const before = tg.state()
+      if (call.state === 'on' && !before.configured) return { ok: false, error: 'telegram-config' }
+      if (call.state === 'on' && !before.owner) return { ok: false, error: 'not-paired' }
+      if (call.state === 'on' && !before.receiving) {
+        if (!deps.confirm) return { ok: false, error: 'unavailable' }
+        if (confirming) return { ok: false, error: 'confirm-open' }
+        const text = stringsFor(deps.locale())
+        const pane = call.name.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 80)
+        confirming = true
+        let response: number
+        try {
+          response = await deps.confirm({ message: text.tgReceiveAskTitle(pane), detail: text.tgReceiveAskDetail(before.owner?.name ?? ''), buttons: [text.tgReceiveAskConfirm, text.quitCancel] })
+        } catch {
+          response = -1
+        } finally {
+          confirming = false
+        }
+        if (response !== 0) return { ok: false, error: 'cancelled' }
+        if (!tg.state().owner) return { ok: false, error: 'not-paired' }
+      }
+      if (call.state !== 'status' && !tg.set({ receiving: call.state === 'on' }).ok) return { ok: false, error: 'failed' }
+      const s = tg.state()
+      return { ok: true, tool: 'telegram_receive', receiving: s.receiving, paired: !!s.owner, ...(s.owner ? { owner: s.owner.name } : {}) }
+    }
+    if (call.state !== 'status') {
+      if (call.state === 'on' && !tg.state().configured) return { ok: false, error: 'telegram-config' }
+      const set = tg.set({ enabled: call.state === 'on' })
+      if (!set.ok) return { ok: false, error: 'failed' }
+    }
+    const state = tg.state()
+    return { ok: true, tool: 'telegram_notify', enabled: state.enabled, configured: state.configured, projects: state.routes.map((r) => r.label), routed: tg.routeFor(cwd) !== null }
+  }
+
   return async (call) => {
     if (call.tool === 'preview_layout') return previewLayout(call)
     if (call.tool === 'free_port') return freePort(call)
+    if (call.tool === 'telegram_notify' || call.tool === 'telegram_send' || call.tool === 'telegram_receive') return telegram(call)
     if (call.tool === 'list_servers') {
       const report = deps.report()
       if (!report) return { ok: false, error: 'no-report' }

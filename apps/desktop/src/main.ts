@@ -74,7 +74,7 @@ import { confirmLines, fixtureKill, killTreeByPid, liveStarts, planKill } from '
 import { readProcRows } from './resources/agentPorts'
 import { createDesk } from './mcpDesk'
 import type { McpDeskCall } from '../../../packages/shared/src/mcpDesk'
-import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, type ResKillResult, type ResourceReport } from '@ccm/shared'
+import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, parseTelegramEpisode, parseInboundResult, formatGb, type TelegramInbound, type TelegramInboundResult, type ResKillResult, type ResourceReport } from '@ccm/shared'
 import { AWAKE_FILE, KeepAwake, readAwakeMode, writeAwakeMode } from './power/awake'
 import { CAPTURE_FILE } from './capture/files'
 import { CaptureFolder } from './capture/folder'
@@ -83,6 +83,11 @@ import { registerCaptureIpc } from './capture/ipc'
 import { PHONE_FILE, PhoneNotifier } from './phone/notifier'
 import { registerPhoneIpc } from './phone/ipc'
 import { e2eOverride } from './phone/send'
+import { TELEGRAM_FILE, TelegramNotifier } from './telegram/notifier'
+import { registerTelegramIpc } from './telegram/ipc'
+import { projectDiff, saveInbound } from './telegram/host'
+import { needsTrust } from './run/configs'
+import { commandFile, commandInstalled, installCommand, RECEIVE_COMMAND } from './telegram/command'
 import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
 import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
 import type { AgentNoteMessage, McpPageCall } from '../../../packages/shared/src/mcpCall'
@@ -170,6 +175,9 @@ let capture: CaptureFolder | null = null
 let disposeCapture: (() => void) | null = null
 let phone: PhoneNotifier | null = null
 let disposePhone: (() => void) | null = null
+let telegram: TelegramNotifier | null = null
+const runLogs = new Map<string, string[]>()
+let disposeTelegram: (() => void) | null = null
 let disposeAgentData: (() => void) | null = null
 let disposeBuildClean: (() => void) | null = null
 let disposeDisk: (() => void) | null = null
@@ -313,6 +321,9 @@ function stopPreview(): Promise<void> {
   disposeCapture = null
   disposePhone?.()
   disposePhone = null
+  telegram?.stop()
+  disposeTelegram?.()
+  disposeTelegram = null
   disposeAgentData?.()
   disposeAgentData = null
   disposeBuildClean?.()
@@ -853,6 +864,13 @@ const desk: (call: McpDeskCall) => Promise<unknown> = createDesk({
     if (mainWindow && !mainWindow.isVisible()) showMain()
     return resKill(contents, targets, ask)
   },
+  telegram: () => telegram,
+  confirm: async (spec) => {
+    const opts: Electron.MessageBoxOptions = { type: 'warning', message: spec.message, detail: spec.detail, buttons: spec.buttons, defaultId: spec.buttons.length - 1, cancelId: spec.buttons.length - 1, noLink: true }
+    if (mainWindow && !mainWindow.isVisible()) showMain()
+    const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts)
+    return response
+  },
 })
 
 /** notify_owner: the page files it in the Inbox and names the pane; the toast / phone go through the collector either way. */
@@ -1148,6 +1166,94 @@ function setupPhone(): void {
   disposePhone = registerPhoneIpc(ipcMain, isAppFrame, phone)
 }
 
+function setupTelegram(): void {
+  const broadcast = (channel: string, payload: unknown) => {
+    for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
+  }
+  telegram = new TelegramNotifier({
+    file: path.join(DATA_DIR, TELEGRAM_FILE),
+    crypt: { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) },
+    fetch: (url, init) => net.fetch(url, init),
+    locale: () => ((saved().locale ?? 'vi').startsWith('en') ? 'en' : 'vi'),
+    home: os.homedir(),
+    platform: process.platform,
+    base: e2eOverride(process.env.CCM_TELEGRAM_URL_OVERRIDE),
+    commandInstalled: () => commandInstalled(),
+    receiveInstalled: () => commandInstalled(undefined, RECEIVE_COMMAND),
+    askPage: askPageTelegram,
+    diff: (cwd) => projectDiff(cwd, os.homedir(), process.platform),
+    saveFile: (project, name, data) => saveInbound(project, name, data),
+    runConfigs: async (project) => {
+      const runs = runManager
+      if (!runs) return []
+      return (await runs.configs(project)).filter((c) => !needsTrust(c)).map((c) => ({ id: c.id, name: c.name }))
+    },
+    runStart: async (project, configId) => {
+      const runs = runManager
+      if (!runs) return { ok: false, error: 'unavailable' }
+      const cfg = (await runs.configs(project)).find((c) => c.id === configId)
+      if (!cfg || needsTrust(cfg)) return { ok: false, error: 'config-missing' }
+      const device = cfg.type === 'custom' || cfg.device !== 'selected' ? null : ((await runs.devices()).find((d) => d.state === 'ready')?.id ?? null)
+      const res = await runs.start({ root: project, configId, deviceId: device })
+      return res.ok && res.sessionId ? { ok: true, sessionId: res.sessionId } : { ok: false, error: res.ok ? 'failed' : res.error.code }
+    },
+    runLog: (sessionId) => runLogs.get(sessionId) ?? [],    screenshot: async (serial) => {
+      const devices = deviceManager
+      if (!devices) return { ok: false, error: 'none' }
+      const snap = await devices.snapshot()
+      const dev = snap.devices.find((d) => d.online && d.state === 'ready' && (!serial || d.id === serial))
+      if (!dev) return { ok: false, error: 'none' }
+      const cap = await devices.screencap(dev.id)
+      return cap.ok ? { ok: true, png: cap.png, device: dev.name } : { ok: false, error: 'failed' }
+    },
+    onState: (state) => broadcast('ccm:telegram-event', { state }),
+    onFailure: (error) => broadcast('ccm:telegram-event', { failed: error }),
+  })
+  const install = async (): Promise<boolean | null> => {
+    const text = stringsFor(saved().locale ?? 'vi')
+    const ok = await confirmBox(mainWindow, { type: 'question', message: text.tgCommandTitle, detail: text.tgCommandDetail(commandFile()), buttons: [text.tgCommandConfirm, text.tgCommandCancel], defaultId: 0, cancelId: 1, noLink: true })
+    if (!ok) return null
+    const done = installCommand()
+    if (done) broadcast('ccm:telegram-event', { state: telegram!.state() })
+    return done
+  }
+  const installReceive = async (): Promise<boolean | null> => {
+    const text = stringsFor(saved().locale ?? 'vi')
+    const file = commandFile(undefined, RECEIVE_COMMAND)
+    const ok = await confirmBox(mainWindow, { type: 'question', message: text.tgReceiveTitle, detail: text.tgReceiveDetail(file), buttons: [text.tgCommandConfirm, text.tgCommandCancel], defaultId: 0, cancelId: 1, noLink: true })
+    if (!ok) return null
+    const done = installCommand(undefined, RECEIVE_COMMAND)
+    if (done) broadcast('ccm:telegram-event', { state: telegram!.state() })
+    return done
+  }
+  const tick = setInterval(() => void telegram?.tick(), 60_000)
+  tick.unref?.()
+  disposeTelegram = registerTelegramIpc(ipcMain, isAppFrame, telegram, install, installReceive)
+  const off = disposeTelegram
+  disposeTelegram = () => {
+    clearInterval(tick)
+    off()
+  }
+}
+
+function askPageTelegram(req: TelegramInbound): Promise<TelegramInboundResult> {
+  const contents = mainWindow?.webContents
+  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
+    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
+      if (event.sender === contents && id === req.id && isAppFrame(event)) done(parseInboundResult(result))
+    }
+    const done = (result: TelegramInboundResult): void => {
+      clearTimeout(timer)
+      ipcMain.removeListener('ccm:telegram-inbound-reply', onReply)
+      resolve(result)
+    }
+    ipcMain.on('ccm:telegram-inbound-reply', onReply)
+    contents.send('ccm:telegram-inbound', req)
+  })
+}
+
 /** v76 R7: agent data sizes, cache clean, image strip, move to another drive (docs §11al). */
 async function setupAgentData(): Promise<void> {
   const broadcast = (channel: string, payload: unknown) => {
@@ -1294,6 +1400,7 @@ async function ready(): Promise<void> {
   backups.applyPending()
   setupCaptureAndAwake()
   setupPhone()
+  setupTelegram()
   setupRestore()
   await setupAgentData()
   setupBuildClean()
@@ -1313,6 +1420,11 @@ async function ready(): Promise<void> {
       } else if (m?.type === 'phone') {
         const episode = parsePhoneEpisode(data)
         if (episode) void phone?.handle(episode)
+        if (episode?.reason === 'limit') void telegram?.alert('limit')
+        else if (episode?.reason === 'disk') void telegram?.alert('disk', { label: episode.name, free: episode.freeBytes !== undefined ? formatGb(episode.freeBytes) : '?' })
+      } else if (m?.type === 'telegram') {
+        const episode = parseTelegramEpisode(data)
+        if (episode) void telegram?.handle(episode)
       } else attention?.handle(data)
     },
     onExit: () => {
@@ -1593,6 +1705,14 @@ async function ready(): Promise<void> {
       adb: (settings) => createAdbDevices({ settings, env: process.env, platform: process.platform, home: os.homedir(), spawn: defaultSpawner }),
     },
     broadcast: (event) => {
+      if (event.type === 'log') {
+        const list = runLogs.get(event.sessionId) ?? []
+        list.push(...event.lines.map((l) => l.text))
+        runLogs.set(event.sessionId, list.slice(-200))
+        if (runLogs.size > 20) runLogs.delete(runLogs.keys().next().value as string)
+      }
+      if (event.type === 'session') void telegram?.runState(event.session)
+      if (event.type === 'session' && event.session.state === 'failed') void telegram?.runFailedReport(event.session)
       for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send('ccm:run-event', event)
     },
     confirm: async (code, detail) => {

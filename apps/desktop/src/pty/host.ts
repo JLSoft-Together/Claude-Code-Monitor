@@ -489,7 +489,7 @@ function askPageMcp(call: McpPageCall): Promise<McpPageResult> {
 }
 
 // free_port waits for the owner's answer in a native dialog (an answer after the timeout would still act); the others answer within seconds.
-const deskReplyMs = (tool: McpDeskCall['tool']): number => (tool === 'free_port' ? 600_000 : 40_000)
+const deskReplyMs = (tool: McpDeskCall['tool']): number => (tool === 'free_port' || tool === 'telegram_receive' ? 600_000 : tool === 'telegram_send' ? 200_000 : 40_000)
 
 function askDesk(call: McpDeskCall): Promise<McpDeskResult> {
   return new Promise((resolve) => {
