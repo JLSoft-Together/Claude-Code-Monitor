@@ -192,15 +192,27 @@ describe('TelegramNotifier', () => {
   })
 
   it('uploads big files over MTProto in the background when large files are on, else reports the path', async () => {
-    const { fetch, sent } = fakeFetch()
+    const { fetch, sent } = fakeFetch({ sendMessage: { message_id: 9 } })
     const dir = mkdtempSync(path.join(os.tmpdir(), 'tg-big-'))
     const apk = path.join(dir, 'app-release.apk')
     writeFileSync(apk, '')
     truncateSync(apk, 60 * 1024 * 1024)
     const calls: { req: BigUploadRequest; creds: BigUploadCreds }[] = []
     let answer: BigUploadResult = { ok: true }
-    const bigUploader: BigUploader = { upload: async (req, creds) => (calls.push({ req, creds }), creds.onSession('sess-1'), answer), close: async () => undefined }
-    const { tg, file } = notifier(fetch, { bigUploader })
+    let clock = 1_000_000
+    const bigUploader: BigUploader = {
+      upload: async (req, creds) => {
+        calls.push({ req, creds })
+        creds.onSession('sess-1')
+        clock += 16_000
+        req.onProgress?.(0.42)
+        req.onProgress?.(0.43)
+        return answer
+      },
+      close: async () => undefined,
+    }
+    const edits = () => sent.filter((s) => s.method === 'editMessageText').map((s) => String((s.body as Record<string, unknown>).text))
+    const { tg, file } = notifier(fetch, { bigUploader, now: () => clock })
     tg.set({ token: TOKEN, enabled: true })
     tg.setRoute({ project: dir, chatId: '-1001234567890', threadId: 3 })
     expect(await tg.report(dir, 'build ok', apk)).toMatchObject({ ok: true, file: 'app-release.apk', linkOnly: true })
@@ -215,12 +227,14 @@ describe('TelegramNotifier', () => {
     expect(calls[0]!.req.caption).toContain('build ok')
     expect(calls[0]!.creds).toMatchObject({ apiId: 123456, apiHash: '0123456789abcdef0123456789abcdef', token: TOKEN, session: null })
     expect(String((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).text)).toContain('Đang gửi app-release.apk (60.0 MB)')
+    expect(edits()).toEqual(['⏫ Đang gửi app-release.apk (60.0 MB)… 42%', '✅ Đã gửi app-release.apk (60.0 MB).'])
 
     answer = { ok: false, error: 'chat' }
     await tg.report(dir, 'lần 2', apk)
     await new Promise((r) => setTimeout(r, 0))
     expect(calls[1]!.creds.session).toBe('sess-1')
     expect(String((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).text)).toContain('Không gửi được app-release.apk')
+    expect(edits().at(-1)).toContain('Không gửi được app-release.apk')
 
     tg.set({ apiHash: 'fedcba9876543210fedcba9876543210' })
     await tg.report(dir, 'lần 3', apk)

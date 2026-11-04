@@ -15,6 +15,8 @@ export interface BigUploadRequest {
   name: string
   size: number
   caption: string
+  /** Fraction 0–1 as GramJS reports it while the parts go up. */
+  onProgress?: (fraction: number) => void
 }
 
 export type BigUploadError = 'auth' | 'chat' | 'network' | 'failed'
@@ -81,6 +83,7 @@ export function createBigUploader(): BigUploader {
       parseMode: 'html',
       forceDocument: true,
       workers: WORKERS,
+      ...(req.onProgress ? { progressCallback: req.onProgress } : {}),
       ...(req.threadId ? { replyTo: req.threadId, topMsgId: req.threadId } : {}),
     })
   }

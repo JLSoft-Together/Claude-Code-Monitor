@@ -48,6 +48,7 @@ import {
   escapeHtml,
   bigFailedHtml,
   bigUploadingHtml,
+  bigDoneHtml,
   quote,
   chatsFrom,
   episodeHtml,
@@ -82,6 +83,8 @@ const REPLIES_MAX = 300
 const ALBUM_MS = 1500
 const ALBUM_MAX = 10
 const HEAVY_AT_ONCE = 2
+/** Telegram throttles edits of one message; one every 15 s keeps a 500 MB upload at ~20 edits. */
+const PROGRESS_EDIT_MS = 15_000
 
 interface KnownChat {
   title: string
@@ -1363,9 +1366,9 @@ export class TelegramNotifier {
     if (stat.size > TELEGRAM_FILE_MAX && stat.size <= TELEGRAM_BIG_FILE_MAX) {
       const big = this.bigUpload(route, file, base, stat.size, rel, reportHtml(name, text, locale, this.masker, CAPTION_MAX), target)
       if (big) {
-        const error = await this.sendText(route, bigUploadingHtml(locale, rel, stat.size, this.masker))
-        if (error) return { ok: false, error }
-        void big()
+        const sent = await this.sendTextId(route, bigUploadingHtml(locale, rel, stat.size, this.masker), target)
+        if (sent.error) return { ok: false, error: sent.error }
+        void big(sent.id)
         this.reportedAt.set(route.project, this.now)
         return { ok: true, topic, file: rel, uploading: true }
       }
@@ -1409,20 +1412,36 @@ export class TelegramNotifier {
     }
   }
 
-  private bigUpload(route: TelegramRoute, file: string, name: string, size: number, rel: string, caption: string, target: TelegramTarget | undefined): (() => Promise<void>) | null {
+  private bigUpload(route: TelegramRoute, file: string, name: string, size: number, rel: string, caption: string, target: TelegramTarget | undefined): ((statusId: number | null) => Promise<void>) | null {
     const uploader = this.deps.bigUploader
     const creds = this.mtCreds()
     if (!this.data.bigFiles || !uploader || !creds) return null
-    return async () => {
-      const res = await uploader.upload({ chatId: route.chatId, threadId: route.threadId, file, name, size, caption }, creds).catch(() => ({ ok: false as const, error: 'failed' as const }))
+    return async (statusId) => {
+      const locale = this.deps.locale()
+      const status = (html: string) => (statusId === null ? Promise.resolve() : this.call('editMessageText', { chat_id: route.chatId, message_id: statusId, text: html, parse_mode: 'HTML' }).then(() => undefined))
+      let editedAt = this.now
+      let shown = 0
+      let editing: Promise<void> = Promise.resolve()
+      const onProgress = (fraction: number) => {
+        const pct = Math.floor(Math.min(1, Math.max(0, fraction)) * 100)
+        if (pct <= shown || pct >= 100 || this.now - editedAt < PROGRESS_EDIT_MS) return
+        shown = pct
+        editedAt = this.now
+        editing = editing.then(() => status(bigUploadingHtml(locale, rel, size, this.masker, pct)))
+      }
+      const res = await uploader.upload({ chatId: route.chatId, threadId: route.threadId, file, name, size, caption, onProgress }, creds).catch(() => ({ ok: false as const, error: 'failed' as const }))
+      await editing
       if (res.ok) {
         this.ok()
         this.health.lastSentAt = this.now
         this.health.sentToday++
+        await status(bigDoneHtml(locale, rel, size, this.masker))
         return
       }
       this.health.errorsToday++
-      await this.sendText(route, bigFailedHtml(this.deps.locale(), rel, res.error, this.masker), target)
+      const failed = bigFailedHtml(locale, rel, res.error, this.masker)
+      await status(failed)
+      await this.sendText(route, failed, target)
     }
   }
 
@@ -1441,12 +1460,17 @@ export class TelegramNotifier {
   }
 
   private async sendText(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup): Promise<TelegramError | null> {
-    if (!this.take(route.chatId)) return this.fail('rate')
+    return (await this.sendTextId(route, html, target, keys)).error
+  }
+
+  private async sendTextId(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup): Promise<{ error: TelegramError | null; id: number | null }> {
+    if (!this.take(route.chatId)) return { error: this.fail('rate'), id: null }
     const res = await this.call('sendMessage', { ...threadFields(route.chatId, route.threadId), text: html, parse_mode: 'HTML', disable_web_page_preview: true, ...(keys ? { reply_markup: keys } : {}) })
-    if (!res.ok) return this.fail(res.error)
+    if (!res.ok) return { error: this.fail(res.error), id: null }
     this.ok()
     this.track(route.chatId, res.result, target)
-    return null
+    const id = (res.result as { message_id?: unknown } | null)?.message_id
+    return { error: null, id: typeof id === 'number' ? id : null }
   }
 
   private ok(): void {
