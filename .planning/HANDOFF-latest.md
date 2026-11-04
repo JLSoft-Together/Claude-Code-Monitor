@@ -13,10 +13,8 @@ Nhật ký: `D:/work/web/claude-code-monitor/.planning/PROGRESS-2026-11-04-teleg
 - Kiểm tra cuối (chạy thật 2026-11-04 ~23:05): `npm run typecheck` sạch; Vitest shared 538 · collector 393 (+1 skip) ·
   desktop 1208 · web 1692 pass.
 - QA thật với bot: `docs/qa/telegram-2026-11-04/RESULT.md` — 16/17 ĐẠT; #16 `@bot stop` CHƯA CHẮC.
-- **Đang chạy**: bản dev QA (electron từ `node_modules/electron`, PID gốc 8492) cổng 4319, CDP 9333, dữ liệu
-  `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/{ud,data}` (chứa token bot đã mã hoá + owner đã ghép), có 1 pane Claude
-  (manual mode) ở project này. Script điều khiển: `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/qa.cjs`
-  (`node qa.cjs eval "<js>"`, `node qa.cjs shot <png>`). Không còn subagent nào chạy.
+- **Đang chạy**: không. Bản dev QA đã tắt (2026-11-04), thư mục tạm `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg` đã xoá
+  (token mã hoá + owner ghép mất theo; QA lại phải dán token, quét, gán topic, ghép lại). Không còn subagent nào chạy.
 - Bị chặn: không. Chờ chủ nhân trả lời (mục 3).
 
 ## 2. Phiên này đã làm
@@ -39,7 +37,7 @@ Nhật ký: `D:/work/web/claude-code-monitor/.planning/PROGRESS-2026-11-04-teleg
 
 1. Hỏi chủ nhân câu trả lời của bot sau khi bấm ⏹ (QA #16). Lỗi → test lại: nhắn `@PoorDog_JinVu_Bot` một việc chạy lâu có tool,
    rồi `@… stop` + bấm ⏹; kiểm pane hiện "Interrupted". Xong → cập nhật `docs/qa/telegram-2026-11-04/RESULT.md` + commit.
-2. Tắt bản dev khi không cần: `taskkill /T /F /PID 8492` (không phải `C:/Program Files/Orrery/Orrery.exe` — đó là bản chủ nhân đang dùng).
+2. (Xong) Bản dev đã tắt, thư mục tạm đã xoá. Hook trong `~/.claude/settings.json` mà bản dev ghi đè đã trả về `C:/Users/dauph/AppData/Local/ccm/bin/hook-bridge.mjs` (backup `settings.json.bak-qa-tg`).
 3. Đợt sau (đã ghi trong `.planning/wp/tg/WP-1-report.md`, `WP-2-report.md`): #12 diff gồm file untracked, #15 glob bí mật
    người dùng, #16 lệnh nặng chặn vòng poll, #17 album ảnh; cài handler nhận lệnh ngoài Workspace; `new`/`resume` không cướp focus.
 4. Chưa test trên app (có unit test): giờ yên lặng, tổng kết ngày, cảnh báo + `run.log`, `run` / `resume` / `all`, confirm MCP `telegram_receive`.
@@ -56,6 +54,7 @@ Chờ chủ nhân trả lời:
 - Telegram: nhận lệnh mặc định tắt, tự tắt khi khởi động lại; chỉ tài khoản đã ghép; người lạ bị bỏ qua im lặng.
 - Không build để verify (CLAUDE.md global) — chỉ build khi chủ nhân cho phép (đợt này đã cho cho QA).
 - Không chạy bản dev trên cổng 4317 (bản cài của chủ nhân giữ; session này chạy trong bản cài).
+- Quirk: bản dev chạy với `CCM_DATA_DIR` tạm vẫn cài hook-bridge vào `~/.claude/settings.json` toàn cục → tắt/xoá bản dev phải trả hook về bản cài.
 - **Token bot đã lộ trong chat** → chủ nhân cần `/revoke` ở BotFather rồi dán token mới vào Settings.
 - Quirk: `.planning/wp/WP-*.md` là brief của đợt cũ (đã track) — brief Telegram để ở `.planning/wp/tg/`. PowerShell `.Replace` không khớp
   file CRLF khi dùng `` `n `` — dùng Edit tool. Terminal xterm vẽ canvas: đọc chữ trong pane bằng ảnh chụp, không bằng DOM.
