@@ -108,3 +108,4 @@ Flow: registry dir + projects dir (fs.watch) + reconcile 5 s → `Monitor` → `
 
 - `index.ts` parses `agent.note`; `toast.ts` `Toaster.observeNote` (TEXT `noteTitle` / `noteMore`, `hideFor` includes `note:`; attention follows "needs you", done follows "done" switch, info = Inbox only; quiet hours + snooze apply).
 - `monitor.ts` `recordOf` stores `sessionId`; `history.ts` keeps it in `history.json`.
+- v82 Telegram: `transcript.ts` `reply_text` signal → `TranscriptState.lastReply` (≤ 3000, memory only), `tracker.lastReply`, `monitor.replyOf`; `toast.ts` `ToastSnapshot.replyOf`, `Toaster.onTelegram` (done with `worked` / waits, not gated by kinds / quiet hours), `index.ts` posts to parentPort.

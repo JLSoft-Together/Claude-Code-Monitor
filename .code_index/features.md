@@ -83,6 +83,7 @@ Rà trước khi đề xuất ý tưởng mới. Cập nhật khi thêm / bỏ t
 - **Canh file / lệnh nhạy cảm** (v76) — Edit / Write file bí mật (.env, keystore, …), file ngoài project, git push -f / reset --hard / clean -fd, rm -rf / del /s / Remove-Item ngoài project, adb uninstall, DROP TABLE → badge card (bấm mở danh sách từng lần) + toast `sensitive`; Mở file / Mở diff / Bỏ qua theo project; Cài đặt nhóm, mẫu riêng, danh sách bỏ qua; chỉ cảnh báo · `apps/collector/src/sensitive/`, `apps/web/src/components/SensitiveSettings.vue`
 - **Chặn lần sau** (v76 R5b) — từ cảnh báo nhạy cảm thêm luật deny Claude Code vào `.claude/settings.json` / `settings.local.json` / user settings sau confirm native có diff, backup `.orrery-bak` · `apps/desktop/src/preview/denyRules.ts`, `apps/web/src/components/SensitiveDenyMenu.vue`
 - **Báo ra điện thoại** (v76) — ntfy / Discord webhook, mặc định tắt, chỉ khi máy rảnh ≥ N phút; chờ / xin quyền / xong việc ≥ 5 phút / job / hạn mức; 20 tin / giờ, secret bằng safeStorage · `apps/desktop/src/phone/`, `apps/web/src/components/PhoneSettings.vue`
+- **Báo Telegram theo topic project** (v82) — token trong Cài đặt, quét group / topic, tạo topic cho project, xong việc / chờ → topic của project, câu trả lời cuối (tuỳ chọn), MCP `telegram_send` (tóm tắt + file ≤ 50 MB), `/bot-tele-send-notify on|off`, nút trên thanh trên · `apps/desktop/src/telegram/`, `apps/web/src/components/TelegramSettings.vue`
 
 ## Workspace & terminal (lõi)
 

@@ -1,0 +1,51 @@
+## WP-1 — DONE
+
+- Test: `npm test -w @ccm/desktop -- test/telegram` → 5 files, 35 tests passed · `npm run typecheck -w @ccm/desktop` → exit 0 (không lỗi)
+- Phạm vi đã đọc: `packages/shared/src/telegram.ts`, `packages/shared/src/mcpDesk.ts` (diff), `apps/desktop/src/telegram/*.ts` (7 file), `apps/desktop/src/pty/mcpTools/telegram*.ts`, `apps/desktop/src/mcpDesk.ts` (diff), `apps/desktop/src/main.ts` (diff: setupTelegram, askPageTelegram, runLogs), `apps/desktop/src/preload.ts` (diff), `apps/collector/src/{transcript,toast,monitor,tracker,index}.ts` (diff). Đọc thêm để xác nhận: `apps/web/src/composables/useTelegramInbound.ts`, `apps/web/src/stores/workspace.ts` (telegramInbound/telegramKeys), `TermPane.vue` (watch typeKeys), `phone/send.ts` (RateLimiter, e2eOverride), `shared/secretMask.ts`, `shared/sensitive.ts`, docs §11an/§11an-b/§11an-c, PLAN v83/v84.
+
+### Lỗi (high → low)
+
+1. `[high][CONFIRMED] apps/desktop/src/telegram/notifier.ts:985-988 (+ actions.ts:5 ActionEntry, web useTelegramInbound.ts keys())` — Nút "✅ Cho phép" không gắn với đúng lần xin quyền nó báo. Entry chỉ giữ `terminalId`; trang chỉ kiểm `status === 'waiting' && waitReason === 'permission'` rồi gõ `1`. Kịch bản: tin Telegram "cần duyệt: Read" → chủ nhân duyệt tay trên máy → agent chạy tiếp rồi xin quyền lần nữa cho lệnh khác (vd `Bash rm -rf build/` hay `git push`) → chủ nhân bấm "Cho phép" ở tin cũ → kiểm trạng thái vẫn qua → `1` duyệt lệnh mới mà chủ nhân chưa thấy. Nút "Từ chối" / "Dừng" cũng có race này nhưng ít hại hơn. Cách sửa: lưu `since` (statusSince của episode) + `tool` vào ActionEntry, gửi kèm trong `TelegramInbound` `keys`; trang so `session.statusSince` (và tool đang chờ) với giá trị đó, lệch thì trả `state`.
+
+2. `[med][CONFIRMED] apps/collector/src/transcript.ts:335-345` — `replyText` / `lastReply` không bao giờ xoá khi bắt đầu lượt mới. Kịch bản: lượt N trả lời "A" (end_turn) → lượt N+1 bị ngắt bằng Esc (hoặc nút ⏹ Dừng của Telegram, hoặc lỗi API, không có `end_turn`) → working→idle → toaster gửi episode `done` với `reply = "A"` → tin "đã xong" (khi bật includeReply) và `@bot last` hiện câu trả lời của lượt TRƯỚC như thể là kết quả lượt này. Tương tự khi bản ghi end_turn cuối không có text: `lastReply` = đoạn text giữa lượt ("Để con kiểm tra…"). Cách sửa: khi gặp bản ghi `user` là prompt thật (không phải tool_result) thì xoá `replyId/replyText/lastReply`; hoặc toaster chỉ gửi reply khi `lastEndAt ≥` lúc bắt đầu working.
+
+3. `[med][CONFIRMED] apps/desktop/src/telegram/notifier.ts:776` — Caption build lỗi cắt ở 1024 ký tự bằng `html.slice(...)` làm mất `</blockquote>` (và có thể cắt đôi entity `&amp;`). `runFailed` có detail tới 1500 ký tự trong `<blockquote expandable>`, nên khi detail dài hơn ~950 ký tự (lỗi Gradle thường thế) Telegram trả 400 "can't find end tag" → nhánh fallback `sendText` → mất `run.log`, tốn thêm 1 lượt rate limit. Thêm: escape xong detail có thể dài quá 4096 (`&` → `&amp;`), khi đó cả fallback cũng lỗi 400 → không báo gì. Cách sửa: cắt `detail` trước khi escape, theo chỗ còn trống của caption (như `quote()` trong api.ts), rồi mới bọc tag.
+
+4. `[med][CONFIRMED] apps/desktop/src/telegram/host.ts:43` — `excludeOrrery` ghi `/.orrery/` (neo ở gốc repo), nhưng file được lưu ở `<route.project>/.orrery/telegram/`. Kịch bản: route trỏ vào thư mục con của repo (monorepo `repo/apps/x`) → file ảnh/voice/tài liệu tải từ Telegram nằm ở `repo/apps/x/.orrery/…` mà không bị ignore → hiện là untracked và dễ bị `git add -A` commit. Dòng kiểm `.orrery/` có sẵn thì vẫn đúng. Cách sửa: ghi pattern không neo `.orrery/`, hoặc `/<đường dẫn tương đối từ toplevel>/.orrery/`.
+
+5. `[med][CONFIRMED] apps/desktop/src/telegram/host.ts:28` — `git diff … -- <mọi file>` truyền từng tên file trên dòng lệnh. Kịch bản: refactor / đổi tên hàng trăm file (khoảng hơn 600 file với path ~50 ký tự) → vượt giới hạn 32 767 ký tự dòng lệnh của Windows → `execFile` lỗi → nút "📄 Xem diff" báo "không tạo được diff". Cách sửa: diff cả repo, loại file bí mật bằng pathspec loại trừ (`-- . ':(exclude,glob)**/.env*' …` theo `SECRET_FILE_GLOBS`), đếm file từ `--name-only`.
+
+6. `[med][CONFIRMED] apps/desktop/src/telegram/notifier.ts:790-791` — `summarySent` và `counts` chỉ nằm trong bộ nhớ. Kịch bản: tổng kết đặt 21:00, đã gửi; chủ nhân mở lại app lúc 22:00 (update, crash) → `tick()` đầu tiên gửi tổng kết lần 2 cho mọi group, số đếm = 0 ("Hôm nay không có session nào chạy"), sai và gây spam. Cách sửa: lưu `summarySent` (ngày) vào `telegram.json`; nếu app mở sau giờ gửi mà không có số đếm của ngày đó thì bỏ qua.
+
+7. `[med][PLAUSIBLE] apps/desktop/src/telegram/notifier.ts:302-326, 369` — Đổi token sang bot khác lúc đang nhận lệnh / đang ghép: `set` chỉ reset `botId`, vòng poll vẫn chạy (`want` vẫn true, `pollRun` giữ nguyên) với `offset` lấy từ update_id của bot cũ. `update_id` của bot mới là dãy số khác; nếu nó nhỏ hơn offset cũ thì `getUpdates` không bao giờ trả gì → nhận lệnh / ghép chết im cho tới khi tắt-bật lại. Cách sửa: khi token đổi thì `pollRun = 0` rồi `syncPoll()` để vòng mới bắt đầu bằng `offset: -1`.
+
+8. `[low][CONFIRMED] apps/desktop/src/telegram/notifier.ts:498` — `.replace(/^[^\n]*/, m.last(last.name))` dùng chuỗi thay thế, nên `$&`, `` $` ``, `$'` trong alias session bị JS diễn giải. Kịch bản: alias chứa `$'` → chèn cả phần quote vào dòng đầu, lồng `<blockquote>` trong `<b>` → Telegram trả 400 → `@bot last` im lặng không trả lời. Cách sửa: dùng hàm thay thế `() => m.last(...)`, hoặc dựng HTML trực tiếp thay vì replace.
+
+9. `[low][PLAUSIBLE] apps/desktop/src/telegram/notifier.ts:735-749` — `pins` lưu theo `project` mà không có `chatId`, và `setRoute` / `removeRoute` không xoá nó. Kịch bản: chuyển route của project sang group khác → `editMessageText(chatMới, idCũ)`; nếu group mới có tin của bot trùng id đó (vd một tin báo) thì tin đó bị ghi đè thành bảng trạng thái và không được ghim. Cách sửa: lưu `{chatId, messageId}`, bỏ pin khi route đổi chat hoặc bị xoá.
+
+10. `[low][PLAUSIBLE] apps/desktop/src/telegram/notifier.ts:433-434` — Mã ghép 6 số, thử sai bao nhiêu lần cũng được trong 5 phút, không giới hạn theo người gửi. Người biết username bot có thể nhắn liên tục (hoặc dùng nhiều tài khoản) để đoán mã trong lúc chủ nhân đang ghép; thành công thì chiếm quyền owner. Xác suất thấp nhưng không có chặn. Cách sửa: huỷ mã sau khoảng 5 lần sai, hoặc giới hạn số lần thử theo `fromId`.
+
+11. `[low][CONFIRMED] apps/desktop/src/telegram/notifier.ts:442-445, 560-563` — Mỗi tin / callback của người lạ đều gọi `onState(state())` (giải mã token bằng safeStorage + 2 lần `existsSync` + broadcast IPC). Riêng callback còn gọi thêm `answerCallbackQuery`, không có giới hạn nào. Người lạ trong group spam reply vào bot hoặc bấm nút liên tục → spam IPC / keychain / Bot API. Cách sửa: throttle broadcast `ignored` (≤ 1/s), giới hạn số lần trả lời "không có quyền".
+
+12. `[low][CONFIRMED] apps/desktop/src/telegram/host.ts:24-28` — `git diff HEAD` bỏ qua file untracked. Kịch bản: agent chỉ tạo file mới → nút "Xem diff" báo "Không có thay đổi chưa commit", hoặc diff thiếu các file mới. Cách sửa: thêm `git ls-files --others --exclude-standard` (bỏ file bí mật) và đưa nội dung vào bằng `git diff --no-index`.
+
+13. `[low][CONFIRMED] apps/desktop/src/telegram/notifier.ts:550` — `answer()` bỏ tag nhưng giữ entity, mà text của `answerCallbackQuery` là text thường. Popup hiện `&amp;` / `&lt;` khi tên session có `&<>` (vd `resultHtml` many/busy). Cách sửa: unescape `&lt; &gt; &amp;` sau khi bỏ tag.
+
+14. `[low][CONFIRMED] web useTelegramInbound.ts resume() → inbound.ts:176` — `resume` trả `{error:'busy'}` mà không có `panes` → `t.busy('')` → "<b></b> đã có một tin đang chờ gửi", sai nghĩa (đúng ra là "session đã mở trong pane"). Cách sửa: thêm mã lỗi hoặc câu riêng cho trường hợp resume đã mở.
+
+15. `[low][CONFIRMED] host.ts / notifier.ts:1010 / telegramSend.ts` — Lọc file bí mật chỉ theo `SECRET_FILE_GLOBS` có sẵn; các glob chủ nhân tự thêm trong Settings › sensitive (`SensitiveSettings.globs`, vd `*.secret`, `config/prod/**`) không được áp cho `telegram_send`, diff và file tải về. Cách sửa: truyền glob của người dùng vào `isSecretFileName` / `projectDiff`.
+
+16. `[low][CONFIRMED] apps/desktop/src/telegram/notifier.ts:415-419` — `onUpdate` được `await` tuần tự trong vòng poll. Một lần tải file 20 MB (timeout 180 s), diff hay screenshot sẽ chặn mọi update sau nó, kể cả nút ⏹ Dừng. Cách sửa: tách việc nặng (download/diff/screen) ra chạy song song có giới hạn, để các lệnh nhẹ không phải chờ.
+
+17. `[low][CONFIRMED] apps/desktop/src/telegram/inbound.ts:92` — Album (media group): chỉ item đầu có caption `@bot`; các ảnh còn lại không mention và không reply bot nên bị bỏ âm thầm, chỉ 1 ảnh tới session. Cách sửa: gom theo `media_group_id` (nhớ item đầu đã được chấp nhận).
+
+### Mục checklist đã soát sạch
+
+- #6 Token: không có trong state / log / lỗi trả về; URL có token chỉ nằm trong `fetch`, lỗi bị nuốt và chỉ còn tên lỗi; `e2eOverride` chỉ nhận loopback; `telegram.json` lưu token đã mã hoá, ghi với mode 0600.
+- #11 Contract shared ↔ web ↔ desktop: kiểu dùng chung, `parseInbound` / `parseInboundResult` / `parseMcpDeskResult` khớp với cái web trả về. Chỉ có lệch nhỏ về câu chữ ở mục 14.
+- Sạch một phần: #1 (đường message / callback / pair đều kiểm owner đúng; chỉ còn mục 10, 11), #3 (phím `1` chỉ cho Claude, Esc cho Codex cũng hợp; còn race ở mục 1), #4 (không có path traversal: tên file đã lọc, có prefix stamp, ghi bằng `wx`, file_path của Telegram đã lọc `..`; còn mục 4), #7 (409 khi tắt-bật nhanh: request cũ là bên bị Telegram huỷ và vòng cũ tự `break` im lặng; còn mục 7, 16), #8 (quiet hours qua nửa đêm đúng; còn mục 6, 9), #9 (mọi chỗ ghép tên / tool / code đều đã escape; còn mục 3, 8, 13), #10 (còn mục 2; subagent nằm ở file transcript riêng, trạng thái main không đọc nó).
+
+### Ngoài phạm vi cần main biết
+
+- Web `TermPane.vue` watch `typeKeys`: nếu `conn` chưa mở thì phím bị bỏ âm thầm, trong khi trang đã trả `ok` → bot báo "Đã cho phép" mà PTY không nhận gì (PLAUSIBLE, thuộc WP web).
+- MCP `telegram_notify` / `telegram_receive` cho phép chính agent bật báo cáo / nhận lệnh (mô tả tool chỉ dặn "chỉ gọi khi user yêu cầu"); agent bị prompt injection có thể tự bật. Đây là quyết định thiết kế (slash command), main nên xác nhận lại với chủ nhân là chấp nhận được.
