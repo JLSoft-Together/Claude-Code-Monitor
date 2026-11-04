@@ -179,6 +179,28 @@ describe('v84 commands', () => {
     tg.stop()
   })
 
+  it('a reply to a bot message reaches its Claude session after a restart and a resume', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    const answer = (req: TelegramInbound): TelegramInboundResult => (req.action === 'status' ? { ok: true, action: 'status', panes: [] } : { ok: true, action: 'send', name: 'B', queued: false, terminalId: 't2' })
+    const { tg, sent } = setup(answer)
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }])
+    await tg.report(project, 'xong', undefined, 'p2')
+    const reportId = (sent.filter((s) => s.method === 'sendMessage').length + 99)
+    tg.stop()
+
+    const file = (tg as unknown as { deps: { file: string } }).deps.file
+    const again = setup(answer, { file })
+    await receiving(again.tg)
+    again.tg.setPanes([{ agent: AGENT, pane: 'p9', terminal: 't9' }])
+    await again.tg.onUpdate(msg('thêm test', { reply_to_message: { message_id: reportId, from: { id: 42, is_bot: true } } }))
+    expect(again.asked.at(-1)).toMatchObject({ action: 'send', target: { kind: 'terminal', terminalId: 't9' } })
+
+    again.tg.setPanes([])
+    await again.tg.onUpdate(msg('thêm test', { reply_to_message: { message_id: reportId, from: { id: 42, is_bot: true } } }))
+    expect(lastText(again.sent)).toContain('chưa mở trong Orrery')
+    again.tg.stop()
+  })
+
   it('lists ended sessions and resumes the picked one', async () => {
     const { tg, sent, asked } = setup((req) =>
       req.action === 'resumeList' ? { ok: true, action: 'resumeList', items: [{ id: UUID, name: 'A', cwd: project, endedAt: '2026-11-04T10:00:00Z' }] } : { ok: true, action: 'resume', name: 'A' },

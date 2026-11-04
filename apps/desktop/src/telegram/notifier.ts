@@ -78,6 +78,7 @@ export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
 const SENT_MAP_MAX = 500
+const REPLIES_MAX = 300
 
 interface KnownChat {
   title: string
@@ -104,6 +105,7 @@ interface FileShape {
   bigFiles: boolean
   sessionRoutes: TelegramSessionRoute[]
   stranger: TelegramStranger
+  replies: Record<string, string>
   apiId?: number
   apiHash?: string
   mtSession?: string
@@ -142,7 +144,7 @@ export interface TelegramDeps {
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
 
-const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER } }
+const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {} }
 
 function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
@@ -205,6 +207,13 @@ function readSessionRoutes(raw: unknown): TelegramSessionRoute[] {
   })
 }
 
+function readReplies(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(-REPLIES_MAX)) if (/^-?\d+:\d+$/.test(k) && isSessionId(v)) out[k] = v.toLowerCase()
+  return out
+}
+
 function readKnown(raw: unknown): Record<string, KnownChat> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, KnownChat> = {}
@@ -220,7 +229,7 @@ function readKnown(raw: unknown): Record<string, KnownChat> {
 }
 
 function readShape(file: string | undefined): FileShape {
-  if (!file) return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {} }
+  if (!file) return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {} }
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<FileShape>
     const routes = readRoutes(raw.routes)
@@ -241,6 +250,7 @@ function readShape(file: string | undefined): FileShape {
       bigFiles: raw.bigFiles === true,
       sessionRoutes: readSessionRoutes(raw.sessionRoutes),
       stranger: readStranger(raw.stranger),
+      replies: readReplies(raw.replies),
       ...(Number.isSafeInteger(raw.apiId) && (raw.apiId as number) > 0 ? { apiId: raw.apiId } : {}),
       ...(typeof raw.apiHash === 'string' && raw.apiHash.length < 4096 ? { apiHash: raw.apiHash } : {}),
       ...(typeof raw.mtSession === 'string' && raw.mtSession.length < 8192 ? { mtSession: raw.mtSession } : {}),
@@ -248,7 +258,7 @@ function readShape(file: string | undefined): FileShape {
       ...(raw.owner && typeof raw.owner.id === 'number' && Number.isSafeInteger(raw.owner.id) && typeof raw.owner.name === 'string' ? { owner: { id: raw.owner.id, name: raw.owner.name.slice(0, 80) } } : {}),
     }
   } catch {
-    return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {} }
+    return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {} }
   }
 }
 
@@ -582,8 +592,11 @@ export class TelegramNotifier {
     if (!ask) return void (await this.reply(msg, t.unavailable))
     const a = ACT_TEXT[locale]
     const sessionTerminal = session ? this.terminalOfAgent.get(session.session) : undefined
-    const replied = msg.replyTo !== null ? this.sentTo.get(`${msg.chatId}:${msg.replyTo}`) : undefined
+    const repliedKey = msg.replyTo !== null ? `${msg.chatId}:${msg.replyTo}` : null
+    const repliedAgent = repliedKey ? this.data.replies[repliedKey] : undefined
+    const replied = repliedKey ? this.liveTarget(repliedAgent, this.sentTo.get(repliedKey)) : undefined
     const target: TelegramTarget | undefined = replied ?? (sessionTerminal ? { kind: 'terminal', terminalId: sessionTerminal } : undefined)
+    if (repliedAgent && !replied && SESSION_BOUND.has(cmd.kind)) return void (await this.reply(msg, a.sessionClosed(this.data.sessionRoutes.find((r) => r.session === repliedAgent)?.name ?? '')))
     if (session && !sessionTerminal && SESSION_BOUND.has(cmd.kind)) return void (await this.reply(msg, a.sessionClosed(session.name)))
     if (cmd.kind === 'screen') return this.sendScreen(msg, cmd.serial)
     const m = MORE_TEXT[locale]
@@ -1003,8 +1016,27 @@ export class TelegramNotifier {
   }
 
   private rememberSent(chatId: string, messageId: number, target: TelegramTarget): void {
-    this.sentTo.set(`${chatId}:${messageId}`, target)
+    const key = `${chatId}:${messageId}`
+    this.sentTo.set(key, target)
     if (this.sentTo.size > SENT_MAP_MAX) this.sentTo.delete(this.sentTo.keys().next().value as string)
+    const agent = target.kind === 'terminal' ? this.agentOfTerminal.get(target.terminalId) : this.agentOfPane.get(target.sessionId)
+    if (!agent) return
+    this.data.replies[key] = agent
+    const keys = Object.keys(this.data.replies)
+    for (const old of keys.slice(0, Math.max(0, keys.length - REPLIES_MAX))) delete this.data.replies[old]
+    this.save()
+  }
+
+  /** A reply follows the Claude session across restarts and resumes; the in-memory target covers panes without one. */
+  private liveTarget(agent: string | undefined, sent: TelegramTarget | undefined): TelegramTarget | undefined {
+    const terminal = agent ? this.terminalOfAgent.get(agent) : undefined
+    if (terminal) return { kind: 'terminal', terminalId: terminal }
+    if (agent) return undefined
+    if (sent?.kind === 'pane') {
+      const live = this.terminalOfAgent.get(this.agentOfPane.get(sent.sessionId) ?? '')
+      if (live) return { kind: 'terminal', terminalId: live }
+    }
+    return sent
   }
 
   private async reply(msg: TgMessage, html: string, keys?: Markup): Promise<number | null> {
