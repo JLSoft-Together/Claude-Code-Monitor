@@ -553,7 +553,7 @@ export class TelegramNotifier {
   private dispatch(update: unknown): void {
     const u = update as { callback_query?: unknown; message?: Record<string, unknown> } | null
     const m = u?.message
-    const heavy = !!m && (Array.isArray(m.photo) || ['document', 'video', 'audio', 'voice'].some((k) => !!m[k]) || (typeof m.text === 'string' && /screen(shot)?/i.test(m.text)))
+    const heavy = !!m && (Array.isArray(m.photo) || ['document', 'video', 'audio', 'voice'].some((k) => !!m[k]) || (typeof m.text === 'string' && /\bscreen(shot)?\b/i.test(m.text)))
     if (u?.callback_query || heavy) return void this.onUpdate(update).catch(() => undefined)
     this.lightChain = this.lightChain.then(() => this.onUpdate(update)).catch(() => undefined)
   }
