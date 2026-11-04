@@ -133,6 +133,7 @@ export const viaTelegram = (text: string, locale: TelegramLocale): string =>
 
 export const ACT_TEXT: Record<TelegramLocale, {
   notOwner: string
+  notAllowed: string
   expired: string
   approved: (name: string) => string
   denied: (name: string) => string
@@ -162,6 +163,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
 }> = {
   en: {
     notOwner: 'Only the paired account can use these buttons.',
+    notAllowed: 'Your access does not cover this button.',
     expired: 'This button is no longer valid.',
     approved: (n) => `✅ Allowed in <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Denied in <b>${escapeHtml(n)}</b>.`,
@@ -191,6 +193,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
   },
   vi: {
     notOwner: 'Chỉ tài khoản đã ghép mới dùng được các nút này.',
+    notAllowed: 'Bạn không có quyền dùng nút này.',
     expired: 'Nút này không còn hiệu lực.',
     approved: (n) => `✅ Đã cho phép ở <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Đã từ chối ở <b>${escapeHtml(n)}</b>.`,

@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChevronRight, CircleCheck, CircleDashed, Copy, ExternalLink, FileUp, FolderPlus, Link2, Pin, Plus, Radio, RefreshCw, Send, ShieldAlert, ShieldCheck, Terminal, Trash2, TriangleAlert, UserCheck } from 'lucide-vue-next'
+import { Activity, ChevronRight, CircleCheck, CircleDashed, Copy, ExternalLink, Eye, FileUp, FolderPlus, Link2, Pin, Plus, Radio, RefreshCw, Send, ShieldAlert, ShieldCheck, Terminal, Trash2, TriangleAlert, UserCheck, UserPlus, Users } from 'lucide-vue-next'
 import {
   DEFAULT_TELEGRAM_QUIET,
   DEFAULT_TELEGRAM_SUMMARY,
   isHhmm,
   parseTopicLink,
   TELEGRAM_DONE_CHOICES,
+  TELEGRAM_MEMBERS_MAX,
   type TelegramChat,
+  type TelegramMember,
+  type TelegramMemberLevel,
+  type TelegramStrangerSeen,
   type TelegramQuiet,
   type TelegramRoute,
   type TelegramSetResult,
@@ -110,6 +114,20 @@ async function saveBig(): Promise<void> {
 
 async function patch(p: Parameters<typeof tg.set>[0]): Promise<void> {
   if (!setFail(await tg.set(p))) note.value = null
+}
+
+const members = computed(() => state.value?.members ?? [])
+const membersFull = computed(() => members.value.length >= TELEGRAM_MEMBERS_MAX)
+const levelOptions = computed(() => [
+  { value: 'read' as TelegramMemberLevel, label: t('telegram.members.read'), icon: Eye },
+  { value: 'full' as TelegramMemberLevel, label: t('telegram.members.full'), icon: ShieldCheck },
+])
+const setMembers = (list: TelegramMember[]): Promise<void> => patch({ members: list })
+const setLevel = (id: number, level: TelegramMemberLevel): Promise<void> => setMembers(members.value.map((m) => (m.id === id ? { ...m, level } : m)))
+const removeMember = (id: number): Promise<void> => setMembers(members.value.filter((m) => m.id !== id))
+function addMember(s: TelegramStrangerSeen, level: TelegramMemberLevel): Promise<void> {
+  if (membersFull.value || members.value.some((m) => m.id === s.id)) return Promise.resolve()
+  return setMembers([...members.value, { id: s.id, name: s.name, level }])
 }
 
 async function test(project?: string): Promise<void> {
@@ -683,6 +701,53 @@ const overview = computed(() => {
             />
             <p class="mt-1 text-2xs text-ink-faint">{{ t('telegram.stranger.textHint') }}</p>
           </template>
+        </div>
+        <div class="flex flex-col gap-2 px-3 py-2" data-telegram-members>
+          <div class="flex items-center gap-2">
+            <Users :size="15" class="shrink-0 text-ink-muted" aria-hidden="true" />
+            <p class="min-w-0 flex-1 text-sm">{{ t('telegram.members.title') }}</p>
+            <span class="shrink-0 text-2xs text-ink-faint tabular-nums">{{ t('telegram.members.count', { n: members.length, max: TELEGRAM_MEMBERS_MAX }) }}</span>
+          </div>
+          <p class="text-2xs leading-relaxed text-ink-faint">{{ t('telegram.members.hint') }}</p>
+          <TransitionGroup v-if="members.length" tag="ul" name="ccm-list" class="flex flex-col divide-y divide-line rounded-inner bg-fill" data-telegram-member-list>
+            <li v-for="m in members" :key="m.id" class="flex items-center gap-2 px-2 py-1.5" :data-telegram-member="m.id">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-xs" :title="m.name">{{ m.name }}</p>
+                <p class="font-mono text-2xs text-ink-faint tabular-nums">{{ t('telegram.members.id', { id: m.id }) }}</p>
+              </div>
+              <SegmentedControl
+                :model-value="m.level"
+                :options="levelOptions"
+                :label="t('telegram.members.level', { name: m.name })"
+                class="shrink-0"
+                data-telegram-member-level
+                @update:model-value="(level: TelegramMemberLevel) => setLevel(m.id, level)"
+              />
+              <button type="button" class="ccm-btn-plain shrink-0 text-st-error" :aria-label="t('telegram.members.remove', { name: m.name })" :title="t('telegram.members.remove', { name: m.name })" data-telegram-member-remove @click="removeMember(m.id)">
+                <Trash2 :size="13" aria-hidden="true" />
+              </button>
+            </li>
+          </TransitionGroup>
+          <p v-else class="text-2xs text-ink-faint">{{ t('telegram.members.empty') }}</p>
+          <h5 class="mt-1 text-2xs font-semibold text-ink-muted">{{ t('telegram.members.recent') }}</h5>
+          <ul v-if="state.recentStrangers.length" class="flex flex-col divide-y divide-line" data-telegram-recent>
+            <li v-for="s in state.recentStrangers" :key="s.id" class="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5" :data-telegram-recent-id="s.id">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-xs" :title="s.name">{{ s.name }}</p>
+                <p class="truncate text-2xs text-ink-faint tabular-nums" :title="s.chat || t('telegram.members.private')">
+                  {{ t('telegram.members.id', { id: s.id }) }} · {{ s.chat || t('telegram.members.private') }} · {{ relativeTime(Math.min(s.at, now), locale, now) }}
+                </p>
+              </div>
+              <button type="button" class="ccm-btn shrink-0 text-xs" :disabled="membersFull" data-telegram-add-read @click="addMember(s, 'read')">
+                <Eye :size="13" aria-hidden="true" />{{ t('telegram.members.addRead') }}
+              </button>
+              <button type="button" class="ccm-btn shrink-0 text-xs" :disabled="membersFull" data-telegram-add-full @click="addMember(s, 'full')">
+                <UserPlus :size="13" aria-hidden="true" />{{ t('telegram.members.addFull') }}
+              </button>
+            </li>
+          </ul>
+          <p v-else class="text-2xs text-ink-faint">{{ t('telegram.members.recentEmpty') }}</p>
+          <p v-if="membersFull && state.recentStrangers.length" class="text-2xs text-warning" role="status">{{ t('telegram.members.maxed', { max: TELEGRAM_MEMBERS_MAX }) }}</p>
         </div>
         <div class="flex items-center gap-3 px-3 py-2" data-telegram-receive-command>
           <Terminal :size="15" class="shrink-0 text-ink-muted" aria-hidden="true" />

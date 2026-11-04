@@ -9,6 +9,11 @@ import {
   TELEGRAM_SESSION_ROUTES_MAX,
   TELEGRAM_STRANGER_MAX,
   DEFAULT_TELEGRAM_STRANGER,
+  TELEGRAM_MEMBERS_MAX,
+  parseTelegramMembers,
+  type TelegramMember,
+  type TelegramMemberLevel,
+  type TelegramStrangerSeen,
   type TelegramStranger,
   isSessionId,
   type TelegramPaneLink,
@@ -120,6 +125,7 @@ interface FileShape {
   bigFiles: boolean
   sessionRoutes: TelegramSessionRoute[]
   stranger: TelegramStranger
+  members: TelegramMember[]
   replies: Record<string, string>
   /** Telegram confirms an update only on the next getUpdates, so the last batch before quitting comes back; this keeps it from being offered again. */
   lastUpdate?: number
@@ -164,7 +170,7 @@ export interface TelegramDeps {
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
 
-const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {} }
+const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {}, members: [] }
 
 function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
@@ -189,6 +195,14 @@ const PAIR_TRIES = 5
 const PAIR_TRIES_TOTAL = 50
 const IGNORED_STATE_MS = 1000
 const NOT_OWNER_PER_MIN = 5
+const STRANGERS_SEEN_MAX = 20
+
+type Role = 'owner' | TelegramMemberLevel
+const READ_COMMANDS = new Set(['status', 'last', 'tail', 'help'])
+const READ_BUTTONS = new Set<ActionKind>(['lt', 'tl', 'df'])
+/** Allow / Deny run a tool on the owner's machine; links, the backlog and pairing change what the bot is. */
+const OWNER_BUTTONS = new Set<ActionKind>(['ap', 'dn', 'lk', 'lp', 'bg', 'bx'])
+const mayPress = (role: Role, kind: ActionKind): boolean => role === 'owner' || (role === 'full' ? !OWNER_BUTTONS.has(kind) : READ_BUTTONS.has(kind))
 
 function readQuiet(raw: unknown): TelegramQuiet {
   const q = raw as Partial<TelegramQuiet> | null
@@ -215,6 +229,16 @@ function readRoutes(raw: unknown): TelegramRoute[] {
 function readStranger(raw: unknown): TelegramStranger {
   const s = raw as Partial<TelegramStranger> | null
   return s && typeof s === 'object' && typeof s.enabled === 'boolean' && typeof s.text === 'string' ? { enabled: s.enabled, text: s.text.slice(0, TELEGRAM_STRANGER_MAX) } : { ...DEFAULT_TELEGRAM_STRANGER }
+}
+
+function readMembers(raw: unknown): TelegramMember[] {
+  if (!Array.isArray(raw)) return []
+  const out: TelegramMember[] = []
+  for (const m of raw.slice(0, TELEGRAM_MEMBERS_MAX)) {
+    const one = parseTelegramMembers([m])?.[0]
+    if (one && !out.some((x) => x.id === one.id)) out.push(one)
+  }
+  return out
 }
 
 function readSessionRoutes(raw: unknown): TelegramSessionRoute[] {
@@ -249,7 +273,7 @@ function readKnown(raw: unknown): Record<string, KnownChat> {
 }
 
 function readShape(file: string | undefined): FileShape {
-  if (!file) return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {} }
+  if (!file) return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {}, members: [] }
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<FileShape>
     const routes = readRoutes(raw.routes)
@@ -270,6 +294,7 @@ function readShape(file: string | undefined): FileShape {
       bigFiles: raw.bigFiles === true,
       sessionRoutes: readSessionRoutes(raw.sessionRoutes),
       stranger: readStranger(raw.stranger),
+      members: readMembers(raw.members),
       replies: readReplies(raw.replies),
       ...(Number.isSafeInteger(raw.lastUpdate) && (raw.lastUpdate as number) >= 0 ? { lastUpdate: raw.lastUpdate } : {}),
       ...(typeof raw.commandsHash === 'string' && /^[0-9a-f]{16}$/.test(raw.commandsHash) ? { commandsHash: raw.commandsHash } : {}),
@@ -280,7 +305,7 @@ function readShape(file: string | undefined): FileShape {
       ...(raw.owner && typeof raw.owner.id === 'number' && Number.isSafeInteger(raw.owner.id) && typeof raw.owner.name === 'string' ? { owner: { id: raw.owner.id, name: raw.owner.name.slice(0, 80) } } : {}),
     }
   } catch {
-    return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {} }
+    return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {}, members: [] }
   }
 }
 
@@ -313,6 +338,8 @@ export class TelegramNotifier {
   private ignoredAt = -Infinity
   private readonly notOwnerLimit: RateLimiter
   private readonly strangerLimit: RateLimiter
+  private readonly readOnlyLimit: RateLimiter
+  private readonly strangers = new Map<number, TelegramStrangerSeen>()
   private readonly runFailed = new Set<string>()
   private readonly lastReplies = new Map<string, { name: string; reply: string }>()
   private readonly runWatch = new Map<string, { project: string; chatId: string; threadId: number | null; config: string; shot: boolean }>()
@@ -334,6 +361,7 @@ export class TelegramNotifier {
     this.total = new RateLimiter(TELEGRAM_PER_HOUR, 60 * 60_000, deps.now ?? Date.now)
     this.notOwnerLimit = new RateLimiter(NOT_OWNER_PER_MIN, 60_000, deps.now ?? Date.now)
     this.strangerLimit = new RateLimiter(NOT_OWNER_PER_MIN, 60_000, deps.now ?? Date.now)
+    this.readOnlyLimit = new RateLimiter(NOT_OWNER_PER_MIN, 60_000, deps.now ?? Date.now)
     this.startedAt = this.now
   }
 
@@ -417,7 +445,36 @@ export class TelegramNotifier {
       bigFiles: { enabled: this.data.bigFiles, apiId: this.data.apiId ?? null, hasHash: this.sealed(this.data.apiHash) !== null },
       sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r) })),
       stranger: { ...this.data.stranger },
+      members: this.members().map((m) => ({ ...m })),
+      recentStrangers: [...this.strangers.values()]
+        .filter((s) => s.id !== this.data.owner?.id && !this.data.members.some((m) => m.id === s.id))
+        .reverse()
+        .map((s) => ({ ...s })),
     }
+  }
+
+  private members(): TelegramMember[] {
+    return this.data.members.filter((m) => m.id !== this.data.owner?.id)
+  }
+
+  /** Read on every message and button press, so removing a member takes effect on their next tap. No owner = nobody, members included. */
+  private roleOf(id: unknown): Role | null {
+    const owner = this.data.owner
+    if (!owner || typeof id !== 'number') return null
+    if (id === owner.id) return 'owner'
+    return this.data.members.find((m) => m.id === id)?.level ?? null
+  }
+
+  private nameOf(id: number): string {
+    return id === this.data.owner?.id ? this.data.owner.name : (this.data.members.find((m) => m.id === id)?.name ?? '')
+  }
+
+  private seeStranger(msg: TgMessage): void {
+    this.strangers.delete(msg.fromId)
+    const name = msg.fromName.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]+/g, ' ').trim().slice(0, 80) || String(msg.fromId)
+    const chat = this.data.known[msg.chatId]?.title ?? (msg.chatType === 'private' ? '' : msg.chatId)
+    this.strangers.set(msg.fromId, { id: msg.fromId, name, at: this.now, chat })
+    if (this.strangers.size > STRANGERS_SEEN_MAX) this.strangers.delete(this.strangers.keys().next().value as number)
   }
 
   get enabled(): boolean {
@@ -468,6 +525,7 @@ export class TelegramNotifier {
     }
     if (patch.bigFiles !== undefined) this.data.bigFiles = patch.bigFiles
     if (patch.stranger) this.data.stranger = { ...patch.stranger }
+    if (patch.members) this.data.members = patch.members.filter((m) => m.id !== this.data.owner?.id).slice(0, TELEGRAM_MEMBERS_MAX).map((m) => ({ ...m }))
     const result = this.commit(patch.token !== undefined)
     if (patch.token) void this.whoAmI()
     this.syncPoll(patch.receiving === true || !!patch.token)
@@ -754,13 +812,17 @@ export class TelegramNotifier {
         return
       }
       this.data.owner = { id: msg.fromId, name: msg.fromName }
+      this.data.members = this.data.members.filter((m) => m.id !== msg.fromId)
+      this.strangers.delete(msg.fromId)
       this.pairCode = null
       this.pairUntil = null
       this.commit()
       await this.reply(msg, t.paired(msg.fromName))
       return
     }
-    if (!this.data.owner || msg.fromId !== this.data.owner.id) {
+    const role = this.roleOf(msg.fromId)
+    if (!role) {
+      this.seeStranger(msg)
       this.noteIgnored()
       // Owner decision 2026-11-05: answer strangers once in a while instead of staying silent (still never forwarded).
       if (this.data.owner && this.data.stranger.enabled && this.strangerLimit.take()) await this.reply(msg, strangerHtml(this.data.stranger.text, this.data.owner.name, t.stranger))
@@ -772,10 +834,15 @@ export class TelegramNotifier {
       return
     }
     if (cmd.kind === 'help') return void (await this.reply(msg, t.help(this.data.bot)))
+    if (role === 'read' && !READ_COMMANDS.has(cmd.kind)) {
+      if (this.readOnlyLimit.take()) await this.reply(msg, t.readOnly)
+      return
+    }
+    const from = role === 'owner' ? msg.fromName : this.nameOf(msg.fromId)
     const session = this.data.sessionRoutes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     const route = session ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId } : this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     if (!route) {
-      const keys = this.linkMarkup(msg)
+      const keys = role === 'owner' ? this.linkMarkup(msg) : undefined
       return void (await this.reply(msg, keys ? MORE_TEXT[locale].linkPick : t.noTopic, keys))
     }
     let lim = this.inboundLimit.get(msg.chatId)
@@ -811,13 +878,13 @@ export class TelegramNotifier {
         if (text) for (const p of open.slice(0, 8)) rows.push([['np', this.addAction({ kind: 'np', terminalId: p.terminalId!, name: p.name, ...base }), `${p.name} · ${paneStatus(p.status, locale)}`]])
         return void (await this.reply(msg, m.newPick(open.length, !!text), markup(locale, rows)))
       }
-      const res = await askSafe({ id: randomUUID(), action: 'new', project: route.project, from: msg.fromName, ...(text ? { text } : {}) })
+      const res = await askSafe({ id: randomUUID(), action: 'new', project: route.project, from, ...(text ? { text } : {}) })
       return void (await this.reply(msg, res.ok && res.action === 'new' ? m.opened(res.name) : resultHtml(res, locale)))
     }
     if (cmd.kind === 'all') {
       const text = viaTelegram(inboundPrompt(cmd.text), locale)
       if (!text) return
-      const res = await askSafe({ id: randomUUID(), action: 'all', project: route.project, text, from: msg.fromName })
+      const res = await askSafe({ id: randomUUID(), action: 'all', project: route.project, text, from })
       return void (await this.reply(msg, res.ok && res.action === 'all' ? (res.names.length ? m.allSent(res.names) : m.allNone) : !res.ok && res.error === 'busy' ? m.allNone : resultHtml(res, locale)))
     }
     if (cmd.kind === 'resume') {
@@ -884,18 +951,18 @@ export class TelegramNotifier {
       const caption = inboundPrompt(cmd.text)
       const kind = more.length ? FILE_KIND[locale].album! : FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind
       const text = viaTelegram(inboundPrompt(a.filePrompt(kind, paths.join(', '), caption)), locale)
-      req = { id: randomUUID(), action: 'send', project: route.project, text, from: msg.fromName, ...(target ? { target } : {}) }
+      req = { id: randomUUID(), action: 'send', project: route.project, text, from, ...(target ? { target } : {}) }
     } else {
       const text = viaTelegram(inboundPrompt(cmd.text), locale)
       if (!text) return
-      req = { id: randomUUID(), action: 'send', project: route.project, text, from: msg.fromName, ...(target ? { target } : {}) }
+      req = { id: randomUUID(), action: 'send', project: route.project, text, from, ...(target ? { target } : {}) }
     }
     const result = await ask(req).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
     if (req.action === 'send' && !result.ok && result.error === 'many' && result.panes?.some((p) => p.terminalId)) {
       const open = result.panes.filter((p) => p.terminalId)
       return void (await this.reply(msg, m.pick(open.length, 'send'), this.pickMarkup('np', open, route.project, msg, req.text)))
     }
-    if (req.action === 'send') this.deps.onInbound?.({ from: msg.fromName, project: route.project, result })
+    if (req.action === 'send') this.deps.onInbound?.({ from, project: route.project, result })
     const sent = await this.reply(msg, resultHtml(result, locale))
     if (sent !== null && result.ok && result.action === 'send' && result.terminalId) this.rememberSent(msg.chatId, sent, { kind: 'terminal', terminalId: result.terminalId })
   }
@@ -974,15 +1041,21 @@ export class TelegramNotifier {
     if (!id) return
     const locale = this.deps.locale()
     const a = ACT_TEXT[locale]
-    if (!this.data.owner || from?.id !== this.data.owner.id) {
+    const role = this.roleOf(from?.id)
+    if (!role) {
       this.noteIgnored()
       if (this.notOwnerLimit.take()) await this.answer(id, a.notOwner)
       return
     }
     const m = ACTION_RE.exec(data)
+    if (m && !mayPress(role, m[1] as ActionKind)) {
+      if (this.readOnlyLimit.take()) await this.answer(id, a.notAllowed)
+      return
+    }
     const entry = m ? this.actions.get(m[2]!) : undefined
     if (!m || !entry || !this.receiving) return this.answer(id, a.expired)
     const kind = m[1] as ActionKind
+    const who = this.nameOf(from!.id as number)
     if (kind === 'lk' || kind === 'lp') return this.linkTopic(id, kind, entry, cb)
     if (kind === 'bg' || kind === 'bx') return this.onBacklog(id, kind, m[2]!, entry, cb)
     const ask = this.asker()
@@ -1015,17 +1088,16 @@ export class TelegramNotifier {
       await this.answer(id)
       if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
       const text = entry.extra ?? ''
-      const from = this.data.owner.name
       const result = await ask(kind === 'nw'
-        ? { id: randomUUID(), action: 'new', project: entry.project, from, ...(text ? { text } : {}) }
-        : { id: randomUUID(), action: 'send', project: entry.project, text, from, target }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
-      if (kind === 'np') this.deps.onInbound?.({ from, project: entry.project, result })
+        ? { id: randomUUID(), action: 'new', project: entry.project, from: who, ...(text ? { text } : {}) }
+        : { id: randomUUID(), action: 'send', project: entry.project, text, from: who, target }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+      if (kind === 'np') this.deps.onInbound?.({ from: who, project: entry.project, result })
       return void (await this.post(where, result.ok && result.action === 'new' ? MORE_TEXT[locale].opened(result.name) : resultHtml(result, locale)))
     }
     if (kind === 'go' || kind === 'ts') {
       const text = PROMPTS[locale][kind]
-      const result = await ask({ id: randomUUID(), action: 'send', project: entry.project, text, from: this.data.owner.name, target }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
-      this.deps.onInbound?.({ from: this.data.owner.name, project: entry.project, result })
+      const result = await ask({ id: randomUUID(), action: 'send', project: entry.project, text, from: who, target }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+      this.deps.onInbound?.({ from: who, project: entry.project, result })
       await this.answer(id)
       await this.post(where, resultHtml(result, locale))
       return

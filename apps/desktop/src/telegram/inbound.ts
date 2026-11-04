@@ -130,6 +130,7 @@ const paneLine = (p: TelegramPaneInfo, locale: TelegramLocale): string => `• <
 export const TEXT: Record<TelegramLocale, {
   paired: (name: string) => string
   stranger: (owner: string) => string
+  readOnly: string
   help: (bot: string) => string
   noTopic: string
   rate: string
@@ -170,6 +171,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>screen [serial]</code> — screenshot of the Android device',
     ].join('\n'),
     noTopic: 'This topic is not assigned to a project in Orrery.',
+    readOnly: 'You can only view here: status, last, tail, help.',
     rate: 'Too many messages in the last minute; wait a little.',
     sent: (n) => `📨 Sent to <b>${escapeHtml(n)}</b>.`,
     queued: (n) => `⏳ <b>${escapeHtml(n)}</b> is busy; the message is sent when it finishes.`,
@@ -208,6 +210,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>screen [serial]</code> — chụp màn hình máy Android',
     ].join('\n'),
     noTopic: 'Topic này chưa được gán project trong Orrery.',
+    readOnly: 'Bạn chỉ có quyền xem: status, last, tail, help.',
     rate: 'Gửi nhanh quá, chủ nhân chờ chút nhé.',
     sent: (n) => `📨 Đã gửi vào <b>${escapeHtml(n)}</b>.`,
     queued: (n) => `⏳ <b>${escapeHtml(n)}</b> đang làm, xong việc sẽ gửi tiếp.`,

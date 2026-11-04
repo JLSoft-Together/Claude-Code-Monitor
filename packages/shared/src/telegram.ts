@@ -101,6 +101,44 @@ export interface TelegramState {
   bigFiles: TelegramBigFiles
   sessionRoutes: TelegramSessionRoute[]
   stranger: TelegramStranger
+  members: TelegramMember[]
+  /** In memory only: the last people (not owner, not member) who mentioned the bot, newest first, so the owner can add them. */
+  recentStrangers: TelegramStrangerSeen[]
+}
+
+/** `read`: status / last / tail / help and the 💬 📜 📄 buttons. `full`: everything but pairing, topic links, the off-time backlog and the Allow / Deny buttons. */
+export const TELEGRAM_MEMBER_LEVELS = ['read', 'full'] as const
+export type TelegramMemberLevel = (typeof TELEGRAM_MEMBER_LEVELS)[number]
+
+export interface TelegramMember {
+  id: number
+  name: string
+  level: TelegramMemberLevel
+}
+
+export interface TelegramStrangerSeen {
+  id: number
+  name: string
+  at: number
+  chat: string
+}
+
+export const TELEGRAM_MEMBERS_MAX = 20
+
+export const isTelegramUserId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0
+
+/** Every entry must be valid (a bad one rejects the whole list); `null` = reject. Duplicated ids are rejected too. */
+export function parseTelegramMembers(raw: unknown): TelegramMember[] | null {
+  if (!Array.isArray(raw) || raw.length > TELEGRAM_MEMBERS_MAX) return null
+  const out: TelegramMember[] = []
+  for (const m of raw) {
+    const o = m as Record<string, unknown> | null
+    if (!o || typeof o !== 'object' || !isTelegramUserId(o.id) || typeof o.name !== 'string' || !(TELEGRAM_MEMBER_LEVELS as readonly unknown[]).includes(o.level)) return null
+    if (out.some((x) => x.id === o.id)) return null
+    const name = o.name.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]+/g, ' ').trim().slice(0, NAME_MAX) || String(o.id)
+    out.push({ id: o.id, name, level: o.level as TelegramMemberLevel })
+  }
+  return out
 }
 
 /** Fixed answer to anyone but the paired owner who mentions the bot; '' text = the built-in line, {owner} = the owner's name. */
@@ -168,6 +206,7 @@ export interface TelegramPatch {
   apiId?: number | null
   apiHash?: string
   stranger?: TelegramStranger
+  members?: TelegramMember[]
 }
 
 export interface TelegramRouteInput {
@@ -295,6 +334,11 @@ export function sanitizeTelegramPatch(raw: unknown): TelegramPatch | null {
     const s = r.stranger as Record<string, unknown> | null
     if (!s || typeof s.enabled !== 'boolean' || typeof s.text !== 'string' || s.text.length > TELEGRAM_STRANGER_MAX) return null
     out.stranger = { enabled: s.enabled, text: s.text.replace(/[\x00-\x09\x0b-\x1f\x7f]+/g, ' ').trim() }
+  }
+  if (r.members !== undefined) {
+    const members = parseTelegramMembers(r.members)
+    if (!members) return null
+    out.members = members
   }
   if (r.quiet !== undefined) {
     const q = r.quiet as Record<string, unknown> | null
@@ -507,7 +551,7 @@ export function inboundPrompt(text: string): string {
     .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
     .replace(/\x1b[\]P^_][\s\S]*?(\x07|\x1b\\)/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '')
-    .replace(/[‪-‮⁦-⁩]/g, '')
+    .replace(/[\u202a-\u202e\u2066-\u2069]/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, TELEGRAM_INBOUND_MAX)
