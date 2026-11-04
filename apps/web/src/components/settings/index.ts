@@ -1,6 +1,6 @@
 import type { ToastKind } from '@ccm/shared'
 
-export const SETTINGS_PAGES = ['general', 'appearance', 'editor', 'notify', 'reminders', 'github', 'integrations', 'deepseek', 'access', 'data', 'about'] as const
+export const SETTINGS_PAGES = ['general', 'appearance', 'editor', 'notify', 'telegram', 'reminders', 'github', 'integrations', 'deepseek', 'access', 'data', 'about'] as const
 export type SettingsPage = (typeof SETTINGS_PAGES)[number]
 
 export const isSettingsPage = (v: unknown): v is SettingsPage => typeof v === 'string' && (SETTINGS_PAGES as readonly string[]).includes(v)
@@ -56,7 +56,7 @@ export interface SettingsEntry {
   needs?: keyof SettingsEnv
 }
 
-const PAGE_NEEDS: Partial<Record<SettingsPage, keyof SettingsEnv>> = { editor: 'terminals', github: 'github', deepseek: 'deepseek' }
+const PAGE_NEEDS: Partial<Record<SettingsPage, keyof SettingsEnv>> = { editor: 'terminals', github: 'github', deepseek: 'deepseek', telegram: 'telegram' }
 
 export const pageVisible = (page: SettingsPage, env: SettingsEnv): boolean => {
   const need = PAGE_NEEDS[page]
@@ -114,7 +114,7 @@ export const entries = (mac: boolean): SettingsEntry[] => [
   { page: 'notify', id: 'idle', labelKey: 'resources.idleSetting', hintKey: 'resources.idleSettingHint', needs: 'notifyData' },
   { page: 'notify', id: 'disk', labelKey: 'disk.setting', hintKey: 'disk.settingHint', needs: 'disk' },
   { page: 'notify', id: 'phone', labelKey: 'phone.section', needs: 'phone' },
-  { page: 'notify', id: 'telegram', labelKey: 'telegram.section', hintKey: 'telegram.enable', needs: 'telegram' },
+  { page: 'telegram', id: 'telegram', labelKey: 'telegram.section', hintKey: 'telegram.enable', needs: 'telegram' },
 
   { page: 'reminders', id: 'break', labelKey: 'settings.breakReminder', hintKey: 'settings.breakHint' },
   { page: 'reminders', id: 'stuck', labelKey: 'settings.stuck', hintKey: 'settings.stuckHint' },

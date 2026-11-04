@@ -5,7 +5,6 @@ import { CircleAlert, Send } from 'lucide-vue-next'
 import { DEFAULT_IDLE_MINUTES, DEFAULT_QUIET, IDLE_CHOICES, isHm, type QuietHours, type ToastKind } from '@ccm/shared'
 import { hasDisk } from '../../lib/buildClean'
 import { hasPhone } from '../../lib/phone'
-import { hasTelegram } from '../../lib/telegram'
 import { isMac } from '../../lib/platform'
 import { playChime } from '../../lib/sound'
 import { useConnectionStore } from '../../stores/connection'
@@ -14,7 +13,6 @@ import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
 import DiskSettings from '../DiskSettings.vue'
 import PhoneSettings from '../PhoneSettings.vue'
-import TelegramSettings from '../TelegramSettings.vue'
 import ToggleSwitch from '../ToggleSwitch.vue'
 import InfoHint from './InfoHint.vue'
 import SettingEmbed from './SettingEmbed.vue'
@@ -239,7 +237,6 @@ onBeforeUnmount(() => extras.setToastTest(null))
         </button>
       </div>
     </SettingSection>
-    <SettingEmbed v-if="hasTelegram" id="telegram"><TelegramSettings :open="ui.settingsOpen" /></SettingEmbed>
     <div v-show="moreOpen" id="notify-more" class="mt-4">
       <SettingEmbed v-if="hasDisk" id="disk"><DiskSettings /></SettingEmbed>
       <SettingEmbed v-if="hasPhone" id="phone"><PhoneSettings :open="ui.settingsOpen" /></SettingEmbed>

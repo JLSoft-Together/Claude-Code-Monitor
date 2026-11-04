@@ -72,3 +72,11 @@ describe('tabMenu compact', () => {
     expect(ids(tabMenu(ctx(), t))).not.toContain('compact')
   })
 })
+
+describe('tabMenu telegram', () => {
+  it('offers connecting the tab agent session to a topic, named by its link state', () => {
+    expect(ids(tabMenu(ctx(), t))).not.toContain('telegram-link')
+    expect(findAction(tabMenu(ctx({ telegram: 'unlinked' }), t), 'telegram-link')).toMatchObject({ label: 'telegram.connect.menu' })
+    expect(findAction(tabMenu(ctx({ telegram: 'linked', compact: 'ready' }), t), 'telegram-link')).toMatchObject({ label: 'telegram.connect.menuLinked' })
+  })
+})

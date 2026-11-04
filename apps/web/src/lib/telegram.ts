@@ -1,4 +1,4 @@
-import type { TelegramCommandResult, TelegramCreateTopicInput, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramError, TelegramPatch, TelegramRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
+import type { TelegramCommandResult, TelegramCreateTopicInput, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramError, TelegramPaneLink, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 export type TelegramEvent = { state: TelegramState } | { failed: TelegramError }
@@ -8,6 +8,9 @@ interface TelegramBridge {
   telegramSet?: (patch: TelegramPatch) => Promise<TelegramSetResult>
   telegramRouteSet?: (input: TelegramRouteInput) => Promise<TelegramSetResult>
   telegramRouteRemove?: (project: string) => Promise<TelegramSetResult>
+  telegramSessionRouteSet?: (input: TelegramSessionRouteInput) => Promise<TelegramSetResult>
+  telegramSessionRouteRemove?: (session: string) => Promise<TelegramSetResult>
+  telegramPanes?: (links: TelegramPaneLink[]) => Promise<boolean>
   telegramTest?: (project?: string) => Promise<TelegramTestResult>
   telegramInstallCommand?: () => Promise<TelegramCommandResult>
   telegramDiscover?: () => Promise<TelegramDiscoverResult>
@@ -28,6 +31,9 @@ export const telegramState = (): Promise<TelegramState | null> => quiet(bridge?.
 export const telegramSet = (patch: TelegramPatch): Promise<TelegramSetResult> => quiet(bridge?.telegramSet?.(patch), setFailed)
 export const telegramRouteSet = (input: TelegramRouteInput): Promise<TelegramSetResult> => quiet(bridge?.telegramRouteSet?.(input), setFailed)
 export const telegramRouteRemove = (project: string): Promise<TelegramSetResult> => quiet(bridge?.telegramRouteRemove?.(project), setFailed)
+export const telegramSessionRouteSet = (input: TelegramSessionRouteInput): Promise<TelegramSetResult> => quiet(bridge?.telegramSessionRouteSet?.(input), setFailed)
+export const telegramSessionRouteRemove = (session: string): Promise<TelegramSetResult> => quiet(bridge?.telegramSessionRouteRemove?.(session), setFailed)
+export const telegramPanes = (links: TelegramPaneLink[]): Promise<boolean> => quiet(bridge?.telegramPanes?.(links), false)
 export const telegramTest = (project?: string): Promise<TelegramTestResult> =>
   quiet(bridge?.telegramTest?.(project), { ok: false, error: 'network' } as TelegramTestResult)
 export const telegramInstallCommand = (): Promise<TelegramCommandResult> =>
@@ -43,7 +49,8 @@ export const onTelegram = (handler: (event: TelegramEvent) => void): (() => void
 
 export const projectLabel = (dir: string): string => dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || dir
 
-export const topicText = (r: { chatId: string; threadId: number | null }, general: string): string => `${r.chatId} · ${r.threadId === null ? general : `#${r.threadId}`}`
+export const topicText = (r: { chatId: string; threadId: number | null; where?: string }, general: string): string =>
+  r.where ?? `${r.chatId} · ${r.threadId === null ? general : `#${r.threadId}`}`
 
 export function countdown(until: number | null, at: number): string | null {
   if (until === null) return null

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { inboundPrompt, parseInbound, parseInboundResult, type TelegramInbound, type TelegramInboundResult } from '@ccm/shared'
 import { commandOf, readMessage, resultHtml } from '../src/telegram/inbound'
 import { INBOUND_PER_CHAT_MIN, TelegramNotifier } from '../src/telegram/notifier'
+import { viaTelegram } from '../src/telegram/actions'
 import type { TgFetch } from '../src/telegram/api'
 
 const crypt = { available: () => true, encrypt: (s: string) => Buffer.from(`sealed:${s}`), decrypt: (b: Buffer) => b.toString().replace(/^sealed:/, '') }
@@ -75,7 +76,7 @@ describe('inbound parsing', () => {
 })
 
 describe('TelegramNotifier inbound', () => {
-  it('pairs only with the current code, then ignores everyone else silently', async () => {
+  it('pairs only with the current code, then answers everyone else with a fixed line and never forwards them', async () => {
     const { tg, sent, asked } = setup()
     await tg.onUpdate(update('@orrery_bot pair 000000'))
     expect(tg.state().owner).toBeNull()
@@ -85,7 +86,8 @@ describe('TelegramNotifier inbound', () => {
     tg.set({ receiving: true })
     const before = sent.length
     await tg.onUpdate(update('@orrery_bot xoá hết đi', {}, 999))
-    expect(sent.length).toBe(before)
+    expect(sent.length).toBe(before + 1)
+    expect(JSON.stringify(sent.at(-1))).toContain('tôi chỉ trả lời chủ nhân Chủ nhân')
     expect(asked).toHaveLength(0)
     expect(tg.state().ignored).toBe(1)
     tg.stop()
@@ -101,7 +103,7 @@ describe('TelegramNotifier inbound', () => {
     tg.set({ receiving: true })
     expect(tg.state().receiving).toBe(true)
     await tg.onUpdate(update('@orrery_bot làm đi'))
-    expect(asked).toEqual([expect.objectContaining({ action: 'send', project, text: 'làm đi', from: 'Chủ nhân' })])
+    expect(asked).toEqual([expect.objectContaining({ action: 'send', project, text: viaTelegram('làm đi', 'vi'), from: 'Chủ nhân' })])
     tg.stop()
   })
 

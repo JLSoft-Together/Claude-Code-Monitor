@@ -1,6 +1,8 @@
-import { cleanNoteText, parseInbound, waitReason, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramPaneInfo, type TelegramResumeItem, type TerminalSession } from '@ccm/shared'
+import { watch } from 'vue'
+import { cleanNoteText, isSessionId, parseInbound, uniquePaneNames, type TelegramPaneLink, waitReason, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramPaneInfo, type TelegramResumeItem, type TerminalSession } from '@ccm/shared'
 import { i18n } from '../i18n'
 import { desktop } from '../lib/desktop'
+import { telegramPanes } from '../lib/telegram'
 import { baseName } from '../lib/preview'
 import { useAgentsStore } from '../stores/agents'
 import { useInboxStore } from '../stores/inbox'
@@ -51,13 +53,14 @@ export function installTelegramInbound(): void {
     const t = p.terminalId ? terminals.byId[p.terminalId] : undefined
     return t && t.status !== 'stale' ? t : undefined
   }
-  const nameOf = (p: Pane): string => sessionOf(p)?.alias || workspace.tabOf(p.key)?.name || baseName(workCwd(p) ?? p.cwd ?? '') || 'Agent'
+  const nameOf = (p: Pane): string => sessionOf(p)?.alias || sessionOf(p)?.title || workspace.tabOf(p.key)?.name || baseName(workCwd(p) ?? p.cwd ?? '') || 'Agent'
   const info = (p: Pane): TelegramPaneInfo => {
     const s = sessionOf(p)
     const tool = s && s.status === 'working' ? agents.mainOf(s.id)?.currentTool : undefined
     const since = s?.statusSince ? Date.parse(s.statusSince) : NaN
     return { name: nameOf(p), status: s?.status ?? 'unknown', ...(s ? { terminalId: s.id } : {}), ...(tool ? { tool } : {}), ...(Number.isFinite(since) ? { since } : {}) }
   }
+  const infos = (panes: Pane[]): TelegramPaneInfo[] => uniquePaneNames(panes.map(info))
   const targetOf = (req: Req<'send'> | Req<'keys'>) =>
     req.target ? (req.target.kind === 'terminal' ? { terminalId: req.target.terminalId } : { sessionId: req.target.sessionId }) : undefined
   const log = (p: Pane, from: string, text: string) => {
@@ -71,7 +74,7 @@ export function installTelegramInbound(): void {
     const target = targetOf(req)
     const candidates = workspace.telegramPanes(req.project, req.nested)
     const pane = target ? candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId)) : candidates.length === 1 ? candidates[0] : undefined
-    if (!pane) return target ? { ok: false, error: 'gone' } : { ok: false, error: candidates.length ? 'many' : 'none', ...(candidates.length ? { panes: candidates.map(info) } : {}) }
+    if (!pane) return target ? { ok: false, error: 'gone' } : { ok: false, error: candidates.length ? 'many' : 'none', ...(candidates.length ? { panes: infos(candidates) } : {}) }
     const s = sessionOf(pane)
     const tool = s ? agents.mainOf(s.id)?.currentTool : undefined
     if (!keysReady(req, s, presetOf(pane) === 'claude', tool) || !pane.terminalId) return { ok: false, error: 'state' }
@@ -85,7 +88,7 @@ export function installTelegramInbound(): void {
 
   function send(req: Req<'send'>): TelegramInboundResult {
     const out = workspace.telegramInbound(req.project, req.text, targetOf(req), req.nested)
-    if (out === 'many') return { ok: false, error: 'many', panes: workspace.telegramPanes(req.project, req.nested).map(info) }
+    if (out === 'many') return { ok: false, error: 'many', panes: infos(workspace.telegramPanes(req.project, req.nested)) }
     if (typeof out === 'string') return { ok: false, error: out }
     if ('busy' in out) return { ok: false, error: 'busy', panes: [info(out.busy)] }
     const session = sessionOf(out)
@@ -150,7 +153,7 @@ export function installTelegramInbound(): void {
     if (!req) return { ok: false, error: 'unavailable' }
     switch (req.action) {
       case 'status':
-        return { ok: true, action: 'status', panes: workspace.telegramPanes(req.project, req.nested).map(info) }
+        return { ok: true, action: 'status', panes: infos(workspace.telegramPanes(req.project, req.nested)) }
       case 'keys':
         return keys(req)
       case 'send':
@@ -165,4 +168,19 @@ export function installTelegramInbound(): void {
         return resume(req)
     }
   })
+
+  // Main routes a session's reports and its topic's commands by Claude session id; only the page knows which pane runs it.
+  watch(
+    () => paneLinks(workspace.panes),
+    (links, before) => {
+      if (JSON.stringify(links) !== JSON.stringify(before)) void telegramPanes(links)
+    },
+    { immediate: true },
+  )
+}
+
+export function paneLinks(panes: readonly Pane[]): TelegramPaneLink[] {
+  return panes.flatMap((p): TelegramPaneLink[] =>
+    isTerm(p) && isSessionId(p.agentSessionId) ? [{ agent: p.agentSessionId.toLowerCase(), ...(p.sessionId ? { pane: p.sessionId } : {}), ...(p.terminalId ? { terminal: p.terminalId } : {}) }] : [],
+  )
 }

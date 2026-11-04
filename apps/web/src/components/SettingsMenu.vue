@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bell, BellOff, Bot, ChevronRight, Database, GitBranch, Info, MoveDiagonal2, Palette, Plug, Search, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
+import { Bell, BellOff, Bot, ChevronRight, Database, GitBranch, Info, MoveDiagonal2, Palette, Plug, Search, Send, Settings2, ShieldCheck, SlidersHorizontal, SquareTerminal, Timer, X } from 'lucide-vue-next'
 import { clampDialogSize, readDialogSize, saveDialogSize, type DialogSize } from '../lib/dialogSize'
 import { retireOverlay } from '../lib/motion'
 import { isMac } from '../lib/platform'
@@ -21,6 +21,7 @@ import { useUiStore } from '../stores/ui'
 import { useUpdateStore } from '../stores/update'
 import LottieArt from './LottieArt.vue'
 import GitHubAccountsSettings from './GitHubAccountsSettings.vue'
+import TelegramSettings from './TelegramSettings.vue'
 import SettingsAbout from './settings/SettingsAbout.vue'
 import SettingsAccess from './settings/SettingsAccess.vue'
 import SettingsAppearance from './settings/SettingsAppearance.vue'
@@ -113,6 +114,7 @@ const pageIcons: Record<SettingsPage, Component> = {
   appearance: Palette,
   editor: SquareTerminal,
   notify: Bell,
+  telegram: Send,
   reminders: Timer,
   github: GitBranch,
   integrations: Plug,
@@ -371,6 +373,7 @@ onBeforeUnmount(() => window.clearTimeout(ringTimer))
                   <SettingsAppearance v-else-if="page === 'appearance'" />
                   <SettingsEditor v-else-if="page === 'editor'" />
                   <SettingsNotify v-else-if="page === 'notify'" />
+                  <SettingEmbed v-else-if="page === 'telegram'" id="telegram"><TelegramSettings :open="ui.settingsOpen" /></SettingEmbed>
                   <SettingsReminders v-else-if="page === 'reminders'" />
                   <SettingEmbed v-else-if="page === 'github'" id="github"><GitHubAccountsSettings :open="ui.settingsOpen" /></SettingEmbed>
                   <SettingsIntegrations v-else-if="page === 'integrations'" />

@@ -2,9 +2,10 @@ import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseInbound, parseInboundResult, type TelegramInbound, type TelegramInboundResult } from '@ccm/shared'
+import { parseInbound, parseInboundResult, uniquePaneNames, type TelegramInbound, type TelegramInboundResult } from '@ccm/shared'
 import { commandOf, readMessage } from '../src/telegram/inbound'
 import { TelegramNotifier } from '../src/telegram/notifier'
+import { viaTelegram } from '../src/telegram/actions'
 import type { TgFetch } from '../src/telegram/api'
 
 const crypt = { available: () => true, encrypt: (s: string) => Buffer.from(`sealed:${s}`), decrypt: (b: Buffer) => b.toString().replace(/^sealed:/, '') }
@@ -70,6 +71,14 @@ describe('v84 parsing', () => {
     expect(c('@orrery_bot resume')).toEqual({ kind: 'resume' })
     expect(c('@orrery_bot run app debug')).toEqual({ kind: 'run', config: 'app debug' })
     expect(c('@orrery_bot all dừng lại')).toEqual({ kind: 'all', text: 'dừng lại' })
+    expect(c('@orrery_bot all')).toEqual({ kind: 'help' })
+    expect(c('@orrery_bot /compact')).toEqual({ kind: 'send', text: '/compact' })
+    expect(c('@orrery_bot /hand-off')).toEqual({ kind: 'send', text: '/hand-off' })
+    expect(viaTelegram('/clear', 'vi')).toBe('/clear')
+    expect(viaTelegram('/hand-off', 'vi')).toBe('/hand-off')
+    expect(viaTelegram('/frontend-design /ui-ux-pro-max:ui-ux-pro-max', 'vi')).toBe('/frontend-design /ui-ux-pro-max:ui-ux-pro-max')
+    expect(viaTelegram('/compact giữ phần ads', 'vi')).toBe('/compact giữ phần ads')
+    expect(viaTelegram('/frontend-design /ui-ux-pro-max làm màn login', 'vi')).toMatch(/^\/frontend-design \/ui-ux-pro-max làm màn login\n\n\(Tin này gửi từ Telegram/)
     expect(c('@orrery_bot last')).toEqual({ kind: 'last' })
     expect(parseInbound({ id: 'x', action: 'resume', project, sessionId: 'nope', cwd: project })).toBeNull()
     expect(parseInboundResult({ ok: true, action: 'resumeList', items: [{ id: UUID, name: 'A', cwd: project, endedAt: 'x' }, { id: 'bad', name: 'B', cwd: project }] })).toEqual({ ok: true, action: 'resumeList', items: [{ id: UUID, name: 'A', cwd: project, endedAt: 'x' }] })
@@ -81,11 +90,92 @@ describe('v84 commands', () => {
     const { tg, sent, asked } = setup((req) => (req.action === 'new' ? { ok: true, action: 'new', name: 'A' } : { ok: true, action: 'all', names: ['A', 'A 2'] }))
     await receiving(tg)
     await tg.onUpdate(msg('@orrery_bot new sửa lỗi đăng nhập'))
-    expect(asked[0]).toMatchObject({ action: 'new', project, text: 'sửa lỗi đăng nhập' })
+    expect(asked.map((a) => a.action)).toEqual(['status', 'new'])
+    expect(asked[1]).toMatchObject({ action: 'new', project, text: viaTelegram('sửa lỗi đăng nhập', 'vi') })
     expect(lastText(sent)).toContain('Đã mở session Claude mới')
     await tg.onUpdate(msg('@orrery_bot all chạy lint'))
-    expect(asked[1]).toMatchObject({ action: 'all', text: 'chạy lint' })
+    expect(asked.at(-1)).toMatchObject({ action: 'all', text: viaTelegram('chạy lint', 'vi') })
     expect(lastText(sent)).toContain('<b>A</b>, <b>A 2</b>')
+    tg.stop()
+  })
+
+  it('asks before opening another session and can send the prompt to an open one', async () => {
+    const panes = [{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'A 2', status: 'working', terminalId: 't2' }]
+    const { tg, sent, asked } = setup((req) =>
+      req.action === 'status' ? { ok: true, action: 'status', panes } : req.action === 'new' ? { ok: true, action: 'new', name: 'A 3' } : { ok: true, action: 'send', name: 'A 2', queued: true, terminalId: 't2' },
+    )
+    await receiving(tg)
+    await tg.onUpdate(msg('@orrery_bot new sửa lỗi đăng nhập'))
+    expect(asked.map((a) => a.action)).toEqual(['status'])
+    expect(lastText(sent)).toContain('đang có 2 session')
+    const keys = keysOf(sent)
+    expect(keys.map((k) => k.text)).toEqual(['➕ Mở session mới', '📨 A · rảnh', '📨 A 2 · đang làm'])
+    await tg.onUpdate(cb(keys[2]!.callback_data))
+    expect(asked.at(-1)).toMatchObject({ action: 'send', text: viaTelegram('sửa lỗi đăng nhập', 'vi'), target: { kind: 'terminal', terminalId: 't2' } })
+    expect(lastText(sent)).toContain('A 2')
+    await tg.onUpdate(cb(keys[0]!.callback_data))
+    expect(asked.filter((a) => a.action === 'new')).toHaveLength(0)
+
+    await tg.onUpdate(msg('@orrery_bot new'))
+    const bare = keysOf(sent)
+    expect(bare.map((k) => k.text)).toEqual(['➕ Mở session mới'])
+    await tg.onUpdate(cb(bare[0]!.callback_data))
+    expect(asked.at(-1)).toMatchObject({ action: 'new', project })
+    expect(asked.at(-1)).not.toHaveProperty('text')
+    expect(lastText(sent)).toContain('Đã mở session Claude mới')
+    tg.stop()
+  })
+
+  it('offers a button per session for stop, last and a plain message when several are open', async () => {
+    const panes = uniquePaneNames([{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'A', status: 'working', terminalId: 't2', since: 1 }])
+    expect(panes.map((p) => p.name)).toEqual(['A #1', 'A #2'])
+    const { tg, sent, asked } = setup((req) =>
+      req.action === 'status' ? { ok: true, action: 'status', panes } : req.action === 'keys' ? { ok: true, action: 'keys', name: 'A #2', key: 'stop' } : req.action === 'send' && !req.target ? { ok: false, error: 'many', panes } : { ok: true, action: 'send', name: 'A #1', queued: false, terminalId: 't1' },
+    )
+    await receiving(tg)
+
+    await tg.onUpdate(msg('@orrery_bot stop'))
+    expect(lastText(sent)).toContain('Dừng session nào?')
+    const stop = keysOf(sent)
+    expect(stop.map((k) => k.text)).toEqual(['⏹ Dừng A #1 · rảnh', '⏹ Dừng A #2 · đang làm'])
+    await tg.onUpdate(cb(stop[1]!.callback_data))
+    expect(asked.at(-1)).toMatchObject({ action: 'keys', key: 'stop', target: { kind: 'terminal', terminalId: 't2' } })
+
+    await tg.onUpdate(msg('@orrery_bot last'))
+    expect(lastText(sent)).toContain('Xem câu trả lời cuối của session nào?')
+    await tg.onUpdate(cb(keysOf(sent)[0]!.callback_data))
+    expect(lastText(sent)).toContain('chưa có câu trả lời')
+
+    await tg.onUpdate(msg('@orrery_bot chạy lint'))
+    expect(lastText(sent)).toContain('Gửi vào session nào?')
+    const send = keysOf(sent)
+    expect(send.map((k) => k.text)).toEqual(['📨 A #1 · rảnh', '📨 A #2 · đang làm'])
+    await tg.onUpdate(cb(send[0]!.callback_data))
+    expect(asked.at(-1)).toMatchObject({ action: 'send', text: viaTelegram('chạy lint', 'vi'), target: { kind: 'terminal', terminalId: 't1' } })
+    tg.stop()
+  })
+
+  it('routes one session to its own topic: reports, telegram_send and commands from that topic', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    const { tg, sent, asked } = setup((req) => (req.action === 'status' ? { ok: true, action: 'status', panes: [{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'B', status: 'idle', terminalId: 't2' }] } : { ok: true, action: 'send', name: 'B', queued: false, terminalId: 't2' }))
+    await receiving(tg)
+    expect(tg.setSessionRoute({ session: AGENT, name: 'B', project, link: 't.me/c/1234567890/9/100' }).ok).toBe(true)
+    expect(tg.state().sessionRoutes).toEqual([{ session: AGENT, name: 'B', project, chatId: '-1001234567890', threadId: 9, where: '-1001234567890 › #9' }])
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }])
+
+    await tg.report(project, 'xong', undefined, 'p2')
+    expect((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).message_thread_id).toBe(9)
+    await tg.report(project, 'xong', undefined, 'p1')
+    expect((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).message_thread_id).toBe(7)
+
+    await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
+    expect(asked.at(-1)).toMatchObject({ action: 'send', target: { kind: 'terminal', terminalId: 't2' } })
+
+    tg.setPanes([])
+    await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
+    expect(lastText(sent)).toContain('chưa mở trong Orrery')
+    expect(tg.removeSessionRoute(AGENT).ok).toBe(true)
+    expect(tg.state().sessionRoutes).toEqual([])
     tg.stop()
   })
 

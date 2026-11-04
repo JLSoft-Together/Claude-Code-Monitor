@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, X } from 'lucide-vue-next'
-import type { TerminalStatus } from '@ccm/shared'
+import { isSessionId, type TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
@@ -35,6 +35,8 @@ import { useNavigationStore } from '../../stores/navigation'
 import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
+import { useTelegramStore } from '../../stores/telegram'
+import { hasTelegram } from '../../lib/telegram'
 import { useSettingsStore } from '../../stores/settings'
 import { isTerm, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
@@ -64,6 +66,7 @@ const ReleaseCheckDialog = defineAsyncComponent(() => import('./ReleaseCheckDial
 const StringsDialog = defineAsyncComponent(() => import('./StringsDialog.vue'))
 const LibUpdatesDialog = defineAsyncComponent(() => import('./LibUpdatesDialog.vue'))
 const ContextSourcesDialog = defineAsyncComponent(() => import('./ContextSourcesDialog.vue'))
+const TelegramLinkDialog = defineAsyncComponent(() => import('./TelegramLinkDialog.vue'))
 import RunPane from './RunPane.vue'
 import ShortcutTip from './ShortcutTip.vue'
 import TermPane from './TermPane.vue'
@@ -1073,6 +1076,15 @@ function parkedIn(tab: Tab): string[] {
   return leaves(tab.root).filter((k) => paneOf(k)?.state === 'parked')
 }
 
+const telegram = useTelegramStore()
+telegram.start()
+
+function telegramOf(pane: Pane | undefined): 'linked' | 'unlinked' | undefined {
+  if (!hasTelegram || !pane || !isSessionId(pane.agentSessionId) || !workCwd(pane)) return undefined
+  const session = pane.agentSessionId.toLowerCase()
+  return telegram.state?.sessionRoutes.some((r) => r.session === session) ? 'linked' : 'unlinked'
+}
+
 function openTabMenu(tab: Tab, at: DOMRect): void {
   const mates = projectMates(tab)
   const entries = tabMenu(
@@ -1086,6 +1098,7 @@ function openTabMenu(tab: Tab, at: DOMRect): void {
       zoomKeys: shortcutText('wsZoom', isMac),
       dim: settings.dimInactive,
       parked: parkedIn(tab).length,
+      telegram: telegramOf(agentPaneOf(tab)),
     },
     t,
   )
@@ -1130,6 +1143,12 @@ function pickTabAction(id: string, key: string): void {
     case 'dim':
       toggleDim()
       break
+    case 'telegram-link': {
+      const agent = agentPaneOf(tab)
+      const cwd = agent && workCwd(agent)
+      if (agent && cwd && isSessionId(agent.agentSessionId)) ui.telegramLink = { cwd, session: agent.agentSessionId.toLowerCase(), name: tabName(tab) }
+      break
+    }
     case 'compact':
     case 'compact-cancel': {
       const agent = agentPaneOf(tab)
@@ -1847,6 +1866,7 @@ onBeforeUnmount(() => {
     <StringsDialog v-if="ui.stringsTable && visible" :root="stringsRoot" :focus="ui.stringsTable.focus" @close="ui.stringsTable = null" />
     <ReleaseCheckDialog v-if="ui.releaseCheck && visible" :root="releaseRoot" @close="ui.releaseCheck = null" />
     <LibUpdatesDialog v-if="ui.libUpdates && visible" :path="ui.libUpdates.path" :root="ui.libUpdates.root" @close="ui.libUpdates = null" />
+    <TelegramLinkDialog v-if="ui.telegramLink && visible" :cwd="ui.telegramLink.cwd" :session="ui.telegramLink.session" :name="ui.telegramLink.name" @close="ui.telegramLink = null" />
     <ContextSourcesDialog v-if="ui.contextSources && visible" :cwd="ctxTarget.cwd" :terminal-id="ctxTarget.terminalId" @close="ui.contextSources = null" />
     <ProjectSwitcher :open="ui.projectSwitcher && visible" :step="projectStep" @close="ui.projectSwitcher = false" />
     <QuickOpen :open="quickOpen" :root="quickRoot" @close="quickOpen = false" @open="onQuickPick" @scripts="scriptsFromQuick" />

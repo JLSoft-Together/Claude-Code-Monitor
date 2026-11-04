@@ -21,6 +21,7 @@ export const DEFAULT_TELEGRAM_DONE_MIN = 1
 export const TELEGRAM_REPLY_MAX = 3000
 export const TELEGRAM_REPORT_MAX = 3000
 export const TELEGRAM_FILE_MAX = 50 * 1024 * 1024
+export const TELEGRAM_BIG_FILE_MAX = 2000 * 1024 * 1024
 export const TELEGRAM_ROUTES_MAX = 100
 
 export interface TelegramRoute {
@@ -28,6 +29,8 @@ export interface TelegramRoute {
   label: string
   chatId: string
   threadId: number | null
+  /** State only: "Group › Topic" as far as the bot has seen the names. */
+  where?: string
 }
 
 export type TelegramError = 'network' | 'status' | 'timeout' | 'rate' | 'keychain' | 'config' | 'token' | 'chat' | 'too-large' | 'conflict'
@@ -59,6 +62,24 @@ export interface TelegramState {
   alerts: boolean
   pinStatus: boolean
   health: TelegramHealth
+  bigFiles: TelegramBigFiles
+  sessionRoutes: TelegramSessionRoute[]
+  stranger: TelegramStranger
+}
+
+/** Fixed answer to anyone but the paired owner who mentions the bot; '' text = the built-in line, {owner} = the owner's name. */
+export interface TelegramStranger {
+  enabled: boolean
+  text: string
+}
+
+export const TELEGRAM_STRANGER_MAX = 300
+export const DEFAULT_TELEGRAM_STRANGER: TelegramStranger = { enabled: true, text: '' }
+
+export interface TelegramBigFiles {
+  enabled: boolean
+  apiId: number | null
+  hasHash: boolean
 }
 
 export interface TelegramHealth {
@@ -107,6 +128,10 @@ export interface TelegramPatch {
   summary?: TelegramSummary
   alerts?: boolean
   pinStatus?: boolean
+  bigFiles?: boolean
+  apiId?: number | null
+  apiHash?: string
+  stranger?: TelegramStranger
 }
 
 export interface TelegramRouteInput {
@@ -207,7 +232,7 @@ export function sanitizeTelegramPatch(raw: unknown): TelegramPatch | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   const out: TelegramPatch = {}
-  for (const k of ['enabled', 'includeReply', 'waiting', 'receiving', 'alerts', 'pinStatus'] as const) {
+  for (const k of ['enabled', 'includeReply', 'waiting', 'receiving', 'alerts', 'pinStatus', 'bigFiles'] as const) {
     if (r[k] === undefined) continue
     if (typeof r[k] !== 'boolean') return null
     out[k] = r[k] as boolean
@@ -219,6 +244,19 @@ export function sanitizeTelegramPatch(raw: unknown): TelegramPatch | null {
   if (r.token !== undefined) {
     if (typeof r.token !== 'string' || r.token.length > 200) return null
     out.token = r.token.trim()
+  }
+  if (r.apiId !== undefined) {
+    if (r.apiId !== null && !(Number.isSafeInteger(r.apiId) && (r.apiId as number) > 0 && (r.apiId as number) < 2 ** 31)) return null
+    out.apiId = r.apiId as number | null
+  }
+  if (r.apiHash !== undefined) {
+    if (typeof r.apiHash !== 'string' || !/^([0-9a-f]{32})?$/i.test(r.apiHash.trim())) return null
+    out.apiHash = r.apiHash.trim().toLowerCase()
+  }
+  if (r.stranger !== undefined) {
+    const s = r.stranger as Record<string, unknown> | null
+    if (!s || typeof s.enabled !== 'boolean' || typeof s.text !== 'string' || s.text.length > TELEGRAM_STRANGER_MAX) return null
+    out.stranger = { enabled: s.enabled, text: s.text.replace(/[\x00-\x09\x0b-\x1f\x7f]+/g, ' ').trim() }
   }
   if (r.quiet !== undefined) {
     const q = r.quiet as Record<string, unknown> | null
@@ -424,3 +462,69 @@ function globRe(glob: string): RegExp {
 const SECRET_RES = SECRET_FILE_GLOBS.map(globRe)
 
 export const isSecretFileName = (name: string): boolean => SECRET_RES.some((re) => re.test(name))
+
+/** Same-named panes (several sessions of one folder) get " #1", " #2" in list order so a button or line tells them apart. */
+export function uniquePaneNames<T extends { name: string }>(panes: T[]): T[] {
+  const total = new Map<string, number>()
+  for (const p of panes) total.set(p.name, (total.get(p.name) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  return panes.map((p) => {
+    if ((total.get(p.name) ?? 0) < 2) return p
+    const n = (seen.get(p.name) ?? 0) + 1
+    seen.set(p.name, n)
+    return { ...p, name: `${p.name} #${n}` }
+  })
+}
+
+export const TELEGRAM_SESSION_ROUTES_MAX = 50
+export const TELEGRAM_PANE_LINKS_MAX = 100
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** One agent session (Claude session id, kept across resume) posting to and taking commands from its own topic. */
+export interface TelegramSessionRoute {
+  session: string
+  name: string
+  project: string
+  chatId: string
+  threadId: number | null
+  where?: string
+}
+
+export interface TelegramSessionRouteInput {
+  session: string
+  name: string
+  project: string
+  link: string
+}
+
+/** Page → main: which Workspace pane / monitor terminal runs which agent session right now. */
+export interface TelegramPaneLink {
+  agent: string
+  pane?: string
+  terminal?: string
+}
+
+export function sanitizeSessionRouteInput(raw: unknown): TelegramSessionRouteInput | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  if (typeof r.session !== 'string' || !SESSION_ID.test(r.session)) return null
+  if (typeof r.project !== 'string' || !r.project || r.project.length > 4096 || /[\0\r\n]/.test(r.project)) return null
+  if (typeof r.link !== 'string' || r.link.length > 300) return null
+  const name = typeof r.name === 'string' ? r.name.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, NAME_MAX) : ''
+  return { session: r.session.toLowerCase(), name: name || 'Claude', project: r.project, link: r.link }
+}
+
+export const isSessionId = (v: unknown): v is string => typeof v === 'string' && SESSION_ID.test(v)
+
+export function sanitizePaneLinks(raw: unknown): TelegramPaneLink[] | null {
+  if (!Array.isArray(raw)) return null
+  const id = (v: unknown) => (typeof v === 'string' && v.length > 0 && v.length <= 128 && !/[\0-\x1f]/.test(v) ? v : undefined)
+  return raw.slice(0, TELEGRAM_PANE_LINKS_MAX).flatMap((l): TelegramPaneLink[] => {
+    if (!l || typeof l !== 'object') return []
+    const o = l as Record<string, unknown>
+    if (!isSessionId(o.agent)) return []
+    const pane = id(o.pane)
+    const terminal = id(o.terminal)
+    return [{ agent: o.agent.toLowerCase(), ...(pane ? { pane } : {}), ...(terminal ? { terminal } : {}) }]
+  })
+}

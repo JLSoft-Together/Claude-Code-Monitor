@@ -4,7 +4,16 @@ import {
   DEFAULT_TELEGRAM_DONE_MIN,
   TELEGRAM_DONE_CHOICES,
   TELEGRAM_FILE_MAX,
+  TELEGRAM_BIG_FILE_MAX,
   TELEGRAM_ROUTES_MAX,
+  TELEGRAM_SESSION_ROUTES_MAX,
+  TELEGRAM_STRANGER_MAX,
+  DEFAULT_TELEGRAM_STRANGER,
+  type TelegramStranger,
+  isSessionId,
+  type TelegramPaneLink,
+  type TelegramSessionRoute,
+  type TelegramSessionRouteInput,
   isChatId,
   isSecretFileName,
   isTelegramToken,
@@ -25,16 +34,20 @@ import {
 } from '@ccm/shared'
 import { randomInt, randomUUID } from 'node:crypto'
 import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
-import { ACT_TEXT, ACTION_RE, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
+import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
-import { commandOf, readMessage, resultHtml, TEXT as INBOUND_TEXT, type TgMessage } from './inbound'
+import { commandOf, paneStatus, readMessage, resultHtml, TEXT as INBOUND_TEXT, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
 import { RateLimiter } from '../phone/send'
+import type { BigUploadCreds, BigUploader } from './mtproto'
 import {
   API_BASE,
   CAPTION_MAX,
   MESSAGE_MAX,
   bigFileHtml,
+  escapeHtml,
+  bigFailedHtml,
+  bigUploadingHtml,
   quote,
   chatsFrom,
   episodeHtml,
@@ -58,6 +71,9 @@ const UPLOAD_TIMEOUT_MS = 180_000
 const MAX_EPISODES = 500
 const KNOWN_TOPICS_MAX = 200
 export const INBOUND_PER_CHAT_MIN = 10
+const strangerHtml = (custom: string, owner: string, fallback: (owner: string) => string): string =>
+  custom ? escapeHtml(custom).split('{owner}').join(escapeHtml(owner)) : fallback(owner)
+const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last'])
 export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
@@ -85,6 +101,12 @@ interface FileShape {
   pinStatus: boolean
   pins: Record<string, Pin>
   summaryDay?: string
+  bigFiles: boolean
+  sessionRoutes: TelegramSessionRoute[]
+  stranger: TelegramStranger
+  apiId?: number
+  apiHash?: string
+  mtSession?: string
 }
 
 interface Pin {
@@ -115,11 +137,12 @@ export interface TelegramDeps {
   runLog?: (sessionId: string) => string[]
   onState?: (state: TelegramState) => void
   onFailure?: (error: TelegramError) => void
+  bigUploader?: BigUploader
 }
 
-export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
+export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
 
-const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {} }
+const DEFAULTS: FileShape = { enabled: false, includeReply: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER } }
 
 function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
@@ -167,6 +190,21 @@ function readRoutes(raw: unknown): TelegramRoute[] {
   })
 }
 
+function readStranger(raw: unknown): TelegramStranger {
+  const s = raw as Partial<TelegramStranger> | null
+  return s && typeof s === 'object' && typeof s.enabled === 'boolean' && typeof s.text === 'string' ? { enabled: s.enabled, text: s.text.slice(0, TELEGRAM_STRANGER_MAX) } : { ...DEFAULT_TELEGRAM_STRANGER }
+}
+
+function readSessionRoutes(raw: unknown): TelegramSessionRoute[] {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, TELEGRAM_SESSION_ROUTES_MAX).flatMap((r): TelegramSessionRoute[] => {
+    const o = (r ?? {}) as Record<string, unknown>
+    if (!isSessionId(o.session) || typeof o.project !== 'string' || !o.project || !isChatId(o.chatId)) return []
+    const name = typeof o.name === 'string' && o.name ? o.name.slice(0, 80) : 'Claude'
+    return [{ session: o.session, name, project: o.project, chatId: o.chatId, threadId: isThreadId(o.threadId) ? o.threadId : null }]
+  })
+}
+
 function readKnown(raw: unknown): Record<string, KnownChat> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, KnownChat> = {}
@@ -200,6 +238,12 @@ function readShape(file: string | undefined): FileShape {
       alerts: raw.alerts !== false,
       pinStatus: raw.pinStatus === true,
       pins: readPins(raw.pins, routes),
+      bigFiles: raw.bigFiles === true,
+      sessionRoutes: readSessionRoutes(raw.sessionRoutes),
+      stranger: readStranger(raw.stranger),
+      ...(Number.isSafeInteger(raw.apiId) && (raw.apiId as number) > 0 ? { apiId: raw.apiId } : {}),
+      ...(typeof raw.apiHash === 'string' && raw.apiHash.length < 4096 ? { apiHash: raw.apiHash } : {}),
+      ...(typeof raw.mtSession === 'string' && raw.mtSession.length < 8192 ? { mtSession: raw.mtSession } : {}),
       ...(typeof raw.summaryDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.summaryDay) ? { summaryDay: raw.summaryDay } : {}),
       ...(raw.owner && typeof raw.owner.id === 'number' && Number.isSafeInteger(raw.owner.id) && typeof raw.owner.name === 'string' ? { owner: { id: raw.owner.id, name: raw.owner.name.slice(0, 80) } } : {}),
     }
@@ -232,6 +276,7 @@ export class TelegramNotifier {
   private pairTriesTotal = 0
   private ignoredAt = -Infinity
   private readonly notOwnerLimit: RateLimiter
+  private readonly strangerLimit: RateLimiter
   private readonly runFailed = new Set<string>()
   private readonly lastReplies = new Map<string, { name: string; reply: string }>()
   private readonly runWatch = new Map<string, { project: string; chatId: string; threadId: number | null; config: string; shot: boolean }>()
@@ -239,11 +284,15 @@ export class TelegramNotifier {
   private pinBusy = false
   private health: TelegramHealth = { lastSentAt: null, lastReceivedAt: null, lastPollAt: null, sentToday: 0, errorsToday: 0 }
   private healthDay = ''
+  private readonly agentOfPane = new Map<string, string>()
+  private readonly agentOfTerminal = new Map<string, string>()
+  private readonly terminalOfAgent = new Map<string, string>()
 
   constructor(private readonly deps: TelegramDeps) {
     this.data = readShape(deps.file)
     this.total = new RateLimiter(TELEGRAM_PER_HOUR, 60 * 60_000, deps.now ?? Date.now)
     this.notOwnerLimit = new RateLimiter(NOT_OWNER_PER_MIN, 60_000, deps.now ?? Date.now)
+    this.strangerLimit = new RateLimiter(NOT_OWNER_PER_MIN, 60_000, deps.now ?? Date.now)
     this.startedAt = this.now
   }
 
@@ -253,6 +302,15 @@ export class TelegramNotifier {
 
   private get masker(): Masker {
     return { home: this.deps.home, platform: this.deps.platform }
+  }
+
+  private sealed(value: string | undefined): string | null {
+    if (!value) return null
+    try {
+      return this.deps.crypt.decrypt(Buffer.from(value, 'base64'))
+    } catch {
+      return null
+    }
   }
 
   private token(): string | null {
@@ -306,7 +364,7 @@ export class TelegramNotifier {
       includeReply: this.data.includeReply,
       waiting: this.data.waiting,
       doneMinutes: this.data.doneMinutes,
-      routes: this.data.routes.map((r) => ({ ...r })),
+      routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r) })),
       commandInstalled: this.deps.commandInstalled?.() ?? false,
       lastError: this.lastError,
       quiet: { ...this.data.quiet },
@@ -314,6 +372,9 @@ export class TelegramNotifier {
       alerts: this.data.alerts,
       pinStatus: this.data.pinStatus,
       health: { ...this.health },
+      bigFiles: { enabled: this.data.bigFiles, apiId: this.data.apiId ?? null, hasHash: this.sealed(this.data.apiHash) !== null },
+      sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r) })),
+      stranger: { ...this.data.stranger },
     }
   }
 
@@ -330,10 +391,12 @@ export class TelegramNotifier {
   }
 
   set(patch: TelegramPatch): TelegramSetResult {
+    if (patch.apiHash && !this.deps.crypt.available()) return { ok: false, error: 'keychain' }
     if (patch.token !== undefined) {
       if (patch.token && !this.deps.crypt.available()) return { ok: false, error: 'keychain' }
       if (patch.token && !isTelegramToken(patch.token)) return { ok: false, error: 'invalid-token' }
       this.data.token = patch.token ? this.deps.crypt.encrypt(patch.token).toString('base64') : undefined
+      this.data.mtSession = undefined
       this.data.bot = undefined
       this.botId = null
       this.pollRun = 0
@@ -351,6 +414,16 @@ export class TelegramNotifier {
     if (patch.summary) this.data.summary = { ...patch.summary }
     if (patch.alerts !== undefined) this.data.alerts = patch.alerts
     if (patch.pinStatus !== undefined) this.data.pinStatus = patch.pinStatus
+    if (patch.apiHash !== undefined) {
+      this.data.apiHash = patch.apiHash ? this.deps.crypt.encrypt(patch.apiHash).toString('base64') : undefined
+      this.data.mtSession = undefined
+    }
+    if (patch.apiId !== undefined) {
+      if ((patch.apiId ?? undefined) !== this.data.apiId) this.data.mtSession = undefined
+      this.data.apiId = patch.apiId ?? undefined
+    }
+    if (patch.bigFiles !== undefined) this.data.bigFiles = patch.bigFiles
+    if (patch.stranger) this.data.stranger = { ...patch.stranger }
     const result = this.commit(patch.token !== undefined)
     if (patch.token) void this.whoAmI()
     this.syncPoll()
@@ -445,6 +518,7 @@ export class TelegramNotifier {
       backoff = 2000
       const updates = Array.isArray(res.result) ? res.result : []
       scanUpdates(updates, this.pollSeen)
+      this.learn(this.pollSeen)
       for (const u of updates) {
         if (this.pollRun !== run) break
         const id = (u as { update_id?: unknown })?.update_id
@@ -483,14 +557,20 @@ export class TelegramNotifier {
       await this.reply(msg, t.paired(msg.fromName))
       return
     }
-    if (!this.data.owner || msg.fromId !== this.data.owner.id) return this.noteIgnored()
+    if (!this.data.owner || msg.fromId !== this.data.owner.id) {
+      this.noteIgnored()
+      // Owner decision 2026-11-05: answer strangers once in a while instead of staying silent (still never forwarded).
+      if (this.data.owner && this.data.stranger.enabled && this.strangerLimit.take()) await this.reply(msg, strangerHtml(this.data.stranger.text, this.data.owner.name, t.stranger))
+      return
+    }
     this.health.lastReceivedAt = this.now
     if (!this.receiving || msg.chatType === 'private') {
       if (cmd.kind === 'help') await this.reply(msg, t.help(this.data.bot))
       return
     }
     if (cmd.kind === 'help') return void (await this.reply(msg, t.help(this.data.bot)))
-    const route = this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    const session = this.data.sessionRoutes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    const route = session ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId } : this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     if (!route) return void (await this.reply(msg, t.noTopic))
     let lim = this.inboundLimit.get(msg.chatId)
     if (!lim) {
@@ -501,21 +581,32 @@ export class TelegramNotifier {
     const ask = this.asker()
     if (!ask) return void (await this.reply(msg, t.unavailable))
     const a = ACT_TEXT[locale]
-    const target = msg.replyTo !== null ? this.sentTo.get(`${msg.chatId}:${msg.replyTo}`) : undefined
+    const sessionTerminal = session ? this.terminalOfAgent.get(session.session) : undefined
+    const replied = msg.replyTo !== null ? this.sentTo.get(`${msg.chatId}:${msg.replyTo}`) : undefined
+    const target: TelegramTarget | undefined = replied ?? (sessionTerminal ? { kind: 'terminal', terminalId: sessionTerminal } : undefined)
+    if (session && !sessionTerminal && SESSION_BOUND.has(cmd.kind)) return void (await this.reply(msg, a.sessionClosed(session.name)))
     if (cmd.kind === 'screen') return this.sendScreen(msg, cmd.serial)
     const m = MORE_TEXT[locale]
     const askSafe = (req: TelegramInbound) => ask(req).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
     const panesOf = async (): Promise<TelegramPaneInfo[]> => {
       const res = await askSafe({ id: randomUUID(), action: 'status', project: route.project })
-      return res.ok && res.action === 'status' ? res.panes : []
+      const panes = res.ok && res.action === 'status' ? res.panes : []
+      return sessionTerminal ? panes.filter((p) => p.terminalId === sessionTerminal) : panes
     }
     if (cmd.kind === 'new') {
-      const text = cmd.text ? inboundPrompt(cmd.text) : ''
+      const text = cmd.text ? viaTelegram(inboundPrompt(cmd.text), locale) : ''
+      const open = (await panesOf()).filter((p) => p.terminalId)
+      if (open.length) {
+        const base = { project: route.project, cwd: route.project, chatId: msg.chatId, threadId: msg.threadId, extra: text }
+        const rows: ([ActionKind, string] | [ActionKind, string, string])[][] = [[['nw', this.addAction({ kind: 'nw', terminalId: '', name: '', ...base })]]]
+        if (text) for (const p of open.slice(0, 8)) rows.push([['np', this.addAction({ kind: 'np', terminalId: p.terminalId!, name: p.name, ...base }), `${p.name} · ${paneStatus(p.status, locale)}`]])
+        return void (await this.reply(msg, m.newPick(open.length, !!text), markup(locale, rows)))
+      }
       const res = await askSafe({ id: randomUUID(), action: 'new', project: route.project, from: msg.fromName, ...(text ? { text } : {}) })
       return void (await this.reply(msg, res.ok && res.action === 'new' ? m.opened(res.name) : resultHtml(res, locale)))
     }
     if (cmd.kind === 'all') {
-      const text = inboundPrompt(cmd.text)
+      const text = viaTelegram(inboundPrompt(cmd.text), locale)
       if (!text) return
       const res = await askSafe({ id: randomUUID(), action: 'all', project: route.project, text, from: msg.fromName })
       return void (await this.reply(msg, res.ok && res.action === 'all' ? (res.names.length ? m.allSent(res.names) : m.allNone) : !res.ok && res.error === 'busy' ? m.allNone : resultHtml(res, locale)))
@@ -532,10 +623,12 @@ export class TelegramNotifier {
     if (cmd.kind === 'last') {
       const panes = await panesOf()
       const pick = target?.kind === 'terminal' ? target.terminalId : panes.length === 1 ? panes[0]!.terminalId : undefined
-      if (!pick) return void (await this.reply(msg, resultHtml(panes.length ? { ok: false, error: 'many', panes } : { ok: false, error: 'none' }, locale)))
-      const last = this.lastReplies.get(pick)
-      if (!last) return void (await this.reply(msg, m.lastNone))
-      return void (await this.reply(msg, episodeHtml({ type: 'telegram', episode: '', reason: 'done', terminalId: pick, name: last.name, cwd: route.project, reply: last.reply }, locale, this.masker, true).replace(/^[^\n]*/, () => m.last(last.name))))
+      if (!pick) {
+        const open = panes.filter((p) => p.terminalId)
+        if (open.length > 1) return void (await this.reply(msg, m.pick(open.length, 'last'), this.pickMarkup('lt', open, route.project, msg)))
+        return void (await this.reply(msg, resultHtml({ ok: false, error: 'none' }, locale)))
+      }
+      return void (await this.reply(msg, this.lastHtml(pick, route.project)))
     }
     if (cmd.kind === 'run') {
       const configs = this.deps.runConfigs ? await this.deps.runConfigs(route.project).catch(() => []) : []
@@ -554,7 +647,11 @@ export class TelegramNotifier {
     if (cmd.kind === 'stop') {
       const panes = await panesOf()
       const pick = target?.kind === 'terminal' ? panes.find((p) => p.terminalId === target.terminalId) : panes.length === 1 ? panes[0] : undefined
-      if (!pick?.terminalId) return void (await this.reply(msg, resultHtml(panes.length ? { ok: false, error: 'many', panes } : { ok: false, error: 'none' }, locale)))
+      if (!pick?.terminalId) {
+        const open = panes.filter((p) => p.terminalId)
+        if (!target && open.length > 1) return void (await this.reply(msg, m.pick(open.length, 'stop'), this.pickMarkup('st', open, route.project, msg)))
+        return void (await this.reply(msg, resultHtml({ ok: false, error: target ? 'gone' : 'none' }, locale)))
+      }
       const key = this.addAction({ kind: 'st', terminalId: pick.terminalId, project: route.project, cwd: route.project, name: pick.name, chatId: msg.chatId, threadId: msg.threadId, ...(pick.since ? { since: pick.since } : {}) })
       await this.reply(msg, a.stopAsk(pick.name), markup(locale, [[['st', key]]]))
       return
@@ -565,17 +662,37 @@ export class TelegramNotifier {
       const saved = await this.download(route.project, cmd.file)
       if (!saved.ok) return void (await this.reply(msg, saved.error === 'big' ? a.fileTooBig : a.fileFail))
       const caption = inboundPrompt(cmd.text)
-      const text = inboundPrompt(a.filePrompt(FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind, saved.path, caption))
+      const text = viaTelegram(inboundPrompt(a.filePrompt(FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind, saved.path, caption)), locale)
       req = { id: randomUUID(), action: 'send', project: route.project, text, from: msg.fromName, ...(target ? { target } : {}) }
     } else {
-      const text = inboundPrompt(cmd.text)
+      const text = viaTelegram(inboundPrompt(cmd.text), locale)
       if (!text) return
       req = { id: randomUUID(), action: 'send', project: route.project, text, from: msg.fromName, ...(target ? { target } : {}) }
     }
     const result = await ask(req).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+    if (req.action === 'send' && !result.ok && result.error === 'many' && result.panes?.some((p) => p.terminalId)) {
+      const open = result.panes.filter((p) => p.terminalId)
+      return void (await this.reply(msg, m.pick(open.length, 'send'), this.pickMarkup('np', open, route.project, msg, req.text)))
+    }
     if (req.action === 'send') this.deps.onInbound?.({ from: msg.fromName, project: route.project, result })
     const sent = await this.reply(msg, resultHtml(result, locale))
     if (sent !== null && result.ok && result.action === 'send' && result.terminalId) this.rememberSent(msg.chatId, sent, { kind: 'terminal', terminalId: result.terminalId })
+  }
+
+  private pickMarkup(kind: 'st' | 'lt' | 'np', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
+    const locale = this.deps.locale()
+    const rows = panes.slice(0, 8).map((p): [ActionKind, string, string][] => [
+      [kind, this.addAction({ kind, terminalId: p.terminalId!, project, cwd: project, name: p.name, chatId: msg.chatId, threadId: msg.threadId, ...(p.since ? { since: p.since } : {}), ...(text !== undefined ? { extra: text } : {}) }), `${p.name} · ${paneStatus(p.status, locale)}`],
+    ])
+    return markup(locale, rows)
+  }
+
+  private lastHtml(terminalId: string, project: string): string {
+    const locale = this.deps.locale()
+    const m = MORE_TEXT[locale]
+    const last = this.lastReplies.get(terminalId)
+    if (!last) return m.lastNone
+    return episodeHtml({ type: 'telegram', episode: '', reason: 'done', terminalId, name: last.name, cwd: project, reply: last.reply }, locale, this.masker, true).replace(/^[^\n]*/, () => m.last(last.name))
   }
 
   private addAction(entry: ActionEntry): string {
@@ -643,6 +760,22 @@ export class TelegramNotifier {
     if (kind === 'df') {
       await this.answer(id)
       return this.sendDiff(entry)
+    }
+    if (kind === 'lt') {
+      await this.answer(id)
+      return void (await this.post(where, this.lastHtml(entry.terminalId, entry.project)))
+    }
+    if (kind === 'nw' || kind === 'np') {
+      for (const [k, e] of this.actions) if ((e.kind === 'nw' || e.kind === 'np') && e.chatId === entry.chatId && e.extra === entry.extra && e.threadId === entry.threadId) this.actions.delete(k)
+      await this.answer(id)
+      if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
+      const text = entry.extra ?? ''
+      const from = this.data.owner.name
+      const result = await ask(kind === 'nw'
+        ? { id: randomUUID(), action: 'new', project: entry.project, from, ...(text ? { text } : {}) }
+        : { id: randomUUID(), action: 'send', project: entry.project, text, from, target }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+      if (kind === 'np') this.deps.onInbound?.({ from, project: entry.project, result })
+      return void (await this.post(where, result.ok && result.action === 'new' ? MORE_TEXT[locale].opened(result.name) : resultHtml(result, locale)))
     }
     if (kind === 'go' || kind === 'ts') {
       const text = PROMPTS[locale][kind]
@@ -907,6 +1040,40 @@ export class TelegramNotifier {
     return this.commit()
   }
 
+  setSessionRoute(input: TelegramSessionRouteInput): TelegramSetResult {
+    const project = this.normProject(input.project)
+    if (!project) return { ok: false, error: 'invalid-project' }
+    const target = parseTopicLink(input.link)
+    if (!target) return { ok: false, error: 'invalid-link' }
+    const rest = this.data.sessionRoutes.filter((r) => r.session !== input.session)
+    if (rest.length >= TELEGRAM_SESSION_ROUTES_MAX) return { ok: false, error: 'too-many' }
+    this.data.sessionRoutes = [...rest, { session: input.session, name: input.name, project, chatId: target.chatId, threadId: target.threadId }]
+    return this.commit()
+  }
+
+  removeSessionRoute(session: string): TelegramSetResult {
+    this.data.sessionRoutes = this.data.sessionRoutes.filter((r) => r.session !== session.toLowerCase())
+    return this.commit()
+  }
+
+  setPanes(links: TelegramPaneLink[]): void {
+    this.agentOfPane.clear()
+    this.agentOfTerminal.clear()
+    this.terminalOfAgent.clear()
+    for (const l of links) {
+      if (l.pane) this.agentOfPane.set(l.pane, l.agent)
+      if (l.terminal) {
+        this.agentOfTerminal.set(l.terminal, l.agent)
+        this.terminalOfAgent.set(l.agent, l.terminal)
+      }
+    }
+  }
+
+  private sessionRouteOf(agent: string | undefined): TelegramRoute | null {
+    const s = agent ? this.data.sessionRoutes.find((r) => r.session === agent) : undefined
+    return s ? { project: s.project, label: s.name, chatId: s.chatId, threadId: s.threadId } : null
+  }
+
   removeRoute(project: string): TelegramSetResult {
     const norm = this.normProject(project)
     if (!norm) return { ok: false, error: 'invalid-project' }
@@ -932,7 +1099,7 @@ export class TelegramNotifier {
     return best
   }
 
-  topicName(r: TelegramRoute): string {
+  topicName(r: { chatId: string; threadId: number | null }): string {
     const known = this.data.known[r.chatId]
     const topic = r.threadId ? known?.topics[String(r.threadId)] ?? `#${r.threadId}` : 'General'
     return `${known?.title ?? r.chatId} › ${topic}`
@@ -1009,6 +1176,24 @@ export class TelegramNotifier {
     return { ok: true, chats }
   }
 
+  private learn(seen: ScanSeen): void {
+    let changed = false
+    for (const [id, c] of seen.chats) {
+      const old = this.data.known[id]
+      if (!old && Object.keys(this.data.known).length >= 50) continue
+      const k = old ?? { title: c.title, isForum: c.isForum, topics: {} }
+      if (!old || (c.title !== id && k.title !== c.title)) changed = true
+      if (c.title !== id) k.title = c.title
+      for (const [t, n] of seen.topics.get(id) ?? []) {
+        if (k.topics[String(t)] === n || Object.keys(k.topics).length >= KNOWN_TOPICS_MAX) continue
+        k.topics[String(t)] = n
+        changed = true
+      }
+      this.data.known[id] = k
+    }
+    if (changed && this.save()) this.deps.onState?.(this.state())
+  }
+
   private remember(chats: TelegramChat[]): void {
     const known: Record<string, KnownChat> = {}
     for (const c of chats.slice(0, 50)) known[c.chatId] = { title: c.title, isForum: c.isForum, topics: Object.fromEntries(c.topics.slice(0, KNOWN_TOPICS_MAX).map((t) => [String(t.threadId), t.name])) }
@@ -1051,7 +1236,7 @@ export class TelegramNotifier {
     if (e.reason !== 'done' && !this.data.waiting) return false
     if (e.reason === 'done' && (e.worked ?? 0) < this.data.doneMinutes * 60_000) return false
     if (this.quietNow()) return false
-    const route = counted
+    const route = this.sessionRouteOf(this.agentOfTerminal.get(e.terminalId)) ?? counted
     if (!route) return false
     if (e.reason === 'done') {
       const reported = this.reportedAt.get(route.project)
@@ -1074,7 +1259,7 @@ export class TelegramNotifier {
     const target: TelegramTarget | undefined = sessionId ? { kind: 'pane', sessionId } : undefined
     if (!this.data.enabled) return { ok: false, error: 'telegram-off' }
     if (!this.token()) return { ok: false, error: 'telegram-config' }
-    const route = this.routeFor(cwd)
+    const route = this.sessionRouteOf(sessionId ? this.agentOfPane.get(sessionId) : undefined) ?? this.routeFor(cwd)
     if (!route) return { ok: false, error: 'no-topic' }
     const name = route.label
     const locale = this.deps.locale()
@@ -1091,6 +1276,16 @@ export class TelegramNotifier {
     const stat = await fsp.stat(file).catch(() => null)
     if (!stat?.isFile()) return { ok: false, error: 'missing' }
     const rel = path.relative(cwd, file) || base
+    if (stat.size > TELEGRAM_FILE_MAX && stat.size <= TELEGRAM_BIG_FILE_MAX) {
+      const big = this.bigUpload(route, file, base, stat.size, rel, reportHtml(name, text, locale, this.masker, CAPTION_MAX), target)
+      if (big) {
+        const error = await this.sendText(route, bigUploadingHtml(locale, rel, stat.size, this.masker))
+        if (error) return { ok: false, error }
+        void big()
+        this.reportedAt.set(route.project, this.now)
+        return { ok: true, topic, file: rel, uploading: true }
+      }
+    }
     if (stat.size > TELEGRAM_FILE_MAX) {
       const error = await this.sendText(route, `${reportHtml(name, text, locale, this.masker, 3500)}\n${bigFileHtml(locale, rel, stat.size, this.masker)}`, target)
       if (error) return { ok: false, error }
@@ -1111,6 +1306,40 @@ export class TelegramNotifier {
     this.track(route.chatId, res.result, target)
     this.reportedAt.set(route.project, this.now)
     return { ok: true, topic, file: rel }
+  }
+
+  private mtCreds(): BigUploadCreds | null {
+    const token = this.token()
+    const apiHash = this.sealed(this.data.apiHash)
+    const apiId = this.data.apiId
+    if (!token || !apiHash || !apiId) return null
+    return {
+      apiId,
+      apiHash,
+      token,
+      session: this.sealed(this.data.mtSession),
+      onSession: (session: string | null) => {
+        this.data.mtSession = session && this.deps.crypt.available() ? this.deps.crypt.encrypt(session).toString('base64') : undefined
+        this.save()
+      },
+    }
+  }
+
+  private bigUpload(route: TelegramRoute, file: string, name: string, size: number, rel: string, caption: string, target: TelegramTarget | undefined): (() => Promise<void>) | null {
+    const uploader = this.deps.bigUploader
+    const creds = this.mtCreds()
+    if (!this.data.bigFiles || !uploader || !creds) return null
+    return async () => {
+      const res = await uploader.upload({ chatId: route.chatId, threadId: route.threadId, file, name, size, caption }, creds).catch(() => ({ ok: false as const, error: 'failed' as const }))
+      if (res.ok) {
+        this.ok()
+        this.health.lastSentAt = this.now
+        this.health.sentToday++
+        return
+      }
+      this.health.errorsToday++
+      await this.sendText(route, bigFailedHtml(this.deps.locale(), rel, res.error, this.masker), target)
+    }
   }
 
   private take(chatId: string): boolean {

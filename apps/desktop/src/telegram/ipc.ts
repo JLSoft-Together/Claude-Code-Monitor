@@ -1,6 +1,9 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import {
   sanitizeCreateTopic,
+  sanitizePaneLinks,
+  sanitizeSessionRouteInput,
+  isSessionId,
   sanitizeRouteInput,
   sanitizeTelegramPatch,
   type TelegramCommandResult,
@@ -24,6 +27,9 @@ const CHANNELS = [
   'ccm:telegram-pair',
   'ccm:telegram-unpair',
   'ccm:telegram-receive-command',
+  'ccm:telegram-session-route-set',
+  'ccm:telegram-session-route-remove',
+  'ccm:telegram-panes',
 ]
 
 export function registerTelegramIpc(
@@ -54,6 +60,16 @@ export function registerTelegramIpc(
   ipcMain.handle('ccm:telegram-route-remove', (event, raw: unknown): TelegramSetResult =>
     isAppFrame(event) && typeof raw === 'string' && raw.length < 4096 ? tg.removeRoute(raw) : failed,
   )
+  ipcMain.handle('ccm:telegram-session-route-set', (event, raw: unknown): TelegramSetResult => {
+    const input = isAppFrame(event) ? sanitizeSessionRouteInput(raw) : null
+    return input ? tg.setSessionRoute(input) : failed
+  })
+  ipcMain.handle('ccm:telegram-session-route-remove', (event, raw: unknown): TelegramSetResult => (isAppFrame(event) && isSessionId(raw) ? tg.removeSessionRoute(raw) : failed))
+  ipcMain.handle('ccm:telegram-panes', (event, raw: unknown): boolean => {
+    const links = isAppFrame(event) ? sanitizePaneLinks(raw) : null
+    if (links) tg.setPanes(links)
+    return !!links
+  })
   ipcMain.handle('ccm:telegram-test', async (event, raw: unknown): Promise<TelegramTestResult> => {
     if (!isAppFrame(event)) return { ok: false, error: 'config' }
     return tg.test(typeof raw === 'string' && raw.length < 4096 ? raw : undefined)

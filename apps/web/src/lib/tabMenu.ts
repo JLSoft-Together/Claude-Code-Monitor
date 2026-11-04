@@ -13,6 +13,7 @@ export interface TabMenuCtx {
   zoomKeys?: string
   dim?: boolean
   parked?: number
+  telegram?: 'linked' | 'unlinked'
 }
 
 const A = 'workspace.tabActions.'
@@ -40,6 +41,10 @@ export function tabMenu(ctx: TabMenuCtx, t: T): MenuEntry[] {
   }
   const compact = compactEntry(ctx.compact, t)
   if (compact.length) entries.push({ separator: true }, ...compact)
+  if (ctx.telegram) {
+    if (!compact.length) entries.push({ separator: true })
+    entries.push({ id: 'telegram-link', label: t(ctx.telegram === 'linked' ? 'telegram.connect.menuLinked' : 'telegram.connect.menu') })
+  }
   entries.push({ separator: true }, { id: 'close', label: t(`${A}close`) }, { id: 'close-others', label: t(`${A}closeOthers`), disabled: ctx.others < 1 })
   return entries
 }

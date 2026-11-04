@@ -328,6 +328,21 @@ describe('strangers (WP-1 #10, #11)', () => {
     tg.stop()
   })
 
+  it('answers strangers with the owner’s own line, or not at all when turned off', async () => {
+    const { tg, sent } = setup({ now: () => 2_000_000 })
+    await receiving(tg)
+    expect(tg.set({ stranger: { enabled: true, text: 'Chỉ <b>{owner}</b> thôi' } }).ok).toBe(true)
+    await tg.onUpdate(msgUpdate('@orrery_bot hi', 999))
+    const last = () => String((sent.filter((s) => s.method === 'sendMessage').at(-1)?.body as Record<string, unknown> | undefined)?.text)
+    expect(last()).toMatch(/^Chỉ &lt;b&gt;.+&lt;\/b&gt; thôi$/)
+    const count = sent.length
+    tg.set({ stranger: { enabled: false, text: '' } })
+    await tg.onUpdate(msgUpdate('@orrery_bot hi', 999))
+    expect(sent.length).toBe(count)
+    expect(tg.state().stranger).toEqual({ enabled: false, text: '' })
+    tg.stop()
+  })
+
   it('throttles state broadcasts and "not yours" answers for strangers', async () => {
     const states: TelegramState[] = []
     const { tg, sent } = setup({ now: () => 1_000_000, extra: { onState: (s) => states.push(s) } })
@@ -338,6 +353,7 @@ describe('strangers (WP-1 #10, #11)', () => {
     expect(states.length - before).toBeLessThanOrEqual(1)
     expect(tg.state().ignored).toBe(20)
     expect(sent.filter((s) => s.method === 'answerCallbackQuery')).toHaveLength(5)
+    expect(sent.filter((s) => s.method === 'sendMessage' && JSON.stringify(s.body).includes('gửi thêm tiền'))).toHaveLength(5)
     tg.stop()
   })
 })

@@ -57,6 +57,9 @@ const TEXT: Record<TelegramLocale, {
   report: (name: string) => string
   test: string
   bigFile: (file: string, mb: string) => string
+  bigUploading: (file: string, mb: string) => string
+  bigFailed: (file: string, why: string) => string
+  bigWhy: Record<'auth' | 'chat' | 'network' | 'failed', string>
 }> = {
   en: {
     done: (n, w) => `✅ <b>${n}</b> finished${w ? ` after ${w} min` : ''}`,
@@ -66,6 +69,9 @@ const TEXT: Record<TelegramLocale, {
     report: (n) => `📝 <b>${n}</b>`,
     test: '🤖 Test from Orrery: Telegram reports work in this topic.',
     bigFile: (f, mb) => `📦 ${f} (${mb} MB) is larger than Telegram allows bots to send; it stays on the machine.`,
+    bigUploading: (f, mb) => `⏫ Uploading ${f} (${mb} MB)…`,
+    bigFailed: (f, why) => `⚠️ Could not send ${f}: ${why}. The file stays on the machine.`,
+    bigWhy: { auth: 'api_id / api_hash or the bot token was refused (Settings › Telegram › Large files)', chat: 'the bot cannot post in this topic', network: 'Telegram could not be reached', failed: 'upload failed' },
   },
   vi: {
     done: (n, w) => `✅ <b>${n}</b> đã xong${w ? ` sau ${w} phút` : ''}`,
@@ -75,6 +81,9 @@ const TEXT: Record<TelegramLocale, {
     report: (n) => `📝 <b>${n}</b>`,
     test: '🤖 Thử từ Orrery: báo Telegram vào topic này đang chạy.',
     bigFile: (f, mb) => `📦 ${f} (${mb} MB) vượt giới hạn gửi file của bot Telegram, file vẫn nằm trên máy.`,
+    bigUploading: (f, mb) => `⏫ Đang gửi ${f} (${mb} MB)…`,
+    bigFailed: (f, why) => `⚠️ Không gửi được ${f}: ${why}. File vẫn nằm trên máy.`,
+    bigWhy: { auth: 'api_id / api_hash hoặc token bot bị từ chối (Settings › Telegram › File lớn)', chat: 'bot không gửi được vào topic này', network: 'không kết nối được Telegram', failed: 'upload lỗi' },
   },
 }
 
@@ -118,6 +127,12 @@ export function reportHtml(name: string, text: string, locale: TelegramLocale, m
 }
 
 export const testHtml = (locale: TelegramLocale): string => TEXT[locale].test
+
+export const bigUploadingHtml = (locale: TelegramLocale, file: string, bytes: number, m: Masker): string =>
+  TEXT[locale].bigUploading(escapeHtml(clean(file, m)), (bytes / 1024 ** 2).toFixed(1))
+
+export const bigFailedHtml = (locale: TelegramLocale, file: string, why: 'auth' | 'chat' | 'network' | 'failed', m: Masker): string =>
+  TEXT[locale].bigFailed(escapeHtml(clean(file, m)), TEXT[locale].bigWhy[why])
 
 export const bigFileHtml = (locale: TelegramLocale, file: string, bytes: number, m: Masker): string =>
   TEXT[locale].bigFile(escapeHtml(clean(file, m)), (bytes / 1024 ** 2).toFixed(1))

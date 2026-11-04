@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,15 +24,16 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬' },
 }
 
 export const MORE_TEXT: Record<TelegramLocale, {
   opened: (name: string) => string
+  newPick: (count: number, prompt: boolean) => string
   resumeNone: string
   resumePick: string
   resumed: (name: string) => string
@@ -45,6 +46,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
   allSent: (names: string[]) => string
   allNone: string
   lastNone: string
+  pick: (count: number, what: 'send' | 'stop' | 'last') => string
   last: (name: string) => string
   pinHead: (name: string) => string
   pinEmpty: string
@@ -53,6 +55,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
   en: {
     opened: (n) => `🆕 Opened a new Claude session in <b>${escapeHtml(n)}</b>.`,
     resumeNone: 'No ended session of this project to resume.',
+    newPick: (c, p) => `This project already has ${c} open session${c > 1 ? 's' : ''}. ${p ? 'Open a new one, or send the prompt to one of them?' : 'Open another one?'}`,
     resumePick: 'Pick a session to resume:',
     resumed: (n) => `↩️ Resumed <b>${escapeHtml(n)}</b>.`,
     runNone: 'This project has no Run config that can be started from Telegram (shared or imported configs need a confirmation on the machine).',
@@ -64,6 +67,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
     allSent: (n) => `📨 Sent to ${n.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ')}.`,
     allNone: 'No agent session of this project could take it (none open, or each has a message waiting).',
     lastNone: 'No finished reply of that session yet.',
+    pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : 'Last reply of which one?'}`,
     last: (n) => `💬 Last reply of <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'No session open in Orrery.',
@@ -72,6 +76,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
   vi: {
     opened: (n) => `🆕 Đã mở session Claude mới ở <b>${escapeHtml(n)}</b>.`,
     resumeNone: 'Project này không có session đã kết thúc để mở lại.',
+    newPick: (c, p) => `Project đang có ${c} session mở. ${p ? 'Mở session mới, hay gửi prompt vào session đang có?' : 'Vẫn mở thêm session mới?'}`,
     resumePick: 'Chọn session để mở lại:',
     resumed: (n) => `↩️ Đã mở lại <b>${escapeHtml(n)}</b>.`,
     runNone: 'Project này không có Run config chạy được từ Telegram (config chia sẻ / import cần xác nhận trên máy).',
@@ -83,6 +88,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
     allSent: (n) => `📨 Đã gửi vào ${n.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ')}.`,
     allNone: 'Không session nào của project nhận được (chưa mở, hoặc đều đang có tin chờ gửi).',
     lastNone: 'Session này chưa có câu trả lời xong nào.',
+    pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
     last: (n) => `💬 Câu trả lời cuối của <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'Không có session nào mở trong Orrery.',
@@ -95,12 +101,26 @@ export const PROMPTS: Record<TelegramLocale, { go: string; ts: string }> = {
   vi: { go: 'Tiếp tục.', ts: 'Chạy test của project và báo kết quả.' },
 }
 
+const VIA_TELEGRAM: Record<TelegramLocale, string> = {
+  en: '(Sent from Telegram. When done, send the result with the telegram_send tool, attaching the file if one was asked for, e.g. a built APK.)',
+  vi: '(Tin này gửi từ Telegram. Xong việc, gửi kết quả bằng tool telegram_send, kèm file nếu được yêu cầu, ví dụ APK đã build.)',
+}
+
+const ONLY_COMMANDS = /^(\/[\w:.-]+\s*)+$/
+const RAW_COMMANDS = /^\/(compact|clear)(\s|$)/i
+
+// Bare commands (/hand-off, /clear …) and /compact's own instructions are typed as is: the note would become their argument.
+// A skill with a task ("/skill-a /skill-b build the login screen") keeps it, so the result still comes back.
+export const viaTelegram = (text: string, locale: TelegramLocale): string =>
+  text && !ONLY_COMMANDS.test(text.trim()) && !RAW_COMMANDS.test(text.trim()) ? `${text}\n\n${VIA_TELEGRAM[locale]}` : text
+
 export const ACT_TEXT: Record<TelegramLocale, {
   notOwner: string
   expired: string
   approved: (name: string) => string
   denied: (name: string) => string
   stopAsk: (name: string) => string
+  sessionClosed: (name: string) => string
   stopped: (name: string) => string
   state: string
   keysBusy: string
@@ -128,6 +148,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
     approved: (n) => `✅ Allowed in <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Denied in <b>${escapeHtml(n)}</b>.`,
     stopAsk: (n) => `Stop the agent in <b>${escapeHtml(n)}</b>?`,
+    sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> of this topic is not open in Orrery. Send <code>resume</code> to reopen it.`,
     stopped: (n) => `⏹ Sent Esc to <b>${escapeHtml(n)}</b>.`,
     state: 'That session is not in that state any more.',
     keysBusy: 'A previous button of that session is still being typed; try again in a moment.',
@@ -155,6 +176,7 @@ export const ACT_TEXT: Record<TelegramLocale, {
     approved: (n) => `✅ Đã cho phép ở <b>${escapeHtml(n)}</b>.`,
     denied: (n) => `❌ Đã từ chối ở <b>${escapeHtml(n)}</b>.`,
     stopAsk: (n) => `Dừng agent ở <b>${escapeHtml(n)}</b>?`,
+    sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> gắn với topic này chưa mở trong Orrery. Gõ <code>resume</code> để mở lại.`,
     stopped: (n) => `⏹ Đã gửi Esc vào <b>${escapeHtml(n)}</b>.`,
     state: 'Session đó không còn ở trạng thái này nữa.',
     keysBusy: 'Nút bấm trước của session đó còn đang được gõ, chủ nhân thử lại sau giây lát.',

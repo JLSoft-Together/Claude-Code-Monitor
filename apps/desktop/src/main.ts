@@ -84,6 +84,7 @@ import { PHONE_FILE, PhoneNotifier } from './phone/notifier'
 import { registerPhoneIpc } from './phone/ipc'
 import { e2eOverride } from './phone/send'
 import { TELEGRAM_FILE, TelegramNotifier } from './telegram/notifier'
+import { createBigUploader } from './telegram/mtproto'
 import { registerTelegramIpc } from './telegram/ipc'
 import { projectDiff, saveInbound } from './telegram/host'
 import { needsTrust } from './run/configs'
@@ -1170,6 +1171,7 @@ function setupTelegram(): void {
   const broadcast = (channel: string, payload: unknown) => {
     for (const win of BrowserWindow.getAllWindows()) if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
   }
+  const bigUploader = createBigUploader()
   telegram = new TelegramNotifier({
     file: path.join(DATA_DIR, TELEGRAM_FILE),
     crypt: { available: () => safeStorage.isEncryptionAvailable(), encrypt: (s) => safeStorage.encryptString(s), decrypt: (b) => safeStorage.decryptString(b) },
@@ -1181,6 +1183,7 @@ function setupTelegram(): void {
     commandInstalled: () => commandInstalled(),
     receiveInstalled: () => commandInstalled(undefined, RECEIVE_COMMAND),
     askPage: askPageTelegram,
+    bigUploader,
     diff: (cwd) => projectDiff(cwd, os.homedir(), process.platform),
     saveFile: (project, name, data) => saveInbound(project, name, data),
     runConfigs: async (project) => {
@@ -1232,6 +1235,7 @@ function setupTelegram(): void {
   const off = disposeTelegram
   disposeTelegram = () => {
     clearInterval(tick)
+    void bigUploader.close()
     off()
   }
 }

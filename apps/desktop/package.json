@@ -20,5 +20,8 @@
     "electron-builder": "26.15.3",
     "esbuild": "0.28.2",
     "sql.js": "1.14.2"
+  },
+  "dependencies": {
+    "telegram": "2.26.22"
   }
 }

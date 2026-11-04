@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { TelegramChat, TelegramCommandResult, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramPatch, TelegramRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
+import type { TelegramChat, TelegramCommandResult, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
 import {
   hasTelegram,
   onTelegram,
@@ -11,6 +11,8 @@ import {
   telegramPair,
   telegramRouteRemove,
   telegramRouteSet,
+  telegramSessionRouteRemove,
+  telegramSessionRouteSet,
   telegramSet,
   telegramState,
   telegramTest,
@@ -50,6 +52,8 @@ export const useTelegramStore = defineStore('telegram', () => {
   const set = async (patch: TelegramPatch): Promise<TelegramSetResult> => keep(await telegramSet(patch))
   const routeSet = async (input: TelegramRouteInput): Promise<TelegramSetResult> => keep(await telegramRouteSet(input))
   const routeRemove = async (project: string): Promise<TelegramSetResult> => keep(await telegramRouteRemove(project))
+  const sessionRouteSet = async (input: TelegramSessionRouteInput): Promise<TelegramSetResult> => keep(await telegramSessionRouteSet(input))
+  const sessionRouteRemove = async (session: string): Promise<TelegramSetResult> => keep(await telegramSessionRouteRemove(session))
   const installCommand = async (): Promise<TelegramCommandResult> => keep(await telegramInstallCommand())
   const createTopic = async (project: string, name: string): Promise<TelegramCreateTopicResult> => {
     if (!chatId.value) return { ok: false, error: 'chat' }
@@ -88,5 +92,5 @@ export const useTelegramStore = defineStore('telegram', () => {
     }
   }
 
-  return { state, chats, chatId, chat, busy, ready, enabled, start, reload, set, routeSet, routeRemove, installCommand, createTopic, test, discover, toggle, pair, unpair, installReceive, setReceiving, receiving }
+  return { state, chats, chatId, chat, busy, ready, enabled, start, reload, set, routeSet, routeRemove, sessionRouteSet, sessionRouteRemove, installCommand, createTopic, test, discover, toggle, pair, unpair, installReceive, setReceiving, receiving }
 })

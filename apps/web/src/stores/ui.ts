@@ -235,6 +235,8 @@ export const useUiStore = defineStore('ui', () => {
   const promptSearchFocus = ref(false)
   /** Background context of a session (ContextSourcesDialog.vue): its folder + monitor terminal, or nulls = the focused pane. */
   const contextSources = ref<{ cwd: string | null; terminalId: string | null } | null>(null)
+  /** Session row → "Connect to Telegram…" (TelegramLinkDialog.vue). */
+  const telegramLink = ref<{ cwd: string; session: string; name: string } | null>(null)
   /** Which guide is open (lib/tour.ts TOURS). */
   const tourOpen = ref<false | TourId>(false)
   /** First-run quick setup (QuickSetup.vue); guides wait until it closes. */
@@ -500,6 +502,7 @@ export const useUiStore = defineStore('ui', () => {
     releaseCheck,
     promptSearchFocus,
     contextSources,
+    telegramLink,
     tourOpen,
     setupOpen,
     whatsNewOpen,

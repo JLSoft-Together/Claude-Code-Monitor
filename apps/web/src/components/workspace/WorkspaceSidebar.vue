@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { PtyPreset } from '@ccm/shared'
+import { isSessionId, type PtyPreset } from '@ccm/shared'
 import { ChevronsDownUp, LoaderCircle, Minus, Plus, Search, X } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
 import { useCompact } from '../../composables/useCompact'
@@ -23,7 +23,9 @@ import { isSolo, rowLines, tabStopOf, type RailCheckout, type RailCluster, type 
 import { buildSections, railMoveIndexes } from '../../lib/rail/railView'
 import { emptyMenu, groupMenu, isMenuKey, projectMenu as buildProjectMenu, rowMenu } from '../../lib/rail/railMenu'
 import { leaves, type SplitDir } from '../../lib/splitLayout'
+import { hasTelegram } from '../../lib/telegram'
 import { useRunStore } from '../../stores/run'
+import { useTelegramStore } from '../../stores/telegram'
 import { useUiStore } from '../../stores/ui'
 import { isTerm, presetOf, useWorkspaceStore, workCwd, type SplitChoice } from '../../stores/workspace'
 import ContextMenu from '../ui/ContextMenu.vue'
@@ -48,6 +50,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
+const telegram = useTelegramStore()
 const rail = useRail()
 const { available: openable, picking, openProject: pickProjectFolder } = useOpenProject()
 const clusters = computed(() => (props.only ? rail.clusters.value.filter((c) => c.key === props.only) : rail.clusters.value))
@@ -490,6 +493,12 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
 
 const compactFlow = useCompact()
 
+function telegramOf(row: RailRow): 'linked' | 'unlinked' | undefined {
+  if (!hasTelegram || !isTerm(row.pane) || !isSessionId(row.pane.agentSessionId) || !workCwd(row.pane)) return undefined
+  const session = row.pane.agentSessionId.toLowerCase()
+  return telegram.state?.sessionRoutes.some((r) => r.session === session) ? 'linked' : 'unlinked'
+}
+
 function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): void {
   ++menuSeq
   const tab = workspace.tabs.find((x) => x.key === row.tabKey)
@@ -506,6 +515,7 @@ function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): vo
       targets: rail.projectTabs(row.tabKey),
       compact: compactFlow.stateOf(row.pane),
       deepseek: hasDeepSeek,
+      telegram: telegramOf(row),
     },
     t,
   )
@@ -550,6 +560,9 @@ function pickRow(id: string, row: RailRow, cwd: string | null): void {
       break
     case 'context':
       if (cwd) ui.contextSources = { cwd, terminalId: row.pane.terminalId ?? null }
+      break
+    case 'telegram-link':
+      if (cwd && isSessionId(row.pane.agentSessionId)) ui.telegramLink = { cwd, session: row.pane.agentSessionId.toLowerCase(), name: rowName(row) }
       break
     case 'monitor':
       if (row.pane.terminalId) {

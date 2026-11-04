@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, truncateSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -14,6 +14,7 @@ import {
 import { episodeHtml, errorOf, escapeHtml, reportHtml, scanUpdates } from '../src/telegram/api'
 import { TelegramNotifier, TELEGRAM_PER_CHAT_MIN } from '../src/telegram/notifier'
 import type { TgFetch } from '../src/telegram/api'
+import type { BigUploadCreds, BigUploader, BigUploadRequest, BigUploadResult } from '../src/telegram/mtproto'
 
 const crypt = {
   available: () => true,
@@ -190,6 +191,46 @@ describe('TelegramNotifier', () => {
     expect(String(doc.get('caption'))).toContain('build ok')
   })
 
+  it('uploads big files over MTProto in the background when large files are on, else reports the path', async () => {
+    const { fetch, sent } = fakeFetch()
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tg-big-'))
+    const apk = path.join(dir, 'app-release.apk')
+    writeFileSync(apk, '')
+    truncateSync(apk, 60 * 1024 * 1024)
+    const calls: { req: BigUploadRequest; creds: BigUploadCreds }[] = []
+    let answer: BigUploadResult = { ok: true }
+    const bigUploader: BigUploader = { upload: async (req, creds) => (calls.push({ req, creds }), creds.onSession('sess-1'), answer), close: async () => undefined }
+    const { tg, file } = notifier(fetch, { bigUploader })
+    tg.set({ token: TOKEN, enabled: true })
+    tg.setRoute({ project: dir, chatId: '-1001234567890', threadId: 3 })
+    expect(await tg.report(dir, 'build ok', apk)).toMatchObject({ ok: true, file: 'app-release.apk', linkOnly: true })
+    expect(calls).toHaveLength(0)
+
+    expect(tg.set({ bigFiles: true, apiId: 123456, apiHash: '0123456789abcdef0123456789abcdef' }).ok).toBe(true)
+    expect(tg.state().bigFiles).toEqual({ enabled: true, apiId: 123456, hasHash: true })
+    expect(readFileSync(file, 'utf8')).not.toContain('0123456789abcdef0123456789abcdef')
+    expect(await tg.report(dir, 'build ok', apk)).toMatchObject({ ok: true, file: 'app-release.apk', uploading: true })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls[0]!.req).toMatchObject({ chatId: '-1001234567890', threadId: 3, file: apk, name: 'app-release.apk', size: 60 * 1024 * 1024 })
+    expect(calls[0]!.req.caption).toContain('build ok')
+    expect(calls[0]!.creds).toMatchObject({ apiId: 123456, apiHash: '0123456789abcdef0123456789abcdef', token: TOKEN, session: null })
+    expect(String((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).text)).toContain('Đang gửi app-release.apk (60.0 MB)')
+
+    answer = { ok: false, error: 'chat' }
+    await tg.report(dir, 'lần 2', apk)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls[1]!.creds.session).toBe('sess-1')
+    expect(String((sent.filter((s) => s.method === 'sendMessage').at(-1)!.body as Record<string, unknown>).text)).toContain('Không gửi được app-release.apk')
+
+    tg.set({ apiHash: 'fedcba9876543210fedcba9876543210' })
+    await tg.report(dir, 'lần 3', apk)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls[2]!.creds.session).toBeNull()
+    expect(sanitizeTelegramPatch({ apiHash: 'nope' })).toBeNull()
+    expect(sanitizeTelegramPatch({ apiId: -1 })).toBeNull()
+    expect(sanitizeTelegramPatch({ apiId: null, apiHash: '', bigFiles: false })).toEqual({ apiId: null, apiHash: '', bigFiles: false })
+  })
+
   it('discovers groups with bot rights and creates a topic as a route', async () => {
     const chat = { id: -1001234567890, type: 'supergroup', title: 'Test Bot', is_forum: true }
     const { fetch } = fakeFetch({
@@ -204,7 +245,7 @@ describe('TelegramNotifier', () => {
     const found = await tg.discover()
     expect(found).toEqual({ ok: true, chats: [{ chatId: '-1001234567890', title: 'Test Bot', isForum: true, botAdmin: true, canManageTopics: true, topics: [{ threadId: 5, name: 'A' }] }] })
     const made = await tg.createTopic({ chatId: '-1001234567890', project: path.join(root, 'B'), name: 'B' })
-    expect(made.ok && made.state.routes).toEqual([{ project: path.join(root, 'B'), label: 'B', chatId: '-1001234567890', threadId: 77 }])
+    expect(made.ok && made.state.routes).toEqual([{ project: path.join(root, 'B'), label: 'B', chatId: '-1001234567890', threadId: 77, where: 'Test Bot › B' }])
     expect(tg.topicName(tg.routeFor(path.join(root, 'B', 'src'))!)).toBe('Test Bot › B')
   })
 

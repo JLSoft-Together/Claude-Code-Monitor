@@ -9,7 +9,7 @@ export const TG_SEND_RATE_MS = 60_000
 export const TELEGRAM_SEND_TOOL = {
   name: 'telegram_send',
   description:
-    "Send the user a result report in the Telegram topic of this session's project (set up in Orrery Settings › Notifications › Telegram), optionally with one file from the project such as a built APK or a log (up to 50 MB; larger files are reported by path). Works only while the user has Telegram reports on (/bot-tele-send-notify on). Use it once when a task finishes: what was done, the result, what needs the user. When you send one, Orrery does not send its own \"finished\" message for that turn.",
+    "Send the user a result report in the Telegram topic of this session's project (set up in Orrery Settings › Notifications › Telegram), optionally with one file from the project such as a built APK or a log (up to 50 MB, or 2 GB when large files are on in Orrery Settings; larger files are reported by path). Works only while the user has Telegram reports on (/bot-tele-send-notify on). Use it once when a task finishes: what was done, the result, what needs the user. When you send one, Orrery does not send its own \"finished\" message for that turn.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -65,6 +65,7 @@ export const telegramSend: McpTool = {
     }
     if (!res.ok) return fail(res.detail ?? res.error)
     if (res.tool !== 'telegram_send') return fail('failed')
+    if (res.file && res.uploading) return toolResult(`Sent the report to Telegram topic ${res.topic}; ${res.file} is uploading in the background and posts there when done.`, res)
     const what = res.file ? (res.linkOnly ? `report (file ${res.file} too large, sent as path)` : `report with ${res.file}`) : 'report'
     return toolResult(`Sent the ${what} to Telegram topic ${res.topic}.`, res)
   },

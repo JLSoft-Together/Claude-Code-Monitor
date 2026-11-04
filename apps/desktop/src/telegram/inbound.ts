@@ -105,7 +105,7 @@ export function commandOf(msg: TgMessage, bot: string): Command | null {
   if (head === 'new') return { kind: 'new', text: rest }
   if (head === 'resume' && !rest) return { kind: 'resume' }
   if (head === 'run') return { kind: 'run', config: rest.slice(0, 80) }
-  if (head === 'all' && rest) return { kind: 'all', text: rest }
+  if (head === 'all') return rest ? { kind: 'all', text: rest } : { kind: 'help' }
   if (head === 'last' && !rest) return { kind: 'last' }
   if ((head === 'screen' || head === 'screenshot') && /^[A-Za-z0-9._:-]{0,80}$/.test(rest)) return { kind: 'screen', ...(rest ? { serial: rest } : {}) }
   return stripped ? { kind: 'send', text: stripped } : { kind: 'help' }
@@ -113,10 +113,13 @@ export function commandOf(msg: TgMessage, bot: string): Command | null {
 
 const STATUS_VI: Record<string, string> = { working: 'đang làm', idle: 'rảnh', waiting: 'đang chờ', stale: 'mất kết nối', unknown: 'không rõ' }
 
-const paneLine = (p: TelegramPaneInfo, locale: TelegramLocale): string => `• <b>${escapeHtml(p.name)}</b> — ${locale === 'vi' ? (STATUS_VI[p.status] ?? p.status) : p.status}`
+export const paneStatus = (status: string, locale: TelegramLocale): string => (locale === 'vi' ? (STATUS_VI[status] ?? status) : status)
+
+const paneLine = (p: TelegramPaneInfo, locale: TelegramLocale): string => `• <b>${escapeHtml(p.name)}</b> — ${paneStatus(p.status, locale)}`
 
 export const TEXT: Record<TelegramLocale, {
   paired: (name: string) => string
+  stranger: (owner: string) => string
   help: (bot: string) => string
   noTopic: string
   rate: string
@@ -133,7 +136,28 @@ export const TEXT: Record<TelegramLocale, {
 }> = {
   en: {
     paired: (n) => `🔗 Paired with ${escapeHtml(n)}. Only you can send to sessions now.`,
-    help: (b) => `Mention @${escapeHtml(b)} in a project topic:\n• <code>@${escapeHtml(b)} your message</code> → the project's session\n• reply to a report of the bot → that session\n• <code>@${escapeHtml(b)} status</code> → sessions of the project`,
+    stranger: (n) => `Sorry, I only answer my owner ${escapeHtml(n)}. Send more money to negotiate 🐮`,
+    help: (b) => [
+      `🤖 <b>Commands of @${escapeHtml(b)}</b>`,
+      `Mention the bot in a project topic, then type. Example: <code>@${escapeHtml(b)} new write login tests</code>`,
+      '',
+      '💬 <b>Send work</b>',
+      '<code>your message</code> — to the project\'s session',
+      'reply to a bot report — to that exact session',
+      '<code>all &lt;message&gt;</code> — to every session of the project',
+      'photo / file with a caption mentioning the bot — saved into the project',
+      '',
+      '🧭 <b>Sessions</b>',
+      '<code>status</code> — open sessions of the project',
+      '<code>new [prompt]</code> — open a new Claude session',
+      '<code>resume</code> — reopen a finished session',
+      '<code>last</code> — last reply of the session',
+      '<code>stop</code> — stop the running work (Esc)',
+      '',
+      '📱 <b>App</b>',
+      '<code>run [config]</code> — run the app with a Run config',
+      '<code>screen [serial]</code> — screenshot of the Android device',
+    ].join('\n'),
     noTopic: 'This topic is not assigned to a project in Orrery.',
     rate: 'Too many messages in the last minute; wait a little.',
     sent: (n) => `📨 Sent to <b>${escapeHtml(n)}</b>.`,
@@ -149,7 +173,28 @@ export const TEXT: Record<TelegramLocale, {
   },
   vi: {
     paired: (n) => `🔗 Đã ghép với ${escapeHtml(n)}. Từ giờ chỉ chủ nhân gửi được vào session.`,
-    help: (b) => `Tag @${escapeHtml(b)} trong topic của project:\n• <code>@${escapeHtml(b)} nội dung</code> → gửi vào session của project\n• reply vào tin báo của bot → đúng session đó\n• <code>@${escapeHtml(b)} status</code> → các session của project`,
+    stranger: (n) => `Xin lỗi bạn, tôi chỉ trả lời chủ nhân ${escapeHtml(n)}, gửi thêm tiền để thương lượng 🐮`,
+    help: (b) => [
+      `🤖 <b>Lệnh của @${escapeHtml(b)}</b>`,
+      `Tag bot trong topic của project rồi gõ lệnh. Ví dụ: <code>@${escapeHtml(b)} new viết test cho login</code>`,
+      '',
+      '💬 <b>Giao việc</b>',
+      '<code>nội dung</code> — gửi vào session của project',
+      'reply vào tin báo của bot — gửi đúng session đó',
+      '<code>all &lt;nội dung&gt;</code> — gửi vào mọi session của project',
+      'ảnh / file kèm caption tag bot — lưu vào project',
+      '',
+      '🧭 <b>Session</b>',
+      '<code>status</code> — các session đang mở của project',
+      '<code>new [prompt]</code> — mở session Claude mới',
+      '<code>resume</code> — mở lại session đã kết thúc',
+      '<code>last</code> — câu trả lời cuối của session',
+      '<code>stop</code> — dừng việc đang chạy (Esc)',
+      '',
+      '📱 <b>App</b>',
+      '<code>run [config]</code> — chạy app theo Run config',
+      '<code>screen [serial]</code> — chụp màn hình máy Android',
+    ].join('\n'),
     noTopic: 'Topic này chưa được gán project trong Orrery.',
     rate: 'Gửi nhanh quá, chủ nhân chờ chút nhé.',
     sent: (n) => `📨 Đã gửi vào <b>${escapeHtml(n)}</b>.`,
