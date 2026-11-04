@@ -253,6 +253,10 @@ export class SessionTracker {
     return this.endedAt !== undefined
   }
 
+  get lastReply(): string | undefined {
+    return this.main.lastReply
+  }
+
   setRecord(record: RegistryRecord): { sessionChanged: boolean } {
     const sessionChanged = record.sessionId !== this.record.sessionId
     this.record = record

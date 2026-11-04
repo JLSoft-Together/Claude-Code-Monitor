@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   store.setNotify(toaster.settings())
   const observe = () => {
     if (snoozes.prune(store.terminalList())) store.setSnoozes(snoozes.all())
-    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id) })
+    toaster.observe({ terminals: store.terminalList(), jobs: store.jobList(), limits: store.currentLimits(), contextPct: (id) => store.contextPct(id), toolOf: (id) => store.currentToolOf(id), replyOf: (id) => monitor.replyOf(id) })
   }
   store.subscribe(observe)
   store.subscribe((message) => {
@@ -116,6 +116,7 @@ async function main(): Promise<void> {
   })
   // v76 R6: desktop main decides (enabled, machine idle, rate limit); the collector only reports episodes.
   if (hostPort) toaster.onPhone = (m) => hostPort.postMessage(m)
+  if (hostPort) toaster.onTelegram = (m) => hostPort.postMessage(m)
   // The desktop app keeps the machine awake while something works (v76 R3); only changes cross the port.
   let lastBusy = ''
   const postBusy = () => {

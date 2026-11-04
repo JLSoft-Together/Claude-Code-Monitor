@@ -7,7 +7,9 @@ export type Signal =
   | { k: 'tool_use'; id: string; name: string; at?: string; codex?: true; device?: true; touch?: ToolTouch }
   | { k: 'tool_result'; toolUseId: string; isError: boolean; asyncLaunched: boolean; at?: string; portConflict?: number }
   | { k: 'turn_end'; at?: string }
-  | { k: 'assistant_end'; at?: string }
+  | { k: 'assistant_end'; messageId?: string; at?: string }
+  | { k: 'prompt'; at?: string }
+  | { k: 'reply_text'; messageId: string; text: string }
   | { k: 'usage'; messageId: string; input: number; output: number; cacheRead: number; ttl?: CacheTtl; at?: string }
   | { k: 'model'; model: string; effort?: string }
   | { k: 'task_notification'; toolUseId?: string; taskId?: string; status: string; at?: string }
@@ -42,6 +44,7 @@ const MAX_ENUM = 120
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell'])
 const CODEX_COMMAND_RE = /\bcodex\b/i
 const MAX_CODEX_CALLS = 20
+const REPLY_MAX = 3000
 
 // Only a yes/no leaves this function: the command text itself is never stored.
 function mentionsCodex(name: string, input: unknown): boolean {
@@ -179,9 +182,11 @@ export function extractSignals(rec: unknown): Signal[] {
         }
       }
     }
+    const said = textsOf(msg.content).join('\n').trim()
+    if (id && said) out.push({ k: 'reply_text', messageId: id, text: said.slice(0, REPLY_MAX) })
     const limit = limitHitOf(rec, at)
     if (limit) out.push(limit)
-    if (msg.stop_reason === 'end_turn') out.push({ k: 'assistant_end', at })
+    if (msg.stop_reason === 'end_turn') out.push({ k: 'assistant_end', ...(id ? { messageId: id } : {}), at })
     return out
   }
 
@@ -189,6 +194,7 @@ export function extractSignals(rec: unknown): Signal[] {
     if (at) out.push({ k: 'seen', at })
     const content = rec.message.content
     const asyncLaunched = isObj(rec.toolUseResult) && rec.toolUseResult.status === 'async_launched'
+    if (rec.isMeta !== true && !(Array.isArray(content) && content.some((b) => isObj(b) && b.type === 'tool_result'))) out.push({ k: 'prompt', at })
     if (Array.isArray(content)) {
       for (const b of content) {
         if (isObj(b) && b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
@@ -270,6 +276,9 @@ export class TranscriptState {
   ended = false
   lastEndAt?: string
   limitHit?: LimitHit
+  private replyId?: string
+  private replyText = ''
+  lastReply?: string
 
   apply(signals: Signal[]): void {
     for (const s of signals) {
@@ -325,9 +334,22 @@ export class TranscriptState {
         case 'turn_end':
           this.openTools.clear()
           break
+        case 'reply_text':
+          if (s.messageId === this.replyId) this.replyText = `${this.replyText}\n${s.text}`.slice(0, REPLY_MAX)
+          else {
+            this.replyId = s.messageId
+            this.replyText = s.text
+          }
+          break
         case 'assistant_end':
           this.ended = true
           this.lastEndAt = s.at
+          this.lastReply = this.replyText && (!s.messageId || s.messageId === this.replyId) ? this.replyText : undefined
+          break
+        case 'prompt':
+          this.replyId = undefined
+          this.replyText = ''
+          this.lastReply = undefined
           break
         default:
           break

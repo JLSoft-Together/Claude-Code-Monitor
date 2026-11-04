@@ -26,6 +26,7 @@ import {
   type PlanLimits,
   type QuietHours,
   type ResourceReport,
+  type TelegramEpisodeMessage,
   type ServerRes,
   type TerminalSession,
   type TerminalStatus,
@@ -319,6 +320,7 @@ export interface ToastSnapshot {
   limits?: PlanLimits | null
   contextPct?: (terminalId: string) => number | null
   toolOf?: (terminalId: string) => string | undefined
+  replyOf?: (terminalId: string) => string | undefined
 }
 
 export interface NotifyPatch {
@@ -356,6 +358,7 @@ export class Toaster {
   private readonly workSince = new Map<string, number>()
   /** Desktop main forwards these to the phone when the owner enabled it and the machine is idle. */
   onPhone: ((m: PhoneEpisodeMessage) => void) | null = null
+  onTelegram: ((m: TelegramEpisodeMessage) => void) | null = null
   private readonly ops = new Map<string, Promise<boolean>>()
   private readonly file: JsonFile | null
 
@@ -544,6 +547,7 @@ export class Toaster {
         this.hideKey(`waiting:${t.id}`)
         if (before === 'working' && t.status === 'idle' && !t.endedAt) {
           this.showDone(t)
+          if (worked !== null) this.telegram(t, 'done', { worked, reply: snap.replyOf?.(t.id) })
           if (worked !== null && worked >= LONG_JOB_MS) this.phone({ episode: `d:${t.id}|${t.statusSince ?? ''}`, reason: 'done', name: phoneName(t), since: nowMs - worked })
         }
         continue
@@ -672,7 +676,16 @@ export class Toaster {
     this.phone({ episode: `w:${t.id}|${t.statusSince ?? ''}`, reason, name: phoneName(t), ...(tool ? { tool } : {}), since: Number.isFinite(since) ? since : nowMs }, 'waiting')
   }
 
+  private telegram(t: TerminalSession, reason: TelegramEpisodeMessage['reason'], extra: { worked?: number; since?: number; tool?: string; reply?: string }): void {
+    if (!this.onTelegram || !t.cwd) return
+    const episode = `t${reason === 'done' ? 'd' : 'w'}:${t.id}|${t.statusSince ?? ''}`
+    this.onTelegram({ type: 'telegram', episode, reason, terminalId: t.id, name: phoneName(t), cwd: t.cwd, ...extra })
+  }
+
   private showWaiting(t: TerminalSession, nowMs: number, tool?: string): void {
+    const kind = waitReason(t.waitingFor)
+    const since = t.statusSince ? Date.parse(t.statusSince) : nowMs
+    this.telegram(t, kind === 'question' ? 'question' : kind === 'permission' ? 'permission' : 'waiting', { since: Number.isFinite(since) ? since : nowMs, ...(tool ? { tool } : {}) })
     this.phoneWaiting(t, nowMs, tool)
     if (!this.can('waiting') || this.snoozed(t)) return
     if (nowMs - (this.lastAt.get(t.id) ?? -Infinity) < TOAST_THROTTLE_MS) return

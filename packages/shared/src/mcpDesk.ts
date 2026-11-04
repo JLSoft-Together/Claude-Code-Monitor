@@ -18,6 +18,9 @@ export type McpDeskCall =
   | (DeskBase & { tool: 'preview_layout'; path: string; device: AgentLayoutDevice; night: boolean })
   | (DeskBase & { tool: 'list_servers' })
   | (DeskBase & { tool: 'free_port'; port: number })
+  | (DeskBase & { tool: 'telegram_notify'; state: 'on' | 'off' | 'status' })
+  | (DeskBase & { tool: 'telegram_send'; text: string; file?: string })
+  | (DeskBase & { tool: 'telegram_receive'; state: 'on' | 'off' | 'status' })
 
 export type McpDeskTool = McpDeskCall['tool']
 
@@ -45,6 +48,11 @@ export const DESK_ERRORS = [
   'gone',
   'cancelled',
   'confirm-open',
+  'telegram-off',
+  'telegram-config',
+  'no-topic',
+  'not-paired',
+  'rate',
 ] as const
 export type McpDeskError = (typeof DESK_ERRORS)[number]
 
@@ -73,6 +81,9 @@ export type McpDeskResult =
   | { ok: true; tool: 'preview_layout'; png: string; width: number; height: number; renderMs: number; frameworkOnly: boolean; diagnostics: AgentLayoutDiagnostic[] }
   | { ok: true; tool: 'list_servers'; at: string; servers: AgentServer[]; outside: { port: number; name: string }[] }
   | { ok: true; tool: 'free_port'; port: number; stopped: { pid: number; name: string }[] }
+  | { ok: true; tool: 'telegram_notify'; enabled: boolean; configured: boolean; projects: string[]; routed: boolean }
+  | { ok: true; tool: 'telegram_send'; topic: string; file?: string; linkOnly?: boolean }
+  | { ok: true; tool: 'telegram_receive'; receiving: boolean; paired: boolean; owner?: string }
   | { ok: false; error: McpDeskError; retryInSec?: number; detail?: string }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -132,6 +143,23 @@ export function parseMcpDeskResult(raw: unknown, tool: McpDeskTool): McpDeskResu
       return port && name ? [{ port, name }] : []
     })
     return { ok: true, tool, at: str(raw.at, 40) ?? '', servers, outside }
+  }
+  if (tool === 'telegram_notify') {
+    const projects = (Array.isArray(raw.projects) ? raw.projects : []).slice(0, 100).flatMap((p): string[] => {
+      const s = line(p, 120)
+      return s ? [s] : []
+    })
+    return { ok: true, tool, enabled: raw.enabled === true, configured: raw.configured === true, projects, routed: raw.routed === true }
+  }
+  if (tool === 'telegram_receive') {
+    const owner = line(raw.owner, 80)
+    return { ok: true, tool, receiving: raw.receiving === true, paired: raw.paired === true, ...(owner ? { owner } : {}) }
+  }
+  if (tool === 'telegram_send') {
+    const topic = line(raw.topic, 120)
+    if (!topic) return { ok: false, error: 'failed' }
+    const file = line(raw.file, 200)
+    return { ok: true, tool, topic, ...(file ? { file } : {}), ...(raw.linkOnly === true ? { linkOnly: true } : {}) }
   }
   const port = int(raw.port, 1, 65535)
   if (!port || !Array.isArray(raw.stopped)) return { ok: false, error: 'failed' }

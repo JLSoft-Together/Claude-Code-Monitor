@@ -489,6 +489,10 @@ export class Monitor {
     }
   }
 
+  replyOf(terminalId: string): string | undefined {
+    return this.trackers.get(terminalId)?.lastReply
+  }
+
   setAlias(terminalId: string, value: unknown): boolean {
     const tracker = this.trackers.get(terminalId)
     if (!tracker) return false
