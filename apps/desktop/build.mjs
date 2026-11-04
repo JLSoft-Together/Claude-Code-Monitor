@@ -16,11 +16,28 @@ mkdirSync(STAGE, { recursive: true })
 // win-procs.ts reads import.meta only when `require` is missing (ESM under tsx / vitest), never in these CJS bundles.
 const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node24', sourcemap: false, logLevel: 'info', logOverride: { 'empty-import-meta': 'silent' } }
 
+// GramJS (large Telegram files) is its own bundle, required by main only when an upload starts.
+const gramjsApart = {
+  name: 'gramjs-apart',
+  setup(b) {
+    b.onResolve({ filter: /^\.\/gramjs$/ }, () => ({ path: './gramjs.cjs', external: true }))
+  },
+}
+
 await build({
   ...common,
   entryPoints: [path.join(HERE, 'src', 'main.ts')],
   outfile: path.join(STAGE, 'main.cjs'),
   external: ['electron', 'koffi'],
+  plugins: [gramjsApart],
+  // Turns the import() of gramjs.cjs into require(), which loads from inside app.asar.
+  supported: { 'dynamic-import': false },
+})
+
+await build({
+  ...common,
+  entryPoints: [path.join(HERE, 'src', 'telegram', 'gramjs.ts')],
+  outfile: path.join(STAGE, 'gramjs.cjs'),
 })
 
 await build({

@@ -21,6 +21,7 @@ files:
   - collector.cjs
   - pty-host.cjs
   - preload.cjs
+  - gramjs.cjs
   - package.json
 extraResources:
   # node-pty + the prebuilt package for this platform/arch (npm installs only the host one).

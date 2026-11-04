@@ -61,8 +61,7 @@ export function createBigUploader(): BigUploader {
     const k = `${creds.apiId}:${creds.apiHash}:${creds.token}`
     if (client && key === k) return client
     await close()
-    const { TelegramClient: Client, sessions, Logger } = await import('telegram')
-    const { LogLevel } = await import('telegram/extensions/Logger')
+    const { TelegramClient: Client, sessions, Logger, LogLevel } = await import('./gramjs')
     const c = new Client(new sessions.StringSession(creds.session ?? ''), creds.apiId, creds.apiHash, { connectionRetries: 3, baseLogger: new Logger(LogLevel.NONE) })
     await c.start({ botAuthToken: creds.token })
     creds.onSession(String(c.session.save()))
@@ -73,8 +72,7 @@ export function createBigUploader(): BigUploader {
 
   async function send(req: BigUploadRequest, creds: BigUploadCreds): Promise<void> {
     const c = await connect(creds)
-    const { helpers } = await import('telegram')
-    const { CustomFile } = await import('telegram/client/uploads')
+    const { helpers, CustomFile } = await import('./gramjs')
     // Resolves the group with channels.getChannels (bots may ask with access hash 0) to get the real hash sendMedia needs.
     const peer = await c.getInputEntity(helpers.returnBigInt(req.chatId))
     await c.sendFile(peer, {
