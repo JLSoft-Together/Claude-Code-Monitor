@@ -15,6 +15,8 @@ export interface TgMessage {
   file?: TgFile
   /** Telegram `media_group_id`: every photo of an album arrives as its own update, only the first has the caption. */
   group?: string
+  /** Send time in ms; only the backlog check after a restart reads it. */
+  date?: number
 }
 
 export interface TgFile {
@@ -69,6 +71,7 @@ export function readMessage(update: unknown, botId: number | null): TgMessage | 
     text,
     replyTo: reply && !topicStart && typeof reply.message_id === 'number' ? reply.message_id : null,
     replyToBot: !!replyFrom && botId !== null && replyFrom.id === botId,
+    ...(typeof m.date === 'number' && Number.isFinite(m.date) ? { date: m.date * 1000 } : {}),
     ...(file ? { file } : {}),
     ...(file && typeof m.media_group_id === 'string' && m.media_group_id.length < 64 ? { group: m.media_group_id } : {}),
   }

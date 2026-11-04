@@ -57,6 +57,8 @@ export interface TelegramState {
   routes: TelegramRoute[]
   commandInstalled: boolean
   lastError: TelegramError | null
+  /** getUpdates keeps answering 409: another program polls this bot. After 3 in a row the poll stops until a retry. */
+  pollConflict: boolean
   quiet: TelegramQuiet
   summary: TelegramSummary
   alerts: boolean

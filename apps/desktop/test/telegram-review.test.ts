@@ -36,13 +36,17 @@ interface Opts {
 function setup(opts: Opts = {}) {
   const sent: Sent[] = []
   const asked: TelegramInbound[] = []
+  const firstPoll = new Set<string>()
   let nextId = 100
   const fetch: TgFetch = async (url, init) => {
     const method = url.split('/').pop()!
     const body = init.body instanceof FormData ? init.body : typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
     if (method === 'getUpdates') {
       opts.polls?.push({ token: url.includes(TOKEN2) ? 'two' : 'one', offset: (body as Record<string, unknown>).offset })
-      if ((body as Record<string, unknown>).offset === -1) return { ok: true, status: 200, json: async () => ({ ok: true, result: [] }) }
+      if ((body as Record<string, unknown>).offset === 0 && !firstPoll.has(url)) {
+        firstPoll.add(url)
+        return { ok: true, status: 200, json: async () => ({ ok: true, result: [] }) }
+      }
       return new Promise(() => undefined)
     }
     sent.push({ method, body, url })
@@ -228,15 +232,15 @@ describe('day summary after a restart (WP-1 #6)', () => {
 })
 
 describe('token change while receiving (WP-1 #7)', () => {
-  it('restarts polling from the newest update of the new bot', async () => {
+  it('restarts polling from the pending updates of the new bot', async () => {
     const polls: { token: string; offset: unknown }[] = []
     const { tg } = setup({ polls })
     await receiving(tg)
     await flush()
-    expect(polls).toContainEqual({ token: 'one', offset: -1 })
+    expect(polls).toContainEqual({ token: 'one', offset: 0 })
     tg.set({ token: TOKEN2 })
     await flush()
-    expect(polls).toContainEqual({ token: 'two', offset: -1 })
+    expect(polls).toContainEqual({ token: 'two', offset: 0 })
     tg.stop()
   })
 })

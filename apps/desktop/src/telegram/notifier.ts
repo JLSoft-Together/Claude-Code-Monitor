@@ -79,6 +79,13 @@ const sessionPinKey = (session: string): string => `s:${session}`
 export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
+const CONFLICT_STOP = 3
+const BACKLOG_PAGE = 100
+const BACKLOG_PAGES = 5
+const BACKLOG_MS = 60 * 60_000
+const BACKLOG_PER_TOPIC = 8
+const BACKLOG_LINE = 80
+const BACKLOGS_MAX = 20
 const SENT_MAP_MAX = 500
 const REPLIES_MAX = 300
 const ALBUM_MS = 1500
@@ -113,6 +120,8 @@ interface FileShape {
   sessionRoutes: TelegramSessionRoute[]
   stranger: TelegramStranger
   replies: Record<string, string>
+  /** Telegram confirms an update only on the next getUpdates, so the last batch before quitting comes back; this keeps it from being offered again. */
+  lastUpdate?: number
   apiId?: number
   apiHash?: string
   mtSession?: string
@@ -259,6 +268,7 @@ function readShape(file: string | undefined): FileShape {
       sessionRoutes: readSessionRoutes(raw.sessionRoutes),
       stranger: readStranger(raw.stranger),
       replies: readReplies(raw.replies),
+      ...(Number.isSafeInteger(raw.lastUpdate) && (raw.lastUpdate as number) >= 0 ? { lastUpdate: raw.lastUpdate } : {}),
       ...(Number.isSafeInteger(raw.apiId) && (raw.apiId as number) > 0 ? { apiId: raw.apiId } : {}),
       ...(typeof raw.apiHash === 'string' && raw.apiHash.length < 4096 ? { apiHash: raw.apiHash } : {}),
       ...(typeof raw.mtSession === 'string' && raw.mtSession.length < 8192 ? { mtSession: raw.mtSession } : {}),
@@ -280,6 +290,9 @@ export class TelegramNotifier {
   private botId: number | null = null
   private receiving = false
   private pollRun = 0
+  private pollConflict = false
+  private conflictRuns = 0
+  private readonly backlogs = new Map<string, unknown[]>()
   private pollSeen: ScanSeen | null = null
   private pairCode: string | null = null
   private pairUntil: number | null = null
@@ -390,6 +403,7 @@ export class TelegramNotifier {
       routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r) })),
       commandInstalled: this.deps.commandInstalled?.() ?? false,
       lastError: this.lastError,
+      pollConflict: this.pollConflict,
       quiet: { ...this.data.quiet },
       summary: { ...this.data.summary },
       alerts: this.data.alerts,
@@ -420,6 +434,7 @@ export class TelegramNotifier {
       if (patch.token && !isTelegramToken(patch.token)) return { ok: false, error: 'invalid-token' }
       this.data.token = patch.token ? this.deps.crypt.encrypt(patch.token).toString('base64') : undefined
       this.data.mtSession = undefined
+      this.data.lastUpdate = undefined
       this.data.bot = undefined
       this.botId = null
       this.pollRun = 0
@@ -449,7 +464,7 @@ export class TelegramNotifier {
     if (patch.stranger) this.data.stranger = { ...patch.stranger }
     const result = this.commit(patch.token !== undefined)
     if (patch.token) void this.whoAmI()
-    this.syncPoll()
+    this.syncPoll(patch.receiving === true || !!patch.token)
     return result
   }
 
@@ -480,13 +495,40 @@ export class TelegramNotifier {
     return this.pairCode !== null && (this.pairUntil ?? 0) > this.now
   }
 
-  private syncPoll(): void {
+  /** `retry`: only an explicit receive-on (or a new token) restarts a poll that stopped on conflict; other setting changes must not. */
+  private syncPoll(retry = false): void {
     const want = !!this.token() && (this.receiving || this.pairing)
-    if (want && !this.pollRun) {
+    if (want && !this.pollRun && (!this.pollConflict || retry)) {
       const run = Date.now() + Math.random()
       this.pollRun = run
+      this.conflictRuns = 0
       void this.pollLoop(run)
-    } else if (!want) this.pollRun = 0
+    } else if (!want) {
+      this.pollRun = 0
+      if (this.pollConflict) {
+        this.pollConflict = false
+        this.deps.onState?.(this.state())
+      }
+    }
+  }
+
+  private pollFailed(error: TelegramError, run: number): boolean {
+    if (error !== 'conflict') return false
+    const first = !this.pollConflict
+    this.pollConflict = true
+    this.fail('conflict')
+    const stop = ++this.conflictRuns >= CONFLICT_STOP
+    if (stop && this.pollRun === run) this.pollRun = 0
+    if (first || stop) this.deps.onState?.(this.state())
+    return stop
+  }
+
+  private pollOk(): void {
+    this.conflictRuns = 0
+    if (!this.pollConflict) return
+    this.pollConflict = false
+    if (this.lastError === 'conflict') this.lastError = null
+    this.deps.onState?.(this.state())
   }
 
   stop(): void {
@@ -513,16 +555,30 @@ export class TelegramNotifier {
         }
       }
       if (offset === null) {
-        const last = await this.call('getUpdates', { offset: -1, limit: 1, timeout: 0, allowed_updates: ['message', 'my_chat_member', 'callback_query'] })
-        if (!last.ok) {
-          if (last.error === 'conflict') this.fail('conflict')
+        const first = await this.call('getUpdates', { offset: 0, limit: BACKLOG_PAGE, timeout: 0, allowed_updates: ['message', 'my_chat_member', 'callback_query'] })
+        if (!first.ok) {
+          if (this.pollFailed(first.error, run)) break
           await sleep(backoff)
           backoff = Math.min(backoff * 2, 60_000)
           continue
         }
-        const list = Array.isArray(last.result) ? (last.result as { update_id?: unknown }[]) : []
-        const id = list.length && typeof list[0]!.update_id === 'number' ? (list[0]!.update_id as number) : null
-        offset = id === null ? 0 : id + 1
+        this.pollOk()
+        const waiting: unknown[] = []
+        let next = 0
+        let list = Array.isArray(first.result) ? first.result : []
+        for (let page = 0; ; page++) {
+          for (const u of list) {
+            waiting.push(u)
+            const id = (u as { update_id?: unknown })?.update_id
+            if (typeof id === 'number' && id >= next) next = id + 1
+          }
+          if (list.length < BACKLOG_PAGE || page >= BACKLOG_PAGES - 1) break
+          const more = await this.call('getUpdates', { offset: next, limit: BACKLOG_PAGE, timeout: 0, allowed_updates: ['message', 'my_chat_member', 'callback_query'] })
+          if (!more.ok) break
+          list = Array.isArray(more.result) ? more.result : []
+        }
+        offset = next
+        if (this.pollRun === run) await this.offerBacklog(waiting)
         await sleep(POLL_MIN_GAP_MS)
         continue
       }
@@ -533,11 +589,12 @@ export class TelegramNotifier {
       if (quick < POLL_MIN_GAP_MS) await sleep(POLL_MIN_GAP_MS - quick)
       if (this.pollRun !== run) break
       if (!res.ok) {
-        if (res.error === 'conflict') this.fail('conflict')
+        if (this.pollFailed(res.error, run)) break
         await sleep(backoff)
         backoff = Math.min(backoff * 2, 60_000)
         continue
       }
+      this.pollOk()
       backoff = 2000
       const updates = Array.isArray(res.result) ? res.result : []
       scanUpdates(updates, this.pollSeen)
@@ -548,7 +605,59 @@ export class TelegramNotifier {
         if (typeof id === 'number' && id >= offset) offset = id + 1
         this.dispatch(u)
       }
+      if (updates.length && offset - 1 !== this.data.lastUpdate) {
+        this.data.lastUpdate = offset - 1
+        this.save()
+      }
     }
+  }
+
+  /** Owner commands sent while the app was off are not run on their own: a prompt typed an hour ago may no longer fit what the session is doing. */
+  private async offerBacklog(updates: unknown[]): Promise<void> {
+    const bot = this.data.bot
+    const owner = this.data.owner
+    if (!bot || !owner || !this.receiving) return
+    const groups = new Map<string, { chatId: string; threadId: number | null; items: { update: unknown; line: string }[] }>()
+    for (const update of updates) {
+      const uid = (update as { update_id?: unknown } | null)?.update_id
+      if (typeof uid === 'number' && this.data.lastUpdate !== undefined && uid <= this.data.lastUpdate) continue
+      const msg = readMessage(update, this.botId)
+      if (!msg || msg.fromBot || msg.fromId !== owner.id || msg.chatType === 'private' || msg.date === undefined || this.now - msg.date > BACKLOG_MS) continue
+      const cmd = commandOf(msg, bot)
+      if (!cmd || cmd.kind === 'pair' || cmd.kind === 'help') continue
+      const known = this.data.sessionRoutes.some((r) => r.chatId === msg.chatId && r.threadId === msg.threadId) || this.data.routes.some((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+      if (!known) continue
+      const key = `${msg.chatId}:${msg.threadId ?? ''}`
+      const group = groups.get(key) ?? { chatId: msg.chatId, threadId: msg.threadId, items: [] }
+      if (group.items.length < BACKLOG_PER_TOPIC) group.items.push({ update, line: this.backlogLine(msg, bot) })
+      groups.set(key, group)
+    }
+    const locale = this.deps.locale()
+    for (const group of groups.values()) {
+      const key = this.addAction({ kind: 'bg', terminalId: '', project: '', cwd: '', name: '', chatId: group.chatId, threadId: group.threadId })
+      this.backlogs.set(key, group.items.map((i) => i.update))
+      if (this.backlogs.size > BACKLOGS_MAX) this.backlogs.delete(this.backlogs.keys().next().value as string)
+      const html = [MORE_TEXT[locale].backlogHead(group.items.length), ...group.items.map((i, n) => `${n + 1}. ${i.line}`)].join('\n')
+      await this.post(group, html, { reply_markup: markup(locale, [[['bg', key], ['bx', key]]]) })
+    }
+  }
+
+  private backlogLine(msg: TgMessage, bot: string): string {
+    const raw = msg.text.replace(new RegExp(`@${bot}`, 'gi'), ' ').replace(/\s+/g, ' ').trim() || msg.file?.name || ''
+    const text = maskSecrets(raw, this.deps.home, this.deps.platform)
+    return escapeHtml(text.length > BACKLOG_LINE ? `${text.slice(0, BACKLOG_LINE - 1)}…` : text)
+  }
+
+  private async onBacklog(id: string, kind: 'bg' | 'bx', key: string, entry: ActionEntry, cb: Record<string, unknown>): Promise<void> {
+    const items = this.backlogs.get(key)
+    if (!items) return this.answer(id, ACT_TEXT[this.deps.locale()].expired)
+    this.backlogs.delete(key)
+    this.actions.delete(key)
+    await this.answer(id)
+    const msgId = (cb.message as { message_id?: unknown } | undefined)?.message_id
+    if (typeof msgId === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } })
+    if (kind === 'bx') return void (await this.post(entry, MORE_TEXT[this.deps.locale()].backlogSkipped(items.length)))
+    for (const update of items) await this.onUpdate(update).catch(() => undefined)
   }
 
   /** Buttons and file / screen work run beside the poll so a 20 MB download never holds back ⏹; plain messages stay in order. */
@@ -828,6 +937,7 @@ export class TelegramNotifier {
     if (!m || !entry || !this.receiving) return this.answer(id, a.expired)
     const kind = m[1] as ActionKind
     if (kind === 'lk' || kind === 'lp') return this.linkTopic(id, kind, entry, cb)
+    if (kind === 'bg' || kind === 'bx') return this.onBacklog(id, kind, m[2]!, entry, cb)
     const ask = this.asker()
     if (!ask) return this.answer(id, INBOUND_TEXT[locale].unavailable)
     const msg = (cb.message ?? {}) as { message_id?: unknown }

@@ -74,7 +74,7 @@ const setFail = (res: TelegramSetResult): boolean => {
 const status = computed(() =>
   state.value?.configured ? (state.value.bot ? t('telegram.tokenSaved', { bot: state.value.bot }) : t('telegram.tokenSavedNoName')) : t('telegram.tokenNone'),
 )
-const lastError = computed(() => (state.value?.lastError ? t(`telegram.error.${state.value.lastError}`) : null))
+const lastError = computed(() => (state.value?.lastError && !(state.value.pollConflict && state.value.lastError === 'conflict') ? t(`telegram.error.${state.value.lastError}`) : null))
 const doneOptions = computed(() => TELEGRAM_DONE_CHOICES.map((n) => ({ value: n as number, label: n === 0 ? t('telegram.doneAlways') : t('telegram.doneMin', { n }) })))
 
 async function saveToken(): Promise<void> {
@@ -366,6 +366,10 @@ const overview = computed(() => {
         <p class="truncate text-sm font-medium" data-telegram-overview-bot>{{ state.bot ? `@${state.bot}` : t('telegram.setup.noBot') }}</p>
         <p class="truncate text-2xs text-ink-faint" :title="overview" data-telegram-overview-line>{{ overview }}</p>
       </div>
+    </div>
+    <div v-if="state.pollConflict" class="ccm-group mt-2 flex items-center gap-3 px-3 py-2.5" role="alert" data-telegram-conflict>
+      <p class="min-w-0 flex-1 text-2xs text-st-error">{{ t('telegram.setup.conflict') }}</p>
+      <button type="button" class="ccm-btn shrink-0" data-telegram-conflict-retry @click="patch({ receiving: true })">{{ t('telegram.setup.retry') }}</button>
     </div>
     <div class="ccm-group mt-2 overflow-hidden">
         <ToggleSwitch

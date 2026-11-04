@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'lk' | 'lp'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'lk' | 'lp' | 'bg' | 'bx'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,11 +24,11 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|lk|lp):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|lk|lp|bg|bx):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', lk: '🔗', lp: '📁' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', lk: '🔗', lp: '📁' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua' },
 }
 
 export const MORE_TEXT: Record<TelegramLocale, {
@@ -53,6 +53,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
   pinHead: (name: string) => string
   pinEmpty: string
   pinLine: (name: string, status: string, tool: string | undefined, minutes: number | null) => string
+  backlogHead: (count: number) => string
+  backlogSkipped: (count: number) => string
 }> = {
   en: {
     opened: (n) => `🆕 Opened a new Claude session in <b>${escapeHtml(n)}</b>.`,
@@ -76,6 +78,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'No session open in Orrery.',
     pinLine: (n, s, t, m) => `• ${escapeHtml(n)} — ${escapeHtml(s)}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} min` : ''}`,
+    backlogHead: (n) => `🕘 ${n} command${n > 1 ? 's were' : ' was'} sent while Orrery was off:`,
+    backlogSkipped: (n) => `🗑 Skipped ${n} command${n > 1 ? 's' : ''}.`,
   },
   vi: {
     opened: (n) => `🆕 Đã mở session Claude mới ở <b>${escapeHtml(n)}</b>.`,
@@ -99,6 +103,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
     pinEmpty: 'Không có session nào mở trong Orrery.',
     pinLine: (n, s, t, m) => `• ${escapeHtml(n)} — ${escapeHtml(s)}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} phút` : ''}`,
+    backlogHead: (n) => `🕘 Có ${n} lệnh gửi lúc Orrery tắt:`,
+    backlogSkipped: (n) => `🗑 Đã bỏ qua ${n} lệnh.`,
   },
 }
 

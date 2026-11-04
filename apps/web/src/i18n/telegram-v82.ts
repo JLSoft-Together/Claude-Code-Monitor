@@ -70,6 +70,8 @@ const en = {
       unpaired: 'not paired',
       big: 'large files on',
       bot: 'Bot',
+      conflict: 'Another Orrery (or another program) is receiving this bot’s commands. Turn it off there, or turn off Commands here.',
+      retry: 'Try again',
     },
     big: {
       title: 'Large files (up to 2 GB)',
@@ -297,6 +299,8 @@ const vi: typeof en = {
       unpaired: 'chưa ghép tài khoản',
       big: 'file lớn đang bật',
       bot: 'Bot',
+      conflict: 'Bot đang được một bản Orrery khác (hoặc chương trình khác) nhận lệnh. Tắt bên kia hoặc tắt Nhận lệnh ở đây.',
+      retry: 'Thử lại',
     },
     big: {
       title: 'File lớn (tới 2 GB)',
