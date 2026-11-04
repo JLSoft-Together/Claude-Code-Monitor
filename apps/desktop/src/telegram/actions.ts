@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'lk' | 'lp'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,11 +24,11 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|lk|lp):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', lk: '🔗', lp: '📁' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', lk: '🔗', lp: '📁' },
 }
 
 export const MORE_TEXT: Record<TelegramLocale, {
@@ -47,6 +47,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
   allNone: string
   lastNone: string
   pick: (count: number, what: 'send' | 'stop' | 'last') => string
+  linkPick: string
+  linked: (name: string) => string
   last: (name: string) => string
   pinHead: (name: string) => string
   pinEmpty: string
@@ -67,6 +69,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
     allSent: (n) => `📨 Sent to ${n.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ')}.`,
     allNone: 'No agent session of this project could take it (none open, or each has a message waiting).',
     lastNone: 'No finished reply of that session yet.',
+    linkPick: 'This topic is not connected yet. Connect it to an open session (🔗) or a whole project (📁):',
+    linked: (n) => `🔗 This topic is now connected to <b>${escapeHtml(n)}</b>. Tag me here to talk to it.`,
     pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : 'Last reply of which one?'}`,
     last: (n) => `💬 Last reply of <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
@@ -88,6 +92,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
     allSent: (n) => `📨 Đã gửi vào ${n.map((x) => `<b>${escapeHtml(x)}</b>`).join(', ')}.`,
     allNone: 'Không session nào của project nhận được (chưa mở, hoặc đều đang có tin chờ gửi).',
     lastNone: 'Session này chưa có câu trả lời xong nào.',
+    linkPick: 'Topic này chưa nối với gì. Nối với session đang mở (🔗) hoặc cả project (📁):',
+    linked: (n) => `🔗 Đã nối topic này với <b>${escapeHtml(n)}</b>. Tag bot ở đây để làm việc với nó.`,
     pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
     last: (n) => `💬 Câu trả lời cuối của <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,

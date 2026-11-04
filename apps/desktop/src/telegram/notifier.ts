@@ -304,6 +304,7 @@ export class TelegramNotifier {
   private readonly agentOfPane = new Map<string, string>()
   private readonly agentOfTerminal = new Map<string, string>()
   private readonly terminalOfAgent = new Map<string, string>()
+  private openSessions: { agent: string; name: string; cwd: string }[] = []
   private readonly albums = new Map<string, { items: TgMessage[]; timer?: ReturnType<typeof setTimeout> }>()
   private lightChain: Promise<void> = Promise.resolve()
   private heavyRunning = 0
@@ -634,7 +635,10 @@ export class TelegramNotifier {
     if (cmd.kind === 'help') return void (await this.reply(msg, t.help(this.data.bot)))
     const session = this.data.sessionRoutes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     const route = session ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId } : this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
-    if (!route) return void (await this.reply(msg, t.noTopic))
+    if (!route) {
+      const keys = this.linkMarkup(msg)
+      return void (await this.reply(msg, keys ? MORE_TEXT[locale].linkPick : t.noTopic, keys))
+    }
     let lim = this.inboundLimit.get(msg.chatId)
     if (!lim) {
       lim = new RateLimiter(INBOUND_PER_CHAT_MIN, 60_000, this.deps.now ?? Date.now)
@@ -747,6 +751,16 @@ export class TelegramNotifier {
     if (sent !== null && result.ok && result.action === 'send' && result.terminalId) this.rememberSent(msg.chatId, sent, { kind: 'terminal', terminalId: result.terminalId })
   }
 
+  /** Buttons that connect an unassigned topic to an open session or its project, so no link has to be copied into the app. */
+  private linkMarkup(msg: TgMessage): Markup | undefined {
+    if (!this.receiving || msg.threadId === null || !this.openSessions.length) return undefined
+    const base = { terminalId: '', chatId: msg.chatId, threadId: msg.threadId }
+    const rows: [ActionKind, string, string][][] = this.openSessions.slice(0, 6).map((s) => [['lk', this.addAction({ kind: 'lk', ...base, project: s.cwd, cwd: s.cwd, name: s.name, extra: s.agent }), s.name]])
+    const projects = [...new Set(this.openSessions.map((s) => s.cwd))].slice(0, 4)
+    for (const p of projects) rows.push([['lp', this.addAction({ kind: 'lp', ...base, project: p, cwd: p, name: path.basename(p) || p }), path.basename(p) || p]])
+    return markup(this.deps.locale(), rows)
+  }
+
   private pickMarkup(kind: 'st' | 'lt' | 'np', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
     const locale = this.deps.locale()
     const rows = panes.slice(0, 8).map((p): [ActionKind, string, string][] => [
@@ -812,6 +826,7 @@ export class TelegramNotifier {
     const entry = m ? this.actions.get(m[2]!) : undefined
     if (!m || !entry || !this.receiving) return this.answer(id, a.expired)
     const kind = m[1] as ActionKind
+    if (kind === 'lk' || kind === 'lp') return this.linkTopic(id, kind, entry, cb)
     const ask = this.asker()
     if (!ask) return this.answer(id, INBOUND_TEXT[locale].unavailable)
     const msg = (cb.message ?? {}) as { message_id?: unknown }
@@ -865,6 +880,21 @@ export class TelegramNotifier {
     const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : a.stopped(entry.name)
     await this.answer(id)
     await this.post(where, done)
+  }
+
+  private async linkTopic(id: string, kind: 'lk' | 'lp', entry: ActionEntry, cb: Record<string, unknown>): Promise<void> {
+    for (const [k, e] of this.actions) if ((e.kind === 'lk' || e.kind === 'lp') && e.chatId === entry.chatId && e.threadId === entry.threadId) this.actions.delete(k)
+    const project = this.normProject(entry.project)
+    const res: TelegramSetResult = !project
+      ? { ok: false, error: 'invalid-project' }
+      : kind === 'lk'
+        ? this.linkSession({ session: entry.extra ?? '', name: entry.name, project, chatId: entry.chatId, threadId: entry.threadId })
+        : this.setRoute({ project, chatId: entry.chatId, threadId: entry.threadId })
+    await this.answer(id)
+    const msgId = (cb.message as { message_id?: unknown } | undefined)?.message_id
+    if (typeof msgId === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } })
+    const locale = this.deps.locale()
+    await this.post({ chatId: entry.chatId, threadId: entry.threadId }, res.ok ? MORE_TEXT[locale].linked(entry.name) : ACT_TEXT[locale].expired)
   }
 
   private async post(where: { chatId: string; threadId: number | null }, html: string, extra: Record<string, unknown> = {}): Promise<number | null> {
@@ -1132,9 +1162,14 @@ export class TelegramNotifier {
     if (!project) return { ok: false, error: 'invalid-project' }
     const target = parseTopicLink(input.link)
     if (!target) return { ok: false, error: 'invalid-link' }
-    const rest = this.data.sessionRoutes.filter((r) => r.session !== input.session)
+    return this.linkSession({ session: input.session, name: input.name, project, ...target })
+  }
+
+  private linkSession(route: TelegramSessionRoute): TelegramSetResult {
+    if (!isSessionId(route.session)) return { ok: false, error: 'invalid-project' }
+    const rest = this.data.sessionRoutes.filter((r) => r.session !== route.session)
     if (rest.length >= TELEGRAM_SESSION_ROUTES_MAX) return { ok: false, error: 'too-many' }
-    this.data.sessionRoutes = [...rest, { session: input.session, name: input.name, project, chatId: target.chatId, threadId: target.threadId }]
+    this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId }]
     return this.commit()
   }
 
@@ -1147,6 +1182,7 @@ export class TelegramNotifier {
     this.agentOfPane.clear()
     this.agentOfTerminal.clear()
     this.terminalOfAgent.clear()
+    this.openSessions = links.flatMap((l) => (l.terminal && l.cwd ? [{ agent: l.agent, name: l.name || path.basename(l.cwd), cwd: l.cwd }] : []))
     for (const l of links) {
       if (l.pane) this.agentOfPane.set(l.pane, l.agent)
       if (l.terminal) {

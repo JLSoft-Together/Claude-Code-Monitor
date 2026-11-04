@@ -179,6 +179,28 @@ describe('v84 commands', () => {
     tg.stop()
   })
 
+  it('offers to connect an unassigned topic to an open session or its project', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    const other = path.resolve(os.tmpdir(), 'tg-more', 'B')
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes: [] }))
+    await receiving(tg)
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2', name: 'Build bot', cwd: other }])
+    await tg.onUpdate(msg('@orrery_bot status', { message_thread_id: 12 }))
+    expect(lastText(sent)).toContain('Topic này chưa nối với gì')
+    const keys = keysOf(sent)
+    expect(keys.map((k) => k.text)).toEqual(['🔗 Build bot', '📁 B'])
+    await tg.onUpdate(cb(keys[0]!.callback_data))
+    expect(tg.state().sessionRoutes).toMatchObject([{ session: AGENT, name: 'Build bot', project: other, chatId: String(CHAT), threadId: 12 }])
+    expect(lastText(sent)).toContain('Đã nối topic này với <b>Build bot</b>')
+    await tg.onUpdate(cb(keys[1]!.callback_data))
+    expect(tg.state().routes.some((r) => r.project === other)).toBe(false)
+
+    await tg.onUpdate(msg('@orrery_bot status', { message_thread_id: 13 }))
+    await tg.onUpdate(cb(keysOf(sent)[1]!.callback_data))
+    expect(tg.state().routes.find((r) => r.project === other)).toMatchObject({ chatId: String(CHAT), threadId: 13 })
+    tg.stop()
+  })
+
   it('a reply to a bot message reaches its Claude session after a restart and a resume', async () => {
     const AGENT = '11111111-2222-4333-8444-555555555555'
     const answer = (req: TelegramInbound): TelegramInboundResult => (req.action === 'status' ? { ok: true, action: 'status', panes: [] } : { ok: true, action: 'send', name: 'B', queued: false, terminalId: 't2' })

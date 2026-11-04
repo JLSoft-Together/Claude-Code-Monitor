@@ -502,6 +502,9 @@ export interface TelegramPaneLink {
   agent: string
   pane?: string
   terminal?: string
+  /** Shown on the bot's "connect this topic" buttons. */
+  name?: string
+  cwd?: string
 }
 
 export function sanitizeSessionRouteInput(raw: unknown): TelegramSessionRouteInput | null {
@@ -525,6 +528,8 @@ export function sanitizePaneLinks(raw: unknown): TelegramPaneLink[] | null {
     if (!isSessionId(o.agent)) return []
     const pane = id(o.pane)
     const terminal = id(o.terminal)
-    return [{ agent: o.agent.toLowerCase(), ...(pane ? { pane } : {}), ...(terminal ? { terminal } : {}) }]
+    const name = typeof o.name === 'string' ? o.name.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, 80) : ''
+    const cwd = typeof o.cwd === 'string' && o.cwd && o.cwd.length <= 4096 && !/[\0\r\n]/.test(o.cwd) ? o.cwd : ''
+    return [{ agent: o.agent.toLowerCase(), ...(pane ? { pane } : {}), ...(terminal ? { terminal } : {}), ...(name ? { name } : {}), ...(cwd ? { cwd } : {}) }]
   })
 }

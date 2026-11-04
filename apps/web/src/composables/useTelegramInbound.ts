@@ -171,7 +171,7 @@ export function installTelegramInbound(): void {
 
   // Main routes a session's reports and its topic's commands by Claude session id; only the page knows which pane runs it.
   watch(
-    () => paneLinks(workspace.panes),
+    () => paneLinks(workspace.panes, nameOf),
     (links, before) => {
       if (JSON.stringify(links) !== JSON.stringify(before)) void telegramPanes(links)
     },
@@ -179,8 +179,10 @@ export function installTelegramInbound(): void {
   )
 }
 
-export function paneLinks(panes: readonly Pane[]): TelegramPaneLink[] {
-  return panes.flatMap((p): TelegramPaneLink[] =>
-    isTerm(p) && isSessionId(p.agentSessionId) ? [{ agent: p.agentSessionId.toLowerCase(), ...(p.sessionId ? { pane: p.sessionId } : {}), ...(p.terminalId ? { terminal: p.terminalId } : {}) }] : [],
-  )
+export function paneLinks(panes: readonly Pane[], nameOf?: (p: Pane) => string): TelegramPaneLink[] {
+  return panes.flatMap((p): TelegramPaneLink[] => {
+    if (!isTerm(p) || !isSessionId(p.agentSessionId)) return []
+    const cwd = workCwd(p)
+    return [{ agent: p.agentSessionId.toLowerCase(), ...(p.sessionId ? { pane: p.sessionId } : {}), ...(p.terminalId ? { terminal: p.terminalId } : {}), ...(nameOf ? { name: nameOf(p) } : {}), ...(cwd ? { cwd } : {}) }]
+  })
 }
