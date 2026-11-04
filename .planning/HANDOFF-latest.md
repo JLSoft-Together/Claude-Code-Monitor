@@ -1,65 +1,31 @@
-# HANDOFF — Orrery / Telegram QA + v85 (2026-11-05 01:43)
+# HANDOFF — Orrery / Telegram 7 gợi ý (2026-11-05 04:00)
 
-Đọc file này là làm tiếp được. Trả lời tiếng Việt, gọi user là "chủ nhân", xưng "con". File này thay `HANDOFF-2026-11-04-2326.md`.
-Nhật ký: `.planning/PROGRESS-2026-11-05-telegram.md` (cuối file là mới nhất).
+Đọc file này là làm tiếp được. Trả lời tiếng Việt, gọi user là "chủ nhân", xưng "con". File này thay `HANDOFF-2026-11-05-0143.md`.
+Nhật ký: `.planning/PROGRESS-2026-11-05-telegram-7.md` (đợt này), `.planning/PROGRESS-2026-11-05-telegram.md` (đợt trước cùng ngày).
 
 ## 1. Đang ở đâu
-- Project `F:/work/web/Claude-Code-Monitor` (máy F:), branch `master`, HEAD `3785f92` = `origin/master` (đã pull).
-- **CHƯA commit** toàn bộ việc phiên này (~35 file sửa + mới: `apps/desktop/src/telegram/mtproto.ts`,
-  `apps/web/src/components/workspace/TelegramLinkDialog.vue`, `.planning/PLAN-v85-telegram-big-files.md`,
-  `docs/qa/telegram-2026-11-04/08-stop-interrupted.png`, `package-lock.json` + `apps/desktop/package.json` (dep `telegram@2.26.22`)).
-  Không phải của phiên này, đừng đụng: `.planning/HANDOFF-2026-11-01-v76.md` (M), `bg_native_ad_cta.xml`, `git-gui.bat`, `spikes/`, `docs/qa/v79|v80/`.
-- Kiểm cuối (chạy thật 2026-11-05 01:40): `npm run typecheck` sạch; desktop 1213/1213; web 1692/1692 (`npm test -w @ccm/desktop|web`).
-- **Đang chạy**: bản dev QA (electron `node_modules/electron`, task nền) cổng 4319, CDP 9333, dữ liệu
-  `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/{ud,data}` (token sealed, owner Doan Vũ, topic #63 → `F:\work\android\WeJoy\last-war`,
-  khoá File lớn api_id 22439739 sealed). Script CDP: `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/qa.cjs` (`node qa.cjs eval "<js>"`, `shot <png>`, `targets`).
-  Có 1 pane Claude test ở last-war (con mở, rảnh).
-- **Hook toàn cục đang trỏ bản dev**: `~/.claude/settings.json` hook-bridge = `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/data/bin/hook-bridge.mjs`.
-  Tắt bản dev xong PHẢI trả về `C:/Users/dauph/AppData/Local/ccm/bin/hook-bridge.mjs` (bản cài).
-- Bị chặn: không. Chờ chủ nhân QA tay (mục 3).
+- `F:/work/web/Claude-Code-Monitor`, branch `master`, **đã commit hết** (HEAD `1842864`), **chưa push** (chủ nhân chỉ bảo commit).
+  Không phải của phiên này, đừng đụng: `.planning/HANDOFF-2026-11-01-v76.md` (M), `bg_native_ad_cta.xml`, `git-gui.bat`, `spikes/`, `docs/qa/v79|v80/`, `apps/*/.vitest/`.
+- Kiểm cuối (chạy thật): typecheck sạch; desktop telegram 110/110; web 1700/1700; collector 398 pass. Cả bộ desktop lần trước 1217/1218 — 1 lỗi chập chờn `layout-model-service` (chạy riêng pass).
+- **Đang chạy**: bản dev QA (task nền) cổng 4319, CDP 9333, dữ liệu `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/{ud,data}`, receiving bật. Script CDP `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/qa.cjs` (`eval`, `shot`, `targets`; bridge `window.ccmDesktop`; mở Settings: pinia `ui.settingsPage='telegram'; ui.settingsOpen=true`).
+- **Hook toàn cục trỏ bản dev**: `~/.claude/settings.json` hook-bridge = `C:/Users/dauph/AppData/Local/Temp/orrery-qa-tg/data/bin/hook-bridge.mjs`; tắt bản dev xong PHẢI trả về `C:/Users/dauph/AppData/Local/ccm/bin/hook-bridge.mjs`.
 
-## 2. Phiên này đã làm (chi tiết: docs §11an-e, `.code_index/_meta.md` dòng 2026-11-05)
-- **Lệnh bot**: `all` trống → help; help gom nhóm; `new` khi đã có session hỏi `➕`/`📨`; nhiều session → nút chọn cho `stop`/`last`/tin thường
-  (`notifier.pickMarkup`, kinds `nw`/`np`/`lt`); tên pane = alias/title session + `#n` (`shared uniquePaneNames`).
-- **Prompt từ Telegram** có dòng cuối nhắc `telegram_send` (`actions.viaTelegram`), trừ lệnh trần `/x /y`, `/compact …`, `/clear`.
-- **v85 File lớn ≤ 2 GB**: `telegram/mtproto.ts` `createBigUploader` (GramJS, `getInputEntity`, `topMsgId`, session sealed `mtSession`),
-  `telegram_send` > 50 MB → tin "⏫ đang gửi" + upload nền, MCP trả `uploading`. Settings: `api_id` + `api_hash` sealed. QA thật đạt (60 MB).
-- **Settings**: trang riêng `telegram` (`settings/index.ts`, `SettingsMenu.vue`), 3 tab (`TelegramSettings.vue`, key `ccm.telegram.tab`).
-- **Kết nối theo session / project**: rail `rowMenu` id `telegram-link` → `ui.telegramLink` → `TelegramLinkDialog.vue`.
-  `sessionRoutes` (Claude session id) trong `telegram.json`; trang đẩy pane↔session↔terminal qua `ccm:telegram-panes` (`useTelegramInbound` `paneLinks`);
-  notifier `setPanes` / `sessionRouteOf`: báo cáo + `telegram_send` + tin trong topic của session đi thẳng session đó; session chưa mở → `sessionClosed`.
-- **Người lạ**: câu cố định (state `stranger {enabled,text}`, `{owner}`), ≤ 5/phút `strangerLimit`, không vào session, không tốn token.
-- **Tên topic**: `notifier.learn` học từ poll, state `routes[].where` / `sessionRoutes[].where` = "Group › Topic".
-- Docs §11an-e, `PLAN-v85`, `DECISIONS.md` (2 dòng 2026-11-05), `RESULT.md` #16 ĐẠT + #18–#25.
+## 2. Đã làm hôm nay (sau HANDOFF-0143) — chi tiết docs §11an-e/f/g, `.code_index/_meta.md` 2026-11-05
+- Đợt 1 (main tự làm): menu tab "Kết nối Telegram…", reply theo Claude session qua restart, poll không chờ việc nặng + album, % file lớn, icon ✈ rail/tab, nút 🔗/📁 nối topic từ Telegram, pin theo topic session, GramJS tách `gramjs.cjs`.
+- Đợt 2 (manager-work-agent, WP-A..E trong `.planning/wp/tg2/`): lệnh lúc app tắt (hỏi ▶️/🗑, `lastUpdate`), 409 dừng sau 3 lần + banner, menu "/" + `/lệnh` trần, `tail`, câu hỏi AskUserQuestion thành nút (phím số), thành viên team (read/full), gom báo xong.
 
-## 3. Việc tiếp (theo thứ tự)
-1. QA tay với chủ nhân trên bản dev (đang chạy):
-   - `@PoorDog_JinVu_Bot status` trong #63 → Settings › Telegram phải hiện "Test Bot group › <tên topic>" thay "#63".
-   - Tạo topic mới → Copy Message Link → chuột phải session ở rail › Kết nối Telegram… › Chỉ session này → tin trong topic mới vào đúng pane.
-   - Tài khoản khác tag bot → câu "Xin lỗi bạn, tôi chỉ trả lời chủ nhân…".
-   - `@bot new` 2 lần → lần 2 hỏi nút (#23); `/hand-off`, `/compact` gõ nguyên văn.
-   Xong → ghi vào `docs/qa/telegram-2026-11-04/RESULT.md` (#26+).
-2. Đề xuất commit (chờ chủ nhân bảo "commit"), tách:
-   `🐛 Telegram: grouped help, bare all, new asks which session, session pick buttons, prompts say they came from Telegram` ·
-   `✨ Telegram large files up to 2 GB over MTProto` · `💄 Telegram settings page with tabs` ·
-   `✨ Connect a session or project to a Telegram topic from the rail; answer strangers; topic names` · `✅ QA notes`.
-3. Tắt bản dev: tìm PID `powershell "(Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | ? { $_.CommandLine -like '*orrery-qa-tg*' -and $_.CommandLine -notlike '*--type=*' }).ProcessId"` → `taskkill //T //F //PID <pid>`
-   (KHÔNG `taskkill /IM electron.exe` — bị chặn, đụng app khác), rồi trả hook (mục 1).
-4. Xoá file test ở project khác: `F:/work/android/WeJoy/last-war/test-60mb.bin` (hỏi chủ nhân trước).
-5. Còn mở từ trước: diff gồm file untracked, glob bí mật người dùng, lệnh nặng chặn poll, album ảnh (`.planning/wp/tg/WP-*-report.md`).
-Chờ chủ nhân: (a) commit khi nào — mặc định: chưa; (b) câu người lạ ghi "Jin Vũ" cứng? — mặc định: lấy tên tài khoản đã ghép, sửa được trong Settings.
+## 3. Việc tiếp
+1. QA tay với chủ nhân trên bản dev, ghi `docs/qa/telegram-2026-11-04/RESULT.md` (#26+):
+   lệnh lúc app tắt (tắt bản dev, nhắn `@bot status`, mở lại → tin hỏi); menu "/" trong group; `@bot tail`; Claude hỏi AskUserQuestion → bấm nút (**phím số chưa xác minh trên TUI thật**, có thể cần Enter → sửa `useTelegramInbound` `keyOf`); thêm thành viên bằng tài khoản khác; bật Gom báo xong; album; reply sau restart; % file lớn (`F:/work/android/WeJoy/last-war/test-60mb.bin`); banner 409 (chạy 2 bản cùng token).
+2. Tắt bản dev: PID `powershell "(Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | ? { $_.CommandLine -like '*orrery-qa-tg*' -and $_.CommandLine -notlike '*--type=*' }).ProcessId"` → `taskkill //T //F //PID <pid>`; trả hook (mục 1).
+3. Push khi chủ nhân bảo.
+Chờ chủ nhân: (a) push — mặc định chưa; (b) xoá `test-60mb.bin` — mặc định giữ; (c) phân quyền thành viên (DECISIONS 2026-11-05) — mặc định như đã ghi.
 
-## 4. Quyết định và ràng buộc
-- **Chủ nhân đã chốt**: GramJS trong app cho file lớn (không Local Bot API server); `new` hỏi trước khi mở thêm; người lạ được trả lời câu cố định;
-  Telegram thành trang Settings riêng; kết nối được cả session lẫn project.
-- Bot KHÔNG liệt kê được topic (Bot API không có, MTProto `BOT_METHOD_INVALID`) — đừng đề xuất lại.
-- Không tự commit/push. Không chạy bản dev ở 4317. Build để QA được phép (DECISIONS 2026-11-04).
-- Token bot từng lộ trong chat (phiên 2026-11-04) → nhắc chủ nhân `/revoke` ở BotFather.
-- Quirk: shell này rewrite `grep` → `rg` (ngoặc `(` phải escape, dùng `grep -F` hoặc Grep tool); chèn code qua `node -e` dễ hỏng `\x..`/`\n` —
-  dùng Edit tool hoặc `String.fromCharCode`; file vừa CRLF vừa LF. Đường dẫn Windows qua CDP eval: dùng `/`.
+## 4. Ràng buộc / quirk
+- Commit từng gói được phép trong phiên này; không trailer. Không chạy bản dev ở 4317.
+- Bot không liệt kê được topic (đừng đề xuất lại). Gợi ý đã gạt: chuyển giọng nói thành chữ (tốn API / nặng).
+- **Shell này nuốt `\`**: `python -`/`printf`/heredoc biến `\b \d \n \u` thành ký tự khác (đã gây 1 bug `screen` regex, đã sửa `d925acd`). Sửa code bằng Edit/Write; script thì Write ra file .py rồi chạy, dùng `chr(92)`. Sau mỗi WP quét ký tự điều khiển + bidi.
+- `grep` bị rewrite sang `rg` (ngoặc phải escape) → dùng Grep tool. `git diff` bị rtk lọc → `rtk proxy git --no-pager diff`.
 
 ## 5. File cần đọc lại
-1. `.planning/PROGRESS-2026-11-05-telegram.md`
-2. `docs/qa/telegram-2026-11-04/RESULT.md`
-3. `docs/claude-code-integration.md` §11an-e, `.planning/PLAN-v85-telegram-big-files.md`, `.planning/DECISIONS.md`
-4. `.code_index/_meta.md` (2 dòng 2026-11-05)
+1. `.planning/PROGRESS-2026-11-05-telegram-7.md` 2. `docs/claude-code-integration.md` §11an-e/f/g 3. `.planning/DECISIONS.md` (dòng 2026-11-05) 4. `docs/qa/telegram-2026-11-04/RESULT.md`
