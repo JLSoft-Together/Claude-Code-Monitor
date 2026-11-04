@@ -899,6 +899,15 @@ Details of the CLI: `docs/deepseek-integration.md`. Plan `.planning/PLAN-v81-dee
 - Captions cut before escaping (valid HTML ≤ 1024); `.orrery/` excluded unanchored; diff uses exclude pathspecs instead of one argument per file; pins stored as `{chatId, messageId}` and dropped when the route changes; the summary day is persisted (no second summary after a restart); a token change restarts polling; ignored-message broadcasts are throttled.
 - Still open: untracked files in the diff, the owner's own sensitive globs, heavy commands blocking the poll loop, albums.
 
+### 11an-e. QA follow-ups and large files (2026-11-05, `.planning/PLAN-v85-telegram-big-files.md`)
+
+- **Help**: `@bot help`, `/start` and a bare `@bot all` answer the grouped command list (a bare `all` used to be typed into the pane as the prompt "all").
+- **`new` with open sessions**: the bot asks first — `➕ New session`, plus one `📨 <pane> · <state>` button per open pane when a prompt was given (sends the prompt there). Pressing one clears the other buttons.
+- **Prompts from Telegram** (`send`, `new`, `all`, files, `📨`) end with one line saying the message came from Telegram and to report with `telegram_send` (attaching the asked-for file), so "send the APK here" reaches the topic.
+- **Large files (≤ 2000 MB)**: the Bot API caps bot uploads at 50 MB. Settings › Telegram › Large files takes an `api_id` + `api_hash` (my.telegram.org, sealed by safeStorage like the token) and uploads files over 50 MB from `telegram_send` over MTProto as the same bot (npm `telegram` = GramJS 2.26.22, pinned; `telegram/mtproto.ts`). The MCP call returns at once with `uploading`; the bot posts "⏫ uploading" and later the file or a failure line. The group is resolved with `getInputEntity` (bots may call `channels.getChannels` with access hash 0 to learn the real hash; sending with hash 0 fails as a chat error). The MTProto session is sealed in `telegram.json`, dropped on a token / key change, re-made once on an auth error; the client closes after 2 idle minutes; one upload at a time.
+- **Topic listing is not possible for bots**: `channels.getForumTopics` answers `BOT_METHOD_INVALID` (tried 2026-11-05), so topics still come from messages seen by the bot or a pasted link.
+- **Daily summary**: when Orrery starts after the summary time it skips that day and marks it done, so moving the time later the same day sends nothing until tomorrow (by design).
+
 ## 12. Open items
 
 | Item | State |

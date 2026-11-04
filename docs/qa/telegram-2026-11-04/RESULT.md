@@ -21,7 +21,15 @@ cổng 4319, CDP 9333. Bot `@PoorDog_JinVu_Bot`, group "Test Bot group" (forum),
 | 13 | Tin ghim trạng thái | ĐẠT | chủ nhân thấy tin ghim |
 | 14 | ✅ Cho phép → phím `1` duyệt đúng hộp xin quyền Write | ĐẠT | `07-permission.png` (Wrote …qa-perm.txt) |
 | 15 | ❌ Từ chối → Esc | ĐẠT | `07-permission.png` (User rejected write) |
-| 16 | `@bot stop` + nút ⏹ | CHƯA CHẮC — agent xong (2 s) trước khi bấm; chờ chủ nhân cho biết câu bot trả lời | `05-stop-photo.png` |
+| 16 | `@bot stop` + nút ⏹ | ĐẠT (test lại 2026-11-04 23:41, máy F:, topic #63 → `last-war`): `ping -n 90` đang chạy → ⏹ → pane "Interrupted" | `08-stop-interrupted.png` |
+| 18 | `@bot all` không nội dung | LỖI → ĐÃ SỬA: gửi chữ "all" vào pane như prompt; giờ trả help (help liệt kê cả lệnh v83/v84) | `inbound.ts` `commandOf`, test `telegram-more` |
+| 19 | `@bot resume` khi pane còn mở | ĐẠT (trả "không có session đã kết thúc") | chủ nhân chụp |
+| 20 | `@bot run` (1 config) | ĐẠT bước đầu: chạy luôn `main.dart`, không hỏi chọn | chủ nhân chụp |
+| 21 | Tổng kết ngày vào General | ĐẠT (`message_id` 89, 23:52). Mở app sau giờ tổng kết → bỏ qua cả ngày, đổi giờ trong ngày không gửi lại (đúng thiết kế) | log tạm `[QA-SUMMARY]` (đã gỡ) |
+| 22 | Help gom nhóm, mỗi lệnh 1 dòng | ĐẠT (chủ nhân xem, góp ý → đã làm lại) | `inbound.ts` `help` |
+| 23 | `new` khi project đã có session → hỏi + nút chọn session | MỚI (unit test), chờ QA tay | `telegram-more.test.ts` |
+| 24 | File > 50 MB qua MTProto (v85): `test-60mb.bin` vào topic #63 | ĐẠT sau sửa `getInputEntity` (lần 1 lỗi chat: gửi với access hash 0) | chủ nhân xác nhận |
+| 25 | Liệt kê topic bằng MTProto | KHÔNG ĐƯỢC: `BOT_METHOD_INVALID` — Telegram cấm bot gọi `getForumTopics` | log `[telegram] mtproto topics failed` (code đã gỡ) |
 | 17 | Tin "đã xong" của session ngoài Orrery (session main chạy trong bản cài) | ĐẠT theo thiết kế: session luôn `working` khi có agent nền → không có episode | activity store |
 
 Chưa test trên app (đã có unit test): giờ yên lặng, tổng kết ngày, cảnh báo hạn mức / ổ đầy / build lỗi + `run.log`,
