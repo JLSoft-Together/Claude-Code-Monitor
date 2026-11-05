@@ -18,6 +18,18 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.3.0',
+    date: '2026-11-05',
+    items: [
+      { en: 'Telegram: a session\'s topic is freed when the session ends or /clear, unless 📌 Keep', vi: 'Telegram: topic của session tự ngắt khi session kết thúc hoặc /clear, trừ khi 📌 Giữ' },
+      { en: 'Freed topics get Resume and Connect buttons; dead sessions are freed after a restart', vi: 'Topic vừa ngắt có nút Resume và Nối; session chết lúc tắt app được ngắt khi mở lại' },
+      { en: 'New Topics tab: topic map with filter, keep, test, show pane and disconnect', vi: 'Tab Topic mới: bản đồ topic có lọc, giữ, gửi thử, mở pane và ngắt' },
+      { en: 'Topics the bot can no longer post to are marked; "where" tells what a topic is on', vi: 'Topic bot không gửi được được đánh dấu; lệnh "where" cho biết topic đang nối gì' },
+      { en: 'Optional topic icons: ⚡ working, ❓ waiting for you, ✔ idle', vi: 'Tuỳ chọn icon topic: ⚡ đang làm, ❓ chờ bạn, ✔ rảnh' },
+      { en: 'Setup steps strip in Settings › Telegram; the ✈ mark opens the link dialog', vi: 'Dải bước cài đặt ở Cài đặt › Telegram; dấu ✈ mở hộp nối topic' },
+    ],
+  },
+  {
     version: '3.2.0',
     date: '2026-11-05',
     items: [
