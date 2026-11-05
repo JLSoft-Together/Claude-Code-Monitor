@@ -845,7 +845,9 @@ export class TelegramNotifier {
       return
     }
     const from = role === 'owner' ? msg.fromName : this.nameOf(msg.fromId)
-    const session = this.data.sessionRoutes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    // Several sessions can share a topic (an old one left linked): an open one wins, else the latest linked.
+    const onTopic = this.data.sessionRoutes.filter((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    const session = [...onTopic].reverse().find((r) => this.terminalOfAgent.has(r.session)) ?? onTopic.at(-1)
     const route = session ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId } : this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     if (!route) {
       const keys = role === 'owner' ? this.linkMarkup(msg) : undefined
@@ -1424,8 +1426,11 @@ export class TelegramNotifier {
 
   private linkSession(route: TelegramSessionRoute): TelegramSetResult {
     if (!isSessionId(route.session)) return { ok: false, error: 'invalid-project' }
-    const rest = this.data.sessionRoutes.filter((r) => r.session !== route.session)
+    // One session per topic: a topic still tied to an older session would keep taking its messages.
+    const displaced = this.data.sessionRoutes.filter((r) => r.session !== route.session && r.chatId === route.chatId && r.threadId === route.threadId)
+    const rest = this.data.sessionRoutes.filter((r) => r.session !== route.session && !displaced.includes(r))
     if (rest.length >= TELEGRAM_SESSION_ROUTES_MAX) return { ok: false, error: 'too-many' }
+    for (const r of displaced) this.dropPin(sessionPinKey(r.session))
     const old = this.data.sessionRoutes.find((r) => r.session === route.session)
     if (old && (old.chatId !== route.chatId || old.threadId !== route.threadId)) this.dropPin(sessionPinKey(route.session))
     this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId }]
@@ -1439,6 +1444,7 @@ export class TelegramNotifier {
   }
 
   setPanes(links: TelegramPaneLink[]): void {
+    const before = new Map(this.agentOfTerminal)
     this.agentOfPane.clear()
     this.agentOfTerminal.clear()
     this.terminalOfAgent.clear()
@@ -1450,6 +1456,29 @@ export class TelegramNotifier {
         this.terminalOfAgent.set(l.agent, l.terminal)
       }
     }
+    if (this.followSessions(links, before)) this.commit()
+  }
+
+  /** Claude Code can start a new session id in the same pane (/clear, some resumes) and panes get renamed; the topic link follows both. */
+  private followSessions(links: TelegramPaneLink[], before: Map<string, string>): boolean {
+    let changed = false
+    for (const l of links) {
+      const prev = l.terminal ? before.get(l.terminal) : undefined
+      if (!prev || prev === l.agent || this.data.sessionRoutes.some((r) => r.session === l.agent)) continue
+      const old = this.data.sessionRoutes.find((r) => r.session === prev)
+      if (!old) continue
+      this.dropPin(sessionPinKey(prev))
+      old.session = l.agent
+      changed = true
+    }
+    for (const l of links) {
+      const r = l.name ? this.data.sessionRoutes.find((s) => s.session === l.agent) : undefined
+      if (r && r.name !== l.name) {
+        r.name = l.name
+        changed = true
+      }
+    }
+    return changed
   }
 
   private sessionRouteOf(agent: string | undefined): TelegramRoute | null {

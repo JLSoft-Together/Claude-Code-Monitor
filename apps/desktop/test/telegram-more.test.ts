@@ -179,6 +179,24 @@ describe('v84 commands', () => {
     tg.stop()
   })
 
+  it('keeps one session per topic, follows a new session id in the same pane and a renamed pane', async () => {
+    const OLD = '11111111-2222-4333-8444-555555555555'
+    const NEW = '66666666-2222-4333-8444-555555555555'
+    const NEXT = '77777777-2222-4333-8444-555555555555'
+    const { tg, asked } = setup((req) => (req.action === 'status' ? { ok: true, action: 'status', panes: [] } : { ok: true, action: 'send', name: 'B', queued: false, terminalId: 't2' }))
+    await receiving(tg)
+    tg.setSessionRoute({ session: OLD, name: 'A', project, link: 't.me/c/1234567890/9/100' })
+    tg.setSessionRoute({ session: NEW, name: 'B', project, link: 't.me/c/1234567890/9/100' })
+    expect(tg.state().sessionRoutes.map((r) => r.session)).toEqual([NEW])
+
+    tg.setPanes([{ agent: NEW, pane: 'p2', terminal: 't2', name: 'B' }])
+    tg.setPanes([{ agent: NEXT, pane: 'p2', terminal: 't2', name: 'B dev' }])
+    expect(tg.state().sessionRoutes).toMatchObject([{ session: NEXT, name: 'B dev', threadId: 9 }])
+    await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
+    expect(asked.at(-1)).toMatchObject({ action: 'send', target: { kind: 'terminal', terminalId: 't2' } })
+    tg.stop()
+  })
+
   it('offers to connect an unassigned topic to an open session or its project', async () => {
     const AGENT = '11111111-2222-4333-8444-555555555555'
     const other = path.resolve(os.tmpdir(), 'tg-more', 'B')
