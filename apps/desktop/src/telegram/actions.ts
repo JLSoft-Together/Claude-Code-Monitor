@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx' | 'qa'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx' | 'qa' | 'ul'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -24,11 +24,11 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx|qa):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx|qa|ul):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip', qa: '🔹' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua', qa: '🔹' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip', qa: '🔹', ul: '✂️ Disconnect' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua', qa: '🔹', ul: '✂️ Ngắt' },
 }
 
 export const PLAN_LABELS: Record<TelegramLocale, { ap: string; dn: string }> = {
@@ -54,6 +54,11 @@ export const MORE_TEXT: Record<TelegramLocale, {
   pick: (count: number, what: 'send' | 'stop' | 'last' | 'tail') => string
   linkPick: string
   linked: (name: string) => string
+  whereSession: (name: string, project: string, open: boolean, keep: boolean) => string
+  whereProject: (label: string, project: string) => string
+  unlinked: (name: string) => string
+  ended: (name: string) => string
+  cleared: (name: string) => string
   last: (name: string) => string
   pinHead: (name: string) => string
   pinEmpty: string
@@ -78,6 +83,11 @@ export const MORE_TEXT: Record<TelegramLocale, {
     lastNone: 'No finished reply of that session yet.',
     linkPick: 'This topic is not connected yet. Connect it to an open session (🔗) or a whole project (📁):',
     linked: (n) => `🔗 This topic is now connected to <b>${escapeHtml(n)}</b>. Tag me here to talk to it.`,
+    whereSession: (n, p, o, k) => `🔗 This topic is connected to session <b>${escapeHtml(n)}</b> — ${o ? 'open' : 'not open'} in Orrery.\n<code>${escapeHtml(p)}</code>${k ? '\nKept after the session ends.' : ''}`,
+    whereProject: (l, p) => `📁 This topic is connected to project <b>${escapeHtml(l)}</b>; messages go to its sessions.\n<code>${escapeHtml(p)}</code>`,
+    unlinked: (n) => `✂️ Disconnected this topic from <b>${escapeHtml(n)}</b>.`,
+    ended: (n) => `⏹ Session <b>${escapeHtml(n)}</b> ended, so this topic was disconnected. Reopen it (↩️) or connect another session (🔗):`,
+    cleared: (n) => `🧹 <b>${escapeHtml(n)}</b> started a new session (/clear), so this topic was disconnected. Connect the new one (🔗):`,
     pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : w === 'tail' ? 'Terminal of which one?' : 'Last reply of which one?'}`,
     last: (n) => `💬 Last reply of <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
@@ -103,6 +113,11 @@ export const MORE_TEXT: Record<TelegramLocale, {
     lastNone: 'Session này chưa có câu trả lời xong nào.',
     linkPick: 'Topic này chưa nối với gì. Nối với session đang mở (🔗) hoặc cả project (📁):',
     linked: (n) => `🔗 Đã nối topic này với <b>${escapeHtml(n)}</b>. Tag bot ở đây để làm việc với nó.`,
+    whereSession: (n, p, o, k) => `🔗 Topic này đang nối với session <b>${escapeHtml(n)}</b> — ${o ? 'đang mở' : 'chưa mở'} trong Orrery.\n<code>${escapeHtml(p)}</code>${k ? '\nGiữ nối cả khi session kết thúc.' : ''}`,
+    whereProject: (l, p) => `📁 Topic này đang nối với project <b>${escapeHtml(l)}</b>; tin nhắn vào các session của project.\n<code>${escapeHtml(p)}</code>`,
+    unlinked: (n) => `✂️ Đã ngắt topic này khỏi <b>${escapeHtml(n)}</b>.`,
+    ended: (n) => `⏹ Session <b>${escapeHtml(n)}</b> đã kết thúc nên topic này đã được ngắt. Mở lại (↩️) hoặc nối session khác (🔗):`,
+    cleared: (n) => `🧹 <b>${escapeHtml(n)}</b> đã sang session mới (/clear) nên topic này đã được ngắt. Nối session mới (🔗):`,
     pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : w === 'tail' ? 'Xem terminal của session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
     last: (n) => `💬 Câu trả lời cuối của <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,

@@ -70,9 +70,9 @@ export function registerTelegramIpc(
     if (links) tg.setPanes(links)
     return !!links
   })
-  ipcMain.handle('ccm:telegram-test', async (event, raw: unknown): Promise<TelegramTestResult> => {
+  ipcMain.handle('ccm:telegram-test', async (event, raw: unknown, session: unknown): Promise<TelegramTestResult> => {
     if (!isAppFrame(event)) return { ok: false, error: 'config' }
-    return tg.test(typeof raw === 'string' && raw.length < 4096 ? raw : undefined)
+    return tg.test(typeof raw === 'string' && raw.length < 4096 ? raw : undefined, isSessionId(session) ? session : undefined)
   })
   ipcMain.handle('ccm:telegram-discover', async (event): Promise<TelegramDiscoverResult> => (isAppFrame(event) ? tg.discover() : { ok: false, error: 'config' }))
   ipcMain.handle('ccm:telegram-create-topic', async (event, raw: unknown): Promise<TelegramCreateTopicResult> => {

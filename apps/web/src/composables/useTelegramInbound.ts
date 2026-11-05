@@ -137,7 +137,7 @@ export function installTelegramInbound(): void {
   function openIds(): Set<string> {
     const ids = new Set<string>()
     for (const p of workspace.panes) {
-      if (!isTerm(p)) continue
+      if (!isTerm(p) || !agentLive(p)) continue
       if (p.agentSessionId) ids.add(p.agentSessionId)
       if (p.resume) ids.add(p.resume)
       const s = sessionOf(p)
@@ -193,9 +193,14 @@ export function installTelegramInbound(): void {
   )
 }
 
+/** A pane keeps `agentSessionId` after its agent quits (a shell again); that session is over, so it can be resumed and its topic freed. */
+export function agentLive(p: Pick<Pane, 'preset' | 'agent'>): boolean {
+  return p.preset === 'shell' ? !!p.agent && p.agent !== 'shell' : p.agent !== 'shell'
+}
+
 export function paneLinks(panes: readonly Pane[], nameOf?: (p: Pane) => string): TelegramPaneLink[] {
   return panes.flatMap((p): TelegramPaneLink[] => {
-    if (!isTerm(p) || !isSessionId(p.agentSessionId)) return []
+    if (!isTerm(p) || !isSessionId(p.agentSessionId) || !agentLive(p)) return []
     const cwd = workCwd(p)
     return [{ agent: p.agentSessionId.toLowerCase(), ...(p.sessionId ? { pane: p.sessionId } : {}), ...(p.terminalId ? { terminal: p.terminalId } : {}), ...(nameOf ? { name: nameOf(p) } : {}), ...(cwd ? { cwd } : {}) }]
   })

@@ -65,6 +65,8 @@ export interface TelegramRoute {
   threadId: number | null
   /** State only: "Group › Topic" as far as the bot has seen the names. */
   where?: string
+  /** State only: the last send to this topic failed because the topic / group is gone or the bot lost its rights. */
+  broken?: boolean
 }
 
 export type TelegramError = 'network' | 'status' | 'timeout' | 'rate' | 'keychain' | 'config' | 'token' | 'chat' | 'too-large' | 'conflict'
@@ -98,6 +100,8 @@ export interface TelegramState {
   summary: TelegramSummary
   alerts: boolean
   pinStatus: boolean
+  /** Forum topic icon follows its sessions: working / waiting / idle. */
+  topicIcons: boolean
   health: TelegramHealth
   bigFiles: TelegramBigFiles
   sessionRoutes: TelegramSessionRoute[]
@@ -204,6 +208,7 @@ export interface TelegramPatch {
   summary?: TelegramSummary
   alerts?: boolean
   pinStatus?: boolean
+  topicIcons?: boolean
   bigFiles?: boolean
   apiId?: number | null
   apiHash?: string
@@ -311,7 +316,7 @@ export function sanitizeTelegramPatch(raw: unknown): TelegramPatch | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
   const out: TelegramPatch = {}
-  for (const k of ['enabled', 'includeReply', 'digest', 'waiting', 'receiving', 'alerts', 'pinStatus', 'bigFiles'] as const) {
+  for (const k of ['enabled', 'includeReply', 'digest', 'waiting', 'receiving', 'alerts', 'pinStatus', 'topicIcons', 'bigFiles'] as const) {
     if (r[k] === undefined) continue
     if (typeof r[k] !== 'boolean') return null
     out[k] = r[k] as boolean
@@ -592,14 +597,21 @@ export interface TelegramSessionRoute {
   project: string
   chatId: string
   threadId: number | null
+  /** Link survives the session ending and follows a new session id in the same pane (/clear, resume). */
+  keep?: boolean
   where?: string
+  broken?: boolean
 }
 
+/** Topic from `link`, or `chatId` / `threadId` from a scanned topic list. `keep` left out keeps the current value. */
 export interface TelegramSessionRouteInput {
   session: string
   name: string
   project: string
-  link: string
+  link?: string
+  chatId?: string
+  threadId?: number | null
+  keep?: boolean
 }
 
 /** Page → main: which Workspace pane / monitor terminal runs which agent session right now. */
@@ -617,9 +629,12 @@ export function sanitizeSessionRouteInput(raw: unknown): TelegramSessionRouteInp
   const r = raw as Record<string, unknown>
   if (typeof r.session !== 'string' || !SESSION_ID.test(r.session)) return null
   if (typeof r.project !== 'string' || !r.project || r.project.length > 4096 || /[\0\r\n]/.test(r.project)) return null
-  if (typeof r.link !== 'string' || r.link.length > 300) return null
   const name = typeof r.name === 'string' ? r.name.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, NAME_MAX) : ''
-  return { session: r.session.toLowerCase(), name: name || 'Claude', project: r.project, link: r.link }
+  const base = { session: r.session.toLowerCase(), name: name || 'Claude', project: r.project, ...(typeof r.keep === 'boolean' ? { keep: r.keep } : {}) }
+  if (typeof r.link === 'string') return r.link.length > 300 ? null : { ...base, link: r.link }
+  if (!isChatId(r.chatId)) return null
+  const threadId = r.threadId === null || r.threadId === undefined ? null : isThreadId(r.threadId) ? r.threadId : undefined
+  return threadId === undefined ? null : { ...base, chatId: r.chatId, threadId }
 }
 
 export const isSessionId = (v: unknown): v is string => typeof v === 'string' && SESSION_ID.test(v)

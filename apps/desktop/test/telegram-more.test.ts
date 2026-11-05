@@ -15,6 +15,8 @@ const OWNER = 555
 const project = path.resolve(os.tmpdir(), 'tg-more', 'A')
 const UUID = '0b7c1e1e-5f7a-4d55-9c6e-2a1b3c4d5e6f'
 
+const ICONS = [{ emoji: '⚡️', custom_emoji_id: 'run' }, { emoji: '❓', custom_emoji_id: 'ask' }, { emoji: '✔️', custom_emoji_id: 'ok' }]
+
 type Sent = { method: string; body: Record<string, unknown> | FormData }
 
 function setup(answer: (req: TelegramInbound) => TelegramInboundResult, extra: Partial<ConstructorParameters<typeof TelegramNotifier>[0]> = {}, failEdit = false) {
@@ -27,7 +29,7 @@ function setup(answer: (req: TelegramInbound) => TelegramInboundResult, extra: P
     const body = init.body instanceof FormData ? init.body : typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
     sent.push({ method, body })
     if (method === 'editMessageText' && failEdit) return { ok: false, status: 400, json: async () => ({ ok: false, description: 'Bad Request: message to edit not found' }) }
-    const result = method === 'getMe' ? { id: 42, username: 'orrery_bot' } : method === 'sendMessage' ? { message_id: nextId++ } : true
+    const result = method === 'getMe' ? { id: 42, username: 'orrery_bot' } : method === 'getForumTopicIconStickers' ? ICONS : method === 'sendMessage' ? { message_id: nextId++ } : true
     return { ok: true, status: 200, json: async () => ({ ok: true, result }) }
   }
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tg-more-'))
@@ -171,11 +173,25 @@ describe('v84 commands', () => {
     await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
     expect(asked.at(-1)).toMatchObject({ action: 'send', target: { kind: 'terminal', terminalId: 't2' } })
 
-    tg.setPanes([])
-    await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
-    expect(lastText(sent)).toContain('chưa mở trong Orrery')
     expect(tg.removeSessionRoute(AGENT).ok).toBe(true)
     expect(tg.state().sessionRoutes).toEqual([])
+    tg.stop()
+  })
+
+  it('frees the topic when its running session ends, and resume from that topic still lists the project', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    const { tg, sent, asked } = setup((req) => (req.action === 'resumeList' ? { ok: true, action: 'resumeList', items: [{ id: AGENT, name: 'B', cwd: project, endedAt: '2026-11-05T10:00:00Z' }] } : { ok: true, action: 'status', panes: [] }))
+    await receiving(tg)
+    tg.setSessionRoute({ session: AGENT, name: 'B', project, link: 't.me/c/1234567890/9/100' })
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }])
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }, { agent: '22222222-2222-4333-8444-555555555555', pane: 'p3' }])
+    expect(tg.state().sessionRoutes).toHaveLength(1)
+
+    tg.setPanes([{ agent: AGENT, pane: 'p2' }])
+    expect(tg.state().sessionRoutes).toEqual([])
+    await tg.onUpdate(msg('@orrery_bot resume', { message_thread_id: 9 }))
+    expect(asked.at(-1)).toMatchObject({ action: 'resumeList', project })
+    expect(keysOf(sent).map((k) => k.text)).toEqual(['↩️ B'])
     tg.stop()
   })
 
@@ -186,7 +202,7 @@ describe('v84 commands', () => {
     const { tg, asked } = setup((req) => (req.action === 'status' ? { ok: true, action: 'status', panes: [] } : { ok: true, action: 'send', name: 'B', queued: false, terminalId: 't2' }))
     await receiving(tg)
     tg.setSessionRoute({ session: OLD, name: 'A', project, link: 't.me/c/1234567890/9/100' })
-    tg.setSessionRoute({ session: NEW, name: 'B', project, link: 't.me/c/1234567890/9/100' })
+    tg.setSessionRoute({ session: NEW, name: 'B', project, link: 't.me/c/1234567890/9/100', keep: true })
     expect(tg.state().sessionRoutes.map((r) => r.session)).toEqual([NEW])
 
     tg.setPanes([{ agent: NEW, pane: 'p2', terminal: 't2', name: 'B' }])
@@ -194,6 +210,114 @@ describe('v84 commands', () => {
     expect(tg.state().sessionRoutes).toMatchObject([{ session: NEXT, name: 'B dev', threadId: 9 }])
     await tg.onUpdate(msg('@orrery_bot chạy lint', { message_thread_id: 9 }))
     expect(asked.at(-1)).toMatchObject({ action: 'send', target: { kind: 'terminal', terminalId: 't2' } })
+    tg.stop()
+  })
+
+  it('/clear without keep frees the topic and offers the new session; an ended one offers resume', async () => {
+    const A = '11111111-2222-4333-8444-555555555555'
+    const B = '66666666-2222-4333-8444-555555555555'
+    const flush = () => new Promise((r) => setTimeout(r, 0))
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes: [] }))
+    await receiving(tg)
+    tg.setSessionRoute({ session: A, name: 'Build', project, chatId: String(CHAT), threadId: 9 })
+    tg.setPanes([{ agent: A, pane: 'p2', terminal: 't2', name: 'Build', cwd: project }])
+    tg.setPanes([{ agent: B, pane: 'p2', terminal: 't2', name: 'Build', cwd: project }])
+    await flush()
+    expect(tg.state().sessionRoutes).toEqual([])
+    const notice = sent.filter((x) => x.method === 'sendMessage').at(-1)!.body as Record<string, unknown>
+    expect(notice).toMatchObject({ message_thread_id: 9, disable_notification: true })
+    expect(lastText(sent)).toContain('/clear')
+    const link = keysOf(sent)
+    expect(link.map((k) => k.text)).toEqual(['🔗 Build'])
+    await tg.onUpdate(cb(link[0]!.callback_data))
+    expect(tg.state().sessionRoutes).toMatchObject([{ session: B, threadId: 9 }])
+
+    tg.setPanes([])
+    await flush()
+    expect(tg.state().sessionRoutes).toEqual([])
+    expect(lastText(sent)).toContain('đã kết thúc')
+    expect(keysOf(sent).map((k) => k.text)).toEqual(['↩️ Build'])
+    tg.stop()
+  })
+
+  it('frees, a few minutes after start, a link whose session ended while the app was off', async () => {
+    const A = '11111111-2222-4333-8444-555555555555'
+    const B = '66666666-2222-4333-8444-555555555555'
+    const C = '77777777-2222-4333-8444-555555555555'
+    let now = Date.parse('2026-11-05T09:00:00Z')
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes: [] }), { now: () => now })
+    tg.setSessionRoute({ session: A, name: 'Gone', project, chatId: String(CHAT), threadId: 9 })
+    tg.setSessionRoute({ session: B, name: 'Back', project, chatId: String(CHAT), threadId: 10 })
+    tg.setSessionRoute({ session: C, name: 'Kept', project, chatId: String(CHAT), threadId: 11, keep: true })
+    tg.setPanes([{ agent: B, pane: 'p2' }])
+    expect(tg.state().sessionRoutes).toHaveLength(3)
+    now += 60_000
+    tg.setPanes([{ agent: B, pane: 'p2', terminal: 't2' }])
+    await tg.tick()
+    expect(tg.state().sessionRoutes).toHaveLength(3)
+    now += 3 * 60_000
+    await tg.tick()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(tg.state().sessionRoutes.map((r) => r.session)).toEqual([B, C])
+    expect(lastText(sent)).toContain('<b>Gone</b> đã kết thúc')
+    now += 60_000
+    tg.setPanes([])
+    expect(tg.state().sessionRoutes.map((r) => r.session)).toEqual([C])
+    tg.stop()
+  })
+
+  it('a kept link stays when its session ends', async () => {
+    const A = '11111111-2222-4333-8444-555555555555'
+    const { tg } = setup(() => ({ ok: true, action: 'status', panes: [] }))
+    tg.setSessionRoute({ session: A, name: 'Build', project, chatId: String(CHAT), threadId: 9, keep: true })
+    tg.setPanes([{ agent: A, pane: 'p2', terminal: 't2' }])
+    tg.setPanes([])
+    expect(tg.state().sessionRoutes).toMatchObject([{ session: A, keep: true }])
+    tg.setSessionRoute({ session: A, name: 'Build', project, chatId: String(CHAT), threadId: 10 })
+    expect(tg.state().sessionRoutes).toMatchObject([{ threadId: 10, keep: true }])
+    tg.stop()
+  })
+
+  it('where tells what the topic is connected to and disconnects it', async () => {
+    const A = '11111111-2222-4333-8444-555555555555'
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes: [] }))
+    await receiving(tg)
+    expect(commandOf(readMessage(msg('@orrery_bot where'), 42)!, 'orrery_bot')).toEqual({ kind: 'where' })
+    tg.setSessionRoute({ session: A, name: 'Build', project, chatId: String(CHAT), threadId: 9 })
+    tg.setPanes([{ agent: A, pane: 'p2', terminal: 't2' }])
+    await tg.onUpdate(msg('@orrery_bot where', { message_thread_id: 9 }))
+    expect(lastText(sent)).toContain('session <b>Build</b> — đang mở')
+    await tg.onUpdate(cb(keysOf(sent)[0]!.callback_data))
+    expect(tg.state().sessionRoutes).toEqual([])
+    expect(lastText(sent)).toContain('Đã ngắt topic này khỏi <b>Build</b>')
+
+    await tg.onUpdate(msg('@orrery_bot where'))
+    expect(lastText(sent)).toContain('project <b>A</b>')
+    await tg.onUpdate(cb(keysOf(sent)[0]!.callback_data))
+    expect(tg.state().routes).toEqual([])
+    tg.stop()
+  })
+
+  it('marks a topic broken when Telegram says it is gone, and a session test goes to its own topic', async () => {
+    const A = '11111111-2222-4333-8444-555555555555'
+    let gone = true
+    const sent: string[] = []
+    const fetch: TgFetch = async (url, init) => {
+      const method = url.split('/').pop()!
+      if (method === 'getUpdates') return new Promise(() => undefined)
+      if (method === 'getMe') return { ok: true, status: 200, json: async () => ({ ok: true, result: { id: 42, username: 'orrery_bot' } }) }
+      sent.push(String(init.body))
+      return gone ? { ok: false, status: 400, json: async () => ({ ok: false, description: 'Bad Request: message thread not found' }) } : { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 1 } }) }
+    }
+    const { tg } = setup(() => ({ ok: true, action: 'status', panes: [] }), { fetch })
+    tg.setSessionRoute({ session: A, name: 'Build', project, chatId: String(CHAT), threadId: 9 })
+    expect((await tg.test(undefined, A)).ok).toBe(false)
+    expect(sent.at(-1)).toContain('"message_thread_id":9')
+    expect(tg.state().sessionRoutes[0]!.broken).toBe(true)
+    expect(tg.state().routes[0]!.broken).toBeUndefined()
+    gone = false
+    expect((await tg.test(undefined, A)).ok).toBe(true)
+    expect(tg.state().sessionRoutes[0]!.broken).toBeUndefined()
     tg.stop()
   })
 
@@ -340,5 +464,34 @@ describe('pinned status and health', () => {
     expect(sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(2)
     tg.removeSessionRoute(AGENT)
     expect(sent.at(-1)!.method).toBe('unpinChatMessage')
+  })
+})
+
+describe('topic icons', () => {
+  it('shows the most urgent state per topic, keeps a session to its own topic and clears on off', async () => {
+    const AGENT = '11111111-2222-4333-8444-555555555555'
+    let panes = [{ name: 'A', status: 'working', terminalId: 't1' }, { name: 'B', status: 'waiting', terminalId: 't2' }]
+    let now = Date.parse('2026-11-05T09:00:00Z')
+    const { tg, sent } = setup(() => ({ ok: true, action: 'status', panes }), { now: () => now })
+    tg.setSessionRoute({ session: AGENT, name: 'B', project, chatId: String(CHAT), threadId: 9 })
+    tg.setPanes([{ agent: AGENT, pane: 'p2', terminal: 't2' }])
+    await tg.iconTick()
+    expect(sent.some((s) => s.method === 'editForumTopic')).toBe(false)
+    tg.set({ topicIcons: true })
+    await tg.iconTick()
+    const edits = () => sent.filter((s) => s.method === 'editForumTopic').map((s) => s.body as Record<string, unknown>)
+    expect(edits().map((e) => [e.message_thread_id, e.icon_custom_emoji_id])).toEqual([[7, 'run'], [9, 'ask']])
+    await tg.iconTick()
+    expect(edits()).toHaveLength(2)
+    panes = [{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'B', status: 'waiting', terminalId: 't2' }]
+    await tg.iconTick()
+    expect(edits()).toHaveLength(2)
+    now += 30_000
+    await tg.iconTick()
+    expect(edits().at(-1)).toMatchObject({ message_thread_id: 7, icon_custom_emoji_id: 'ok' })
+    tg.set({ topicIcons: false })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(edits().slice(-2).map((e) => e.icon_custom_emoji_id)).toEqual(['', ''])
+    tg.stop()
   })
 })

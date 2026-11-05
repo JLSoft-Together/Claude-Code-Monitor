@@ -8,7 +8,7 @@ import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { installMcpCalls } from '../../composables/useMcpCalls'
 import { installTelegramInbound } from '../../composables/useTelegramInbound'
-import { useTelegramLinks } from '../../composables/useTelegramLinks'
+import { openTelegramLink, useTelegramLinks } from '../../composables/useTelegramLinks'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
 import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
@@ -1484,7 +1484,7 @@ onBeforeUnmount(() => {
                 <span class="sr-only">{{ tabNewsOf(tab)!.label }}</span>
               </span>
             </Transition>
-            <span v-if="telegramWhere(tab)" class="inline-flex shrink-0 text-ink-faint" data-tab-telegram>
+            <span v-if="telegramWhere(tab)" class="inline-flex shrink-0 cursor-pointer text-ink-faint hover:text-ink" data-tab-telegram @click.stop="openTelegramLink(agentPaneOf(tab), tabName(tab))">
               <Send :size="10" aria-hidden="true" />
               <span class="sr-only">{{ t('telegram.connect.linkedTo', { where: telegramWhere(tab) }) }}</span>
             </span>

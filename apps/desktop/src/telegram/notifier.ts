@@ -76,6 +76,14 @@ export const TELEGRAM_PER_CHAT_MIN = 20
 export const TELEGRAM_PER_HOUR = 120
 const TIMEOUT_MS = 15_000
 const UPLOAD_TIMEOUT_MS = 180_000
+/** Restored panes start their agents with --resume and the collector needs a few seconds to see them. */
+const STARTUP_SWEEP_MS = 3 * 60_000
+/** Telegram rate-limits topic edits per group; one icon change per topic per 20 s is well under it. */
+const ICON_EDIT_MS = 20_000
+type TopicMood = 'working' | 'waiting' | 'idle'
+const MOOD_RANK: Record<TopicMood, number> = { idle: 0, working: 1, waiting: 2 }
+/** First one present in getForumTopicIconStickers wins (the bot may only use that set). Compared without U+FE0F. */
+const MOOD_EMOJI: Record<TopicMood, string[]> = { working: ['⚡', '🔥', '💻'], waiting: ['❓', '❗', '⁉', '‼'], idle: ['✔', '✅', '💤', '🏁'] }
 const MAX_EPISODES = 500
 const KNOWN_TOPICS_MAX = 200
 export const INBOUND_PER_CHAT_MIN = 10
@@ -122,10 +130,13 @@ interface FileShape {
   summary: TelegramSummary
   alerts: boolean
   pinStatus: boolean
+  topicIcons: boolean
   pins: Record<string, Pin>
   summaryDay?: string
   bigFiles: boolean
   sessionRoutes: TelegramSessionRoute[]
+  /** Topics (`chatId:threadId`) whose last send failed with the topic / group gone or no rights. */
+  broken?: string[]
   stranger: TelegramStranger
   members: TelegramMember[]
   replies: Record<string, string>
@@ -172,7 +183,7 @@ export interface TelegramDeps {
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
 
-const DEFAULTS: FileShape = { enabled: false, includeReply: false, digest: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {}, members: [] }
+const DEFAULTS: FileShape = { enabled: false, includeReply: false, digest: false, waiting: true, doneMinutes: DEFAULT_TELEGRAM_DONE_MIN, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, alerts: true, pinStatus: false, topicIcons: false, pins: {}, bigFiles: false, sessionRoutes: [], stranger: { ...DEFAULT_TELEGRAM_STRANGER }, replies: {}, members: [] }
 
 function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   const out: Record<string, Pin> = {}
@@ -200,10 +211,12 @@ const NOT_OWNER_PER_MIN = 5
 const STRANGERS_SEEN_MAX = 20
 
 type Role = 'owner' | TelegramMemberLevel
-const READ_COMMANDS = new Set(['status', 'last', 'tail', 'help'])
+const READ_COMMANDS = new Set(['status', 'last', 'tail', 'help', 'where'])
 const READ_BUTTONS = new Set<ActionKind>(['lt', 'tl', 'df'])
 /** Allow / Deny run a tool on the owner's machine; links, the backlog and pairing change what the bot is. */
-const OWNER_BUTTONS = new Set<ActionKind>(['ap', 'dn', 'lk', 'lp', 'bg', 'bx'])
+const OWNER_BUTTONS = new Set<ActionKind>(['ap', 'dn', 'lk', 'lp', 'bg', 'bx', 'ul'])
+const topicKey = (r: { chatId: string; threadId: number | null }): string => `${r.chatId}:${r.threadId}`
+
 const mayPress = (role: Role, kind: ActionKind): boolean => role === 'owner' || (role === 'full' ? !OWNER_BUTTONS.has(kind) : READ_BUTTONS.has(kind))
 
 function readQuiet(raw: unknown): TelegramQuiet {
@@ -249,7 +262,7 @@ function readSessionRoutes(raw: unknown): TelegramSessionRoute[] {
     const o = (r ?? {}) as Record<string, unknown>
     if (!isSessionId(o.session) || typeof o.project !== 'string' || !o.project || !isChatId(o.chatId)) return []
     const name = typeof o.name === 'string' && o.name ? o.name.slice(0, 80) : 'Claude'
-    return [{ session: o.session, name, project: o.project, chatId: o.chatId, threadId: isThreadId(o.threadId) ? o.threadId : null }]
+    return [{ session: o.session, name, project: o.project, chatId: o.chatId, threadId: isThreadId(o.threadId) ? o.threadId : null, ...(o.keep === true ? { keep: true } : {}) }]
   })
 }
 
@@ -293,9 +306,11 @@ function readShape(file: string | undefined): FileShape {
       summary: readSummary(raw.summary),
       alerts: raw.alerts !== false,
       pinStatus: raw.pinStatus === true,
+      topicIcons: raw.topicIcons === true,
       pins: readPins(raw.pins, routes),
       bigFiles: raw.bigFiles === true,
       sessionRoutes: readSessionRoutes(raw.sessionRoutes),
+      ...(Array.isArray(raw.broken) ? { broken: raw.broken.filter((k): k is string => typeof k === 'string' && /^[-@\w]{1,40}:(\d+|null)$/.test(k)).slice(0, TELEGRAM_ROUTES_MAX * 2) } : {}),
       stranger: readStranger(raw.stranger),
       members: readMembers(raw.members),
       replies: readReplies(raw.replies),
@@ -349,12 +364,20 @@ export class TelegramNotifier {
   private readonly pinText = new Map<string, string>()
   private readonly digestMsgs = new Map<string, { chatId: string; messageId: number; day: string; n: number }>()
   private pinBusy = false
+  private iconBusy = false
+  private iconIds: Partial<Record<TopicMood, string>> | null = null
+  private readonly iconSet = new Map<string, { chatId: string; threadId: number; id: string }>()
+  private readonly iconAt = new Map<string, number>()
+  private readonly iconOff = new Set<string>()
   private health: TelegramHealth = { lastSentAt: null, lastReceivedAt: null, lastPollAt: null, sentToday: 0, errorsToday: 0 }
   private healthDay = ''
   private readonly agentOfPane = new Map<string, string>()
   private readonly agentOfTerminal = new Map<string, string>()
   private readonly terminalOfAgent = new Map<string, string>()
   private openSessions: { agent: string; name: string; cwd: string }[] = []
+  private endedTopics = new Map<string, string>()
+  private panesSeen = false
+  private swept = false
   private readonly albums = new Map<string, { items: TgMessage[]; timer?: ReturnType<typeof setTimeout> }>()
   private lightChain: Promise<void> = Promise.resolve()
   private heavyRunning = 0
@@ -438,7 +461,7 @@ export class TelegramNotifier {
       digest: this.data.digest,
       waiting: this.data.waiting,
       doneMinutes: this.data.doneMinutes,
-      routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r) })),
+      routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}) })),
       commandInstalled: this.deps.commandInstalled?.() ?? false,
       lastError: this.lastError,
       pollConflict: this.pollConflict,
@@ -446,9 +469,10 @@ export class TelegramNotifier {
       summary: { ...this.data.summary },
       alerts: this.data.alerts,
       pinStatus: this.data.pinStatus,
+      topicIcons: this.data.topicIcons,
       health: { ...this.health },
       bigFiles: { enabled: this.data.bigFiles, apiId: this.data.apiId ?? null, hasHash: this.sealed(this.data.apiHash) !== null },
-      sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r) })),
+      sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}) })),
       stranger: { ...this.data.stranger },
       members: this.members().map((m) => ({ ...m })),
       recentStrangers: [...this.strangers.values()]
@@ -456,6 +480,20 @@ export class TelegramNotifier {
         .reverse()
         .map((s) => ({ ...s })),
     }
+  }
+
+  private isBroken(r: { chatId: string; threadId: number | null }): boolean {
+    return !!this.data.broken?.includes(topicKey(r))
+  }
+
+  /** Remembers whether the topic still takes messages; the Settings rows turn to a warning while it does not. */
+  private markTopic(r: { chatId: string; threadId: number | null }, broken: boolean): void {
+    if (this.isBroken(r) === broken) return
+    const key = topicKey(r)
+    const rest = (this.data.broken ?? []).filter((k) => k !== key)
+    this.data.broken = broken ? [...rest, key] : rest
+    this.save()
+    this.deps.onState?.(this.state())
   }
 
   private members(): TelegramMember[] {
@@ -521,6 +559,10 @@ export class TelegramNotifier {
     if (patch.summary) this.data.summary = { ...patch.summary }
     if (patch.alerts !== undefined) this.data.alerts = patch.alerts
     if (patch.pinStatus !== undefined) this.data.pinStatus = patch.pinStatus
+    if (patch.topicIcons !== undefined) {
+      if (!patch.topicIcons && this.data.topicIcons) void this.clearIcons([...this.iconSet.keys()])
+      this.data.topicIcons = patch.topicIcons
+    }
     if (patch.apiHash !== undefined) {
       this.data.apiHash = patch.apiHash ? this.deps.crypt.encrypt(patch.apiHash).toString('base64') : undefined
       this.data.mtSession = undefined
@@ -848,7 +890,11 @@ export class TelegramNotifier {
     // Several sessions can share a topic (an old one left linked): an open one wins, else the latest linked.
     const onTopic = this.data.sessionRoutes.filter((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
     const session = [...onTopic].reverse().find((r) => this.terminalOfAgent.has(r.session)) ?? onTopic.at(-1)
-    const route = session ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId } : this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    const ended = cmd.kind === 'resume' ? this.endedTopics.get(`${msg.chatId}:${msg.threadId}`) : undefined
+    const route = session
+      ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId }
+      : (this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId) ?? (ended ? { project: ended, label: path.basename(ended) || ended, chatId: msg.chatId, threadId: msg.threadId } : undefined))
+    if (cmd.kind === 'where') return this.whereReply(msg, role === 'owner', session, route)
     if (!route) {
       const keys = role === 'owner' ? this.linkMarkup(msg) : undefined
       return void (await this.reply(msg, keys ? MORE_TEXT[locale].linkPick : t.noTopic, keys))
@@ -978,11 +1024,31 @@ export class TelegramNotifier {
   /** Buttons that connect an unassigned topic to an open session or its project, so no link has to be copied into the app. */
   private linkMarkup(msg: TgMessage): Markup | undefined {
     if (!this.receiving || msg.threadId === null || !this.openSessions.length) return undefined
-    const base = { terminalId: '', chatId: msg.chatId, threadId: msg.threadId }
-    const rows: [ActionKind, string, string][][] = this.openSessions.slice(0, 6).map((s) => [['lk', this.addAction({ kind: 'lk', ...base, project: s.cwd, cwd: s.cwd, name: s.name, extra: s.agent }), s.name]])
+    return markup(this.deps.locale(), this.linkRows(msg))
+  }
+
+  private async whereReply(msg: TgMessage, owner: boolean, session: TelegramSessionRoute | undefined, route: TelegramRoute | undefined): Promise<void> {
+    const locale = this.deps.locale()
+    const m = MORE_TEXT[locale]
+    if (!route) {
+      const keys = owner ? this.linkMarkup(msg) : undefined
+      return void (await this.reply(msg, keys ? m.linkPick : INBOUND_TEXT[locale].noTopic, keys))
+    }
+    const name = session ? session.name : route.label
+    const base = { terminalId: '', chatId: msg.chatId, threadId: msg.threadId, project: route.project, cwd: route.project, name }
+    const rows: [ActionKind, string][][] = owner && this.receiving ? [[['ul', this.addAction({ kind: 'ul', ...base, ...(session ? { extra: session.session } : {}) })]]] : []
+    const html = session ? m.whereSession(session.name, session.project, this.terminalOfAgent.has(session.session), !!session.keep) : m.whereProject(route.label, route.project)
+    await this.reply(msg, html, rows.length ? markup(locale, rows) : undefined)
+  }
+
+  /** Connect buttons for open sessions (`onlyFree`: those without a topic), then their projects. */
+  private linkRows(where: { chatId: string; threadId: number | null }, onlyFree = false): [ActionKind, string, string][][] {
+    const base = { terminalId: '', chatId: where.chatId, threadId: where.threadId }
+    const linked = new Set(onlyFree ? this.data.sessionRoutes.map((r) => r.session) : [])
+    const rows: [ActionKind, string, string][][] = this.openSessions.filter((s) => !linked.has(s.agent)).slice(0, 6).map((s) => [['lk', this.addAction({ kind: 'lk', ...base, project: s.cwd, cwd: s.cwd, name: s.name, extra: s.agent }), s.name]])
     const projects = [...new Set(this.openSessions.map((s) => s.cwd))].slice(0, 4)
     for (const p of projects) rows.push([['lp', this.addAction({ kind: 'lp', ...base, project: p, cwd: p, name: path.basename(p) || p }), path.basename(p) || p]])
-    return markup(this.deps.locale(), rows)
+    return rows
   }
 
   private async tailText(terminalId: string, project: string, lines: number): Promise<string> {
@@ -1065,6 +1131,7 @@ export class TelegramNotifier {
     const kind = m[1] as ActionKind
     const who = this.nameOf(from!.id as number)
     if (kind === 'lk' || kind === 'lp') return this.linkTopic(id, kind, entry, cb)
+    if (kind === 'ul') return this.unlinkTopic(id, m[2]!, entry, cb)
     if (kind === 'bg' || kind === 'bx') return this.onBacklog(id, kind, m[2]!, entry, cb)
     const ask = this.asker()
     if (!ask) return this.answer(id, INBOUND_TEXT[locale].unavailable)
@@ -1124,6 +1191,16 @@ export class TelegramNotifier {
     const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : kind === 'qa' ? a.chose(entry.name, entry.label ?? String(option)) : a.stopped(entry.name)
     await this.answer(id)
     await this.post(where, done)
+  }
+
+  private async unlinkTopic(id: string, key: string, entry: ActionEntry, cb: Record<string, unknown>): Promise<void> {
+    this.actions.delete(key)
+    const res = entry.extra ? this.removeSessionRoute(entry.extra) : this.removeRoute(entry.project)
+    await this.answer(id)
+    const msgId = (cb.message as { message_id?: unknown } | undefined)?.message_id
+    if (typeof msgId === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msgId, reply_markup: { inline_keyboard: [] } })
+    const locale = this.deps.locale()
+    await this.post(entry, res.ok ? MORE_TEXT[locale].unlinked(entry.name) : ACT_TEXT[locale].expired)
   }
 
   private async linkTopic(id: string, kind: 'lk' | 'lp', entry: ActionEntry, cb: Record<string, unknown>): Promise<void> {
@@ -1335,8 +1412,89 @@ export class TelegramNotifier {
     return true
   }
 
+  /** Topic icon shows the most urgent state of the sessions it reports: waiting > working > idle. General (no thread) has no icon. */
+  async iconTick(): Promise<void> {
+    const ask = this.asker()
+    if (this.iconBusy || !this.data.enabled || !this.data.topicIcons || !this.token() || !ask) return
+    this.iconBusy = true
+    try {
+      const ids = await this.topicIconIds()
+      if (!ids) return
+      const moods = await this.topicMoods(ask)
+      if (!moods) return
+      await this.clearIcons([...this.iconSet.keys()].filter((k) => !moods.has(k)))
+      for (const [key, { chatId, threadId, mood }] of moods) {
+        const id = ids[mood]
+        if (!id || this.iconSet.get(key)?.id === id || this.iconOff.has(chatId) || this.now - (this.iconAt.get(key) ?? 0) < ICON_EDIT_MS) continue
+        this.iconAt.set(key, this.now)
+        const res = await this.call('editForumTopic', { chat_id: chatId, message_thread_id: threadId, icon_custom_emoji_id: id })
+        // 'status' is mostly TOPIC_NOT_MODIFIED: the topic already has that icon.
+        if (res.ok || res.error === 'status') this.iconSet.set(key, { chatId, threadId, id })
+        else if (res.error === 'chat') this.iconOff.add(chatId)
+      }
+    } finally {
+      this.iconBusy = false
+    }
+  }
+
+  private async topicIconIds(): Promise<Partial<Record<TopicMood, string>> | null> {
+    if (this.iconIds) return this.iconIds
+    const res = await this.call('getForumTopicIconStickers', {})
+    if (!res.ok || !Array.isArray(res.result)) return null
+    const byEmoji = new Map<string, string>()
+    for (const s of res.result as { emoji?: unknown; custom_emoji_id?: unknown }[]) {
+      if (typeof s.emoji === 'string' && typeof s.custom_emoji_id === 'string') byEmoji.set(s.emoji.replace(/\uFE0F/g, ''), s.custom_emoji_id)
+    }
+    const ids: Partial<Record<TopicMood, string>> = {}
+    for (const mood of Object.keys(MOOD_EMOJI) as TopicMood[]) {
+      const id = MOOD_EMOJI[mood].map((e) => byEmoji.get(e)).find((v) => v !== undefined)
+      if (id) ids[mood] = id
+    }
+    return (this.iconIds = ids)
+  }
+
+  private async topicMoods(ask: (req: TelegramInbound) => Promise<TelegramInboundResult>): Promise<Map<string, { chatId: string; threadId: number; mood: TopicMood }> | null> {
+    const statuses = new Map<string, TelegramPaneInfo[] | null>()
+    const panesOf = async (project: string): Promise<TelegramPaneInfo[] | null> => {
+      if (!statuses.has(project)) {
+        const res = await ask({ id: randomUUID(), action: 'status', project }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+        statuses.set(project, res.ok && res.action === 'status' ? res.panes : null)
+      }
+      return statuses.get(project) ?? null
+    }
+    const own = new Set(this.data.sessionRoutes.map((s) => this.terminalOfAgent.get(s.session)).filter((t): t is string => !!t))
+    const targets = [
+      ...this.data.routes.map((r) => ({ route: r, terminal: undefined as string | undefined, agent: false })),
+      ...this.data.sessionRoutes.map((s) => ({ route: s, terminal: this.terminalOfAgent.get(s.session), agent: true })),
+    ]
+    const out = new Map<string, { chatId: string; threadId: number; mood: TopicMood }>()
+    for (const { route: r, terminal, agent } of targets) {
+      if (r.threadId === null) continue
+      const all = await panesOf(r.project)
+      if (!all) return null
+      // A session with its own topic counts there, not in its project's topic.
+      const panes = agent ? all.filter((p) => !!terminal && p.terminalId === terminal) : all.filter((p) => !p.terminalId || !own.has(p.terminalId))
+      const mood: TopicMood = panes.some((p) => p.status === 'waiting') ? 'waiting' : panes.some((p) => p.status === 'working') ? 'working' : 'idle'
+      const key = topicKey(r)
+      const prev = out.get(key)
+      if (!prev || MOOD_RANK[mood] > MOOD_RANK[prev.mood]) out.set(key, { chatId: r.chatId, threadId: r.threadId, mood })
+    }
+    return out
+  }
+
+  private async clearIcons(keys: string[]): Promise<void> {
+    for (const key of keys) {
+      const set = this.iconSet.get(key)
+      this.iconSet.delete(key)
+      this.iconAt.delete(key)
+      if (set) await this.call('editForumTopic', { chat_id: set.chatId, message_thread_id: set.threadId, icon_custom_emoji_id: '' })
+    }
+  }
+
   async tick(): Promise<boolean> {
     void this.pinTick()
+    void this.iconTick()
+    if (this.sweepStale()) this.commit()
     const s = this.data.summary
     if (!this.data.enabled || !s.enabled || !this.token()) return false
     const at = new Date(this.now)
@@ -1419,9 +1577,9 @@ export class TelegramNotifier {
   setSessionRoute(input: TelegramSessionRouteInput): TelegramSetResult {
     const project = this.normProject(input.project)
     if (!project) return { ok: false, error: 'invalid-project' }
-    const target = parseTopicLink(input.link)
+    const target = input.link !== undefined ? parseTopicLink(input.link) : input.chatId ? { chatId: input.chatId, threadId: input.threadId ?? null } : null
     if (!target) return { ok: false, error: 'invalid-link' }
-    return this.linkSession({ session: input.session, name: input.name, project, ...target })
+    return this.linkSession({ session: input.session, name: input.name, project, ...target, ...(input.keep !== undefined ? { keep: input.keep } : {}) })
   }
 
   private linkSession(route: TelegramSessionRoute): TelegramSetResult {
@@ -1433,7 +1591,9 @@ export class TelegramNotifier {
     for (const r of displaced) this.dropPin(sessionPinKey(r.session))
     const old = this.data.sessionRoutes.find((r) => r.session === route.session)
     if (old && (old.chatId !== route.chatId || old.threadId !== route.threadId)) this.dropPin(sessionPinKey(route.session))
-    this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId }]
+    const keep = route.keep ?? old?.keep
+    this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId, ...(keep ? { keep: true } : {}) }]
+    this.endedTopics.delete(topicKey(route))
     return this.commit()
   }
 
@@ -1456,10 +1616,22 @@ export class TelegramNotifier {
         this.terminalOfAgent.set(l.agent, l.terminal)
       }
     }
-    if (this.followSessions(links, before)) this.commit()
+    this.panesSeen = true
+    const followed = this.followSessions(links, before)
+    const ended = this.dropEnded(links, before)
+    if (this.sweepStale() || ended || followed) this.commit()
   }
 
-  /** Claude Code can start a new session id in the same pane (/clear, some resumes) and panes get renamed; the topic link follows both. */
+  /** Once per run, after restored panes had time to start: a link whose session did not come back (it ended while the app was off) is freed. */
+  private sweepStale(): boolean {
+    if (this.swept || !this.panesSeen || this.now - this.startedAt < STARTUP_SWEEP_MS) return false
+    this.swept = true
+    const stale = this.data.sessionRoutes.filter((r) => !r.keep && !this.terminalOfAgent.has(r.session))
+    for (const r of stale) this.unlinkEnded(r, 'ended')
+    return stale.length > 0
+  }
+
+  /** A new session id in the same pane (/clear, some resumes): a kept link follows it, any other lets go of its topic. */
   private followSessions(links: TelegramPaneLink[], before: Map<string, string>): boolean {
     let changed = false
     for (const l of links) {
@@ -1468,17 +1640,54 @@ export class TelegramNotifier {
       const old = this.data.sessionRoutes.find((r) => r.session === prev)
       if (!old) continue
       this.dropPin(sessionPinKey(prev))
-      old.session = l.agent
+      if (old.keep) old.session = l.agent
+      else this.unlinkEnded(old, 'cleared', l)
       changed = true
     }
     for (const l of links) {
-      const r = l.name ? this.data.sessionRoutes.find((s) => s.session === l.agent) : undefined
-      if (r && r.name !== l.name) {
-        r.name = l.name
+      const name = l.name
+      const r = name ? this.data.sessionRoutes.find((s) => s.session === l.agent) : undefined
+      if (r && name && r.name !== name) {
+        r.name = name
         changed = true
       }
     }
     return changed
+  }
+
+  /** A session seen running that left (agent quit, pane closed) frees its topic unless its link is kept. */
+  private dropEnded(links: TelegramPaneLink[], before: Map<string, string>): boolean {
+    const now = new Set(links.flatMap((l) => (l.terminal ? [l.agent] : [])))
+    const gone = new Set([...before.values()].filter((a) => !now.has(a)))
+    const ended = this.data.sessionRoutes.filter((r) => gone.has(r.session) && !r.keep)
+    for (const r of ended) this.unlinkEnded(r, 'ended')
+    return ended.length > 0
+  }
+
+  private unlinkEnded(r: TelegramSessionRoute, why: 'ended' | 'cleared', next?: TelegramPaneLink): void {
+    this.dropPin(sessionPinKey(r.session))
+    this.data.sessionRoutes = this.data.sessionRoutes.filter((x) => x !== r)
+    this.endedTopics.set(topicKey(r), r.project)
+    void this.noticeUnlinked(r, why, next)
+  }
+
+  /** One silent line in the topic, so the owner sees why it stopped answering and can relink with a tap. */
+  private async noticeUnlinked(r: TelegramSessionRoute, why: 'ended' | 'cleared', next?: TelegramPaneLink): Promise<void> {
+    if (!this.data.enabled || !this.token() || !this.take(r.chatId)) return
+    const locale = this.deps.locale()
+    const m = MORE_TEXT[locale]
+    const base = { terminalId: '', chatId: r.chatId, threadId: r.threadId }
+    const rows: [ActionKind, string, string][][] = []
+    if (this.receiving) {
+      if (why === 'ended') {
+        rows.push([['rs', this.addAction({ kind: 'rs', ...base, project: r.project, cwd: r.project, name: r.name, extra: r.session }), r.name]])
+        rows.push(...this.linkRows(r, true).filter((row) => row[0]![0] === 'lk'))
+      } else if (next) {
+        const cwd = next.cwd ?? r.project
+        rows.push([['lk', this.addAction({ kind: 'lk', ...base, project: cwd, cwd, name: next.name ?? r.name, extra: next.agent }), next.name ?? r.name]])
+      }
+    }
+    await this.post(r, why === 'ended' ? m.ended(r.name) : m.cleared(r.name), { disable_notification: true, ...(rows.length ? { reply_markup: markup(locale, rows) } : {}) })
   }
 
   private sessionRouteOf(agent: string | undefined): TelegramRoute | null {
@@ -1530,11 +1739,11 @@ export class TelegramNotifier {
     return { ok: true, bot: r.username, id: r.id }
   }
 
-  async test(project?: string): Promise<TelegramTestResult> {
+  async test(project?: string, session?: string): Promise<TelegramTestResult> {
     if (!this.token()) return { ok: false, error: 'config' }
     const me = await this.whoAmI()
     if (!me.ok) return me
-    const route = project ? this.routeFor(project) : this.data.routes[0]
+    const route = session ? this.sessionRouteOf(session.toLowerCase()) : project ? this.routeFor(project) : this.data.routes[0]
     if (route) {
       const error = await this.sendText(route, testHtml(this.deps.locale()))
       if (error) return { ok: false, error }
@@ -1840,7 +2049,11 @@ export class TelegramNotifier {
   private async sendTextId(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup): Promise<{ error: TelegramError | null; id: number | null }> {
     if (!this.take(route.chatId)) return { error: this.fail('rate'), id: null }
     const res = await this.call('sendMessage', { ...threadFields(route.chatId, route.threadId), text: html, parse_mode: 'HTML', disable_web_page_preview: true, ...(keys ? { reply_markup: keys } : {}) })
-    if (!res.ok) return { error: this.fail(res.error), id: null }
+    if (!res.ok) {
+      if (res.error === 'chat') this.markTopic(route, true)
+      return { error: this.fail(res.error), id: null }
+    }
+    this.markTopic(route, false)
     this.ok()
     this.track(route.chatId, res.result, target)
     const id = (res.result as { message_id?: unknown } | null)?.message_id

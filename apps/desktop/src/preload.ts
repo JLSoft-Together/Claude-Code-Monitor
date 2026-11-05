@@ -333,7 +333,7 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
   telegramSessionRouteSet: (input: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-session-route-set', input),
   telegramSessionRouteRemove: (session: string): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-session-route-remove', session),
   telegramPanes: (links: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-panes', links),
-  telegramTest: (project?: string): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-test', project),
+  telegramTest: (project?: string, session?: string): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-test', project, session),
   telegramInstallCommand: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-command'),
   telegramDiscover: (): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-discover'),
   telegramCreateTopic: (input: unknown): Promise<unknown> => ipcRenderer.invoke('ccm:telegram-create-topic', input),

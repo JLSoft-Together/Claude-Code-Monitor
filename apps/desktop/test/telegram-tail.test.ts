@@ -81,7 +81,7 @@ describe('v85 menu "/" commands', () => {
     expect(calls[0]!.body.language_code).toBeUndefined()
     expect(calls[1]!.body.language_code).toBe('vi')
     const names = (calls[0]!.body.commands as { command: string }[]).map((c) => c.command)
-    expect(names).toEqual(['status', 'new', 'stop', 'last', 'tail', 'resume', 'run', 'all', 'screen', 'help'])
+    expect(names).toEqual(['status', 'new', 'stop', 'last', 'tail', 'resume', 'where', 'run', 'all', 'screen', 'help'])
     for (const c of calls[1]!.body.commands as { command: string; description: string }[]) expect(c.description.length).toBeGreaterThan(0)
     tg.set({ receiving: false })
     tg.set({ receiving: true })

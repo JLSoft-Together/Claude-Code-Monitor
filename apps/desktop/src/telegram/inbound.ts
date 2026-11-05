@@ -80,6 +80,7 @@ export function readMessage(update: unknown, botId: number | null): TgMessage | 
 export type Command =
   | { kind: 'pair'; code: string }
   | { kind: 'status' }
+  | { kind: 'where' }
   | { kind: 'help' }
   | { kind: 'stop' }
   | { kind: 'new'; text: string }
@@ -111,6 +112,7 @@ export function commandOf(msg: TgMessage, bot: string): Command | null {
   if (msg.chatType === 'private') return null
   if (msg.file) return { kind: 'file', file: msg.file, text: stripped }
   if (head === 'stop' && !rest) return { kind: 'stop' }
+  if (head === 'where' && !rest) return { kind: 'where' }
   if (head === 'new') return { kind: 'new', text: rest }
   if (head === 'resume' && !rest) return { kind: 'resume' }
   if (head === 'run') return { kind: 'run', config: rest.slice(0, 80) }
@@ -165,6 +167,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>last</code> — last reply of the session',
       '<code>tail [lines]</code> — last lines of the session terminal (default 30, max 80)',
       '<code>stop</code> — stop the running work (Esc)',
+      '<code>where</code> — what this topic is connected to',
       '',
       '📱 <b>App</b>',
       '<code>run [config]</code> — run the app with a Run config',
@@ -204,6 +207,7 @@ export const TEXT: Record<TelegramLocale, {
       '<code>last</code> — câu trả lời cuối của session',
       '<code>tail [số dòng]</code> — các dòng cuối của terminal session (mặc định 30, tối đa 80)',
       '<code>stop</code> — dừng việc đang chạy (Esc)',
+      '<code>where</code> — topic này đang nối với gì',
       '',
       '📱 <b>App</b>',
       '<code>run [config]</code> — chạy app theo Run config',
@@ -233,6 +237,7 @@ export const COMMAND_MENU: Record<TelegramLocale, [string, string][]> = {
     ['last', 'Last reply of the session'],
     ['tail', 'Last lines of the session terminal'],
     ['resume', 'Reopen a finished session'],
+    ['where', 'What this topic is connected to'],
     ['run', 'Run the app with a Run config'],
     ['all', 'Send a message to every session'],
     ['screen', 'Screenshot of the Android device'],
@@ -245,6 +250,7 @@ export const COMMAND_MENU: Record<TelegramLocale, [string, string][]> = {
     ['last', 'Câu trả lời cuối của session'],
     ['tail', 'Các dòng cuối của terminal session'],
     ['resume', 'Mở lại session đã kết thúc'],
+    ['where', 'Topic này đang nối với gì'],
     ['run', 'Chạy app theo Run config'],
     ['all', 'Gửi tin vào mọi session'],
     ['screen', 'Chụp màn hình máy Android'],

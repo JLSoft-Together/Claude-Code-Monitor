@@ -69,7 +69,7 @@ export const useTelegramStore = defineStore('telegram', () => {
   const installReceive = async (): Promise<TelegramCommandResult> => keep(await telegramInstallReceive())
   const setReceiving = (on: boolean): Promise<TelegramSetResult> => set({ receiving: on })
   const receiving = computed(() => !!state.value?.receiving)
-  const test = (project?: string): Promise<TelegramTestResult> => telegramTest(project)
+  const test = (project?: string, session?: string): Promise<TelegramTestResult> => telegramTest(project, session)
 
   async function discover(): Promise<TelegramDiscoverResult> {
     const res = await telegramDiscover()

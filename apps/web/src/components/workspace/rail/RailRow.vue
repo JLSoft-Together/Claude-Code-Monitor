@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LoaderCircle, Network, Send, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
-import { useTelegramLinks } from '../../../composables/useTelegramLinks'
+import { openTelegramLink, useTelegramLinks } from '../../../composables/useTelegramLinks'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
 import { isBusyState, needsUser, peerSlot, RAIL_BADGE, rowId, rowLines, stateWord, type RailRow, type RailState } from '../../../lib/rail/railModel'
@@ -187,7 +187,7 @@ const unstamp = (el: Element): void => el.removeAttribute('data-rail-second')
           ><Network :size="11"
         /></span>
       </Transition>
-      <span v-if="telegram" class="inline-flex items-center text-ink-faint" aria-hidden="true" data-rail-telegram><Send :size="10" /></span>
+      <span v-if="telegram" class="inline-flex cursor-pointer items-center text-ink-faint hover:text-ink" aria-hidden="true" data-rail-telegram @click.stop="openTelegramLink(row.pane, lines.first)"><Send :size="10" /></span>
     </span>
     <button
       type="button"

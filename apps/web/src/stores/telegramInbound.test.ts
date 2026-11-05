@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { PtyPreset, TerminalSession } from '@ccm/shared'
-import { keysReady, resumeItems } from '../composables/useTelegramInbound'
+import { agentLive, keysReady, resumeItems } from '../composables/useTelegramInbound'
 import { useWorkspaceStore } from './workspace'
 
 describe('telegramInbound (v82 stage 2)', () => {
@@ -112,5 +112,12 @@ describe('Telegram keys and resume checks (WP-3a)', () => {
     const list = [t('a', S1, 'C:\\repo', '2026-11-04T09:00:00Z'), t('b', S1, 'C:\\repo', '2026-11-04T10:00:00Z'), t('c', S2, 'C:\\repo\\apps\\x', '2026-11-04T11:00:00Z')]
     expect(resumeItems(list, 'C:\\repo', ['C:\\repo\\apps\\x'], new Set())).toEqual([{ id: S1, name: 'repo', cwd: 'C:\\repo', endedAt: '2026-11-04T10:00:00Z' }])
     expect(resumeItems(list, 'C:\\repo', [], new Set([S1])).map((i) => i.id)).toEqual([S2])
+  })
+
+  it('agentLive: a pane whose agent quit no longer holds its session', () => {
+    expect(agentLive({ preset: 'claude', agent: undefined })).toBe(true)
+    expect(agentLive({ preset: 'claude', agent: 'shell' })).toBe(false)
+    expect(agentLive({ preset: 'shell', agent: 'claude' })).toBe(true)
+    expect(agentLive({ preset: 'shell', agent: undefined })).toBe(false)
   })
 })

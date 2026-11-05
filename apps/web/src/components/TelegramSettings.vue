@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Activity, ChevronRight, CircleCheck, CircleDashed, Copy, ExternalLink, Eye, FileUp, FolderPlus, Link2, Pin, Plus, Radio, RefreshCw, Send, ShieldAlert, ShieldCheck, Terminal, Trash2, TriangleAlert, UserCheck, UserPlus, Users } from 'lucide-vue-next'
+import { Activity, ChevronRight, CircleCheck, CircleDashed, Copy, ExternalLink, Eye, FileUp, Folder, FolderPlus, Hash, Link2, MessageSquare, Pin, Plus, Radio, RefreshCw, Send, ShieldAlert, ShieldCheck, Terminal, Trash2, TriangleAlert, UserCheck, UserPlus, Users } from 'lucide-vue-next'
 import {
   DEFAULT_TELEGRAM_QUIET,
   DEFAULT_TELEGRAM_SUMMARY,
@@ -15,6 +15,7 @@ import {
   type TelegramStrangerSeen,
   type TelegramQuiet,
   type TelegramRoute,
+  type TelegramSessionRoute,
   type TelegramSetResult,
   type TelegramSummary,
 } from '@ccm/shared'
@@ -25,7 +26,9 @@ import { now, relativeTime, startClock } from '../lib/format'
 import { countdown, projectChoices, projectLabel, topicText } from '../lib/telegram'
 import { useTelegramStore } from '../stores/telegram'
 import { useTerminalsStore } from '../stores/terminals'
+import { useUiStore } from '../stores/ui'
 import { isTerm, useWorkspaceStore, workCwd } from '../stores/workspace'
+import { agentLive } from '../composables/useTelegramInbound'
 import AppSelect from './AppSelect.vue'
 import SegmentedControl from './ui/SegmentedControl.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -36,6 +39,7 @@ const { t, locale } = useI18n()
 const tg = useTelegramStore()
 const terminals = useTerminalsStore()
 const workspace = useWorkspaceStore()
+const ui = useUiStore()
 
 onMounted(() => {
   tg.start()
@@ -130,9 +134,9 @@ function addMember(s: TelegramStrangerSeen, level: TelegramMemberLevel): Promise
   return setMembers([...members.value, { id: s.id, name: s.name, level }])
 }
 
-async function test(project?: string): Promise<void> {
-  testing.value = project ?? ''
-  const res = await tg.test(project)
+async function test(project?: string, session?: string): Promise<void> {
+  testing.value = session ?? project ?? ''
+  const res = await tg.test(project, session)
   testing.value = null
   say(res.ok ? t('telegram.testOk', { bot: res.bot }) : t(`telegram.error.${res.error}`), !res.ok)
 }
@@ -219,6 +223,84 @@ async function createTopic(project: string): Promise<void> {
 
 async function removeRoute(project: string): Promise<void> {
   if (!setFail(await tg.routeRemove(project))) note.value = null
+}
+
+type SessionLink = TelegramSessionRoute & { pane?: string }
+interface TopicGroup {
+  key: string
+  where: string
+  broken: boolean
+  projects: TelegramRoute[]
+  sessions: SessionLink[]
+}
+
+const paneOfSession = (session: string) => workspace.panes.find((p) => isTerm(p) && p.agentSessionId?.toLowerCase() === session && agentLive(p))
+const sessionLinks = computed((): SessionLink[] => (state.value?.sessionRoutes ?? []).map((r) => ({ ...r, pane: paneOfSession(r.session)?.key })))
+const closedLinks = computed(() => sessionLinks.value.filter((r) => !r.pane))
+const topicRows = computed(() => (state.value?.routes.length ?? 0) + sessionLinks.value.length)
+const whereText = (r: { chatId: string; threadId: number | null; where?: string }): string => r.where ?? (tg.chats ? `${chatTitle(r.chatId)} · ${topicName(r)}` : topicText(r, t('telegram.general')))
+const inChat = (r: { chatId: string }): boolean => !!tg.chat && r.chatId === tg.chat.chatId
+
+// One block per topic, so a topic shared by a project and a session (the session wins) shows up in one place.
+const topicGroups = computed((): TopicGroup[] => {
+  const groups = new Map<string, TopicGroup>()
+  const at = (r: { chatId: string; threadId: number | null; where?: string; broken?: boolean }): TopicGroup => {
+    const key = `${r.chatId}:${r.threadId}`
+    let g = groups.get(key)
+    if (!g) groups.set(key, (g = { key, where: whereText(r), broken: false, projects: [], sessions: [] }))
+    if (r.broken) g.broken = true
+    return g
+  }
+  for (const r of routes.value) at(r).projects.push(r)
+  for (const r of sessionLinks.value) at(r).sessions.push(r)
+  return [...groups.values()]
+})
+
+type TopicFilter = 'all' | 'broken' | 'open' | 'closed'
+const topicQuery = ref('')
+const topicFilter = ref<TopicFilter>('all')
+const topicFilterOptions = computed(() => {
+  const n: Record<TopicFilter, number> = { all: topicGroups.value.length, broken: topicGroups.value.filter((g) => g.broken).length, open: sessionLinks.value.length - closedLinks.value.length, closed: closedLinks.value.length }
+  return (['all', 'broken', 'open', 'closed'] as const).map((v) => ({ value: v, label: n[v] && v !== 'all' ? `${t(`telegram.topicMap.filter.${v}`)} ${n[v]}` : t(`telegram.topicMap.filter.${v}`) }))
+})
+// A broken topic goes first: it is the one that needs a fix.
+const shownGroups = computed((): TopicGroup[] => {
+  const q = topicQuery.value.trim().toLowerCase()
+  const f = topicFilter.value
+  const hit = (v: string) => !q || v.toLowerCase().includes(q)
+  return topicGroups.value
+    .flatMap((g) => {
+      if (f === 'broken' && !g.broken) return []
+      const all = hit(g.where)
+      const projects = f === 'open' || f === 'closed' ? [] : g.projects.filter((r) => all || hit(routeName(r)) || hit(r.project))
+      const sessions = g.sessions.filter((r) => (f !== 'open' || !!r.pane) && (f !== 'closed' || !r.pane) && (all || hit(r.name) || hit(r.project)))
+      return projects.length || sessions.length ? [{ ...g, projects, sessions }] : []
+    })
+    .sort((a, b) => Number(b.broken) - Number(a.broken))
+})
+
+async function moveSession(r: SessionLink, threadId: number | null): Promise<void> {
+  if (!tg.chat) return
+  setFail(await tg.sessionRouteSet({ session: r.session, name: r.name, project: r.project, chatId: tg.chat.chatId, threadId }))
+}
+
+async function setKeep(r: SessionLink): Promise<void> {
+  setFail(await tg.sessionRouteSet({ session: r.session, name: r.name, project: r.project, chatId: r.chatId, threadId: r.threadId, keep: !r.keep }))
+}
+
+async function removeClosed(): Promise<void> {
+  for (const r of closedLinks.value) if (setFail(await tg.sessionRouteRemove(r.session))) return
+  note.value = null
+}
+
+function showSession(pane: string): void {
+  workspace.activate(pane)
+  ui.setView('workspace')
+  ui.settingsOpen = false
+}
+
+async function removeSessionLink(session: string): Promise<void> {
+  if (!setFail(await tg.sessionRouteRemove(session))) note.value = null
 }
 
 const link = ref('')
@@ -340,12 +422,12 @@ async function installReceive(): Promise<void> {
 
 const guide = computed(() => (['bot', 'token', 'group', 'scan', 'route'] as const).map((k) => ({ key: k, text: t(`telegram.guide.${k}`) })))
 
-type TgTab = 'connect' | 'receive' | 'report'
+type TgTab = 'connect' | 'topics' | 'receive' | 'report'
 const TAB_KEY = 'ccm.telegram.tab'
 const readTab = (): TgTab | null => {
   try {
     const v = localStorage.getItem(TAB_KEY)
-    return v === 'connect' || v === 'receive' || v === 'report' ? v : null
+    return v === 'connect' || v === 'topics' || v === 'receive' || v === 'report' ? v : null
   } catch {
     return null
   }
@@ -365,7 +447,22 @@ watch(
   },
   { immediate: true },
 )
-const tabOptions = computed(() => (['connect', 'receive', 'report'] as const).map((v) => ({ value: v, label: t(`telegram.tabs.${v}`) })))
+const linkCount = computed(() => (state.value?.routes.length ?? 0) + (state.value?.sessionRoutes.length ?? 0))
+const tabOptions = computed(() =>
+  (['connect', 'topics', 'receive', 'report'] as const).map((v) => ({ value: v, label: v === 'topics' && linkCount.value ? `${t('telegram.tabs.topics')} · ${linkCount.value}` : t(`telegram.tabs.${v}`) })),
+)
+// Each step opens the tab where it is done, so the strip doubles as a setup checklist.
+const steps = computed(() => {
+  const s = state.value
+  if (!s) return []
+  return [
+    { key: 'bot', ok: s.configured, tab: 'connect' as const },
+    { key: 'group', ok: !!tg.chat || linkCount.value > 0, tab: 'connect' as const },
+    { key: 'topics', ok: linkCount.value > 0, tab: 'topics' as const },
+    { key: 'paired', ok: !!s.owner, tab: 'receive' as const },
+    { key: 'receiving', ok: s.receiving, tab: 'receive' as const },
+  ].map((x) => ({ ...x, label: t(`telegram.steps.${x.key}`) }))
+})
 const overview = computed(() => {
   const s = state.value
   if (!s?.configured) return t('telegram.setup.start')
@@ -383,6 +480,21 @@ const overview = computed(() => {
       <div class="min-w-0 flex-1">
         <p class="truncate text-sm font-medium" data-telegram-overview-bot>{{ state.bot ? `@${state.bot}` : t('telegram.setup.noBot') }}</p>
         <p class="truncate text-2xs text-ink-faint" :title="overview" data-telegram-overview-line>{{ overview }}</p>
+        <div class="mt-1.5 flex flex-wrap gap-1" data-telegram-steps>
+          <button
+            v-for="st in steps"
+            :key="st.key"
+            type="button"
+            class="inline-flex items-center gap-1 rounded-full bg-fill px-1.5 py-px text-2xs hover:bg-fill-strong"
+            :class="st.ok ? 'text-success' : 'text-ink-muted'"
+            :aria-label="`${st.label}: ${t(st.ok ? 'telegram.steps.done' : 'telegram.steps.todo')}`"
+            :aria-current="tab === st.tab ? 'page' : undefined"
+            :data-telegram-step="st.key"
+            @click="tab = st.tab"
+          >
+            <CircleCheck v-if="st.ok" :size="12" aria-hidden="true" /><CircleDashed v-else :size="12" aria-hidden="true" />{{ st.label }}
+          </button>
+        </div>
       </div>
     </div>
     <div v-if="state.pollConflict" class="ccm-group mt-2 flex items-center gap-3 px-3 py-2.5" role="alert" data-telegram-conflict>
@@ -504,55 +616,136 @@ const overview = computed(() => {
           </div>
         </Transition>
       </div>
-      <h4 class="mt-4 mb-1.5 px-3 text-2xs font-semibold text-ink-muted">{{ t('telegram.routes') }}</h4>
+    </div>
+
+    <div v-show="tab === 'topics'" class="mt-4" data-telegram-tab="topics">
+      <div class="mb-1.5 flex items-center gap-2 px-3">
+        <h4 class="text-2xs font-semibold text-ink-muted">{{ t('telegram.topicMap.title') }}</h4>
+        <button v-if="closedLinks.length" type="button" class="ccm-btn-plain ml-auto text-2xs" data-telegram-remove-closed @click="removeClosed">
+          <Trash2 :size="12" aria-hidden="true" />{{ t('telegram.topicMap.removeClosed', { n: closedLinks.length }, closedLinks.length) }}
+        </button>
+      </div>
+      <div v-if="topicRows > 3" class="mb-2 flex flex-wrap items-center gap-2 px-3" data-telegram-topic-filter>
+        <input v-model="topicQuery" type="search" spellcheck="false" maxlength="80" :aria-label="t('telegram.topicMap.search')" :placeholder="t('telegram.topicMap.search')" class="ccm-field min-w-0 flex-1 basis-40 text-xs" data-telegram-topic-search />
+        <SegmentedControl v-model="topicFilter" :options="topicFilterOptions" :label="t('telegram.topicMap.filterLabel')" data-telegram-topic-chips />
+      </div>
       <div class="ccm-group overflow-hidden" data-telegram-routes>
-        <p v-if="!routes.length" class="px-3 py-2 text-2xs text-ink-muted" data-telegram-routes-empty>{{ t('telegram.routesEmpty') }}</p>
+        <p v-if="!topicGroups.length" class="px-3 py-2 text-2xs text-ink-muted" data-telegram-routes-empty>{{ t('telegram.topicMap.empty') }}</p>
+        <p v-else-if="!shownGroups.length" class="px-3 py-2 text-2xs text-ink-muted" data-telegram-topic-nomatch>{{ t('telegram.topicMap.noMatch') }}</p>
         <TransitionGroup tag="ul" name="ccm-list" class="relative divide-y divide-line" @before-leave="pinLeaving">
-          <li v-for="r in routes" :key="r.project" class="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2" data-telegram-route>
-            <div class="min-w-0 flex-1 basis-40">
-              <p class="truncate text-sm" :title="r.project">{{ routeName(r) }}</p>
-              <p class="truncate font-mono text-2xs text-ink-faint" :title="r.project">{{ r.project }}</p>
+          <li v-for="g in shownGroups" :key="g.key" data-telegram-topic>
+            <div class="flex min-w-0 items-center gap-1.5 px-3 pt-2 pb-0.5">
+              <Hash :size="12" class="shrink-0 text-ink-faint" aria-hidden="true" />
+              <span class="min-w-0 truncate text-xs font-medium" :title="g.where">{{ g.where }}</span>
+              <span v-if="g.broken" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-fill px-1.5 py-px text-2xs text-warning" :title="t('telegram.topicMap.brokenHint')" data-telegram-topic-broken>
+                <TriangleAlert :size="12" aria-hidden="true" />{{ t('telegram.topicMap.broken') }}
+              </span>
+              <span v-if="g.projects.length && g.sessions.length" class="ml-auto shrink-0 text-2xs text-ink-faint">{{ t('telegram.topicMap.sessionFirst') }}</span>
             </div>
-            <AppSelect
-              v-if="tg.chat && r.chatId === tg.chat.chatId"
-              :model-value="r.threadId"
-              :options="chatTopicOptions"
-              :label="t('telegram.topic')"
-              :display="topicName(r)"
-              size="sm"
-              data-telegram-route-topic
-              @update:model-value="(v: number | null) => moveRoute(r, v)"
-            />
-            <span v-else class="max-w-48 truncate text-2xs text-ink-muted" :title="topicText(r, t('telegram.general'))">
-              {{ r.where ?? (tg.chats ? `${chatTitle(r.chatId)} · ${topicName(r)}` : topicText(r, t('telegram.general'))) }}
-            </span>
-            <button
-              v-if="tg.chat?.canManageTopics"
-              type="button"
-              class="ccm-btn-plain px-1.5"
-              :disabled="creating !== null"
-              :aria-label="t('telegram.createTopicTitle')"
-              :title="t('telegram.createTopicTitle')"
-              data-telegram-route-create
-              @click="createTopic(r.project)"
-            >
-              <FolderPlus :size="13" aria-hidden="true" />
-            </button>
-            <button type="button" class="ccm-btn-plain px-1.5" :disabled="testing !== null" :aria-label="t('telegram.testRow')" :title="t('telegram.testRow')" data-telegram-route-test @click="test(r.project)">
-              <Send :size="13" :class="testing === r.project ? 'ccm-pulse' : ''" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              class="ccm-btn-plain px-1.5 text-st-error"
-              :aria-label="t('telegram.removeTitle', { name: routeName(r) })"
-              :title="t('telegram.removeTitle', { name: routeName(r) })"
-              data-telegram-route-remove
-              @click="removeRoute(r.project)"
-            >
-              <Trash2 :size="13" aria-hidden="true" />
-            </button>
+            <p v-if="g.broken" class="px-3 pl-7 text-2xs leading-relaxed text-ink-muted">{{ t('telegram.topicMap.brokenHint') }}</p>
+            <ul>
+              <li v-for="r in g.projects" :key="`p:${r.project}`" class="group/row flex w-full flex-wrap items-center gap-x-2 gap-y-1 py-1.5 pr-3 pl-7" data-telegram-route>
+                <Folder :size="13" class="shrink-0 text-ink-faint" :aria-label="t('telegram.project')" />
+                <div class="min-w-0 flex-1 basis-40">
+                  <p class="truncate text-sm" :title="r.project">{{ routeName(r) }}</p>
+                  <p class="truncate font-mono text-2xs text-ink-faint" :title="r.project">{{ r.project }}</p>
+                </div>
+                <AppSelect
+                  v-if="inChat(r)"
+                  :model-value="r.threadId"
+                  :options="chatTopicOptions"
+                  :label="t('telegram.topic')"
+                  :display="topicName(r)"
+                  size="sm"
+                  data-telegram-route-topic
+                  @update:model-value="(v: number | null) => moveRoute(r, v)"
+                />
+                <button
+                  v-if="tg.chat?.canManageTopics"
+                  type="button"
+                  class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+                  :disabled="creating !== null"
+                  :aria-label="t('telegram.createTopicTitle')"
+                  :title="t('telegram.createTopicTitle')"
+                  data-telegram-route-create
+                  @click="createTopic(r.project)"
+                >
+                  <FolderPlus :size="13" aria-hidden="true" />
+                </button>
+                <button type="button" class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100" :disabled="testing !== null" :aria-label="t('telegram.testRow')" :title="t('telegram.testRow')" data-telegram-route-test @click="test(r.project)">
+                  <Send :size="13" :class="testing === r.project ? 'ccm-pulse' : ''" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 text-st-error"
+                  :aria-label="t('telegram.removeTitle', { name: routeName(r) })"
+                  :title="t('telegram.removeTitle', { name: routeName(r) })"
+                  data-telegram-route-remove
+                  @click="removeRoute(r.project)"
+                >
+                  <Trash2 :size="13" aria-hidden="true" />
+                </button>
+              </li>
+              <li v-for="r in g.sessions" :key="`s:${r.session}`" class="group/row flex w-full flex-wrap items-center gap-x-2 gap-y-1 py-1.5 pr-3 pl-7" data-telegram-session-link>
+                <MessageSquare :size="13" class="shrink-0 text-ink-faint" :aria-label="t('telegram.connect.session')" />
+                <div class="min-w-0 flex-1 basis-40">
+                  <p class="truncate text-sm" :title="r.name">{{ r.name }}</p>
+                  <p class="truncate font-mono text-2xs text-ink-faint" :title="r.project">{{ r.project }}</p>
+                </div>
+                <span class="inline-flex items-center gap-1 rounded-full bg-fill px-1.5 py-px text-2xs" :class="r.pane ? 'text-success' : 'text-ink-muted'" data-telegram-session-link-state>
+                  <CircleCheck v-if="r.pane" :size="12" aria-hidden="true" /><CircleDashed v-else :size="12" aria-hidden="true" />{{ r.pane ? t('telegram.sessionLinks.open') : t('telegram.sessionLinks.closed') }}
+                </span>
+                <AppSelect
+                  v-if="inChat(r)"
+                  :model-value="r.threadId"
+                  :options="chatTopicOptions"
+                  :label="t('telegram.topic')"
+                  :display="topicName(r)"
+                  size="sm"
+                  data-telegram-session-link-topic
+                  @update:model-value="(v: number | null) => moveSession(r, v)"
+                />
+                <button
+                  type="button"
+                  class="ccm-btn-plain px-1.5"
+                  :class="r.keep ? 'text-accent-ink' : 'opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100'"
+                  :aria-pressed="!!r.keep"
+                  :aria-label="t('telegram.sessionLinks.keep')"
+                  :title="t(r.keep ? 'telegram.sessionLinks.keepOn' : 'telegram.sessionLinks.keepOff')"
+                  data-telegram-session-link-keep
+                  @click="setKeep(r)"
+                >
+                  <Pin :size="13" aria-hidden="true" />
+                </button>
+                <button type="button" class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100" :disabled="testing !== null" :aria-label="t('telegram.testRow')" :title="t('telegram.testRow')" data-telegram-session-link-test @click="test(r.project, r.session)">
+                  <Send :size="13" :class="testing === r.session ? 'ccm-pulse' : ''" aria-hidden="true" />
+                </button>
+                <button
+                  v-if="r.pane"
+                  type="button"
+                  class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+                  :aria-label="t('telegram.sessionLinks.show', { name: r.name })"
+                  :title="t('telegram.sessionLinks.show', { name: r.name })"
+                  data-telegram-session-link-show
+                  @click="showSession(r.pane)"
+                >
+                  <Terminal :size="13" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  class="ccm-btn-plain px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 text-st-error"
+                  :aria-label="t('telegram.sessionLinks.remove', { name: r.name })"
+                  :title="t('telegram.sessionLinks.remove', { name: r.name })"
+                  data-telegram-session-link-remove
+                  @click="removeSessionLink(r.session)"
+                >
+                  <Trash2 :size="13" aria-hidden="true" />
+                </button>
+              </li>
+            </ul>
           </li>
         </TransitionGroup>
+        <p v-if="sessionLinks.length" class="border-t border-line px-3 py-1.5 text-2xs text-ink-faint">{{ t('telegram.sessionLinks.hint') }}</p>
         <div class="flex flex-col gap-2 border-t border-line px-3 py-2" data-telegram-add>
           <div class="flex flex-wrap items-center gap-2">
             <AppSelect
@@ -809,6 +1002,10 @@ const overview = computed(() => {
         <div class="flex items-start gap-2 px-3" data-telegram-pin>
           <Pin :size="15" class="mt-2.5 shrink-0 text-ink-muted" aria-hidden="true" />
           <ToggleSwitch :model-value="state.pinStatus" :label="t('telegram.pinStatus')" :hint="t('telegram.pinStatusHint')" class="min-w-0 flex-1" @update:model-value="(on: boolean) => patch({ pinStatus: on })" />
+        </div>
+        <div class="flex items-start gap-2 px-3" data-telegram-topic-icons>
+          <Hash :size="15" class="mt-2.5 shrink-0 text-ink-muted" aria-hidden="true" />
+          <ToggleSwitch :model-value="state.topicIcons" :label="t('telegram.topicIcons')" :hint="t('telegram.topicIconsHint')" class="min-w-0 flex-1" @update:model-value="(on: boolean) => patch({ topicIcons: on })" />
         </div>
         <div v-if="state.configured && healthRows.length" class="flex flex-col gap-1 px-3 py-2" role="status" data-telegram-health>
           <p class="flex items-center gap-1.5 text-xs font-medium text-ink-muted">
