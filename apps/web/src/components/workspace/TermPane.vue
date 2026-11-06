@@ -1281,7 +1281,7 @@ onBeforeUnmount(() => {
     >
       <!-- Dimmed when the process has ended; the well fades, the terminal text itself never animates. -->
       <!-- Shell command marks sit in the left padding, outside the cell grid. -->
-      <div class="size-full overflow-hidden rounded-card p-2 pr-0 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="[ended ? 'opacity-60' : '', marksOn ? 'pl-4' : '']">
+      <div class="size-full overflow-hidden rounded-card p-2 pr-0.5 transition-opacity duration-(--ccm-dur-slow) ease-out-quint" :class="[ended ? 'opacity-60' : '', marksOn ? 'pl-4' : '']">
         <div ref="host" class="size-full" data-code-zoom :title="linkHint" />
       </div>
       <Transition name="ccm-fade">
