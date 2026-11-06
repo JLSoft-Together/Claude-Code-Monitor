@@ -1,6 +1,6 @@
 {
   "name": "@ccm/desktop",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "private": true,
   "description": "Orrery desktop app (Windows, macOS)",
   "scripts": {

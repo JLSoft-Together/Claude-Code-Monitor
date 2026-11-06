@@ -1,6 +1,4 @@
-# Release (số version: chủ nhân đặt) — changelog chờ
-
-Khi bump: đổi tên file thành `RELEASE-<x>.md`, thêm mục mới đầu `apps/web/src/lib/changelog.ts` (≤ 100 ký tự/dòng), notes GitHub = phần Tiếng Việt.
+# Release 3.3.1 (2026-11-06)
 
 ## English
 - Telegram: link a session or project to a topic by picking it from a list; the topic named like the project is suggested
@@ -20,6 +18,7 @@ Khi bump: đổi tên file thành `RELEASE-<x>.md`, thêm mục mới đầu `ap
 - Telegram: plan-limit alerts go to the topic of the running project instead of every chat
 - Telegram: photos sent from the phone are attached to the Claude pane like a pasted image, the caption is the prompt
 - Compact now sends /compact and the resume line itself after the handoff (Settings › Editor & Terminal switch, on by default); typing, cancelling or waiting over 10 minutes stops it
+- Workspace: the focus ring of a split pane is no longer hidden by the terminal scrollbar
 
 ## Tiếng Việt
 - Telegram: nối session hoặc project vào topic bằng cách chọn trong danh sách, gợi ý sẵn topic trùng tên project
@@ -39,3 +38,4 @@ Khi bump: đổi tên file thành `RELEASE-<x>.md`, thêm mục mới đầu `ap
 - Telegram: cảnh báo hạn mức gửi vào topic của project đang chạy thay vì mọi chat
 - Telegram: ảnh gửi từ điện thoại được đính vào pane Claude như dán ảnh, chú thích là prompt
 - Compact tự gửi /compact và dòng làm tiếp sau khi handoff xong (công tắc Cài đặt › Trình soạn thảo & Terminal, mặc định bật); gõ tay, huỷ hoặc chờ quá 10 phút thì dừng
+- Workspace: viền focus của pane chia đôi không còn bị thanh cuộn terminal che

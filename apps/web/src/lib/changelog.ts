@@ -18,6 +18,20 @@ export const SEEN_KEY = 'ccm.whatsNew.seen'
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '3.3.1',
+    date: '2026-11-06',
+    items: [
+      { en: 'Telegram: pick a topic from a list, live session state, drag and drop with Undo', vi: 'Telegram: chọn topic trong danh sách, trạng thái session live, kéo-thả có Hoàn tác' },
+      { en: 'Sign in with your Telegram account to list every topic (messages still go via the bot)', vi: 'Đăng nhập tài khoản Telegram để thấy đủ topic (tin nhắn vẫn do bot gửi)' },
+      { en: 'Telegram: Esc and "last 20 lines" buttons; /compact, /close and /focus; /new picks a project', vi: 'Telegram: nút Esc và "20 dòng cuối"; lệnh /compact, /close, /focus; /new chọn project' },
+      { en: 'Telegram: one pinned status per topic, send health per topic, limit alerts to the topic', vi: 'Telegram: 1 tin ghim trạng thái mỗi topic, sức khoẻ gửi tin, cảnh báo hạn mức vào topic' },
+      { en: 'Telegram: photos from the phone go into the Claude pane; ✈ opens the topic in Telegram', vi: 'Telegram: ảnh từ điện thoại vào pane Claude; ✈ mở topic trong Telegram' },
+      { en: 'Compact sends /compact and the resume line by itself (switch in Settings)', vi: 'Compact tự gửi /compact và dòng làm tiếp (công tắc trong Cài đặt)' },
+      { en: 'One gateway for menus, links, the bot and agent tools; agents can list and message sessions', vi: 'Một cổng chung cho menu, link, bot và tool agent; agent liệt kê và nhắn session khác' },
+      { en: 'claude / codex typed in a shell pane get the Orrery tools and resume like an agent pane', vi: 'claude / codex gõ trong pane shell có tool Orrery và resume như pane agent' },
+    ],
+  },
+  {
     version: '3.3.0',
     date: '2026-11-05',
     items: [
