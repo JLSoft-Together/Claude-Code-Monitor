@@ -9,7 +9,7 @@ import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { installMcpCalls } from '../../composables/useMcpCalls'
 import { installTelegramInbound } from '../../composables/useTelegramInbound'
-import { openTelegramLink, useTelegramLinks } from '../../composables/useTelegramLinks'
+import { openTelegramGlyph, useTelegramLinks, useTelegramTopicUrl } from '../../composables/useTelegramLinks'
 import { useProjectRoots } from '../../composables/useProjectRoots'
 import { captureLayout } from '../../lib/layouts'
 import { renamedPanePatches, trashedPaneKeys } from '../../lib/explorer/tree'
@@ -1076,8 +1076,20 @@ function parkedIn(tab: Tab): string[] {
   return leaves(tab.root).filter((k) => paneOf(k)?.state === 'parked')
 }
 
+/** The pane whose topic the ✈ shows: the agent's, else (a tab of shells) the focused terminal, since a project folder can be connected too. */
+function telegramPaneOf(tab: Tab): Pane | undefined {
+  const agent = agentPaneOf(tab)
+  if (agent) return agent
+  const terms = leaves(tab.root)
+    .map((k) => paneOf(k))
+    .filter((p): p is Pane => !!p && isTerm(p))
+  return terms.find((p) => p.key === tab.focus) ?? terms[0]
+}
+
 const telegramLink = useTelegramLinks()
-const telegramWhere = (tab: Tab): string | null => telegramLink(agentPaneOf(tab))
+const telegramWhere = (tab: Tab): string | null => telegramLink(telegramPaneOf(tab))
+const telegramTopicUrlOf = useTelegramTopicUrl()
+const telegramGlyphTip = (tab: Tab): string => t(telegramTopicUrlOf(telegramPaneOf(tab)) ? 'telegram.connect.openTopic' : 'telegram.connect.linkedTo', { where: telegramWhere(tab) })
 const paneActions = usePaneActions()
 
 function openTabMenu(tab: Tab, at: DOMRect): void {
@@ -1094,6 +1106,7 @@ function openTabMenu(tab: Tab, at: DOMRect): void {
       dim: settings.dimInactive,
       parked: parkedIn(tab).length,
       telegram: paneActions.telegramOf(agentPaneOf(tab)),
+      telegramOpen: paneActions.telegramOpenOf(telegramPaneOf(tab)),
     },
     t,
   )
@@ -1122,7 +1135,7 @@ function pickTabAction(id: string, key: string): void {
   const agent = agentPaneOf(tab)
   const shared = paneActions.run(
     id,
-    { key: agent?.key, pane: agent, name: tabName(tab) },
+    { key: agent?.key, pane: telegramPaneOf(tab), name: tabName(tab) },
     {
       rename: () => startRename(tab),
       close: () => closeTab(tab),
@@ -1467,9 +1480,19 @@ onBeforeUnmount(() => {
                 <span class="sr-only">{{ tabNewsOf(tab)!.label }}</span>
               </span>
             </Transition>
-            <span v-if="telegramWhere(tab)" class="inline-flex shrink-0 cursor-pointer text-ink-faint hover:text-ink" data-tab-telegram @click.stop="openTelegramLink(agentPaneOf(tab), tabName(tab))">
+            <span
+              v-if="telegramWhere(tab)"
+              role="button"
+              tabindex="0"
+              class="inline-flex shrink-0 cursor-pointer rounded-[3px] text-ink-faint hover:text-ink"
+              :title="telegramGlyphTip(tab)"
+              :aria-label="telegramGlyphTip(tab)"
+              data-tab-telegram
+              data-no-drag
+              @click.stop="openTelegramGlyph(telegramPaneOf(tab), tabName(tab))"
+              @keydown.enter.space.prevent.stop="openTelegramGlyph(telegramPaneOf(tab), tabName(tab))"
+            >
               <Send :size="10" aria-hidden="true" />
-              <span class="sr-only">{{ t('telegram.connect.linkedTo', { where: telegramWhere(tab) }) }}</span>
             </span>
             <span v-if="leaves(tab.root).some((k) => paneOf(k)?.dirty)" class="shrink-0 text-warning" :title="t('editor.unsaved')" data-tab-dirty>
               <span aria-hidden="true">●</span><span class="sr-only">{{ t('editor.unsaved') }}</span>

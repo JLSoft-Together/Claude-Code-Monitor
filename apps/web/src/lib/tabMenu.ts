@@ -14,6 +14,8 @@ export interface TabMenuCtx {
   dim?: boolean
   parked?: number
   telegram?: 'linked' | 'unlinked'
+  /** The linked topic has a t.me link. */
+  telegramOpen?: boolean
 }
 
 const A = 'workspace.tabActions.'
@@ -41,9 +43,10 @@ export function tabMenu(ctx: TabMenuCtx, t: T): MenuEntry[] {
   }
   const compact = compactEntry(ctx.compact, t)
   if (compact.length) entries.push({ separator: true }, ...compact)
-  if (ctx.telegram) {
+  if (ctx.telegram || ctx.telegramOpen) {
     if (!compact.length) entries.push({ separator: true })
-    entries.push({ id: 'telegram-link', label: t(ctx.telegram === 'linked' ? 'telegram.connect.menuLinked' : 'telegram.connect.menu') })
+    if (ctx.telegram) entries.push({ id: 'telegram-link', label: t(ctx.telegram === 'linked' ? 'telegram.connect.menuLinked' : 'telegram.connect.menu') })
+    if (ctx.telegramOpen) entries.push({ id: 'telegram-open', label: t('telegram.connect.menuOpen') })
   }
   entries.push({ separator: true }, { id: 'close', label: t(`${A}close`) }, { id: 'close-others', label: t(`${A}closeOthers`), disabled: ctx.others < 1 })
   return entries

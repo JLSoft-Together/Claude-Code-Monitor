@@ -98,6 +98,7 @@ export const entries = (mac: boolean): SettingsEntry[] => [
   { page: 'editor', id: 'minimap', labelKey: 'settings.minimap', hintKey: 'settings.minimapHint', needs: 'terminals' },
   { page: 'editor', id: 'dim', labelKey: 'workspace.dim.setting', hintKey: 'workspace.dim.settingHint', needs: 'terminals' },
   { page: 'editor', id: 'shell', labelKey: 'shellMarks.setting', hintKey: 'shellMarks.settingHint', needs: 'terminals' },
+  { page: 'editor', id: 'compactAuto', labelKey: 'workspace.compact.auto.setting', hintKey: 'workspace.compact.auto.settingHint', needs: 'terminals' },
   { page: 'editor', id: 'agentShim', labelKey: 'shellMarks.agentShim', hintKey: 'shellMarks.agentShimHint', needs: 'terminals' },
 
   { page: 'notify', id: 'toast', labelKey: 'settings.toast', hintKey: mac ? 'settings.toastHintMac' : 'settings.toastHint', needs: 'toast' },

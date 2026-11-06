@@ -1,6 +1,6 @@
 import { escapeHtml, type TelegramLocale } from './api'
 
-export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx' | 'qa' | 'ul'
+export type ActionKind = 'ap' | 'dn' | 'go' | 'ts' | 'df' | 'st' | 'rs' | 'rn' | 'nw' | 'np' | 'lt' | 'tl' | 'lk' | 'lp' | 'bg' | 'bx' | 'qa' | 'ul' | 'es' | 'cp' | 'cl' | 'fc' | 'pj'
 
 export interface ActionEntry {
   kind: ActionKind
@@ -15,6 +15,12 @@ export interface ActionEntry {
   label?: string
   since?: number
   tool?: string
+  /** Creation time; confirm buttons (compact / close) expire after CONFIRM_TTL_MS. */
+  at?: number
+  /** Telegram id of who asked; only that person or the owner may press a picker / confirm. */
+  by?: number
+  /** Buttons of one message: pressing one retires the others, not other messages' buttons. */
+  group?: string
 }
 
 export interface Button {
@@ -24,17 +30,35 @@ export interface Button {
 
 export type Markup = { inline_keyboard: Button[][] }
 
-export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx|qa|ul):([A-Za-z0-9]{6,16})$/
+export const ACTION_RE = /^(ap|dn|go|ts|df|st|rs|rn|nw|np|lt|tl|lk|lp|bg|bx|qa|ul|es|cp|cl|fc|pj):([A-Za-z0-9]{6,16})$/
 
 export const LABELS: Record<TelegramLocale, Record<ActionKind, string>> = {
-  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip', qa: '🔹', ul: '✂️ Disconnect' },
-  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua', qa: '🔹', ul: '✂️ Ngắt' },
+  en: { ap: '✅ Allow', dn: '❌ Deny', go: '▶️ Continue', ts: '🧪 Run tests', df: '📄 Show diff', st: '⏹ Stop', rs: '↩️', rn: '▶️', nw: '➕ New session', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Run all', bx: '🗑 Skip', qa: '🔹', ul: '✂️ Disconnect', es: '⎋ Esc', cp: '🗜 Compact', cl: '🗑 Close', fc: '🪟 Focus', pj: '📁' },
+  vi: { ap: '✅ Cho phép', dn: '❌ Từ chối', go: '▶️ Tiếp tục', ts: '🧪 Chạy test', df: '📄 Xem diff', st: '⏹ Dừng', rs: '↩️', rn: '▶️', nw: '➕ Mở session mới', np: '📨', lt: '💬', tl: '📜', lk: '🔗', lp: '📁', bg: '▶️ Chạy hết', bx: '🗑 Bỏ qua', qa: '🔹', ul: '✂️ Ngắt', es: '⎋ Esc', cp: '🗜 Compact', cl: '🗑 Đóng', fc: '🪟 Mở', pj: '📁' },
 }
+
+export const TAIL_BUTTON: Record<TelegramLocale, string> = { en: 'last 20 lines', vi: '20 dòng cuối' }
 
 export const PLAN_LABELS: Record<TelegramLocale, { ap: string; dn: string }> = {
   en: { ap: '✅ Approve plan', dn: '❌ Reject plan' },
   vi: { ap: '✅ Duyệt plan', dn: '❌ Từ chối plan' },
 }
+
+const PICK_EN = { send: 'Send to which one?', stop: 'Stop which one?', tail: 'Terminal of which one?', last: 'Last reply of which one?', compact: 'Compact which one? A press asks to compact it.', close: 'Close which one? A press closes it now.', focus: 'Show which one?' } as const
+const PICK_VI = { send: 'Gửi vào session nào?', stop: 'Dừng session nào?', tail: 'Xem terminal của session nào?', last: 'Xem câu trả lời cuối của session nào?', compact: 'Compact session nào? Bấm là bắt đầu compact.', close: 'Đóng session nào? Bấm là đóng ngay.', focus: 'Mở session nào lên?' } as const
+
+export interface LimitText {
+  window?: 'five_hour' | 'seven_day'
+  usedPct?: number
+  hit?: boolean
+  /** Local time of the reset, already formatted. */
+  reset?: string
+}
+
+export type PinState = 'working' | 'waiting' | 'idle' | 'closed' | 'unknown'
+const PIN_ICON: Record<PinState, string> = { working: '🟢', waiting: '🟡', idle: '⚪', closed: '⚫', unknown: '❔' }
+const PIN_EN: Record<PinState, string> = { working: 'running', waiting: 'waiting for you', idle: 'idle', closed: 'closed', unknown: 'unknown' }
+const PIN_VI: Record<PinState, string> = { working: 'đang chạy', waiting: 'chờ bạn', idle: 'rảnh', closed: 'đã đóng', unknown: 'không rõ' }
 
 export const MORE_TEXT: Record<TelegramLocale, {
   opened: (name: string) => string
@@ -51,7 +75,8 @@ export const MORE_TEXT: Record<TelegramLocale, {
   allSent: (names: string[]) => string
   allNone: string
   lastNone: string
-  pick: (count: number, what: 'send' | 'stop' | 'last' | 'tail') => string
+  pick: (count: number, what: 'send' | 'stop' | 'last' | 'tail' | 'compact' | 'close' | 'focus') => string
+  projectPick: (prompt: boolean) => string
   linkPick: string
   linked: (name: string) => string
   whereSession: (name: string, project: string, open: boolean, keep: boolean) => string
@@ -62,7 +87,7 @@ export const MORE_TEXT: Record<TelegramLocale, {
   last: (name: string) => string
   pinHead: (name: string) => string
   pinEmpty: string
-  pinLine: (name: string, status: string, tool: string | undefined, minutes: number | null) => string
+  pinLine: (name: string, status: PinState, tool: string | undefined, minutes: number | null) => string
   backlogHead: (count: number) => string
   backlogSkipped: (count: number) => string
 }> = {
@@ -88,11 +113,12 @@ export const MORE_TEXT: Record<TelegramLocale, {
     unlinked: (n) => `✂️ Disconnected this topic from <b>${escapeHtml(n)}</b>.`,
     ended: (n) => `⏹ Session <b>${escapeHtml(n)}</b> ended, so this topic was disconnected. Reopen it (↩️) or connect another session (🔗):`,
     cleared: (n) => `🧹 <b>${escapeHtml(n)}</b> started a new session (/clear), so this topic was disconnected. Connect the new one (🔗):`,
-    pick: (c, w) => `This project has ${c} open sessions. ${w === 'send' ? 'Send to which one?' : w === 'stop' ? 'Stop which one?' : w === 'tail' ? 'Terminal of which one?' : 'Last reply of which one?'}`,
+    pick: (c, w) => `This project has ${c} open sessions. ${PICK_EN[w]}`,
+    projectPick: (p) => `Which project should the new session open in?${p ? ' The prompt goes with it.' : ''}`,
     last: (n) => `💬 Last reply of <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
-    pinEmpty: 'No session open in Orrery.',
-    pinLine: (n, s, t, m) => `• ${escapeHtml(n)} — ${escapeHtml(s)}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} min` : ''}`,
+    pinEmpty: 'No session connected to this topic.',
+    pinLine: (n, s, t, m) => `${PIN_ICON[s]} ${escapeHtml(n)} — ${PIN_EN[s]}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} min` : ''}`,
     backlogHead: (n) => `🕘 ${n} command${n > 1 ? 's were' : ' was'} sent while Orrery was off:`,
     backlogSkipped: (n) => `🗑 Skipped ${n} command${n > 1 ? 's' : ''}.`,
   },
@@ -118,11 +144,12 @@ export const MORE_TEXT: Record<TelegramLocale, {
     unlinked: (n) => `✂️ Đã ngắt topic này khỏi <b>${escapeHtml(n)}</b>.`,
     ended: (n) => `⏹ Session <b>${escapeHtml(n)}</b> đã kết thúc nên topic này đã được ngắt. Mở lại (↩️) hoặc nối session khác (🔗):`,
     cleared: (n) => `🧹 <b>${escapeHtml(n)}</b> đã sang session mới (/clear) nên topic này đã được ngắt. Nối session mới (🔗):`,
-    pick: (c, w) => `Project đang có ${c} session mở. ${w === 'send' ? 'Gửi vào session nào?' : w === 'stop' ? 'Dừng session nào?' : w === 'tail' ? 'Xem terminal của session nào?' : 'Xem câu trả lời cuối của session nào?'}`,
+    pick: (c, w) => `Project đang có ${c} session mở. ${PICK_VI[w]}`,
+    projectPick: (p) => `Mở session mới ở project nào?${p ? ' Prompt đi kèm.' : ''}`,
     last: (n) => `💬 Câu trả lời cuối của <b>${escapeHtml(n)}</b>`,
     pinHead: (n) => `📌 <b>${escapeHtml(n)}</b>`,
-    pinEmpty: 'Không có session nào mở trong Orrery.',
-    pinLine: (n, s, t, m) => `• ${escapeHtml(n)} — ${escapeHtml(s)}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} phút` : ''}`,
+    pinEmpty: 'Không có session nào nối với topic này.',
+    pinLine: (n, s, t, m) => `${PIN_ICON[s]} ${escapeHtml(n)} — ${PIN_VI[s]}${t ? ` · ${escapeHtml(t)}` : ''}${m !== null ? ` · ${m} phút` : ''}`,
     backlogHead: (n) => `🕘 Có ${n} lệnh gửi lúc Orrery tắt:`,
     backlogSkipped: (n) => `🗑 Đã bỏ qua ${n} lệnh.`,
   },
@@ -156,6 +183,12 @@ export const ACT_TEXT: Record<TelegramLocale, {
   stopAsk: (name: string) => string
   sessionClosed: (name: string) => string
   stopped: (name: string) => string
+  escaped: (name: string) => string
+  closeAsk: (name: string) => string
+  closed: (name: string) => string
+  compactAsk: (name: string) => string
+  compacted: (name: string) => string
+  focused: (name: string) => string
   state: string
   keysBusy: string
   screenNone: string
@@ -165,11 +198,12 @@ export const ACT_TEXT: Record<TelegramLocale, {
   fileTooBig: string
   fileFail: string
   filePrompt: (kind: string, file: string, caption: string) => string
+  imagePrompt: (n: number) => string
   diffClean: string
   diffNotRepo: string
   diffFail: string
   diffCaption: (name: string, files: number) => string
-  limit: string
+  limit: (info: LimitText | null) => string
   disk: (label: string, free: string) => string
   runFailed: (config: string, code: string) => string
   summaryHead: (date: string) => string
@@ -186,6 +220,12 @@ export const ACT_TEXT: Record<TelegramLocale, {
     stopAsk: (n) => `Stop the agent in <b>${escapeHtml(n)}</b>?`,
     sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> of this topic is not open in Orrery. Send <code>resume</code> to reopen it.`,
     stopped: (n) => `⏹ Sent Esc to <b>${escapeHtml(n)}</b>.`,
+    escaped: (n) => `⎋ Sent Esc to <b>${escapeHtml(n)}</b>.`,
+    closeAsk: (n) => `Close <b>${escapeHtml(n)}</b> in Orrery? The pane closes now; reopening it is done on the machine (undo close).`,
+    closed: (n) => `🗑 Closed <b>${escapeHtml(n)}</b>.`,
+    compactAsk: (n) => `Compact <b>${escapeHtml(n)}</b>? Orrery asks it to write a handoff, runs /compact, then continues from the handoff (it submits prompts).`,
+    compacted: (n) => `🗜 Compact started in <b>${escapeHtml(n)}</b>.`,
+    focused: (n) => `🪟 Orrery is in front, on <b>${escapeHtml(n)}</b>.`,
     state: 'That session is not in that state any more.',
     keysBusy: 'A previous button of that session is still being typed; try again in a moment.',
     screenNone: 'No Android device is connected to Orrery.',
@@ -194,12 +234,19 @@ export const ACT_TEXT: Record<TelegramLocale, {
     fileSaved: (n, f) => `📥 Saved and sent to <b>${escapeHtml(n)}</b>: <code>${escapeHtml(f)}</code>`,
     fileTooBig: 'Telegram lets bots download files up to 20 MB only.',
     fileFail: 'Orrery could not save that file.',
+    imagePrompt: (n) => (n > 1 ? `The user sent ${n} images over Telegram (attached).` : 'The user sent an image over Telegram (attached).'),
     filePrompt: (k, f, c) => `The user sent a ${k} over Telegram, saved at ${f}.${c ? `\n${c}` : ''}`,
     diffClean: 'No uncommitted changes.',
     diffNotRepo: 'That project is not a git repository.',
     diffFail: 'Orrery could not build the diff.',
     diffCaption: (n, f) => `📄 <b>${escapeHtml(n)}</b>: ${f} file(s) changed`,
-    limit: '⚠️ Claude usage limit is about to run out.',
+    limit: (i) => {
+      if (!i) return '⚠️ Claude usage limit is about to run out.'
+      const win = i.window === 'seven_day' ? '7-day' : i.window === 'five_hour' ? '5-hour' : ''
+      const reset = i.reset ? `, resets at ${i.reset}` : ''
+      if (i.hit) return `⛔ Claude ${win ? `${win} ` : ''}usage limit reached${reset}.`
+      return `⚠️ Claude ${win ? `${win} ` : ''}usage limit is about to run out${i.usedPct !== undefined ? `: ${i.usedPct}% used` : ''}${reset}.`
+    },
     disk: (l, f) => `💾 Disk ${escapeHtml(l)} is almost full: ${escapeHtml(f)} left.`,
     runFailed: (c, code) => `❌ <b>${escapeHtml(c)}</b> failed: ${escapeHtml(code)}`,
     summaryHead: (d) => `📊 <b>Day summary ${escapeHtml(d)}</b>`,
@@ -216,6 +263,12 @@ export const ACT_TEXT: Record<TelegramLocale, {
     stopAsk: (n) => `Dừng agent ở <b>${escapeHtml(n)}</b>?`,
     sessionClosed: (n) => `Session <b>${escapeHtml(n)}</b> gắn với topic này chưa mở trong Orrery. Gõ <code>resume</code> để mở lại.`,
     stopped: (n) => `⏹ Đã gửi Esc vào <b>${escapeHtml(n)}</b>.`,
+    escaped: (n) => `⎋ Đã gửi Esc vào <b>${escapeHtml(n)}</b>.`,
+    closeAsk: (n) => `Đóng <b>${escapeHtml(n)}</b> trong Orrery? Pane đóng ngay; mở lại phải làm trên máy (hoàn tác đóng).`,
+    closed: (n) => `🗑 Đã đóng <b>${escapeHtml(n)}</b>.`,
+    compactAsk: (n) => `Compact <b>${escapeHtml(n)}</b>? Orrery bảo nó ghi handoff, chạy /compact rồi làm tiếp từ handoff (có gửi prompt).`,
+    compacted: (n) => `🗜 Đã bắt đầu compact ở <b>${escapeHtml(n)}</b>.`,
+    focused: (n) => `🪟 Orrery đã lên trước, ở <b>${escapeHtml(n)}</b>.`,
     state: 'Session đó không còn ở trạng thái này nữa.',
     keysBusy: 'Nút bấm trước của session đó còn đang được gõ, chủ nhân thử lại sau giây lát.',
     screenNone: 'Không có máy Android nào kết nối với Orrery.',
@@ -224,12 +277,19 @@ export const ACT_TEXT: Record<TelegramLocale, {
     fileSaved: (n, f) => `📥 Đã lưu và gửi vào <b>${escapeHtml(n)}</b>: <code>${escapeHtml(f)}</code>`,
     fileTooBig: 'Bot Telegram chỉ tải được file tối đa 20 MB.',
     fileFail: 'Orrery không lưu được file đó.',
+    imagePrompt: (n) => (n > 1 ? `Chủ nhân gửi ${n} ảnh qua Telegram (đã đính kèm).` : 'Chủ nhân gửi một ảnh qua Telegram (đã đính kèm).'),
     filePrompt: (k, f, c) => `Chủ nhân gửi ${k} qua Telegram, đã lưu ở ${f}.${c ? `\n${c}` : ''}`,
     diffClean: 'Không có thay đổi chưa commit.',
     diffNotRepo: 'Project này không phải git repo.',
     diffFail: 'Orrery không tạo được diff.',
     diffCaption: (n, f) => `📄 <b>${escapeHtml(n)}</b>: ${f} file thay đổi`,
-    limit: '⚠️ Hạn mức Claude sắp hết.',
+    limit: (i) => {
+      if (!i) return '⚠️ Hạn mức Claude sắp hết.'
+      const win = i.window === 'seven_day' ? '7 ngày' : i.window === 'five_hour' ? '5 giờ' : ''
+      const reset = i.reset ? `, reset lúc ${i.reset}` : ''
+      if (i.hit) return `⛔ Đã chạm hạn mức Claude${win ? ` (${win})` : ''}${reset}.`
+      return `⚠️ Hạn mức Claude${win ? ` (${win})` : ''} sắp hết${i.usedPct !== undefined ? `: đã dùng ${i.usedPct}%` : ''}${reset}.`
+    },
     disk: (l, f) => `💾 Ổ ${escapeHtml(l)} sắp đầy: còn ${escapeHtml(f)}.`,
     runFailed: (c, code) => `❌ <b>${escapeHtml(c)}</b> lỗi: ${escapeHtml(code)}`,
     summaryHead: (d) => `📊 <b>Tổng kết ngày ${escapeHtml(d)}</b>`,

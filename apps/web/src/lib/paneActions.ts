@@ -1,8 +1,9 @@
 import { isSessionId } from '@ccm/shared'
+import { topicUrl } from './telegram'
 import { isTerm, workCwd, type Pane } from '../stores/workspace'
 
 /** Context-menu items the tab strip and the rail share; each menu keeps its own entries, these ids run the same code. */
-export const PANE_ACTIONS = ['telegram-link', 'compact', 'compact-cancel', 'rename', 'close', 'close-others', 'focus', 'monitor', 'copy-cwd'] as const
+export const PANE_ACTIONS = ['telegram-link', 'telegram-open', 'compact', 'compact-cancel', 'rename', 'close', 'close-others', 'focus', 'monitor', 'copy-cwd'] as const
 export type PaneActionId = (typeof PANE_ACTIONS)[number]
 
 const ALIASES: Readonly<Record<string, PaneActionId>> = { 'rename-tab': 'rename' }
@@ -22,10 +23,57 @@ export function telegramLinkCtx(pane: Pane | undefined, name: string): TelegramL
   return cwd ? { cwd, session: pane.agentSessionId.toLowerCase(), name } : null
 }
 
-/** The ✈ menu item state, from the sessions that have a topic route. */
-export function telegramMenuState(pane: Pane | undefined, linked: (session: string) => boolean): 'linked' | 'unlinked' | undefined {
+export interface TelegramRouteView {
+  chatId: string
+  threadId: number | null
+  where?: string
+  /** 'project' = the pane's folder is connected, the session has no topic of its own. */
+  via: 'session' | 'project'
+}
+
+interface RouteState {
+  sessionRoutes?: ReadonlyArray<{ session: string; chatId: string; threadId: number | null; where?: string }>
+  routes?: ReadonlyArray<{ project: string; chatId: string; threadId: number | null; where?: string }>
+}
+
+const dirKey = (p: string): string => {
+  const n = p.replace(/[\\/]+/g, '/').replace(/\/$/, '')
+  return /^[A-Za-z]:/.test(n) ? n.toLowerCase() : n
+}
+
+/** Same pick as the bot: a session's own topic wins, then the deepest connected project folder holding the pane's cwd. */
+export function telegramRouteOf(pane: Pane | undefined, state: RouteState | undefined): TelegramRouteView | null {
+  if (!pane || !isTerm(pane) || !state) return null
+  if (isSessionId(pane.agentSessionId)) {
+    const session = pane.agentSessionId.toLowerCase()
+    const own = state.sessionRoutes?.find((r) => r.session === session)
+    if (own) return { chatId: own.chatId, threadId: own.threadId, where: own.where, via: 'session' }
+  }
+  const cwd = workCwd(pane)
+  if (!cwd) return null
+  const at = dirKey(cwd)
+  let best: NonNullable<RouteState['routes']>[number] | null = null
+  let bestKey = ''
+  for (const r of state.routes ?? []) {
+    const k = dirKey(r.project)
+    if ((at === k || at.startsWith(`${k}/`)) && (!best || k.length > bestKey.length)) {
+      best = r
+      bestKey = k
+    }
+  }
+  return best ? { chatId: best.chatId, threadId: best.threadId, where: best.where, via: 'project' } : null
+}
+
+/** The ✈ menu item state: 'linked' when the session or its project folder has a topic. */
+export function telegramMenuState(pane: Pane | undefined, state: RouteState | undefined): 'linked' | 'unlinked' | undefined {
   const ctx = telegramLinkCtx(pane, '')
-  return ctx ? (linked(ctx.session) ? 'linked' : 'unlinked') : undefined
+  return ctx ? (telegramRouteOf(pane, state) ? 'linked' : 'unlinked') : undefined
+}
+
+/** t.me link of the topic a pane is connected to; null when unlinked or the group has no topic link (basic group). */
+export function telegramTopicLink(pane: Pane | undefined, state: RouteState | undefined): string | null {
+  const route = telegramRouteOf(pane, state)
+  return route ? topicUrl(route.chatId, route.threadId) : null
 }
 
 export interface PaneActionSubject {
@@ -49,6 +97,7 @@ export interface PaneActionDeps {
   compact(key: string): void
   compactCancel(key: string): void
   telegramLink(ctx: TelegramLinkCtx): void
+  telegramOpen(pane: Pane | undefined, name: string): void
   focus(key: string): void
   monitor(terminalId: string): void
 }
@@ -63,6 +112,9 @@ export function runPaneAction(id: string, subject: PaneActionSubject, hooks: Pan
       if (ctx) deps.telegramLink(ctx)
       break
     }
+    case 'telegram-open':
+      deps.telegramOpen(subject.pane, subject.name)
+      break
     case 'compact':
       if (subject.key) deps.compact(subject.key)
       break

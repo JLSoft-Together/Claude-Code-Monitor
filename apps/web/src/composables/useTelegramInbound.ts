@@ -1,12 +1,16 @@
-import { watch } from 'vue'
+import { nextTick, watch } from 'vue'
 import { cleanNoteText, isSessionId, type SessionTarget, type TelegramPaneLink, type TelegramInbound, type TelegramInboundResult, type TelegramResumeItem, type TerminalSession, type SessionOpenError } from '@ccm/shared'
 import { i18n } from '../i18n'
 import { telegramPanes } from '../lib/telegram'
 import { baseName } from '../lib/preview'
+import { isImagePath } from '../lib/promptAttachments'
+import { fromPath, useAttachmentsStore } from '../stores/attachments'
 import { useInboxStore } from '../stores/inbox'
 import { useTerminalsStore } from '../stores/terminals'
 import { useToastsStore } from '../stores/toasts'
-import { agentLive, isTerm, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
+import { agentLive, isTerm, presetOf, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
+import { useUiStore } from '../stores/ui'
+import { useCompact } from './useCompact'
 import { handleOrrery, hasOrrery } from './useOrreryApi'
 import { useSessionActions, type ActFail } from './useSessionActions'
 
@@ -40,11 +44,12 @@ export function installTelegramInbound(): void {
   const terminals = useTerminalsStore()
   const inbox = useInboxStore()
   const toasts = useToastsStore()
+  const attachments = useAttachmentsStore()
 
   const act = useSessionActions()
   const { sessionOf, paneInfos: infos } = act
   const nameOf = (p: Pane): string => act.nameOf(p, { title: true })
-  const targetOf = (req: Req<'send'> | Req<'keys'> | Req<'tail'>): SessionTarget => ({
+  const targetOf = (req: Req<'send'> | Req<'keys'> | Req<'tail'> | Req<'compact'> | Req<'close'> | Req<'focus'>): SessionTarget => ({
     project: req.project,
     nested: req.nested,
     ...(req.target ? (req.target.kind === 'terminal' ? { terminalId: req.target.terminalId } : { sessionId: req.target.sessionId }) : {}),
@@ -69,14 +74,36 @@ export function installTelegramInbound(): void {
     return out.ok ? { ok: true, action: 'tail', name: nameOf(out.pane), text: out.text } : fail(out)
   }
 
-  function send(req: Req<'send'>): TelegramInboundResult {
-    const out = act.send(targetOf(req), req.text)
+  /**
+   * Photos go to the tray of an idle Claude pane only: the tray pastes through the clipboard and the paste key, which
+   * would land in a permission / question dialog of a busy pane. Paths must be files the bot saved under the project.
+   */
+  async function attachImages(req: Req<'send'>): Promise<number> {
+    if (!req.images?.length || !req.imageText) return 0
+    const pane = act.resolve(targetOf(req))
+    if ('ok' in pane || !isTerm(pane) || presetOf(pane) !== 'claude' || pane.state !== 'running' || pane.prefill || pane.compact || sessionOf(pane)?.status !== 'idle') return 0
+    const dir = `${dirKey(req.project)}\\.orrery\\telegram\\`
+    if (!req.images.every((p) => isImagePath(p) && dirKey(p).startsWith(dir) && !/(^|[\\/])\.\.([\\/]|$)/.test(p))) return 0
+    attachments.add(
+      pane.key,
+      req.images.map((p) => fromPath(p, 'drop')),
+      true,
+    )
+    await nextTick()
+    return req.images.length
+  }
+
+  async function send(req: Req<'send'>): Promise<TelegramInboundResult> {
+    const images = await attachImages(req)
+    const text = images ? req.imageText! : req.text
+    // The pasted image leaves an [Image #n] token right before the prefill, which would run into the caption.
+    const out = act.send(targetOf(req), images ? ` ${text}` : text)
     if (!out.ok) return fail(out)
     const session = sessionOf(out.pane)
     const name = nameOf(out.pane)
-    log(out.pane, req.from, req.text)
-    toast(name, req.text)
-    return { ok: true, action: 'send', name, queued: session?.status !== 'idle', ...(session ? { terminalId: session.id } : {}) }
+    log(out.pane, req.from, text)
+    toast(name, text)
+    return { ok: true, action: 'send', name, queued: session?.status !== 'idle', ...(session ? { terminalId: session.id } : {}), ...(images ? { images } : {}) }
   }
 
   function all(req: Req<'all'>): TelegramInboundResult {
@@ -88,6 +115,42 @@ export function installTelegramInbound(): void {
     })
     toast(names.join(', '), req.text)
     return { ok: true, action: 'all', names }
+  }
+
+  /** A confirm button belongs to the prompt it was shown for: a newer status of the pane (or a new session) refuses it. */
+  const sinceOk = (pane: Pane, since?: number): boolean => {
+    if (since === undefined) return true
+    const at = sessionOf(pane)?.statusSince
+    return !!at && Date.parse(at) === since
+  }
+
+  /** Owner's Compact flow (docs §11x) on one agent pane; the bot already asked the owner to confirm. */
+  function compact(req: Req<'compact'>): TelegramInboundResult {
+    const pane = act.resolve(targetOf(req))
+    if ('ok' in pane) return fail(pane)
+    if (!sinceOk(pane, req.since)) return { ok: false, error: 'state' }
+    if (pane.prefill) return fail({ ok: false, error: 'busy', panes: [pane] })
+    if (!useCompact().start(pane.key)) return { ok: false, error: 'state' }
+    log(pane, 'Telegram', 'compact')
+    return { ok: true, action: 'compact', name: nameOf(pane) }
+  }
+
+  /** Closes like the owner's button, so the close can be undone on the machine; no busy sheet because the owner confirmed in Telegram. */
+  function close(req: Req<'close'>): TelegramInboundResult {
+    const pane = act.resolve(targetOf(req))
+    if ('ok' in pane) return fail(pane)
+    if (!sinceOk(pane, req.since)) return { ok: false, error: 'state' }
+    const name = nameOf(pane)
+    workspace.requestClose([pane.key], () => false)
+    return { ok: true, action: 'close', name }
+  }
+
+  function focus(req: Req<'focus'>): TelegramInboundResult {
+    const pane = act.resolve(targetOf(req))
+    if ('ok' in pane) return fail(pane)
+    useUiStore().setView('workspace')
+    workspace.activate(pane.key)
+    return { ok: true, action: 'focus', name: nameOf(pane) }
   }
 
   const openError = (error: SessionOpenError): TelegramInboundResult => ({ ok: false, error: error === 'live' ? 'busy' : 'unavailable' })
@@ -119,6 +182,9 @@ export function installTelegramInbound(): void {
   handleOrrery('session.status', (req) => ({ ok: true, action: 'status', panes: infos(act.status(req)) }))
   handleOrrery('session.keys', keys)
   handleOrrery('session.tail', tail)
+  handleOrrery('session.compact', compact)
+  handleOrrery('session.closeOwner', close)
+  handleOrrery('session.focus', focus)
   handleOrrery('session.send', send)
   handleOrrery('session.sendAll', all)
   handleOrrery('session.create', create)

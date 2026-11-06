@@ -510,6 +510,7 @@ function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): vo
       compact: compactFlow.stateOf(row.pane),
       deepseek: hasDeepSeek,
       telegram: paneActions.telegramOf(row.pane),
+      telegramOpen: paneActions.telegramOpenOf(row.pane),
     },
     t,
   )

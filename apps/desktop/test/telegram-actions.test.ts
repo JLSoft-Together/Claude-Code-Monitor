@@ -95,7 +95,7 @@ describe('buttons', () => {
     await receiving(tg)
     await tg.handle(ep({ episode: 'p1' }))
     const keys = buttons(sent[sent.length - 1]!)
-    expect(keys.map((k) => k.text)).toEqual(['✅ Cho phép', '❌ Từ chối'])
+    expect(keys.map((k) => k.text)).toEqual(['✅ Cho phép', '❌ Từ chối', '⎋ Esc', '📜 20 dòng cuối'])
     await tg.onUpdate(cbUpdate(keys[0]!.callback_data, 999))
     expect(asked).toHaveLength(0)
     expect(sent[sent.length - 1]).toMatchObject({ method: 'answerCallbackQuery', body: { text: 'Chỉ tài khoản đã ghép mới dùng được các nút này.' } })
@@ -230,6 +230,68 @@ describe('files from Telegram', () => {
     await tg.onUpdate({ update_id: 80, message: { message_id: 80, chat: { id: CHAT, type: 'supergroup' }, message_thread_id: 7, is_topic_message: true, from: { id: OWNER }, media_group_id: 'g2', caption: 'ảnh đi chơi', photo: [{ file_id: 'x', file_size: 3 }] } })
     await new Promise((r) => setTimeout(r, 30))
     expect(asked).toEqual([])
+    tg.stop()
+  })
+})
+
+describe('images from Telegram go to the tray', () => {
+  const saveTo = (p: string, name: string) => Promise.resolve(path.join(p, '.orrery', 'telegram', name))
+  const group = { chat: { id: CHAT, type: 'supergroup' }, message_thread_id: 7, is_topic_message: true, from: { id: OWNER } }
+
+  it('sends a photo as images + a caption prompt, and keeps the path text as the fallback', async () => {
+    const { tg, asked } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { saveFile: saveTo } })
+    await receiving(tg)
+    await tg.onUpdate({ update_id: 3, message: { message_id: 60, ...group, caption: '@orrery_bot màn này lỗi', photo: [{ file_id: 'b', file_size: 3 }] } })
+    const req = asked[0] as Extract<TelegramInbound, { action: 'send' }>
+    const file = path.join(project, '.orrery', 'telegram', 'photo.jpg')
+    expect(req.images).toEqual([file])
+    expect(req.imageText).toContain('màn này lỗi')
+    expect(req.imageText).not.toContain(file)
+    expect(req.text).toContain(file)
+    tg.stop()
+  })
+
+  it('uses a default prompt for a photo without a caption', async () => {
+    const { tg, asked } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { saveFile: saveTo } })
+    await receiving(tg)
+    await tg.onUpdate({ update_id: 3, message: { message_id: 60, ...group, caption: '@orrery_bot', photo: [{ file_id: 'b', file_size: 3 }] } })
+    expect((asked[0] as { imageText: string }).imageText).toContain('ảnh')
+    tg.stop()
+  })
+
+  it('gathers an album into one turn', async () => {
+    let n = 0
+    const { tg, asked } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { albumMs: 5, saveFile: (p, name) => saveTo(p, `${++n}-${name}`) } })
+    await receiving(tg)
+    const photo = (id: number, extra: Record<string, unknown> = {}) => ({ update_id: id, message: { message_id: id, ...group, media_group_id: 'g1', photo: [{ file_id: `f${id}`, file_size: 3 }], ...extra } })
+    await tg.onUpdate(photo(70, { caption: '@orrery_bot so sánh' }))
+    for (let i = 71; i < 79; i++) await tg.onUpdate(photo(i))
+    await new Promise((r) => setTimeout(r, 60))
+    expect(asked).toHaveLength(1)
+    const req = asked[0] as Extract<TelegramInbound, { action: 'send' }>
+    expect(req.images).toHaveLength(9)
+    expect(req.imageText).toContain('9 ảnh')
+    expect(req.imageText).toContain('so sánh')
+    tg.stop()
+  })
+
+  it('takes an image document as an image, a pdf stays a path', async () => {
+    const { tg, asked } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { saveFile: saveTo } })
+    await receiving(tg)
+    await tg.onUpdate({ update_id: 3, message: { message_id: 60, ...group, caption: '@orrery_bot xem', document: { file_id: 'd', file_name: 'shot.png', file_size: 3 } } })
+    await tg.onUpdate({ update_id: 4, message: { message_id: 61, ...group, caption: '@orrery_bot xem', document: { file_id: 'e', file_name: 'spec.pdf', file_size: 3 } } })
+    expect((asked[0] as { images?: string[] }).images).toHaveLength(1)
+    expect((asked[1] as { images?: string[] }).images).toBeUndefined()
+    expect((asked[1] as { text: string }).text).toContain('spec.pdf')
+    tg.stop()
+  })
+
+  it('a photo over the download limit is refused without a prompt', async () => {
+    const { tg, asked, sent } = setup({ answer: () => ({ ok: true, action: 'send', name: 'A', queued: false }), extra: { saveFile: saveTo } })
+    await receiving(tg)
+    await tg.onUpdate({ update_id: 3, message: { message_id: 60, ...group, caption: '@orrery_bot', photo: [{ file_id: 'b', file_size: 30 * 1024 * 1024 }] } })
+    expect(asked).toEqual([])
+    expect(String((sent[sent.length - 1]!.body as Record<string, unknown>).text)).toContain('20 MB')
     tg.stop()
   })
 })

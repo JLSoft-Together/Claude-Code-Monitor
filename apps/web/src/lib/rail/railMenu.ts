@@ -102,6 +102,8 @@ export interface RowMenuCtx {
   compact?: CompactState | null
   /** Agent session that can get its own Telegram topic; 'linked' when it has one. */
   telegram?: 'linked' | 'unlinked'
+  /** The linked topic has a t.me link. */
+  telegramOpen?: boolean
 }
 
 const splitKids = (dir: 'row' | 'col', deepseek: boolean, t: T): MenuEntry[] =>
@@ -131,6 +133,7 @@ export function rowMenu(ctx: RowMenuCtx, t: T): MenuEntry[] {
   if (ctx.agent) entries.push({ id: 'monitor', label: t(`${M}showInMonitor`), disabled: !ctx.linked, hint: ctx.linked ? undefined : t(`${M}notLinked`) })
   if (ctx.context && ctx.cwd) entries.push({ id: 'context', label: t('ctxSources.open') })
   if (ctx.telegram) entries.push({ id: 'telegram-link', label: t(ctx.telegram === 'linked' ? 'telegram.connect.menuLinked' : 'telegram.connect.menu') })
+  if (ctx.telegramOpen) entries.push({ id: 'telegram-open', label: t('telegram.connect.menuOpen') })
   const compact = compactEntry(ctx.compact, t)
   if (compact.length) entries.push({ separator: true }, ...compact)
   entries.push(

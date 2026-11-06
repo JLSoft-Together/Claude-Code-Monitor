@@ -158,3 +158,15 @@ describe('row menu compact', () => {
     expect(ids(rowMenu(row(), t))).not.toContain('compact')
   })
 })
+
+describe('row menu telegram', () => {
+  it('adds "open topic" after the ✈ item only for a topic with a t.me link (a pane with no session too)', () => {
+    const list = (p: Partial<RowMenuCtx>) => ids(rowMenu(row(p), t))
+    const both = list({ telegram: 'linked', telegramOpen: true })
+    expect(both.indexOf('telegram-open')).toBe(both.indexOf('telegram-link') + 1)
+    expect(list({ telegram: 'linked' })).not.toContain('telegram-open')
+    expect(list({ telegramOpen: true })).toContain('telegram-open')
+    expect(list({ telegramOpen: true })).not.toContain('telegram-link')
+    expect(list({})).not.toContain('telegram-open')
+  })
+})

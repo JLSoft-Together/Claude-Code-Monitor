@@ -98,7 +98,7 @@ describe('approve buttons are bound to their permission prompt (WP-1 #1)', () =>
     const { tg, sent, asked } = setup()
     await receiving(tg)
     await tg.handle(ep({ episode: 'p0', since: undefined }))
-    expect(buttons(lastMessage(sent))).toEqual([])
+    expect(buttons(lastMessage(sent)).map((b) => b.callback_data.slice(0, 3))).toEqual(['tl:'])
     await tg.handle(ep({ episode: 'p1' }))
     const keys = buttons(lastMessage(sent))
     await tg.onUpdate(cbUpdate(keys[0]!.callback_data))
@@ -299,13 +299,17 @@ describe('pinned status follows the route (WP-1 #9)', () => {
     expect((lastMessage(sent).body as Record<string, unknown>).chat_id).toBe(CHAT2)
   })
 
-  it('reads a pin saved by the previous version with its route chat', async () => {
+  it('unpins a pin saved by the previous version (per project) once and pins the topic instead', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'tg-review-pin-'))
     const file = path.join(dir, 'telegram.json')
     writeFileSync(file, JSON.stringify({ enabled: true, token: Buffer.from(`sealed:${TOKEN}`).toString('base64'), pinStatus: true, routes: [{ project, label: 'A', chatId: String(CHAT), threadId: 7 }], pins: { [project]: 77 } }))
     const { tg, sent } = setup({ file, answer: () => ({ ok: true, action: 'status', panes: [] }) })
     await tg.pinTick()
-    expect(sent.find((s) => s.method === 'editMessageText')).toMatchObject({ body: { chat_id: String(CHAT), message_id: 77 } })
+    expect(sent.find((s) => s.method === 'unpinChatMessage')).toMatchObject({ body: { chat_id: String(CHAT), message_id: 77 } })
+    expect(sent.some((s) => s.method === 'editMessageText')).toBe(false)
+    expect(sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(1)
+    await tg.pinTick()
+    expect(sent.filter((s) => s.method === 'unpinChatMessage')).toHaveLength(1)
   })
 })
 

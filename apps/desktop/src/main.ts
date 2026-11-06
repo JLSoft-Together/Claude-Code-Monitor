@@ -1166,6 +1166,7 @@ function setupTelegram(): void {
     commandInstalled: () => commandInstalled(),
     receiveInstalled: () => commandInstalled(undefined, RECEIVE_COMMAND),
     askPage: async (req) => parseInboundResult(await orrery(TELEGRAM_INBOUND_ACTION[req.action], req, { source: 'telegram' })),
+    focusApp: () => showMain(),
     bigUploader,
     userScanner,
     diff: (cwd) => projectDiff(cwd, os.homedir(), process.platform),
@@ -1391,7 +1392,7 @@ async function ready(): Promise<void> {
       } else if (m?.type === 'phone') {
         const episode = parsePhoneEpisode(data)
         if (episode) void phone?.handle(episode)
-        if (episode?.reason === 'limit') void telegram?.alert('limit')
+        if (episode?.reason === 'limit') void telegram?.alert('limit', { window: episode.window, usedPct: episode.usedPct, resetsAt: episode.resetsAt, hit: episode.hit })
         else if (episode?.reason === 'disk') void telegram?.alert('disk', { label: episode.name, free: episode.freeBytes !== undefined ? formatGb(episode.freeBytes) : '?' })
       } else if (m?.type === 'telegram') {
         const episode = parseTelegramEpisode(data)

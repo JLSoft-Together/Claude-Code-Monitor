@@ -79,4 +79,15 @@ describe('tabMenu telegram', () => {
     expect(findAction(tabMenu(ctx({ telegram: 'unlinked' }), t), 'telegram-link')).toMatchObject({ label: 'telegram.connect.menu' })
     expect(findAction(tabMenu(ctx({ telegram: 'linked', compact: 'ready' }), t), 'telegram-link')).toMatchObject({ label: 'telegram.connect.menuLinked' })
   })
+
+  it('adds "open topic" right after it only for a topic with a t.me link (project topics too, without the ✈ dialog item for a pane that has no session)', () => {
+    const list = (c: Partial<TabMenuCtx>) => ids(tabMenu(ctx(c), t))
+    expect(list({ telegram: 'linked', telegramOpen: true })).toEqual(expect.arrayContaining(['telegram-link', 'telegram-open']))
+    const i = list({ telegram: 'linked', telegramOpen: true })
+    expect(i.indexOf('telegram-open')).toBe(i.indexOf('telegram-link') + 1)
+    expect(list({ telegram: 'linked' })).not.toContain('telegram-open')
+    expect(list({ telegramOpen: true })).toEqual(expect.arrayContaining(['telegram-open']))
+    expect(list({ telegramOpen: true })).not.toContain('telegram-link')
+    expect(list({})).not.toContain('telegram-open')
+  })
 })

@@ -20,6 +20,7 @@ import {
   type AgentNoteMessage,
   type DiskAlertMessage,
   type JobState,
+  type LimitHit,
   type NotifySettings,
   type PhoneEpisodeMessage,
   type PhoneReason,
@@ -543,6 +544,7 @@ export class Toaster {
       this.prev.set(t.id, t.status)
       const worked = this.trackWork(t, before, nowMs)
       this.watchStuck(t, before, nowMs)
+      if (t.limitHit && !t.endedAt) this.watchLimitHit(t.limitHit, before !== undefined, nowMs)
       this.watchContext(t, before, snap.contextPct?.(t.id) ?? null)
       if (t.status !== 'idle' || t.endedAt) this.hideKey(`done:${t.id}`)
       if (t.status !== 'waiting' || t.endedAt) {
@@ -800,6 +802,17 @@ export class Toaster {
     }
   }
 
+  /** The transcript says the limit was reached (not a forecast); one phone / Telegram episode per window and reset, however many sessions hit it. */
+  private watchLimitHit(hit: LimitHit, seenBefore: boolean, nowMs: number): void {
+    const window = hit.window === 'five_hour' || hit.window === 'seven_day' ? hit.window : undefined
+    const key = `hit:${hit.window ?? '?'}|${hit.resetsAt ?? hit.at}`
+    if (this.limitSent.has(key)) return
+    this.limitSent.add(key)
+    const resetsAt = hit.resetsAt ? Date.parse(hit.resetsAt) : NaN
+    if (!seenBefore || (Number.isFinite(resetsAt) && resetsAt <= nowMs)) return
+    this.phone({ episode: `lh:${key}`, reason: 'limit', name: 'Claude', usedPct: 100, hit: true, ...(window ? { window } : {}), ...(Number.isFinite(resetsAt) ? { resetsAt } : {}) }, 'limit')
+  }
+
   private observeLimits(limits: PlanLimits | null, nowMs: number): void {
     const w = limits?.fiveHour
     const f = w?.forecast
@@ -811,7 +824,8 @@ export class Toaster {
     if (this.limitSent.has(key)) return
     this.limitSent.add(key)
     if (!primed) return
-    this.phone({ episode: `l:${key}`, reason: 'limit', name: 'Claude' }, 'limit')
+    const resetsAt = w.resetsAt ? Date.parse(w.resetsAt) : NaN
+    this.phone({ episode: `l:${key}`, reason: 'limit', name: 'Claude', window: 'five_hour', usedPct: Math.round(w.usedPct), ...(Number.isFinite(resetsAt) ? { resetsAt } : {}) }, 'limit')
     if (!this.can('limit')) return
     const text = TEXT[this.localeValue]
     const at = new Date(full).toLocaleTimeString(this.localeValue === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })

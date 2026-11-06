@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Pane } from '../stores/workspace'
-import { paneActionOf, runPaneAction, telegramLinkCtx, telegramMenuState, type PaneActionDeps } from './paneActions'
+import { paneActionOf, runPaneAction, telegramLinkCtx, telegramMenuState, telegramRouteOf, telegramTopicLink, type PaneActionDeps } from './paneActions'
 
 const SESSION = '0f8fad5b-d9cb-469f-a165-70867728950e'
 const agent = { key: 'p1', kind: 'term', preset: 'claude', cwd: 'C:\\work\\A', liveCwd: 'C:\\work\\A\\app', terminalId: 't1', agentSessionId: SESSION.toUpperCase() } as unknown as Pane
 
 function deps(): PaneActionDeps & Record<string, ReturnType<typeof vi.fn>> {
-  return { compact: vi.fn(), compactCancel: vi.fn(), telegramLink: vi.fn(), focus: vi.fn(), monitor: vi.fn() }
+  return { compact: vi.fn(), compactCancel: vi.fn(), telegramLink: vi.fn(), telegramOpen: vi.fn(), focus: vi.fn(), monitor: vi.fn() }
 }
 
 describe('paneActions', () => {
@@ -21,9 +21,42 @@ describe('paneActions', () => {
     expect(telegramLinkCtx(agent, 'App')).toEqual({ cwd: 'C:\\work\\A\\app', session: SESSION, name: 'App' })
     expect(telegramLinkCtx({ ...agent, agentSessionId: undefined } as Pane, 'App')).toBeNull()
     expect(telegramLinkCtx({ ...agent, kind: 'browser' } as Pane, 'App')).toBeNull()
-    expect(telegramMenuState(agent, (s) => s === SESSION)).toBe('linked')
-    expect(telegramMenuState(agent, () => false)).toBe('unlinked')
-    expect(telegramMenuState(undefined, () => true)).toBeUndefined()
+    expect(telegramMenuState(agent, { sessionRoutes: [{ session: SESSION, chatId: '-1', threadId: 1 }] })).toBe('linked')
+    expect(telegramMenuState(agent, { sessionRoutes: [] })).toBe('unlinked')
+    expect(telegramMenuState(agent, { routes: [{ project: 'C:/work/A', chatId: '-1', threadId: 1 }] })).toBe('linked')
+    expect(telegramMenuState(undefined, { sessionRoutes: [] })).toBeUndefined()
+  })
+
+  it('finds the t.me link of the topic a pane is connected to', () => {
+    const route = { session: SESSION, chatId: '-1001234567', threadId: 9 }
+    expect(telegramTopicLink(agent, { sessionRoutes: [route] })).toBe('https://t.me/c/1234567/9')
+    expect(telegramTopicLink(agent, { sessionRoutes: [{ ...route, threadId: null }] })).toBe('https://t.me/c/1234567/1')
+    expect(telegramTopicLink(agent, { sessionRoutes: [{ ...route, chatId: '-4242' }] })).toBeNull()
+    expect(telegramTopicLink(agent, { sessionRoutes: [{ ...route, session: 'other' }] })).toBeNull()
+    expect(telegramTopicLink(agent, undefined)).toBeNull()
+    expect(telegramTopicLink({ ...agent, agentSessionId: undefined } as Pane, { sessionRoutes: [route] })).toBeNull()
+  })
+
+  it('falls back to the deepest connected project folder holding the pane cwd, the session route winning', () => {
+    const routes = [
+      { project: 'C:/work', chatId: '-1000001', threadId: 1, where: 'G › Work' },
+      { project: 'c:/work/a/', chatId: '-1000002', threadId: 2, where: 'G › A' },
+      { project: 'C:/work/ab', chatId: '-1000003', threadId: 3 },
+    ]
+    expect(telegramRouteOf(agent, { routes })).toMatchObject({ chatId: '-1000002', threadId: 2, where: 'G › A', via: 'project' })
+    expect(telegramTopicLink(agent, { routes })).toBe('https://t.me/c/0002/2')
+    const own = { session: SESSION, chatId: '-1000009', threadId: 9 }
+    expect(telegramRouteOf(agent, { sessionRoutes: [own], routes })).toMatchObject({ chatId: '-1000009', via: 'session' })
+    const shell = { key: 's', kind: 'term', preset: 'shell', cwd: 'C:/work/b' } as unknown as Pane
+    expect(telegramRouteOf(shell, { routes })).toMatchObject({ chatId: '-1000001', via: 'project' })
+    expect(telegramRouteOf({ ...shell, cwd: 'C:/other' } as Pane, { routes })).toBeNull()
+    expect(telegramRouteOf({ ...shell, kind: 'browser' } as Pane, { routes })).toBeNull()
+  })
+
+  it('runs telegram-open with the pane and its name', () => {
+    const d = deps()
+    expect(runPaneAction('telegram-open', { pane: agent, name: 'Tab A' }, {}, d)).toBe(true)
+    expect(d.telegramOpen).toHaveBeenCalledWith(agent, 'Tab A')
   })
 
   it('tab menu: runs compact, ✈, rename and close through the same actions', () => {

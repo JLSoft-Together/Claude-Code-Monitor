@@ -1,8 +1,8 @@
 import { useI18n } from 'vue-i18n'
-import { isSessionId } from '@ccm/shared'
-import { telegramLinkCtx } from '../lib/paneActions'
+import { telegramLinkCtx, telegramRouteOf, telegramTopicLink } from '../lib/paneActions'
 import { paneState, RAIL_BADGE, stateWord, type RailState } from '../lib/rail/railModel'
 import { hasTelegram } from '../lib/telegram'
+import { openExternal } from '../lib/preview'
 import { waitDisplay } from '../lib/wait'
 import { useTelegramStore } from '../stores/telegram'
 import { useUiStore } from '../stores/ui'
@@ -10,15 +10,13 @@ import { isTerm, useWorkspaceStore, type Pane } from '../stores/workspace'
 import { agentLive } from './useTelegramInbound'
 import { usePaneInfo } from './usePaneInfo'
 
-/** The topic a pane's Claude session is connected to ("Group › Topic"), or null. */
+/** The topic a pane is connected to ("Group › Topic"): its session's own, else its project folder's. Null when none. */
 export function useTelegramLinks(): (pane: Pane | undefined) => string | null {
   if (!hasTelegram) return () => null
   const telegram = useTelegramStore()
   telegram.start()
   return (pane) => {
-    if (!pane || !isTerm(pane) || !isSessionId(pane.agentSessionId)) return null
-    const session = pane.agentSessionId.toLowerCase()
-    const route = telegram.state?.sessionRoutes.find((r) => r.session === session)
+    const route = telegramRouteOf(pane, telegram.state ?? undefined)
     return route ? (route.where ?? `#${route.threadId ?? ''}`) : null
   }
 }
@@ -27,6 +25,20 @@ export function useTelegramLinks(): (pane: Pane | undefined) => string | null {
 export function openTelegramLink(pane: Pane | undefined, name: string): void {
   const ctx = telegramLinkCtx(pane, name)
   if (ctx) useUiStore().telegramLink = ctx
+}
+
+/** The ✈ glyph: opens the connected topic in the Telegram app, or the link dialog when the group has no topic link. */
+export function openTelegramGlyph(pane: Pane | undefined, name: string): void {
+  const url = telegramTopicLink(pane, useTelegramStore().state ?? undefined)
+  if (url) void openExternal(url)
+  else openTelegramLink(pane, name)
+}
+
+/** Telegram topic URL of a pane's session, or null. */
+export function useTelegramTopicUrl(): (pane: Pane | undefined) => string | null {
+  if (!hasTelegram) return () => null
+  const telegram = useTelegramStore()
+  return (pane) => telegramTopicLink(pane, telegram.state ?? undefined)
 }
 
 export interface SessionLive {

@@ -67,6 +67,10 @@ export interface TelegramRoute {
   where?: string
   /** State only: the last send to this topic failed because the topic / group is gone or the bot lost its rights. */
   broken?: boolean
+  /** State only: epoch ms of the last message this topic took. */
+  lastSentAt?: number
+  /** State only: error code of the last send, cleared by the next one that works. Never message text. */
+  lastError?: TelegramError
 }
 
 export type TelegramError = 'network' | 'status' | 'timeout' | 'rate' | 'keychain' | 'config' | 'token' | 'chat' | 'too-large' | 'conflict'
@@ -407,8 +411,10 @@ export function sanitizeCreateTopic(raw: unknown): TelegramCreateTopicInput | nu
 }
 
 export const TELEGRAM_INBOUND_MAX = 2000
+/** Photos of one Telegram album. */
+export const TELEGRAM_IMAGES_MAX = 10
 
-export const TELEGRAM_KEYS = ['approve', 'deny', 'stop', 'option'] as const
+export const TELEGRAM_KEYS = ['approve', 'deny', 'stop', 'option', 'esc'] as const
 export type TelegramKey = (typeof TELEGRAM_KEYS)[number]
 
 export type TelegramTarget = { kind: 'terminal'; terminalId: string } | { kind: 'pane'; sessionId: string }
@@ -416,7 +422,7 @@ export type TelegramTarget = { kind: 'terminal'; terminalId: string } | { kind: 
 export const TELEGRAM_NESTED_MAX = 20
 
 export type TelegramInbound = (
-  | { id: string; action: 'send'; project: string; text: string; target?: TelegramTarget; from: string }
+  | { id: string; action: 'send'; project: string; text: string; target?: TelegramTarget; from: string; images?: string[]; imageText?: string }
   | { id: string; action: 'status'; project: string }
   | { id: string; action: 'keys'; project: string; key: TelegramKey; option?: number; target?: TelegramTarget; since?: number; tool?: string }
   | { id: string; action: 'new'; project: string; text?: string; from: string }
@@ -424,6 +430,9 @@ export type TelegramInbound = (
   | { id: string; action: 'resumeList'; project: string }
   | { id: string; action: 'resume'; project: string; sessionId: string; cwd: string }
   | { id: string; action: 'tail'; project: string; lines: number; target?: TelegramTarget }
+  | { id: string; action: 'compact'; project: string; target?: TelegramTarget; since?: number }
+  | { id: string; action: 'close'; project: string; target?: TelegramTarget; since?: number }
+  | { id: string; action: 'focus'; project: string; target?: TelegramTarget }
 ) & { nested?: string[] }
 
 export const TELEGRAM_TAIL_DEFAULT = 30
@@ -446,7 +455,7 @@ export interface TelegramPaneInfo {
 }
 
 export type TelegramInboundResult =
-  | { ok: true; action: 'send'; name: string; queued: boolean; terminalId?: string }
+  | { ok: true; action: 'send'; name: string; queued: boolean; terminalId?: string; images?: number }
   | { ok: true; action: 'status'; panes: TelegramPaneInfo[] }
   | { ok: true; action: 'keys'; name: string; key: TelegramKey; option?: number }
   | { ok: true; action: 'new'; name: string }
@@ -454,6 +463,7 @@ export type TelegramInboundResult =
   | { ok: true; action: 'resumeList'; items: TelegramResumeItem[] }
   | { ok: true; action: 'resume'; name: string }
   | { ok: true; action: 'tail'; name: string; text: string }
+  | { ok: true; action: 'compact' | 'close' | 'focus'; name: string }
   | { ok: false; error: 'none' | 'many' | 'busy' | 'gone' | 'unavailable' | 'state'; panes?: TelegramPaneInfo[] }
 
 const optionOf = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= TELEGRAM_ASK_OPTIONS_MAX ? v : undefined)
@@ -494,7 +504,7 @@ export function parseInboundResult(raw: unknown): TelegramInboundResult {
     if (!name || typeof r.text !== 'string') return { ok: false, error: 'unavailable' }
     return { ok: true, action: 'tail', name, text: r.text.replace(/[\x00-\x09\x0b-\x1f\x7f]+/g, '').slice(-TAIL_TEXT_MAX) }
   }
-  if (r.action === 'new' || r.action === 'resume') {
+  if (r.action === 'new' || r.action === 'resume' || r.action === 'compact' || r.action === 'close' || r.action === 'focus') {
     const name = nm(r.name)
     return name ? { ok: true, action: r.action, name } : { ok: false, error: 'unavailable' }
   }
@@ -510,7 +520,8 @@ export function parseInboundResult(raw: unknown): TelegramInboundResult {
   }
   if (r.action !== 'send' || typeof r.name !== 'string' || !r.name) return { ok: false, error: 'unavailable' }
   const terminalId = typeof r.terminalId === 'string' && r.terminalId.length < 200 ? r.terminalId : undefined
-  return { ok: true, action: 'send', name: r.name.slice(0, NAME_MAX), queued: r.queued === true, ...(terminalId ? { terminalId } : {}) }
+  const images = typeof r.images === 'number' && Number.isInteger(r.images) && r.images > 0 && r.images <= TELEGRAM_IMAGES_MAX ? r.images : undefined
+  return { ok: true, action: 'send', name: r.name.slice(0, NAME_MAX), queued: r.queued === true, ...(terminalId ? { terminalId } : {}), ...(images ? { images } : {}) }
 }
 
 function targetOf(v: unknown): TelegramTarget | undefined {
@@ -546,6 +557,10 @@ function parseInboundBody(raw: unknown): TelegramInbound | null {
     return { id: r.id, action: 'keys', project: r.project, key: r.key as TelegramKey, ...(option && r.key === 'option' ? { option } : {}), ...(t0 ? { target: t0 } : {}), ...(since !== undefined ? { since } : {}), ...(tool ? { tool } : {}) }
   }
   if (r.action === 'resumeList') return { id: r.id, action: 'resumeList', project: r.project }
+  if (r.action === 'compact' || r.action === 'close' || r.action === 'focus') {
+    const since = typeof r.since === 'number' && Number.isFinite(r.since) && r.since > 0 && r.since < SINCE_MAX ? r.since : undefined
+    return { id: r.id, action: r.action, project: r.project, ...(t0 ? { target: t0 } : {}), ...(since !== undefined && r.action !== 'focus' ? { since } : {}) }
+  }
   if (r.action === 'tail') {
     const n = typeof r.lines === 'number' && Number.isFinite(r.lines) ? Math.floor(r.lines) : TELEGRAM_TAIL_DEFAULT
     return { id: r.id, action: 'tail', project: r.project, lines: Math.min(TELEGRAM_TAIL_MAX, Math.max(1, n)), ...(t0 ? { target: t0 } : {}) }
@@ -572,7 +587,9 @@ function parseInboundBody(raw: unknown): TelegramInbound | null {
       : t && t.kind === 'pane' && typeof t.sessionId === 'string' && t.sessionId.length < 200
         ? { kind: 'pane', sessionId: t.sessionId }
         : undefined
-  return { id: r.id, action: 'send', project: r.project, text: r.text, from: r.from.slice(0, NAME_MAX), ...(target ? { target } : {}) }
+  const images = Array.isArray(r.images) ? r.images.filter((i): i is string => typeof i === 'string' && i.length > 0 && i.length <= 4096 && !/[\0\r\n]/.test(i)).slice(0, TELEGRAM_IMAGES_MAX) : []
+  const imageText = images.length && typeof r.imageText === 'string' && r.imageText.trim() && r.imageText.length <= TELEGRAM_INBOUND_MAX + 400 ? r.imageText : undefined
+  return { id: r.id, action: 'send', project: r.project, text: r.text, from: r.from.slice(0, NAME_MAX), ...(target ? { target } : {}), ...(imageText ? { images, imageText } : {}) }
 }
 
 export function inboundPrompt(text: string): string {
@@ -623,6 +640,8 @@ export interface TelegramSessionRoute {
   keep?: boolean
   where?: string
   broken?: boolean
+  lastSentAt?: number
+  lastError?: TelegramError
 }
 
 /** Topic from `link`, or `chatId` / `threadId` from a scanned topic list. `keep` left out keeps the current value. */

@@ -1,9 +1,10 @@
 import { effectScope, ref, watch } from 'vue'
 import type { PtyPreset } from '@ccm/shared'
 import { useI18n } from 'vue-i18n'
-import { compactState, compactTick, handoffFile, type CompactFlow, type CompactState } from '../lib/compactHandoff'
+import { COMPACT_STEP_TIMEOUT_MS, compactState, compactTick, handoffFile, type CompactFlow, type CompactState } from '../lib/compactHandoff'
 import { desktop } from '../lib/desktop'
 import { isTerm, presetOf, useWorkspaceStore, type Pane } from '../stores/workspace'
+import { useSettingsStore } from '../stores/settings'
 import { usePaneInfo } from './usePaneInfo'
 
 // The flow waits on collector status and the agent's own /compact; DeepSeek panes have neither yet.
@@ -13,6 +14,7 @@ function createCompact() {
   const { t } = useI18n()
   const workspace = useWorkspaceStore()
   const info = usePaneInfo()
+  const settings = useSettingsStore()
   const notice = ref<{ n: number; text: string } | null>(null)
   const checking = new Set<string>()
 
@@ -34,8 +36,9 @@ function createCompact() {
     const cwd = info.sessionOf(pane)?.cwd || pane.cwd
     if (!cwd) return false
     const file = handoffFile(cwd, new Date())
-    const flow: CompactFlow = { step: 'writing', file, base: compactionsOf(pane), worked: false }
+    const flow: CompactFlow = { step: 'writing', file, base: compactionsOf(pane), worked: false, auto: settings.compactAuto, at: Date.now() }
     workspace.update(key, { prefill: t('workspace.compact.prompt', { file }), prefillSubmit: true, compact: flow })
+    if (flow.auto) armTimer()
     say(t('workspace.compact.said.started', { name: nameOf(pane) }))
     return true
   }
@@ -43,7 +46,7 @@ function createCompact() {
   function cancel(key: string): void {
     const pane = paneOf(key)
     if (!pane?.compact) return
-    workspace.update(key, { compact: undefined, ...(pane.prefillSubmit ? { prefill: undefined, prefillSubmit: undefined } : {}) })
+    workspace.update(key, { compact: undefined, ...(pane.prefillSubmit ? { prefill: undefined, prefillSubmit: undefined, prefillAuto: undefined } : {}) })
     say(t('workspace.compact.said.cancelled', { name: nameOf(pane) }))
   }
 
@@ -59,16 +62,64 @@ function createCompact() {
         workspace.update(key, { compact: { ...pane.compact, missing: true } })
         return
       }
-      workspace.update(key, { compact: { ...pane.compact, step: 'compact', missing: undefined, base: compactionsOf(pane) }, prefill: '/compact', prefillSubmit: undefined })
-      say(t('workspace.compact.said.ready', { name: nameOf(pane) }))
+      const auto = !!pane.compact.auto
+      workspace.update(key, {
+        compact: { ...pane.compact, step: 'compact', missing: undefined, base: compactionsOf(pane), at: Date.now() },
+        prefill: '/compact',
+        prefillSubmit: auto ? true : undefined,
+        prefillAuto: auto ? Date.now() : undefined,
+      })
+      say(t(auto ? 'workspace.compact.said.readyAuto' : 'workspace.compact.said.ready', { name: nameOf(pane) }))
     } finally {
       checking.delete(key)
     }
   }
 
   function resume(pane: Pane, flow: CompactFlow): void {
-    workspace.update(pane.key, { compact: undefined, prefill: t('workspace.compact.resume', { file: flow.file }), prefillSubmit: undefined })
-    say(t('workspace.compact.said.resumed', { name: nameOf(pane) }))
+    const auto = !!flow.auto
+    workspace.update(pane.key, {
+      compact: undefined,
+      prefill: t('workspace.compact.resume', { file: flow.file }),
+      prefillSubmit: auto ? true : undefined,
+      prefillAuto: auto ? Date.now() : undefined,
+    })
+    if (auto) armTimer()
+    say(t(auto ? 'workspace.compact.said.resumedAuto' : 'workspace.compact.said.resumed', { name: nameOf(pane) }))
+  }
+
+  // Typing lands in the same input box the auto Enter would submit, so any manual input hands the rest back to the owner.
+  function disarm(pane: Pane, why: 'manual' | 'timeout'): void {
+    const patch: Partial<Pane> = {}
+    if (pane.compact?.auto) patch.compact = { ...pane.compact, auto: false }
+    if (pane.prefillAuto) Object.assign(patch, { prefillSubmit: undefined, prefillAuto: undefined })
+    if (!Object.keys(patch).length) return
+    workspace.update(pane.key, patch)
+    say(t(`workspace.compact.said.${why}`, { name: nameOf(pane) }))
+  }
+
+  function stopAuto(key: string): void {
+    const pane = paneOf(key)
+    if (pane) disarm(pane, 'manual')
+  }
+
+  let timer: ReturnType<typeof setInterval> | null = null
+  function armTimer(): void {
+    timer ??= setInterval(sweep, 15_000)
+  }
+
+  function sweep(): void {
+    const now = Date.now()
+    let live = false
+    for (const pane of workspace.panes) {
+      const since = pane.prefillAuto ?? (pane.compact?.auto ? pane.compact.at : undefined)
+      if (since === undefined) continue
+      if (now - since > COMPACT_STEP_TIMEOUT_MS) disarm(pane, 'timeout')
+      else live = true
+    }
+    if (!live && timer) {
+      clearInterval(timer)
+      timer = null
+    }
   }
 
   watch(
@@ -91,7 +142,7 @@ function createCompact() {
     },
   )
 
-  return { notice, stateOf, start, cancel }
+  return { notice, stateOf, start, cancel, stopAuto }
 }
 
 let shared: ReturnType<typeof createCompact> | undefined

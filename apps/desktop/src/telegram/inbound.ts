@@ -83,6 +83,9 @@ export type Command =
   | { kind: 'where' }
   | { kind: 'help' }
   | { kind: 'stop' }
+  | { kind: 'compact' }
+  | { kind: 'close' }
+  | { kind: 'focus' }
   | { kind: 'new'; text: string }
   | { kind: 'resume' }
   | { kind: 'run'; config: string }
@@ -112,6 +115,7 @@ export function commandOf(msg: TgMessage, bot: string): Command | null {
   if (msg.chatType === 'private') return null
   if (msg.file) return { kind: 'file', file: msg.file, text: stripped }
   if (head === 'stop' && !rest) return { kind: 'stop' }
+  if ((head === 'compact' || head === 'close' || head === 'focus') && !rest) return { kind: head }
   if (head === 'where' && !rest) return { kind: 'where' }
   if (head === 'new') return { kind: 'new', text: rest }
   if (head === 'resume' && !rest) return { kind: 'resume' }
@@ -167,6 +171,9 @@ export const TEXT: Record<TelegramLocale, {
       '<code>last</code> — last reply of the session',
       '<code>tail [lines]</code> — last lines of the session terminal (default 30, max 80)',
       '<code>stop</code> — stop the running work (Esc)',
+      '<code>compact</code> — Orrery Compact: handoff file, /compact, then resume (asks to confirm). <code>/compact notes</code> and <code>/clear</code> are typed into the session as they are',
+      '<code>close</code> — close the session pane (asks to confirm, owner only)',
+      '<code>focus</code> — bring Orrery to the front on that session',
       '<code>where</code> — what this topic is connected to',
       '',
       '📱 <b>App</b>',
@@ -207,6 +214,9 @@ export const TEXT: Record<TelegramLocale, {
       '<code>last</code> — câu trả lời cuối của session',
       '<code>tail [số dòng]</code> — các dòng cuối của terminal session (mặc định 30, tối đa 80)',
       '<code>stop</code> — dừng việc đang chạy (Esc)',
+      '<code>compact</code> — Compact của Orrery: ghi file handoff, /compact rồi làm tiếp (có hỏi xác nhận). <code>/compact ghi chú</code> và <code>/clear</code> vẫn gõ nguyên vào session',
+      '<code>close</code> — đóng pane của session (có hỏi xác nhận, chỉ chủ nhân)',
+      '<code>focus</code> — đưa Orrery lên trước, ở session đó',
       '<code>where</code> — topic này đang nối với gì',
       '',
       '📱 <b>App</b>',
@@ -234,6 +244,9 @@ export const COMMAND_MENU: Record<TelegramLocale, [string, string][]> = {
     ['status', 'Open sessions of this project'],
     ['new', 'Open a new Claude session'],
     ['stop', 'Stop the running work (Esc)'],
+    ['compact', 'Compact the session (handoff, /compact, resume)'],
+    ['close', 'Close the session pane'],
+    ['focus', 'Bring Orrery to the front on the session'],
     ['last', 'Last reply of the session'],
     ['tail', 'Last lines of the session terminal'],
     ['resume', 'Reopen a finished session'],
@@ -247,6 +260,9 @@ export const COMMAND_MENU: Record<TelegramLocale, [string, string][]> = {
     ['status', 'Các session đang mở của project'],
     ['new', 'Mở session Claude mới'],
     ['stop', 'Dừng việc đang chạy (Esc)'],
+    ['compact', 'Compact session (handoff, /compact, làm tiếp)'],
+    ['close', 'Đóng pane của session'],
+    ['focus', 'Đưa Orrery lên trước ở session'],
     ['last', 'Câu trả lời cuối của session'],
     ['tail', 'Các dòng cuối của terminal session'],
     ['resume', 'Mở lại session đã kết thúc'],

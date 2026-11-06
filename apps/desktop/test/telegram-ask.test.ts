@@ -57,6 +57,7 @@ const ep = (patch: Partial<TelegramEpisodeMessage>): TelegramEpisodeMessage => (
 
 const buttons = (s: Sent) => ((s.body.reply_markup as { inline_keyboard: { callback_data: string; text: string }[][] } | undefined)?.inline_keyboard.flat() ?? [])
 const last = (sent: Sent[]) => sent[sent.length - 1]!
+const noOptions = (s: Sent) => buttons(s).filter((b) => b.callback_data.startsWith('qa:'))
 
 describe('ask parsing (shared)', () => {
   it('cuts lengths, drops unknown fields and wrong types', () => {
@@ -101,8 +102,8 @@ describe('question buttons', () => {
     expect(String(msg.body.text)).toContain('Which database?')
     expect(String(msg.body.text)).toContain('2. SQLite')
     const keys = buttons(msg)
-    expect(keys.map((k) => k.text)).toEqual(['🔹 1 · Postgres', '🔹 2 · SQLite', '🔹 3 · MySQL'])
-    expect(keys.every((k) => k.callback_data.startsWith('qa:'))).toBe(true)
+    expect(keys.map((k) => k.text)).toEqual(['🔹 1 · Postgres', '🔹 2 · SQLite', '🔹 3 · MySQL', '⎋ Esc', '📜 20 dòng cuối'])
+    expect(keys.slice(0, 3).every((k) => k.callback_data.startsWith('qa:'))).toBe(true)
     await tg.onUpdate(cbUpdate(keys[1]!.callback_data))
     expect(asked).toHaveLength(1)
     expect(asked[0]).toMatchObject({ action: 'keys', key: 'option', option: 2, since: SINCE, target: { kind: 'terminal', terminalId: 'term-1' } })
@@ -122,12 +123,12 @@ describe('question buttons', () => {
     expect(String(last(sent).body.text)).toContain('Which database?')
     await receiving(tg)
     await tg.handle(ep({ episode: 'q2', ask: { question: 'Pick', options: ['a', 'b'], multi: true } }))
-    expect(buttons(last(sent))).toEqual([])
+    expect(noOptions(last(sent))).toEqual([])
     expect(String(last(sent).body.text)).toContain('1. a')
     await tg.handle(ep({ episode: 'q3', ask: { question: 'Pick', options: ['a', 'b'], multi: false, more: true } }))
-    expect(buttons(last(sent))).toEqual([])
+    expect(noOptions(last(sent))).toEqual([])
     await tg.handle(ep({ episode: 'q4', ask: undefined }))
-    expect(buttons(last(sent))).toEqual([])
+    expect(noOptions(last(sent))).toEqual([])
     tg.stop()
   })
 
@@ -166,7 +167,7 @@ describe('question buttons', () => {
     await receiving(tg)
     await tg.handle(ep({ episode: 'p1', reason: 'permission', tool: 'ExitPlanMode', ask: undefined }))
     const keys = buttons(last(sent))
-    expect(keys.map((k) => k.text)).toEqual(['✅ Duyệt plan', '❌ Từ chối plan'])
+    expect(keys.map((k) => k.text)).toEqual(['✅ Duyệt plan', '❌ Từ chối plan', '⎋ Esc', '📜 20 dòng cuối'])
     await tg.onUpdate(cbUpdate(keys[0]!.callback_data))
     expect(asked[0]).toMatchObject({ key: 'approve', tool: 'ExitPlanMode' })
     tg.stop()

@@ -459,6 +459,9 @@ function prefillReady(): boolean {
   return status === 'idle' || (prefillLate && status !== 'working' && status !== 'waiting')
 }
 
+// term.paste() re-enters onData; the Compact flow must not read its own prefill as the owner typing.
+let selfInput = false
+
 async function sendPrefill(): Promise<void> {
   if (prefilling || !props.pane.prefill || props.pane.state !== 'running' || !prefillReady()) return
   prefilling = true
@@ -468,9 +471,13 @@ async function sendPrefill(): Promise<void> {
   const submit = props.pane.prefillSubmit
   if (!text || !term || !conn?.isOpen || props.pane.state !== 'running' || !prefillReady()) return
   stopPrefill()
-  workspace.update(props.pane.key, { prefill: undefined, prefillSubmit: undefined })
+  workspace.update(props.pane.key, { prefill: undefined, prefillSubmit: undefined, prefillAuto: undefined })
   if (text.startsWith('/') && !text.includes('\n')) conn.write(text)
-  else term.paste(term.modes.bracketedPasteMode ? text : text.replace(/\s*\n\s*/g, ' '))
+  else {
+    selfInput = true
+    term.paste(term.modes.bracketedPasteMode ? text : text.replace(/\s*\n\s*/g, ' '))
+    selfInput = false
+  }
   if (submit)
     setTimeout(() => {
       if (conn?.isOpen && props.pane.state === 'running') conn.write('\r')
@@ -482,6 +489,7 @@ const compactStep = computed(() => {
   if (!flow) return null
   return flow.step === 'compact' ? 'compact' : flow.missing ? 'missing' : 'writing'
 })
+const compactLabel = computed(() => (compactStep.value === 'compact' && props.pane.compact?.auto ? 'compactAuto' : compactStep.value))
 const COMPACT_TONE = { writing: 'bg-fill text-ink-muted', missing: 'bg-warning-soft text-warning', compact: 'bg-accent-soft text-accent-ink' } as const
 
 const sessionTitle = computed(() => session.value?.alias || session.value?.title || '')
@@ -920,6 +928,7 @@ onMounted(() => {
   term.onData((data) => {
     conn?.write(data)
     touch()
+    if (!selfInput && !data.startsWith('\x1b') && (props.pane.compact?.auto || props.pane.prefillAuto)) compactFlow.stopAuto(props.pane.key)
     if (preset.value === 'shell' && !props.pane.ranCommand && data.includes('\r')) workspace.update(props.pane.key, { ranCommand: true })
   })
   term.onBinary((data) => conn?.writeBinary(data))
@@ -1139,7 +1148,7 @@ onBeforeUnmount(() => {
             >
               <LoaderCircle v-if="compactStep === 'writing'" :size="12" class="ccm-spin shrink-0" aria-hidden="true" />
               <FileText v-else :size="12" class="shrink-0" aria-hidden="true" />
-              <span class="min-w-0 truncate @max-[460px]:sr-only">{{ t(`workspace.compact.step.${compactStep}`) }}</span>
+              <span class="min-w-0 truncate @max-[460px]:sr-only">{{ t(`workspace.compact.step.${compactLabel}`) }}</span>
             </span>
           </Transition>
         </span>

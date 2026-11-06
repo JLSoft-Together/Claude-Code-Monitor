@@ -7,7 +7,7 @@ import { dirKey } from '../stores/favorites'
 import { useTerminalsStore } from '../stores/terminals'
 import { isTerm, presetOf, tabProject, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
 
-const KEYS = { approve: '1', deny: '\x1b', stop: '\x1b' } as const
+const KEYS = { approve: '1', deny: '\x1b', stop: '\x1b', esc: '\x1b' } as const
 const TYPED_MS = 1500
 const AGENT_PANES = new Set(['claude', 'codex'])
 const LIST_MAX = 16
@@ -28,10 +28,10 @@ export const keyOf = (req: Pick<KeyPress, 'key' | 'option'>): string => (req.key
 export function keysReady(req: KeyPress, s: Pick<TerminalSession, 'status' | 'statusSince' | 'waitingFor'> | undefined, claude: boolean, tool?: string): boolean {
   if (!s) return false
   const reason = req.key === 'option' ? 'question' : 'permission'
-  const ready = req.key === 'stop' ? s.status === 'working' : s.status === 'waiting' && waitReason(s.waitingFor) === reason && claude
+  const ready = req.key === 'stop' ? s.status === 'working' : req.key === 'esc' ? s.status === 'waiting' : s.status === 'waiting' && waitReason(s.waitingFor) === reason && claude
   if (!ready) return false
   if (req.since !== undefined && (!s.statusSince || Date.parse(s.statusSince) !== req.since)) return false
-  return req.key === 'stop' || req.key === 'option' || !req.tool || !tool || req.tool === tool
+  return req.key === 'stop' || req.key === 'esc' || req.key === 'option' || !req.tool || !tool || req.tool === tool
 }
 
 export type ActFail = { ok: false; error: SessionActError; panes?: Pane[] }

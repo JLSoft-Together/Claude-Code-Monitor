@@ -1,0 +1,10 @@
+## C1 — DONE (chưa QA lượt Compact thật trên Claude)
+**Đã đổi**: `useCompact.ts` (auto: `/compact` + resume dùng prefillSubmit/`prefillAuto`; `stopAuto`, `disarm`, `sweep` 10 phút), `compactHandoff.ts` (`auto`, `at`, `COMPACT_STEP_TIMEOUT_MS`), `stores/workspace.ts` (`Pane.prefillAuto`), `stores/settings.ts` (`compactAuto`, mặc định bật), `TermPane.vue` (onData gõ tay → stopAuto, guard `selfInput`, nhãn chip), Settings (`SettingsEditor.vue`, `settings/index.ts`), i18n `workspace-v51.ts` vi/en, test mới `composables/useCompact.test.ts`, docs §11x, CLAUDE.md, `.code_index/{web,_meta}.md`, `RELEASE-next.md` (en/vi).
+**Tiêu chí 5/5**: 1 gửi đúng thứ tự 1 lần (unit); 2 tắt = điền sẵn; 3 dừng khi gõ/huỷ/timeout; 4 test + typecheck; 5 docs + CLAUDE.md.
+**Audit**: đường Enter có sẵn (`sendPrefill`: chỉ khi pane running + idle, xoá prefill trước khi ghi → không gửi 2 lần).
+**Review**: gõ tay (ESC-led report bỏ qua, paste của chính app bỏ qua); huỷ xoá prefill đã arm; timeout 10 phút mỗi bước (sweep 15s, tự tắt); codex dùng chung luồng; session id đổi vẫn theo pane/terminal; file handoff thiếu thì chờ, không gửi /compact; Telegram `/compact` và menu cùng `start` nên theo công tắc.
+**Test**: `npm run typecheck` sạch ở file C1 (lỗi còn lại ở paneActions/useSessionActions/railMenu/tabMenu tests là của C2); web test 1768/1770 pass, 2 fail do C2 (`paneActions.test`, `useTelegramLinks.test`); useCompact.test 7/7.
+**Nhìn**: `docs/qa/telegram8-2026-11-06/C1/settings-switch.png` (công tắc hiện, bật). Không chạy Compact thật (tiết kiệm token; logic phủ unit).
+**Hot file cần thêm**: không (TermPane.vue, workspace.ts, settings.ts ngoài danh sách C2 nhưng không trùng).
+**Ngoài phạm vi**: chưa thử trên Claude thật: Enter tự gửi sau paste phụ thuộc `\r` 200ms như hand_back; rủi ro: người gõ giữa lúc agent compact mà không có onData (vd dán qua menu) vẫn tính là gõ.
+**Commit đề xuất**: Compact sends /compact and the resume line by itself (Settings switch, on by default); typing, cancel or a 10-minute wait fall back to fill-in

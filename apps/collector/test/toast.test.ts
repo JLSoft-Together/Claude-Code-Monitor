@@ -465,3 +465,49 @@ describe('Toaster agent notes (v80 notify_owner)', () => {
     expect(phone).toHaveLength(2)
   })
 })
+
+describe('Toaster limit episodes for the phone and Telegram', () => {
+  const resets = new Date(T0 + 4.5 * 3600_000).toISOString()
+  const hit = (extra: Partial<NonNullable<TerminalSession['limitHit']>> = {}) => ({ at: new Date(T0).toISOString(), resetsAt: resets, window: 'five_hour', ...extra })
+
+  it('sends the window, percent and reset time with the forecast', () => {
+    const { toaster } = setup()
+    const phone: unknown[] = []
+    toaster.onPhone = (m) => phone.push(m)
+    const limits = (pct: number, inMin: number): PlanLimits => ({ updatedAt: new Date(T0).toISOString(), fiveHour: { usedPct: pct, resetsAt: resets, forecast: { pctPerHour: 40, fullAt: new Date(T0 + inMin * 60_000).toISOString(), beforeReset: true } } })
+    toaster.observe({ terminals: [], limits: limits(50, 120) })
+    toaster.observe({ terminals: [], limits: limits(82, 30) })
+    expect(phone).toEqual([expect.objectContaining({ reason: 'limit', window: 'five_hour', usedPct: 82, resetsAt: Date.parse(resets) })])
+    expect(phone[0]).not.toHaveProperty('hit')
+  })
+
+  it('reports a real limit hit once per window and reset, however many sessions hit it, and not one already there at first sight', () => {
+    const { toaster, see } = setup()
+    const phone: unknown[] = []
+    toaster.onPhone = (m) => phone.push(m)
+    see(term('old', 'idle', { limitHit: hit({ resetsAt: new Date(T0 + 3600_000).toISOString() }) }))
+    expect(phone).toHaveLength(0)
+    see(term('a', 'working'), term('b', 'working'))
+    see(term('a', 'idle', { limitHit: hit() }), term('b', 'idle', { limitHit: hit() }))
+    expect(phone).toEqual([expect.objectContaining({ reason: 'limit', hit: true, usedPct: 100, window: 'five_hour', resetsAt: Date.parse(resets) })])
+    see(term('a', 'idle', { limitHit: hit() }))
+    expect(phone).toHaveLength(1)
+    see(term('c', 'working'))
+    see(term('c', 'idle', { limitHit: hit({ window: 'seven_day', resetsAt: new Date(T0 + 4 * 86_400_000).toISOString() }) }))
+    expect(phone).toHaveLength(2)
+    expect(phone[1]).toMatchObject({ window: 'seven_day' })
+  })
+
+  it('ignores a hit whose reset time has passed and one with the limit switch off', () => {
+    const { toaster, see } = setup()
+    const phone: unknown[] = []
+    toaster.onPhone = (m) => phone.push(m)
+    see(term('a', 'working'))
+    see(term('a', 'idle', { limitHit: hit({ resetsAt: new Date(T0 - 3600_000).toISOString() }) }))
+    expect(phone).toHaveLength(0)
+    toaster.update({ kinds: { limit: false } })
+    see(term('b', 'working'))
+    see(term('b', 'idle', { limitHit: hit({ resetsAt: new Date(T0 + 86_400_000).toISOString() }) }))
+    expect(phone).toHaveLength(0)
+  })
+})

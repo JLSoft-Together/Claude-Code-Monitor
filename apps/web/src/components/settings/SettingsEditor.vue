@@ -47,6 +47,14 @@ const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms,
         data-setting="agent-shim"
         data-setting-row="agentShim"
       />
+      <ToggleSwitch
+        v-model="settings.compactAuto"
+        :label="t('workspace.compact.auto.setting')"
+        :info="t('workspace.compact.auto.settingHint')"
+        class="px-3"
+        data-setting="compact-auto"
+        data-setting-row="compactAuto"
+      />
     </SettingSection>
   </div>
 </template>

@@ -11,7 +11,12 @@ export interface CompactFlow {
   base: number
   worked: boolean
   missing?: boolean
+  /** Types Enter for the owner: /compact and the resume line. Dropped on manual typing or timeout. */
+  auto?: boolean
+  at?: number
 }
+
+export const COMPACT_STEP_TIMEOUT_MS = 10 * 60_000
 
 export type CompactState = 'ready' | 'busy' | 'asking' | 'unlinked' | 'running'
 

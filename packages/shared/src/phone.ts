@@ -17,9 +17,16 @@ export interface PhoneEpisodeMessage {
   since?: number
   /** `disk`: free space left on the drive named by `name`. */
   freeBytes?: number
+  /** `limit`: which plan window, how full it is, when it resets (epoch ms) and whether the limit was actually hit (not a forecast). */
+  window?: LimitWindowName
+  usedPct?: number
+  resetsAt?: number
+  hit?: boolean
   /** `note`: what the agent asked to tell the owner (notify_owner, ≤ 200 chars). */
   text?: string
 }
+
+export type LimitWindowName = 'five_hour' | 'seven_day'
 
 export const PHONE_CHANNELS = ['ntfy', 'discord'] as const
 export type PhoneChannel = (typeof PHONE_CHANNELS)[number]
@@ -65,6 +72,9 @@ export function parsePhoneEpisode(raw: unknown): PhoneEpisodeMessage | null {
   const tool = typeof r.tool === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(r.tool) ? r.tool : undefined
   const since = typeof r.since === 'number' && Number.isFinite(r.since) && r.since > 0 && r.since < SINCE_MAX ? r.since : undefined
   const free = typeof r.freeBytes === 'number' && Number.isFinite(r.freeBytes) && r.freeBytes >= 0 ? r.freeBytes : undefined
+  const window = r.window === 'five_hour' || r.window === 'seven_day' ? r.window : undefined
+  const pct = typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? Math.min(100, Math.max(0, Math.round(r.usedPct))) : undefined
+  const resetsAt = typeof r.resetsAt === 'number' && Number.isFinite(r.resetsAt) && r.resetsAt > 0 && r.resetsAt < SINCE_MAX ? r.resetsAt : undefined
   const text = r.reason === 'note' ? cleanNoteText(r.text) : null
   if (r.reason === 'note' && !text) return null
   return {
@@ -76,6 +86,7 @@ export function parsePhoneEpisode(raw: unknown): PhoneEpisodeMessage | null {
     ...(since ? { since } : {}),
     ...(free !== undefined ? { freeBytes: free } : {}),
     ...(text ? { text } : {}),
+    ...(r.reason === 'limit' ? { ...(window ? { window } : {}), ...(pct !== undefined ? { usedPct: pct } : {}), ...(resetsAt ? { resetsAt } : {}), ...(r.hit === true ? { hit: true } : {}) } : {}),
   }
 }
 

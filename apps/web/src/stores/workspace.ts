@@ -111,6 +111,8 @@ export interface Pane {
   openTicket?: string
   prefill?: string
   prefillSubmit?: boolean
+  /** Set when `prefillSubmit` was armed by the Compact flow; value = arm time, so typing or a timeout can disarm it. */
+  prefillAuto?: number
   typeKeys?: string
   compact?: CompactFlow
   openedBy?: string

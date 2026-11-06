@@ -74,7 +74,12 @@ describe('v84 parsing', () => {
     expect(c('@orrery_bot run app debug')).toEqual({ kind: 'run', config: 'app debug' })
     expect(c('@orrery_bot all dừng lại')).toEqual({ kind: 'all', text: 'dừng lại' })
     expect(c('@orrery_bot all')).toEqual({ kind: 'help' })
-    expect(c('@orrery_bot /compact')).toEqual({ kind: 'send', text: '/compact' })
+    expect(c('@orrery_bot /compact')).toEqual({ kind: 'compact' })
+    expect(c('@orrery_bot /compact keep the api notes')).toEqual({ kind: 'send', text: '/compact keep the api notes' })
+    expect(c('@orrery_bot /clear')).toEqual({ kind: 'send', text: '/clear' })
+    expect(c('@orrery_bot close')).toEqual({ kind: 'close' })
+    expect(c('@orrery_bot /focus')).toEqual({ kind: 'focus' })
+    expect(c('@orrery_bot close the db connection')).toEqual({ kind: 'send', text: 'close the db connection' })
     expect(c('@orrery_bot /hand-off')).toEqual({ kind: 'send', text: '/hand-off' })
     expect(viaTelegram('/clear', 'vi')).toBe('/clear')
     expect(viaTelegram('/hand-off', 'vi')).toBe('/hand-off')
@@ -129,7 +134,7 @@ describe('v84 commands', () => {
   })
 
   it('offers a button per session for stop, last and a plain message when several are open', async () => {
-    const panes = uniquePaneNames([{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'A', status: 'working', terminalId: 't2', since: 1 }])
+    const panes = uniquePaneNames([{ name: 'A', status: 'idle', terminalId: 't1' }, { name: 'A', status: 'working', terminalId: 't2' }])
     expect(panes.map((p) => p.name)).toEqual(['A #1', 'A #2'])
     const { tg, sent, asked } = setup((req) =>
       req.action === 'status' ? { ok: true, action: 'status', panes } : req.action === 'keys' ? { ok: true, action: 'keys', name: 'A #2', key: 'stop' } : req.action === 'send' && !req.target ? { ok: false, error: 'many', panes } : { ok: true, action: 'send', name: 'A #1', queued: false, terminalId: 't1' },
@@ -155,6 +160,22 @@ describe('v84 commands', () => {
     await tg.onUpdate(cb(send[0]!.callback_data))
     expect(asked.at(-1)).toMatchObject({ action: 'send', text: viaTelegram('chạy lint', 'vi'), target: { kind: 'terminal', terminalId: 't1' } })
     tg.stop()
+  })
+
+  it('puts how long each session has been in its state on the pick buttons, within 64 characters', async () => {
+    const clock = Date.now()
+    const panes = [
+      { name: 'A', status: 'idle', terminalId: 't1', since: clock - 2 * 60_000 },
+      { name: 'B', status: 'working', terminalId: 't2', since: clock - 10_000 },
+      { name: 'C', status: 'idle', terminalId: 't3', since: clock - 90 * 60_000 },
+      { name: 'x'.repeat(80), status: 'idle', terminalId: 't4', since: clock - 3 * 86_400_000 },
+    ]
+    const { tg, sent } = setup((req) => (req.action === 'status' ? { ok: true, action: 'status', panes } : { ok: false, error: 'many', panes }), { now: () => clock })
+    await receiving(tg)
+    await tg.onUpdate(msg('@orrery_bot stop'))
+    const texts = keysOf(sent).map((k) => k.text)
+    expect(texts.slice(0, 3)).toEqual(['⏹ Dừng A · rảnh · 2 phút', '⏹ Dừng B · đang làm · vừa xong', '⏹ Dừng C · rảnh · 1 giờ'])
+    expect(texts[3]).toMatch(/…( · rảnh · 3 ngày)$/)
   })
 
   it('routes one session to its own topic: reports, telegram_send and commands from that topic', async () => {
@@ -427,23 +448,26 @@ describe('v84 commands', () => {
 
 describe('pinned status and health', () => {
   it('posts and pins once, edits only on change, and recreates a deleted pin', async () => {
-    let panes = [{ name: 'A', status: 'working', tool: 'Bash', since: Date.now() - 3 * 60_000 }]
-    const first = setup(() => ({ ok: true, action: 'status', panes }))
+    let clock = Date.now()
+    let panes = [{ name: 'A', status: 'working', tool: 'Bash', since: clock - 3 * 60_000 }]
+    const first = setup(() => ({ ok: true, action: 'status', panes }), { now: () => clock })
     first.tg.set({ pinStatus: true })
     await first.tg.pinTick()
     expect(first.sent.map((s) => s.method)).toEqual(expect.arrayContaining(['sendMessage', 'pinChatMessage']))
-    expect(lastText(first.sent)).toContain('A — đang làm · Bash · 3 phút')
+    expect(lastText(first.sent)).toContain('A — đang chạy · Bash · 3 phút')
     await first.tg.pinTick()
     expect(first.sent.filter((s) => s.method === 'editMessageText')).toHaveLength(0)
-    panes = [{ name: 'A', status: 'idle', tool: undefined as unknown as string, since: Date.now() }]
+    panes = [{ name: 'A', status: 'idle', tool: undefined as unknown as string, since: clock }]
+    clock += 25_000
     await first.tg.pinTick()
     expect(first.sent.filter((s) => s.method === 'editMessageText')).toHaveLength(1)
     expect(first.tg.state().health.sentToday).toBeGreaterThanOrEqual(2)
 
-    const gone = setup(() => ({ ok: true, action: 'status', panes }), {}, true)
+    const gone = setup(() => ({ ok: true, action: 'status', panes }), { now: () => clock }, true)
     gone.tg.set({ pinStatus: true })
     await gone.tg.pinTick()
-    panes = [{ name: 'A', status: 'working', tool: 'Edit', since: Date.now() }]
+    panes = [{ name: 'A', status: 'working', tool: 'Edit', since: clock }]
+    clock += 25_000
     await gone.tg.pinTick()
     expect(gone.sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(2)
     expect(gone.tg.state().health.errorsToday).toBe(1)
@@ -459,7 +483,7 @@ describe('pinned status and health', () => {
     const posts = sent.filter((s) => s.method === 'sendMessage').map((s) => s.body as Record<string, unknown>)
     expect(posts.map((p) => p.message_thread_id)).toEqual([7, 9])
     expect(String(posts[0]!.text)).toContain('A — rảnh')
-    expect(String(posts[1]!.text)).toContain('B — đang làm')
+    expect(String(posts[1]!.text)).toContain('B — đang chạy')
     expect(String(posts[1]!.text)).not.toContain('A — rảnh')
     expect(sent.filter((s) => s.method === 'pinChatMessage')).toHaveLength(2)
     tg.removeSessionRoute(AGENT)

@@ -39,7 +39,7 @@ import {
 } from '@ccm/shared'
 import { createHash, randomInt, randomUUID } from 'node:crypto'
 import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget, type TelegramUserInput, type TelegramUserResult } from '@ccm/shared'
-import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PLAN_LABELS, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
+import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PLAN_LABELS, PROMPTS, summaryHtml, TAIL_BUTTON, type ActionEntry, type ActionKind, type DayCounts, type LimitText, type Markup, type PinState } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
 import { COMMAND_MENU, commandOf, paneStatus, readMessage, resultHtml, tailHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
@@ -90,8 +90,18 @@ const KNOWN_TOPICS_MAX = 200
 export const INBOUND_PER_CHAT_MIN = 10
 const strangerHtml = (custom: string, owner: string, fallback: (owner: string) => string): string =>
   custom ? escapeHtml(custom).split('{owner}').join(escapeHtml(owner)) : fallback(owner)
-const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last', 'tail'])
-const sessionPinKey = (session: string): string => `s:${session}`
+const SESSION_BOUND = new Set(['send', 'file', 'stop', 'last', 'tail', 'compact', 'close', 'focus'])
+/** Telegram edits of one message and sends to one group are both throttled; one pin edit per topic per 20 s stays well under. */
+const PIN_EDIT_MS = 20_000
+const PIN_KEY_RE = /^[-@\w]{1,40}:(\d+|null)$/
+const HELD_MAX = 20
+const HOLD_MAX_S = 3600
+const HOLD_DEFAULT_S = 5
+const TOPIC_HEALTH_MAX = 200
+/** A working topic would otherwise push a new state to the page on every message; "sent 5 min ago" does not need that. */
+const TOPIC_PUSH_MS = 30_000
+const TELEGRAM_ERRORS = new Set<string>(['network', 'status', 'timeout', 'rate', 'keychain', 'config', 'token', 'chat', 'too-large', 'conflict'])
+const WINDOW_MS = { five_hour: 5 * 3600_000, seven_day: 7 * 24 * 3600_000 }
 export const PAIR_MS = 5 * 60_000
 const POLL_TIMEOUT_S = 50
 const POLL_MIN_GAP_MS = 1000
@@ -140,6 +150,8 @@ interface FileShape {
   sessionRoutes: TelegramSessionRoute[]
   /** Topics (`chatId:threadId`) whose last send failed with the topic / group gone or no rights. */
   broken?: string[]
+  /** Last send per topic (`chatId:threadId`): when it worked, and the error code of the latest failure. */
+  topicHealth?: Record<string, { at?: number; error?: TelegramError }>
   stranger: TelegramStranger
   members: TelegramMember[]
   replies: Record<string, string>
@@ -157,6 +169,22 @@ interface FileShape {
 interface Pin {
   chatId: string
   messageId: number
+}
+
+interface HeldSend {
+  route: TelegramRoute
+  html: string
+  target?: TelegramTarget
+  keys?: Markup
+  important: boolean
+}
+
+export interface TelegramLimitInfo {
+  window?: 'five_hour' | 'seven_day'
+  usedPct?: number
+  /** Epoch ms. */
+  resetsAt?: number
+  hit?: boolean
 }
 
 export interface TelegramDeps {
@@ -185,6 +213,8 @@ export interface TelegramDeps {
   onFailure?: (error: TelegramError) => void
   bigUploader?: BigUploader
   userScanner?: UserScanner
+  /** Brings the app window to the front; called after `/focus` found its pane. */
+  focusApp?: () => void
 }
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
@@ -206,7 +236,12 @@ function readPins(raw: unknown, routes: TelegramRoute[]): Record<string, Pin> {
   return out
 }
 const DOWNLOAD_MAX = 20 * 1024 * 1024
+const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i
+const isImageFile = (f: TgFile): boolean => f.kind === 'photo' || (f.kind === 'document' && IMAGE_NAME.test(f.name))
 const ACTIONS_MAX = 500
+const PROJECT_CHOICES_MAX = 8
+const CONFIRM_TTL_MS = 5 * 60_000
+const WAITING_TAIL_LINES = 20
 const RUN_SHOT_DELAY_MS = 8000
 const RUN_LOG_LINES = 200
 const RUN_DETAIL_MAX = 1500
@@ -220,8 +255,22 @@ type Role = 'owner' | TelegramMemberLevel
 const READ_COMMANDS = new Set(['status', 'last', 'tail', 'help', 'where'])
 const READ_BUTTONS = new Set<ActionKind>(['lt', 'tl', 'df'])
 /** Allow / Deny run a tool on the owner's machine; links, the backlog and pairing change what the bot is. */
-const OWNER_BUTTONS = new Set<ActionKind>(['ap', 'dn', 'lk', 'lp', 'bg', 'bx', 'ul'])
+const OWNER_BUTTONS = new Set<ActionKind>(['ap', 'dn', 'lk', 'lp', 'bg', 'bx', 'ul', 'cl'])
 const topicKey = (r: { chatId: string; threadId: number | null }): string => `${r.chatId}:${r.threadId}`
+const OUTGOING = /^(send(?!ChatAction)|editMessage|(un)?pinChatMessage$|editForumTopic$)/
+function field(body: Record<string, unknown> | FormData | null, name: string): unknown {
+  return body instanceof FormData ? body.get(name) : (body?.[name] ?? null)
+}
+function chatOf(body: Record<string, unknown> | FormData | null): string | null {
+  const v = field(body, 'chat_id')
+  return typeof v === 'string' || typeof v === 'number' ? String(v) : null
+}
+function topicOf(body: Record<string, unknown> | FormData | null): string | null {
+  const chat = chatOf(body)
+  if (!chat) return null
+  const t = Number(field(body, 'message_thread_id'))
+  return `${chat}:${Number.isSafeInteger(t) && t > 0 ? t : null}`
+}
 
 const mayPress = (role: Role, kind: ActionKind): boolean => role === 'owner' || (role === 'full' ? !OWNER_BUTTONS.has(kind) : READ_BUTTONS.has(kind))
 
@@ -293,6 +342,19 @@ function readKnown(raw: unknown): Record<string, KnownChat> {
   return out
 }
 
+function readTopicHealth(raw: unknown): Record<string, { at?: number; error?: TelegramError }> {
+  const out: Record<string, { at?: number; error?: TelegramError }> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, TOPIC_HEALTH_MAX)) {
+    const o = (v ?? {}) as { at?: unknown; error?: unknown }
+    if (!PIN_KEY_RE.test(k)) continue
+    const at = typeof o.at === 'number' && Number.isFinite(o.at) && o.at > 0 ? o.at : undefined
+    const error = typeof o.error === 'string' && TELEGRAM_ERRORS.has(o.error) ? (o.error as TelegramError) : undefined
+    if (at !== undefined || error) out[k] = { ...(at !== undefined ? { at } : {}), ...(error ? { error } : {}) }
+  }
+  return out
+}
+
 function readShape(file: string | undefined): FileShape {
   if (!file) return { ...DEFAULTS, routes: [], known: {}, quiet: { ...DEFAULT_TELEGRAM_QUIET }, summary: { ...DEFAULT_TELEGRAM_SUMMARY }, pins: {}, sessionRoutes: [], replies: {}, members: [] }
   try {
@@ -316,6 +378,7 @@ function readShape(file: string | undefined): FileShape {
       pins: readPins(raw.pins, routes),
       bigFiles: raw.bigFiles === true,
       sessionRoutes: readSessionRoutes(raw.sessionRoutes),
+      topicHealth: readTopicHealth(raw.topicHealth),
       ...(Array.isArray(raw.broken) ? { broken: raw.broken.filter((k): k is string => typeof k === 'string' && /^[-@\w]{1,40}:(\d+|null)$/.test(k)).slice(0, TELEGRAM_ROUTES_MAX * 2) } : {}),
       stranger: readStranger(raw.stranger),
       members: readMembers(raw.members),
@@ -372,6 +435,13 @@ export class TelegramNotifier {
   private readonly pinText = new Map<string, string>()
   private readonly digestMsgs = new Map<string, { chatId: string; messageId: number; day: string; n: number }>()
   private pinBusy = false
+  private readonly pinAt = new Map<string, number>()
+  private readonly holdUntil = new Map<string, number>()
+  private readonly held = new Map<string, HeldSend[]>()
+  private readonly heldTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private flushing = false
+  private topicSavedAt = 0
+  private readonly limitSent = new Set<string>()
   private iconBusy = false
   private iconIds: Partial<Record<TopicMood, string>> | null = null
   private readonly iconSet = new Map<string, { chatId: string; threadId: number; id: string }>()
@@ -429,9 +499,55 @@ export class TelegramNotifier {
   private async call(method: string, body: Record<string, unknown> | FormData | null, timeoutMs = TIMEOUT_MS): Promise<TgCall> {
     const token = this.token()
     if (!token) return { ok: false, error: 'config' }
+    const chat = OUTGOING.test(method) ? chatOf(body) : null
+    if (chat && this.holdLeft(chat) > 0) return { ok: false, error: 'rate' }
     const res = await tgCall(this.deps.fetch, this.deps.base || API_BASE, token, method, body, timeoutMs)
     this.noteHealth(method, res)
+    if (chat) {
+      if (!res.ok && res.error === 'rate') this.hold(chat, res.retryAfter)
+      if (method.startsWith('send')) this.noteTopic(topicOf(body), res)
+    }
     return res
+  }
+
+  private holdLeft(chatId: string): number {
+    const until = this.holdUntil.get(chatId)
+    if (until === undefined) return 0
+    const left = until - this.now
+    if (left <= 0) this.holdUntil.delete(chatId)
+    return Math.max(0, left)
+  }
+
+  /** Telegram answered 429: nothing goes to that chat for the `retry_after` it named. */
+  private hold(chatId: string, retryAfter: number | undefined): void {
+    const secs = Math.min(HOLD_MAX_S, Math.max(1, retryAfter ?? HOLD_DEFAULT_S))
+    const until = this.now + secs * 1000
+    if (until > (this.holdUntil.get(chatId) ?? 0)) this.holdUntil.set(chatId, until)
+  }
+
+  private routed(key: string): boolean {
+    return this.data.routes.some((r) => topicKey(r) === key) || this.data.sessionRoutes.some((r) => topicKey(r) === key)
+  }
+
+  /** Only the error code is kept, never the message text or Telegram's description. */
+  private noteTopic(key: string | null, res: TgCall): void {
+    if (!key || !this.routed(key)) return
+    const all = (this.data.topicHealth ??= {})
+    const prev = all[key]
+    const next = res.ok ? { at: this.now } : { ...(prev?.at !== undefined ? { at: prev.at } : {}), error: res.error }
+    const errorChanged = prev?.error !== (res.ok ? undefined : res.error)
+    all[key] = next
+    const keys = Object.keys(all)
+    if (keys.length > TOPIC_HEALTH_MAX) for (const k of keys) if (!this.routed(k)) delete all[k]
+    if (!errorChanged && this.now - this.topicSavedAt <= TOPIC_PUSH_MS) return
+    this.topicSavedAt = this.now
+    this.save()
+    this.deps.onState?.(this.state())
+  }
+
+  private healthOf(r: { chatId: string; threadId: number | null }): { lastSentAt?: number; lastError?: TelegramError } {
+    const h = this.data.topicHealth?.[topicKey(r)]
+    return h ? { ...(h.at !== undefined ? { lastSentAt: h.at } : {}), ...(h.error ? { lastError: h.error } : {}) } : {}
   }
 
   private noteHealth(method: string, res: TgCall): void {
@@ -469,7 +585,7 @@ export class TelegramNotifier {
       digest: this.data.digest,
       waiting: this.data.waiting,
       doneMinutes: this.data.doneMinutes,
-      routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}) })),
+      routes: this.data.routes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}), ...this.healthOf(r) })),
       commandInstalled: this.deps.commandInstalled?.() ?? false,
       lastError: this.lastError,
       pollConflict: this.pollConflict,
@@ -481,7 +597,7 @@ export class TelegramNotifier {
       health: { ...this.health },
       userAccount: this.data.userSession ? (this.data.userName ?? 'Telegram') : null,
       bigFiles: { enabled: this.data.bigFiles, apiId: this.data.apiId ?? null, hasHash: this.sealed(this.data.apiHash) !== null },
-      sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}) })),
+      sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}), ...this.healthOf(r) })),
       stranger: { ...this.data.stranger },
       members: this.members().map((m) => ({ ...m })),
       recentStrangers: [...this.strangers.values()]
@@ -680,6 +796,8 @@ export class TelegramNotifier {
 
   stop(): void {
     this.pollRun = 0
+    for (const t of this.heldTimers.values()) clearTimeout(t)
+    this.heldTimers.clear()
   }
 
   private async pollLoop(run: number): Promise<void> {
@@ -898,6 +1016,10 @@ export class TelegramNotifier {
       if (this.readOnlyLimit.take()) await this.reply(msg, t.readOnly)
       return
     }
+    if (cmd.kind === 'close' && role !== 'owner') {
+      if (this.readOnlyLimit.take()) await this.reply(msg, ACT_TEXT[locale].notAllowed)
+      return
+    }
     const from = role === 'owner' ? msg.fromName : this.nameOf(msg.fromId)
     // Several sessions can share a topic (an old one left linked): an open one wins, else the latest linked.
     const onTopic = this.data.sessionRoutes.filter((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
@@ -907,16 +1029,22 @@ export class TelegramNotifier {
       ? { project: session.project, label: session.name, chatId: session.chatId, threadId: session.threadId }
       : (this.data.routes.find((r) => r.chatId === msg.chatId && r.threadId === msg.threadId) ?? (ended ? { project: ended, label: path.basename(ended) || ended, chatId: msg.chatId, threadId: msg.threadId } : undefined))
     if (cmd.kind === 'where') return this.whereReply(msg, role === 'owner', session, route)
+    const newText = cmd.kind === 'new' ? cmd.text : ''
+    const choices = cmd.kind === 'new' && !session ? this.projectChoices(msg) : []
+    if (choices.length) {
+      if (!this.takeInbound(msg.chatId)) return void (await this.reply(msg, t.rate))
+      const text = newText ? viaTelegram(inboundPrompt(newText), locale) : ''
+      const group = randomUUID().slice(0, 8)
+      const rows = choices.map((r): [ActionKind, string, string][] => [
+        ['pj', this.addAction({ kind: 'pj', terminalId: '', project: r.project, cwd: r.project, name: r.label, chatId: msg.chatId, threadId: msg.threadId, extra: text, by: msg.fromId, group }), r.label],
+      ])
+      return void (await this.reply(msg, MORE_TEXT[locale].projectPick(!!text), markup(locale, rows)))
+    }
     if (!route) {
       const keys = role === 'owner' ? this.linkMarkup(msg) : undefined
       return void (await this.reply(msg, keys ? MORE_TEXT[locale].linkPick : t.noTopic, keys))
     }
-    let lim = this.inboundLimit.get(msg.chatId)
-    if (!lim) {
-      lim = new RateLimiter(INBOUND_PER_CHAT_MIN, 60_000, this.deps.now ?? Date.now)
-      this.inboundLimit.set(msg.chatId, lim)
-    }
-    if (!lim.take()) return void (await this.reply(msg, t.rate))
+    if (!this.takeInbound(msg.chatId)) return void (await this.reply(msg, t.rate))
     const ask = this.asker()
     if (!ask) return void (await this.reply(msg, t.unavailable))
     const a = ACT_TEXT[locale]
@@ -938,14 +1066,7 @@ export class TelegramNotifier {
     if (cmd.kind === 'new') {
       const text = cmd.text ? viaTelegram(inboundPrompt(cmd.text), locale) : ''
       const open = (await panesOf()).filter((p) => p.terminalId)
-      if (open.length) {
-        const base = { project: route.project, cwd: route.project, chatId: msg.chatId, threadId: msg.threadId, extra: text }
-        const rows: ([ActionKind, string] | [ActionKind, string, string])[][] = [[['nw', this.addAction({ kind: 'nw', terminalId: '', name: '', ...base })]]]
-        if (text) for (const p of open.slice(0, 8)) rows.push([['np', this.addAction({ kind: 'np', terminalId: p.terminalId!, name: p.name, ...base }), `${p.name} · ${paneStatus(p.status, locale)}`]])
-        return void (await this.reply(msg, m.newPick(open.length, !!text), markup(locale, rows)))
-      }
-      const res = await askSafe({ id: randomUUID(), action: 'new', project: route.project, from, ...(text ? { text } : {}) })
-      return void (await this.reply(msg, res.ok && res.action === 'new' ? m.opened(res.name) : resultHtml(res, locale)))
+      return this.startNew({ chatId: msg.chatId, threadId: msg.threadId }, route.project, text, from, msg.fromId, open, (html, keys) => this.reply(msg, html, keys))
     }
     if (cmd.kind === 'all') {
       const text = viaTelegram(inboundPrompt(cmd.text), locale)
@@ -1008,16 +1129,38 @@ export class TelegramNotifier {
       await this.reply(msg, a.stopAsk(pick.name), markup(locale, [[['st', key]]]))
       return
     }
+    if (cmd.kind === 'compact' || cmd.kind === 'close' || cmd.kind === 'focus') {
+      const kind: ActionKind = cmd.kind === 'compact' ? 'cp' : cmd.kind === 'close' ? 'cl' : 'fc'
+      const panes = await panesOf()
+      const pick = target ? (target.kind === 'terminal' ? panes.find((p) => p.terminalId === target.terminalId) : undefined) : panes.length === 1 ? panes[0] : undefined
+      if (!pick?.terminalId) {
+        const open = panes.filter((p) => p.terminalId)
+        if (!target && open.length > 1) return void (await this.reply(msg, m.pick(open.length, cmd.kind), this.pickMarkup(kind, open, route.project, msg)))
+        return void (await this.reply(msg, resultHtml({ ok: false, error: target ? 'gone' : 'none' }, locale)))
+      }
+      const entry = { kind, terminalId: pick.terminalId, project: route.project, cwd: route.project, name: pick.name, chatId: msg.chatId, threadId: msg.threadId, by: msg.fromId, group: randomUUID().slice(0, 8), ...(pick.since ? { since: pick.since } : {}) }
+      if (kind === 'fc') return this.runPaneCommand(kind, entry, (html) => this.reply(msg, html))
+      await this.reply(msg, kind === 'cl' ? a.closeAsk(pick.name) : a.compactAsk(pick.name), markup(locale, [[[kind, this.addAction(entry)]]]))
+      return
+    }
     let req: TelegramInbound
     if (cmd.kind === 'status') req = { id: randomUUID(), action: 'status', project: route.project }
     else if (cmd.kind === 'file') {
-      const results = await Promise.all([cmd.file, ...more].map((f) => this.heavySlot(() => this.download(route.project, f))))
+      const files = [cmd.file, ...more]
+      const results = await Promise.all(files.map((f) => this.heavySlot(() => this.download(route.project, f))))
       const paths = results.flatMap((r) => (r.ok ? [r.path] : []))
       if (!paths.length) return void (await this.reply(msg, results.some((r) => !r.ok && r.error === 'big') ? a.fileTooBig : a.fileFail))
       const caption = inboundPrompt(cmd.text)
       const kind = more.length ? FILE_KIND[locale].album! : FILE_KIND[locale][cmd.file.kind] ?? cmd.file.kind
       const text = viaTelegram(inboundPrompt(a.filePrompt(kind, paths.join(', '), caption)), locale)
-      req = { id: randomUUID(), action: 'send', project: route.project, text, from, ...(target ? { target } : {}) }
+      // The page attaches images to the agent's tray when it can; otherwise it sends `text`, which names every path.
+      const images = results.flatMap((r, i) => (r.ok && isImageFile(files[i]!) ? [r.path] : []))
+      const others = results.flatMap((r, i) => (r.ok && !isImageFile(files[i]!) ? [r.path] : []))
+      const otherFile = files.find((f, i) => results[i]!.ok && !isImageFile(f))
+      const lead = a.imagePrompt(images.length)
+      const body = otherFile ? a.filePrompt(FILE_KIND[locale][otherFile.kind] ?? otherFile.kind, others.join(', '), caption) : caption
+      const imageText = images.length ? viaTelegram(inboundPrompt(body ? `${lead}\n${body}` : lead), locale) : ''
+      req = { id: randomUUID(), action: 'send', project: route.project, text, from, ...(target ? { target } : {}), ...(imageText ? { images, imageText } : {}) }
     } else {
       const text = viaTelegram(inboundPrompt(cmd.text), locale)
       if (!text) return
@@ -1031,6 +1174,66 @@ export class TelegramNotifier {
     if (req.action === 'send') this.deps.onInbound?.({ from, project: route.project, result })
     const sent = await this.reply(msg, resultHtml(result, locale))
     if (sent !== null && result.ok && result.action === 'send' && result.terminalId) this.rememberSent(msg.chatId, sent, { kind: 'terminal', terminalId: result.terminalId })
+  }
+
+  private takeInbound(chatId: string): boolean {
+    let lim = this.inboundLimit.get(chatId)
+    if (!lim) {
+      lim = new RateLimiter(INBOUND_PER_CHAT_MIN, 60_000, this.deps.now ?? Date.now)
+      this.inboundLimit.set(chatId, lim)
+    }
+    return lim.take()
+  }
+
+  /** `/new` where the topic does not name one project (General, or several routes on it): the routes to pick from. */
+  private projectChoices(msg: TgMessage): TelegramRoute[] {
+    const here = this.data.routes.filter((r) => r.chatId === msg.chatId && r.threadId === msg.threadId)
+    if (here.length === 1 || (!here.length && msg.threadId !== null)) return []
+    const list = here.length ? here : this.data.routes.filter((r) => r.chatId === msg.chatId)
+    const seen = new Set<string>()
+    return list.filter((r) => !seen.has(r.project) && !!seen.add(r.project)).slice(0, PROJECT_CHOICES_MAX)
+  }
+
+  private async startNew(where: { chatId: string; threadId: number | null }, project: string, text: string, from: string, by: number, open: TelegramPaneInfo[], say: (html: string, keys?: Markup) => Promise<unknown>): Promise<void> {
+    const locale = this.deps.locale()
+    const m = MORE_TEXT[locale]
+    if (open.length) {
+      const base = { project, cwd: project, ...where, extra: text, by, group: randomUUID().slice(0, 8) }
+      const rows: ([ActionKind, string] | [ActionKind, string, string])[][] = [[['nw', this.addAction({ kind: 'nw', terminalId: '', name: '', ...base })]]]
+      if (text) for (const p of open.slice(0, 8)) rows.push([['np', this.addAction({ kind: 'np', terminalId: p.terminalId!, name: p.name, ...base }), this.paneLabel(p, locale)]])
+      return void (await say(m.newPick(open.length, !!text), markup(locale, rows)))
+    }
+    const ask = this.asker()
+    if (!ask) return void (await say(INBOUND_TEXT[locale].unavailable))
+    const res = await ask({ id: randomUUID(), action: 'new', project, from, ...(text ? { text } : {}) }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+    await say(res.ok && res.action === 'new' ? m.opened(res.name) : resultHtml(res, locale))
+  }
+
+  /** Runs compact / close / focus on the pane the entry names; a button press (`cb`) also answers the callback and retires its siblings. */
+  private async runPaneCommand(kind: 'cp' | 'cl' | 'fc', entry: ActionEntry, say: (html: string) => Promise<unknown>, cb?: { id: string; messageId: unknown; key: string }): Promise<void> {
+    const locale = this.deps.locale()
+    const a = ACT_TEXT[locale]
+    const ask = this.asker()
+    if (!ask) return void (await (cb ? this.answer(cb.id, INBOUND_TEXT[locale].unavailable) : say(INBOUND_TEXT[locale].unavailable)))
+    const action = kind === 'cp' ? 'compact' : kind === 'cl' ? 'close' : 'focus'
+    const res = await ask({ id: randomUUID(), action, project: entry.project, target: { kind: 'terminal', terminalId: entry.terminalId }, ...(kind !== 'fc' && entry.since !== undefined ? { since: entry.since } : {}) }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+    if (!res.ok || res.action !== action) {
+      const html = res.ok ? INBOUND_TEXT[locale].unavailable : res.error === 'state' ? a.state : resultHtml(res, locale)
+      return void (await (cb ? this.answer(cb.id, html) : say(html)))
+    }
+    if (kind === 'fc') this.deps.focusApp?.()
+    if (cb) {
+      this.retire(cb.key, entry)
+      await this.answer(cb.id)
+      if (typeof cb.messageId === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: cb.messageId, reply_markup: { inline_keyboard: [] } })
+    }
+    await say(kind === 'cp' ? a.compacted(res.name) : kind === 'cl' ? a.closed(res.name) : a.focused(res.name))
+  }
+
+  /** A pressed button takes down the other buttons of its own message only. */
+  private retire(key: string, entry: ActionEntry): void {
+    this.actions.delete(key)
+    if (entry.group) for (const [k, e] of this.actions) if (e.group === entry.group) this.actions.delete(k)
   }
 
   /** Buttons that connect an unassigned topic to an open session or its project, so no link has to be copied into the app. */
@@ -1071,10 +1274,22 @@ export class TelegramNotifier {
     return res.ok && res.action === 'tail' ? tailHtml(res.name, res.text, locale, this.deps.home, this.deps.platform, this.token()) : resultHtml(res, locale)
   }
 
-  private pickMarkup(kind: 'st' | 'lt' | 'tl' | 'np', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
+  /** Button text "name · state · age" (age = time in that state; no terminal text), kept within the 60 characters markup() leaves after the action prefix. */
+  private paneLabel(p: TelegramPaneInfo, locale: TelegramLocale): string {
+    const min = p.since ? Math.max(0, Math.floor((this.now - p.since) / 60_000)) : null
+    const vi = locale === 'vi'
+    const age = min === null ? '' : min < 1 ? (vi ? 'vừa xong' : 'just now') : min < 60 ? (vi ? `${min} phút` : `${min}m`) : min < 1440 ? (vi ? `${Math.floor(min / 60)} giờ` : `${Math.floor(min / 60)}h`) : vi ? `${Math.floor(min / 1440)} ngày` : `${Math.floor(min / 1440)}d`
+    const tail = [paneStatus(p.status, locale), age].filter(Boolean).join(' · ')
+    const room = 48 - [...tail].length - 3
+    const name = [...p.name]
+    return `${name.length > room ? `${name.slice(0, Math.max(1, room - 1)).join('')}…` : p.name} · ${tail}`
+  }
+
+  private pickMarkup(kind: 'st' | 'lt' | 'tl' | 'np' | 'cp' | 'cl' | 'fc', panes: TelegramPaneInfo[], project: string, msg: TgMessage, text?: string): Markup {
     const locale = this.deps.locale()
+    const own = kind === 'cp' || kind === 'cl' || kind === 'fc' || kind === 'np' ? { by: msg.fromId, group: randomUUID().slice(0, 8) } : {}
     const rows = panes.slice(0, 8).map((p): [ActionKind, string, string][] => [
-      [kind, this.addAction({ kind, terminalId: p.terminalId!, project, cwd: project, name: p.name, chatId: msg.chatId, threadId: msg.threadId, ...(p.since ? { since: p.since } : {}), ...(text !== undefined ? { extra: text } : {}) }), `${p.name} · ${paneStatus(p.status, locale)}`],
+      [kind, this.addAction({ kind, terminalId: p.terminalId!, project, cwd: project, name: p.name, chatId: msg.chatId, threadId: msg.threadId, ...own, ...(p.since ? { since: p.since } : {}), ...(text !== undefined ? { extra: text } : {}) }), this.paneLabel(p, locale)],
     ])
     return markup(locale, rows)
   }
@@ -1089,7 +1304,7 @@ export class TelegramNotifier {
 
   private addAction(entry: ActionEntry): string {
     const key = randomUUID().replace(/-/g, '').slice(0, 12)
-    this.actions.set(key, entry)
+    this.actions.set(key, entry.at === undefined ? { ...entry, at: this.now } : entry)
     if (this.actions.size > ACTIONS_MAX) this.actions.delete(this.actions.keys().next().value as string)
     return key
   }
@@ -1170,8 +1385,23 @@ export class TelegramNotifier {
       await this.answer(id)
       return void (await this.post(where, await this.tailText(entry.terminalId, entry.project, Math.min(TELEGRAM_TAIL_MAX, Math.max(1, Number(entry.extra) || TELEGRAM_TAIL_DEFAULT)))))
     }
+    if (entry.by !== undefined && role !== 'owner' && from!.id !== entry.by) return this.answer(id, a.notAllowed)
+    if ((kind === 'cp' || kind === 'cl') && this.now - (entry.at ?? 0) > CONFIRM_TTL_MS) {
+      this.retire(m[2]!, entry)
+      return this.answer(id, a.expired)
+    }
+    if (kind === 'cp' || kind === 'cl' || kind === 'fc') return this.runPaneCommand(kind, entry, (html) => this.post(where, html), { id, messageId: msg.message_id, key: m[2]! })
+    if (kind === 'pj') {
+      this.retire(m[2]!, entry)
+      await this.answer(id)
+      if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
+      const status = await ask({ id: randomUUID(), action: 'status', project: entry.project }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
+      const open = status.ok && status.action === 'status' ? status.panes.filter((p) => p.terminalId) : []
+      return this.startNew(where, entry.project, entry.extra ?? '', who, from!.id as number, open, (html, keys) => this.post(where, html, keys ? { reply_markup: keys } : {}))
+    }
     if (kind === 'nw' || kind === 'np') {
-      for (const [k, e] of this.actions) if ((e.kind === 'nw' || e.kind === 'np') && e.chatId === entry.chatId && e.extra === entry.extra && e.threadId === entry.threadId) this.actions.delete(k)
+      if (entry.group) this.retire(m[2]!, entry)
+      else for (const [k, e] of this.actions) if ((e.kind === 'nw' || e.kind === 'np') && e.chatId === entry.chatId && e.extra === entry.extra && e.threadId === entry.threadId) this.actions.delete(k)
       await this.answer(id)
       if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
       const text = entry.extra ?? ''
@@ -1189,9 +1419,9 @@ export class TelegramNotifier {
       await this.post(where, resultHtml(result, locale))
       return
     }
-    const key: TelegramKey = kind === 'ap' ? 'approve' : kind === 'dn' ? 'deny' : kind === 'qa' ? 'option' : 'stop'
+    const key: TelegramKey = kind === 'ap' ? 'approve' : kind === 'dn' ? 'deny' : kind === 'qa' ? 'option' : kind === 'es' ? 'esc' : 'stop'
     const option = kind === 'qa' ? Number(entry.extra) : undefined
-    const episode = { ...(entry.since !== undefined ? { since: entry.since } : {}), ...(entry.tool && key !== 'stop' && key !== 'option' ? { tool: entry.tool } : {}) }
+    const episode = { ...(entry.since !== undefined ? { since: entry.since } : {}), ...(entry.tool && key !== 'stop' && key !== 'option' && key !== 'esc' ? { tool: entry.tool } : {}) }
     const result = await ask({ id: randomUUID(), action: 'keys', project: entry.project, key, ...(option ? { option } : {}), target, ...episode }).catch((): TelegramInboundResult => ({ ok: false, error: 'unavailable' }))
     if (!result.ok) {
       await this.answer(id, result.error === 'state' ? a.state : result.error === 'busy' ? a.keysBusy : resultHtml(result, locale))
@@ -1200,7 +1430,7 @@ export class TelegramNotifier {
     this.actions.delete(m[2]!)
     if (kind === 'qa') for (const [k, e] of this.actions) if (e.kind === 'qa' && e.terminalId === entry.terminalId && e.since === entry.since) this.actions.delete(k)
     if (typeof msg.message_id === 'number') await this.call('editMessageReplyMarkup', { chat_id: entry.chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } })
-    const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : kind === 'qa' ? a.chose(entry.name, entry.label ?? String(option)) : a.stopped(entry.name)
+    const done = kind === 'ap' ? a.approved(entry.name) : kind === 'dn' ? a.denied(entry.name) : kind === 'qa' ? a.chose(entry.name, entry.label ?? String(option)) : kind === 'es' ? a.escaped(entry.name) : a.stopped(entry.name)
     await this.answer(id)
     await this.post(where, done)
   }
@@ -1310,11 +1540,52 @@ export class TelegramNotifier {
     for (const chatId of chats) if (this.take(chatId)) await this.post({ chatId, threadId: null }, html)
   }
 
-  async alert(kind: 'limit' | 'disk', detail?: { label: string; free: string }): Promise<boolean> {
+  async alert(kind: 'limit', info?: TelegramLimitInfo): Promise<boolean>
+  async alert(kind: 'disk', detail?: { label: string; free: string }): Promise<boolean>
+  async alert(kind: 'limit' | 'disk', detail?: { label: string; free: string } | TelegramLimitInfo): Promise<boolean> {
     if (!this.data.enabled || !this.data.alerts || !this.token()) return false
-    const a = ACT_TEXT[this.deps.locale()]
-    await this.broadcastGeneral(kind === 'limit' ? a.limit : a.disk(detail?.label ?? '', detail?.free ?? ''))
+    if (kind === 'limit') return this.limitAlert((detail ?? {}) as TelegramLimitInfo)
+    const d = detail as { label: string; free: string } | undefined
+    await this.broadcastGeneral(ACT_TEXT[this.deps.locale()].disk(d?.label ?? '', d?.free ?? ''))
     return true
+  }
+
+  /** Account-wide limit: it goes to the topic of every project with an open session (once per topic and reset period), else to each chat's General. */
+  private async limitAlert(info: TelegramLimitInfo): Promise<boolean> {
+    const locale = this.deps.locale()
+    const a = ACT_TEXT[locale]
+    const text: LimitText = {
+      ...(info.window ? { window: info.window } : {}),
+      ...(info.usedPct !== undefined ? { usedPct: info.usedPct } : {}),
+      ...(info.hit ? { hit: true } : {}),
+      ...(info.resetsAt ? { reset: this.resetLabel(info.resetsAt) } : {}),
+    }
+    const html = a.limit(info.window || info.usedPct !== undefined || info.resetsAt || info.hit ? text : null)
+    const period = info.resetsAt ? Math.floor(info.resetsAt / 60_000) : Math.floor(this.now / WINDOW_MS[info.window ?? 'five_hour'])
+    const kindKey = `${info.hit ? 'hit' : 'forecast'}|${info.window ?? '?'}|${period}`
+    const targets = new Map<string, { chatId: string; threadId: number | null }>()
+    for (const s of this.openSessions) {
+      const r = this.sessionRouteOf(s.agent) ?? this.routeFor(s.cwd)
+      if (r) targets.set(topicKey(r), { chatId: r.chatId, threadId: r.threadId })
+    }
+    if (!targets.size) for (const r of this.data.routes) targets.set(`${r.chatId}:null`, { chatId: r.chatId, threadId: null })
+    if (this.limitSent.size > 500) this.limitSent.clear()
+    let sent = false
+    for (const [key, where] of targets) {
+      const once = `${kindKey}|${key}`
+      if (this.limitSent.has(once)) continue
+      if ((await this.sendText({ project: '', label: '', ...where }, html, undefined, undefined, true)) !== null) continue
+      this.limitSent.add(once)
+      sent = true
+    }
+    return sent
+  }
+
+  private resetLabel(at: number): string {
+    const d = new Date(at)
+    const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    const now = new Date(this.now)
+    return dayKey(d) === dayKey(now) ? hhmm : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${hhmm}`
   }
 
   private async startRun(project: string, config: { id: string; name: string }, where: { chatId: string; threadId: number | null }): Promise<void> {
@@ -1345,13 +1616,16 @@ export class TelegramNotifier {
     await this.call('sendPhoto', form, UPLOAD_TIMEOUT_MS)
   }
 
+  /** One pinned message per topic, listing every session that reports there (project route or session route). */
   async pinTick(): Promise<void> {
     const ask = this.asker()
-    if (this.pinBusy || !this.data.enabled || !this.data.pinStatus || !this.token() || !ask) return
+    if (this.pinBusy || !this.data.enabled || !this.token()) return
     this.pinBusy = true
     try {
-      const m = MORE_TEXT[this.deps.locale()]
+      await this.migratePins()
+      if (!this.data.pinStatus || !ask) return
       const locale = this.deps.locale()
+      const m = MORE_TEXT[locale]
       const statuses = new Map<string, TelegramPaneInfo[] | null>()
       const panesOf = async (project: string): Promise<TelegramPaneInfo[] | null> => {
         if (!statuses.has(project)) {
@@ -1360,39 +1634,83 @@ export class TelegramNotifier {
         }
         return statuses.get(project) ?? null
       }
-      // Project topics pin every pane of the project; a session topic pins only its own session.
-      const targets = [
-        ...this.data.routes.map((r) => ({ key: r.project, route: r, agent: undefined as string | undefined })),
-        ...this.data.sessionRoutes.map((s) => ({ key: sessionPinKey(s.session), route: { project: s.project, label: s.name, chatId: s.chatId, threadId: s.threadId }, agent: s.session as string | undefined })),
-      ]
-      for (const { key, route: r, agent } of targets) {
-        const all = await panesOf(r.project)
-        if (!all) continue
-        const terminal = agent ? this.terminalOfAgent.get(agent) : undefined
-        const panes = agent ? all.filter((p) => !!terminal && p.terminalId === terminal) : all
-        const status = (s: string) => (locale === 'vi' ? ({ working: 'đang làm', idle: 'rảnh', waiting: 'đang chờ', unknown: 'không rõ' } as Record<string, string>)[s] ?? s : s)
-        const lines = panes.map((p) => m.pinLine(p.name, status(p.status), p.tool, p.since ? Math.max(0, Math.round((this.now - p.since) / 60_000)) : null))
-        const html = [m.pinHead(r.label), ...(lines.length ? lines : [m.pinEmpty])].join('\n')
-        if (this.pinText.get(key) === html) continue
+      const own = new Set(this.data.sessionRoutes.map((s) => this.terminalOfAgent.get(s.session)).filter((t): t is string => !!t))
+      const topics = new Map<string, { chatId: string; threadId: number | null; label: string; routes: TelegramRoute[]; sessions: TelegramSessionRoute[] }>()
+      const topic = (r: { chatId: string; threadId: number | null }, label: string) => {
+        const key = topicKey(r)
+        if (!topics.has(key)) topics.set(key, { chatId: r.chatId, threadId: r.threadId, label, routes: [], sessions: [] })
+        return topics.get(key)!
+      }
+      for (const r of this.data.routes) topic(r, r.label).routes.push(r)
+      for (const s of this.data.sessionRoutes) topic(s, s.name).sessions.push(s)
+      for (const [key, t] of topics) {
+        const lines: string[] = []
+        const seen = new Set<string>()
+        let complete = true
+        const minutes = (p: TelegramPaneInfo) => (p.since ? Math.max(0, Math.round((this.now - p.since) / 60_000)) : null)
+        const state = (p: TelegramPaneInfo): PinState => (p.status === 'working' || p.status === 'waiting' || p.status === 'idle' ? p.status : 'unknown')
+        for (const r of t.routes) {
+          const all = await panesOf(r.project)
+          if (!all) {
+            complete = false
+            break
+          }
+          for (const p of all) {
+            const id = p.terminalId ?? `${r.project}\n${p.name}`
+            if (seen.has(id) || (p.terminalId && own.has(p.terminalId))) continue
+            seen.add(id)
+            lines.push(m.pinLine(p.name, state(p), p.tool, minutes(p)))
+          }
+        }
+        for (const s of t.sessions) {
+          if (!complete) break
+          const all = await panesOf(s.project)
+          if (!all) {
+            complete = false
+            break
+          }
+          const terminal = this.terminalOfAgent.get(s.session)
+          const p = terminal ? all.find((x) => x.terminalId === terminal) : undefined
+          if (p) {
+            if (seen.has(p.terminalId!)) continue
+            seen.add(p.terminalId!)
+            lines.push(m.pinLine(s.name || p.name, state(p), p.tool, minutes(p)))
+          } else lines.push(m.pinLine(s.name, 'closed', undefined, null))
+        }
+        if (!complete) continue
+        const html = [m.pinHead(t.routes[0]?.label ?? t.label), ...(lines.length ? lines : [m.pinEmpty])].join('\n')
+        if (this.pinText.get(key) === html || this.now - (this.pinAt.get(key) ?? -Infinity) < PIN_EDIT_MS || this.holdLeft(t.chatId) > 0) continue
+        this.pinAt.set(key, this.now)
         const pin = this.data.pins[key]
-        if (pin && pin.chatId === r.chatId) {
-          const edit = await this.call('editMessageText', { chat_id: r.chatId, message_id: pin.messageId, text: html, parse_mode: 'HTML', disable_web_page_preview: true })
+        if (pin && pin.chatId === t.chatId) {
+          const edit = await this.call('editMessageText', { chat_id: t.chatId, message_id: pin.messageId, text: html, parse_mode: 'HTML', disable_web_page_preview: true })
           if (edit.ok || edit.error === 'status') {
             this.pinText.set(key, html)
+            this.noteTopic(key, edit.ok ? edit : { ok: true, result: null })
             continue
           }
+          this.noteTopic(key, edit)
           if (edit.error !== 'chat') continue
         }
-        const sent = await this.post({ chatId: r.chatId, threadId: r.threadId }, html, { disable_notification: true })
+        const sent = await this.post({ chatId: t.chatId, threadId: t.threadId }, html, { disable_notification: true })
         if (sent === null) continue
         this.pinText.set(key, html)
-        this.data.pins = { ...this.data.pins, [key]: { chatId: r.chatId, messageId: sent } }
+        this.data.pins = { ...this.data.pins, [key]: { chatId: t.chatId, messageId: sent } }
         this.save()
-        await this.call('pinChatMessage', { chat_id: r.chatId, message_id: sent, disable_notification: true })
+        await this.call('pinChatMessage', { chat_id: t.chatId, message_id: sent, disable_notification: true })
       }
     } finally {
       this.pinBusy = false
     }
+  }
+
+  /** Pins saved by an older version are per project / per session; they are unpinned once and the topic pin takes over. */
+  private async migratePins(): Promise<void> {
+    const old = Object.entries(this.data.pins).filter(([k]) => !PIN_KEY_RE.test(k))
+    if (!old.length) return
+    this.data.pins = Object.fromEntries(Object.entries(this.data.pins).filter(([k]) => PIN_KEY_RE.test(k)))
+    this.save()
+    for (const [, pin] of old) await this.call('unpinChatMessage', { chat_id: pin.chatId, message_id: pin.messageId })
   }
 
   runLogFile(sessionId: string): Buffer | null {
@@ -1504,6 +1822,7 @@ export class TelegramNotifier {
   }
 
   async tick(): Promise<boolean> {
+    void this.flushHeld()
     void this.pinTick()
     void this.iconTick()
     if (this.sweepStale()) this.commit()
@@ -1581,8 +1900,9 @@ export class TelegramNotifier {
     const same = (r: TelegramRoute) => (this.deps.platform === 'win32' ? r.project.toLowerCase() === project.toLowerCase() : r.project === project)
     const rest = this.data.routes.filter((r) => !same(r))
     if (rest.length >= TELEGRAM_ROUTES_MAX) return { ok: false, error: 'too-many' }
-    for (const old of this.data.routes) if (same(old) && (old.chatId !== target.chatId || old.threadId !== target.threadId || old.project !== project)) this.dropPin(old.project)
+    const moved = this.data.routes.filter((old) => same(old) && (old.chatId !== target.chatId || old.threadId !== target.threadId))
     this.data.routes = [...rest, { project, label: input.label || path.basename(project) || project, chatId: target.chatId, threadId: target.threadId }]
+    for (const old of moved) this.releasePin(old)
     return this.commit()
   }
 
@@ -1600,18 +1920,18 @@ export class TelegramNotifier {
     const displaced = this.data.sessionRoutes.filter((r) => r.session !== route.session && r.chatId === route.chatId && r.threadId === route.threadId)
     const rest = this.data.sessionRoutes.filter((r) => r.session !== route.session && !displaced.includes(r))
     if (rest.length >= TELEGRAM_SESSION_ROUTES_MAX) return { ok: false, error: 'too-many' }
-    for (const r of displaced) this.dropPin(sessionPinKey(r.session))
     const old = this.data.sessionRoutes.find((r) => r.session === route.session)
-    if (old && (old.chatId !== route.chatId || old.threadId !== route.threadId)) this.dropPin(sessionPinKey(route.session))
     const keep = route.keep ?? old?.keep
     this.data.sessionRoutes = [...rest, { session: route.session, name: route.name, project: route.project, chatId: route.chatId, threadId: route.threadId, ...(keep ? { keep: true } : {}) }]
+    if (old && (old.chatId !== route.chatId || old.threadId !== route.threadId)) this.releasePin(old)
     this.endedTopics.delete(topicKey(route))
     return this.commit()
   }
 
   removeSessionRoute(session: string): TelegramSetResult {
-    this.dropPin(sessionPinKey(session.toLowerCase()))
+    const gone = this.data.sessionRoutes.find((r) => r.session === session.toLowerCase())
     this.data.sessionRoutes = this.data.sessionRoutes.filter((r) => r.session !== session.toLowerCase())
+    if (gone) this.releasePin(gone)
     return this.commit()
   }
 
@@ -1651,7 +1971,6 @@ export class TelegramNotifier {
       if (!prev || prev === l.agent || this.data.sessionRoutes.some((r) => r.session === l.agent)) continue
       const old = this.data.sessionRoutes.find((r) => r.session === prev)
       if (!old) continue
-      this.dropPin(sessionPinKey(prev))
       if (old.keep) old.session = l.agent
       else this.unlinkEnded(old, 'cleared', l)
       changed = true
@@ -1677,8 +1996,8 @@ export class TelegramNotifier {
   }
 
   private unlinkEnded(r: TelegramSessionRoute, why: 'ended' | 'cleared', next?: TelegramPaneLink): void {
-    this.dropPin(sessionPinKey(r.session))
     this.data.sessionRoutes = this.data.sessionRoutes.filter((x) => x !== r)
+    this.releasePin(r)
     this.endedTopics.set(topicKey(r), r.project)
     void this.noticeUnlinked(r, why, next)
   }
@@ -1711,17 +2030,22 @@ export class TelegramNotifier {
     const norm = this.normProject(project)
     if (!norm) return { ok: false, error: 'invalid-project' }
     const key = (p: string) => (this.deps.platform === 'win32' ? p.toLowerCase() : p)
-    for (const r of this.data.routes) if (key(r.project) === key(norm)) this.dropPin(r.project)
+    const gone = this.data.routes.filter((r) => key(r.project) === key(norm))
     this.data.routes = this.data.routes.filter((r) => key(r.project) !== key(norm))
+    for (const r of gone) this.releasePin(r)
     return this.commit()
   }
 
-  private dropPin(project: string): void {
-    this.pinText.delete(project)
-    const pin = this.data.pins[project]
+  /** Call after the route is gone from `data`: the pin stays while another route still reports into the topic. */
+  private releasePin(r: { chatId: string; threadId: number | null }): void {
+    const key = topicKey(r)
+    if (this.routed(key)) return
+    this.pinText.delete(key)
+    this.pinAt.delete(key)
+    const pin = this.data.pins[key]
     if (!pin) return
     const rest = { ...this.data.pins }
-    delete rest[project]
+    delete rest[key]
     this.data.pins = rest
     if (this.token()) void this.call('unpinChatMessage', { chat_id: pin.chatId, message_id: pin.messageId })
   }
@@ -1892,31 +2216,35 @@ export class TelegramNotifier {
     if (this.sent.size > MAX_EPISODES) this.sent.delete(this.sent.values().next().value as string)
     const locale = this.deps.locale()
     let keys: Markup | undefined
-    if (this.receiving && (e.reason === 'permission' || e.reason === 'done' || e.reason === 'question')) {
+    if (this.receiving) {
       const entry = { terminalId: e.terminalId, project: route.project, cwd: e.cwd, name: e.name, chatId: route.chatId, threadId: route.threadId, ...(e.since !== undefined ? { since: e.since } : {}), ...(e.tool ? { tool: e.tool } : {}) }
       const k = (kind: ActionKind) => this.addAction({ kind, ...entry })
+      type Row = ([ActionKind, string] | [ActionKind, string, string])[]
+      const tail = (): [ActionKind, string, string] => ['tl', this.addAction({ kind: 'tl', ...entry, extra: String(WAITING_TAIL_LINES) }), TAIL_BUTTON[locale]]
+      const escTail: Row = e.since !== undefined ? [['es', k('es')], tail()] : [tail()]
       if (e.reason === 'done') keys = markup(locale, [[['go', k('go')], ['ts', k('ts')], ['df', k('df')]]])
       else if (e.reason === 'question') {
         const ask = e.ask
-        if (ask && !ask.multi && !ask.more && e.since !== undefined) {
-          const rows = ask.options.map((o, i): [ActionKind, string, string][] => {
+        const rows: Row[] = []
+        if (ask && !ask.multi && !ask.more && e.since !== undefined)
+          for (const [i, o] of ask.options.entries()) {
             const label = clean(o, this.masker)
-            return [['qa', this.addAction({ kind: 'qa', ...entry, extra: String(i + 1), label }), `${i + 1} · ${label}`]]
-          })
-          keys = markup(locale, rows)
-        }
-      } else if (e.since !== undefined) {
-        keys = markup(locale, [[['ap', k('ap')], ['dn', k('dn')]]])
-        if (e.tool === 'ExitPlanMode') {
+            rows.push([['qa', this.addAction({ kind: 'qa', ...entry, extra: String(i + 1), label }), `${i + 1} · ${label}`]])
+          }
+        keys = markup(locale, [...rows, escTail])
+      } else if (e.reason === 'permission') {
+        const rows: Row[] = e.since !== undefined ? [[['ap', k('ap')], ['dn', k('dn')]]] : []
+        keys = markup(locale, [...rows, escTail])
+        if (e.since !== undefined && e.tool === 'ExitPlanMode') {
           const [approve, deny] = keys.inline_keyboard[0]!
           approve!.text = PLAN_LABELS[locale].ap
           deny!.text = PLAN_LABELS[locale].dn
         }
-      }
+      } else keys = markup(locale, [escTail])
     }
     const target: TelegramTarget = { kind: 'terminal', terminalId: e.terminalId }
     if (e.reason === 'done' && this.data.digest) return this.digestDone(route, e, locale, target, keys)
-    return (await this.sendText(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys)) === null
+    return (await this.sendText(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys, e.reason !== 'done')) === null
   }
 
   private async digestDone(route: TelegramRoute, e: TelegramEpisodeMessage, locale: TelegramLocale, target: TelegramTarget, keys: Markup | undefined): Promise<boolean> {
@@ -1942,7 +2270,7 @@ export class TelegramNotifier {
         return true
       }
     }
-    const sent = await this.sendTextId(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys)
+    const sent = await this.sendTextId(route, episodeHtml(e, locale, this.masker, this.data.includeReply), target, keys, false)
     if (sent.id !== null) {
       this.digestMsgs.set(key, { chatId: route.chatId, messageId: sent.id, day, n: 1 })
       if (this.digestMsgs.size > SENT_MAP_MAX) this.digestMsgs.delete(this.digestMsgs.keys().next().value as string)
@@ -2120,14 +2448,24 @@ export class TelegramNotifier {
     if (target && typeof id === 'number') this.rememberSent(chatId, id, target)
   }
 
-  private async sendText(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup): Promise<TelegramError | null> {
-    return (await this.sendTextId(route, html, target, keys)).error
+  private async sendText(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup, important?: boolean): Promise<TelegramError | null> {
+    return (await this.sendTextId(route, html, target, keys, important)).error
   }
 
-  private async sendTextId(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup): Promise<{ error: TelegramError | null; id: number | null }> {
+  /** A message with buttons, or one that says a session needs the owner, counts as important when the chat's queue overflows. */
+  private async sendTextId(route: TelegramRoute, html: string, target?: TelegramTarget, keys?: Markup, important = !!keys): Promise<{ error: TelegramError | null; id: number | null }> {
+    const item: HeldSend = { route, html, important, ...(target ? { target } : {}), ...(keys ? { keys } : {}) }
+    if (this.holdLeft(route.chatId) > 0) return this.enqueue(item)
     if (!this.take(route.chatId)) return { error: this.fail('rate'), id: null }
+    const out = await this.deliver(item)
+    return out.held ? this.enqueue(item) : out
+  }
+
+  private async deliver(item: HeldSend): Promise<{ error: TelegramError | null; id: number | null; held?: true }> {
+    const { route, html, target, keys } = item
     const res = await this.call('sendMessage', { ...threadFields(route.chatId, route.threadId), text: html, parse_mode: 'HTML', disable_web_page_preview: true, ...(keys ? { reply_markup: keys } : {}) })
     if (!res.ok) {
+      if (res.error === 'rate' && this.holdLeft(route.chatId) > 0) return { error: null, id: null, held: true }
       if (res.error === 'chat') this.markTopic(route, true)
       return { error: this.fail(res.error), id: null }
     }
@@ -2136,6 +2474,52 @@ export class TelegramNotifier {
     this.track(route.chatId, res.result, target)
     const id = (res.result as { message_id?: unknown } | null)?.message_id
     return { error: null, id: typeof id === 'number' ? id : null }
+  }
+
+  /** Over 20 waiting messages the oldest ordinary one goes first; an important one only when nothing else is left to drop. */
+  private enqueue(item: HeldSend): { error: null; id: null } {
+    const list = this.held.get(item.route.chatId) ?? []
+    if (list.length >= HELD_MAX) {
+      const at = list.findIndex((h) => !h.important)
+      list.splice(at < 0 ? 0 : at, 1)
+    }
+    list.push(item)
+    this.held.set(item.route.chatId, list)
+    this.armHeld(item.route.chatId)
+    return { error: null, id: null }
+  }
+
+  private armHeld(chatId: string, retryMs = 10_000): void {
+    if (this.heldTimers.has(chatId)) return
+    const left = this.holdLeft(chatId)
+    const timer = setTimeout(() => {
+      this.heldTimers.delete(chatId)
+      void this.flushHeld()
+    }, left > 0 ? left + 200 : retryMs)
+    timer.unref?.()
+    this.heldTimers.set(chatId, timer)
+  }
+
+  /** Sends what waited out a 429, oldest first; stops at the next 429 or when the per-chat rate limit is used up. */
+  async flushHeld(): Promise<void> {
+    if (this.flushing || !this.data.enabled || !this.token()) return
+    this.flushing = true
+    try {
+      for (const [chatId, list] of [...this.held]) {
+        while (list.length && this.holdLeft(chatId) === 0 && this.take(chatId)) {
+          const item = list.shift()!
+          const out = await this.deliver(item)
+          if (out.held) {
+            list.unshift(item)
+            break
+          }
+        }
+        if (list.length) this.armHeld(chatId)
+        else this.held.delete(chatId)
+      }
+    } finally {
+      this.flushing = false
+    }
   }
 
   private ok(): void {

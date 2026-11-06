@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { LoaderCircle, Network, Send, X } from 'lucide-vue-next'
 import { usePaneInfo, usePeerSweep } from '../../../composables/usePaneInfo'
-import { openTelegramLink, useTelegramLinks } from '../../../composables/useTelegramLinks'
+import { openTelegramGlyph, useTelegramLinks, useTelegramTopicUrl } from '../../../composables/useTelegramLinks'
 import { useRailTabStop } from '../../../composables/useRail'
 import { duration, now as clock } from '../../../lib/format'
 import { isBusyState, needsUser, peerSlot, RAIL_BADGE, rowId, rowLines, stateWord, type RailRow, type RailState } from '../../../lib/rail/railModel'
@@ -20,6 +20,8 @@ const { sessionOf, activityOf, peerView, peerLines, coordinatingOf } = usePaneIn
 const isStop = useRailTabStop()
 const telegramOf = useTelegramLinks()
 const telegram = computed(() => (props.row.run ? null : telegramOf(props.row.pane)))
+const topicUrlOf = useTelegramTopicUrl()
+const telegramGlyphTip = computed(() => (telegram.value ? t(topicUrlOf(props.row.pane) ? 'telegram.connect.openTopic' : 'telegram.connect.linkedTo', { where: telegram.value }) : ''))
 const telegramLabel = computed(() => (telegram.value ? t('telegram.connect.linkedTo', { where: telegram.value }) : ''))
 const stop = computed(() => (isStop(rowId(props.row.key)) ? 0 : -1))
 
@@ -187,7 +189,19 @@ const unstamp = (el: Element): void => el.removeAttribute('data-rail-second')
           ><Network :size="11"
         /></span>
       </Transition>
-      <span v-if="telegram" class="inline-flex cursor-pointer items-center text-ink-faint hover:text-ink" aria-hidden="true" data-rail-telegram @click.stop="openTelegramLink(row.pane, lines.first)"><Send :size="10" /></span>
+      <button
+        v-if="telegram"
+        type="button"
+        class="pointer-events-auto relative z-10 inline-flex cursor-pointer items-center rounded-[3px] text-ink-faint hover:text-ink"
+        :title="telegramGlyphTip"
+        :aria-label="telegramGlyphTip"
+        :tabindex="stop"
+        data-rail-telegram
+        data-no-drag
+        @click.stop="openTelegramGlyph(row.pane, lines.first)"
+      >
+        <Send :size="10" aria-hidden="true" />
+      </button>
     </span>
     <button
       type="button"

@@ -1,0 +1,10 @@
+## C2 — DONE
+**Đã đổi**: web lib/paneActions.ts (`telegramRouteOf`: session route thắng, rồi route project sâu nhất chứa cwd; `telegramMenuState`/`telegramTopicLink` nhận state), composables/useTelegramLinks.ts + usePaneActions.ts (dùng state đầy đủ), lib/tabMenu.ts + lib/rail/railMenu.ts (mục "Mở topic" không còn phụ thuộc 'linked' để pane chưa có session vẫn mở được), WorkspaceView.vue (`telegramPaneOf`: tab chỉ có shell vẫn hiện ✈); desktop notifier.ts (`paneLabel`: "tên · trạng thái · tuổi" ≤ 48 ký tự trước prefix nút, vừa xong / N phút / giờ / ngày); tests: paneActions, tabMenu, railMenu, useTelegramLinks, telegram-more (+1 mới), telegram-t2 (kỳ vọng nút).
+**Tiêu chí 4/4**: 1 ✈ + menu cho project route (nested sâu nhất, session ưu tiên) · 2 nút có trạng thái + thời gian · 3 test · 4 ảnh.
+**Audit**: `since` = statusSince đã có trong TelegramPaneInfo, trạng thái đã có trong nút; chỉ thiếu tuổi, không cần field mới (shared không đổi). markup() cắt 60 ký tự cả prefix nên tên dài bị cắt mất trạng thái -> paneLabel cắt tên trước.
+**Review**: nested (c:/work vs c:/work/a/ -> sâu nhất, "ab" không khớp "a"), session route + project route cùng lúc (session thắng), basic group (-4242) -> không có t.me -> glyph mở dialog (ctx cần session) / không làm gì với shell, shell pane có glyph + mục menu "Mở topic" (không có mục "Telegram topic…" vì không có session), Windows so sánh không phân biệt hoa thường, đường dẫn trailing slash. Không đổi style glyph project route (vẫn text-ink-faint; tooltip = tên topic) — đã đủ mờ.
+**Test**: `npm run typecheck` sạch; web 1770/1770 (baseline 1761); desktop 1359/1359 (baseline 1358).
+**Nhìn**: docs/qa/telegram8-2026-11-06/C2/glyph-project-route.png (tab pane shell trong thư mục nối topic có ✈). Route thử đã gỡ, pane đã đóng. Chưa chụp rail hàng (cùng logic RailRow), nút bot thật (chưa gửi tin Telegram).
+**Hot file cần thêm**: không.
+**Ngoài phạm vi**: không đụng C1/TermPane/settings; actions.ts, shared telegram.ts không đổi.
+**Commit message đề xuất**: Telegram: the ✈ glyph and menu also show for panes whose project folder is connected to a topic; pane pick buttons show state and time in state

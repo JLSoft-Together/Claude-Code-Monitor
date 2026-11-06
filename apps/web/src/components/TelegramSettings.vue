@@ -11,6 +11,7 @@ import {
   TELEGRAM_DONE_CHOICES,
   TELEGRAM_MEMBERS_MAX,
   type TelegramChat,
+  type TelegramError,
   type TelegramMember,
   type TelegramMemberLevel,
   type TelegramStrangerSeen,
@@ -264,6 +265,8 @@ interface TopicGroup {
   broken: boolean
   /** Signed-in scan lists every topic, so a topic missing from it is gone (deleted). */
   gone: boolean
+  lastSentAt?: number
+  lastError?: TelegramError
   projects: TelegramRoute[]
   sessions: SessionLink[]
 }
@@ -290,11 +293,13 @@ const topicGone = (r: { chatId: string; threadId: number | null }): boolean => {
 // One block per topic, so a topic shared by a project and a session (the session wins) shows up in one place.
 const topicGroups = computed((): TopicGroup[] => {
   const groups = new Map<string, TopicGroup>()
-  const at = (r: { chatId: string; threadId: number | null; where?: string; broken?: boolean }): TopicGroup => {
+  const at = (r: { chatId: string; threadId: number | null; where?: string; broken?: boolean; lastSentAt?: number; lastError?: TelegramError }): TopicGroup => {
     const key = `${r.chatId}:${r.threadId}`
     let g = groups.get(key)
     if (!g) groups.set(key, (g = { key, chatId: r.chatId, threadId: r.threadId, where: whereText(r), broken: false, gone: topicGone(r), projects: [], sessions: [] }))
     if (r.broken) g.broken = true
+    if (r.lastSentAt && r.lastSentAt > (g.lastSentAt ?? 0)) g.lastSentAt = r.lastSentAt
+    if (r.lastError) g.lastError = r.lastError
     return g
   }
   for (const r of routes.value) at(r).projects.push(r)
@@ -653,6 +658,10 @@ watch(
   () => state.value?.health,
   () => (healthNow.value = Date.now()),
 )
+// "Not delivering" already says what is wrong when the topic is broken or gone; the health line covers the other errors (network, rate limit…).
+const topicSentAgo = (g: { lastSentAt?: number }): string => (g.lastSentAt ? t('telegram.topicMap.sentAgo', { when: ago(g.lastSentAt) }) : '')
+const topicErrorText = (g: { lastError?: TelegramError }): string => (g.lastError ? t(`telegram.topicMap.errors.${g.lastError}`) : '')
+const topicFailing = (g: { lastError?: TelegramError; broken: boolean; gone: boolean }): boolean => !!g.lastError && !g.broken && !g.gone
 const ago = (ms: number | null | undefined): string => (ms ? (relativeTime(Math.min(ms, healthNow.value), locale.value, healthNow.value) ?? t('telegram.health.never')) : t('telegram.health.never'))
 const healthRows = computed(() => {
   const h = state.value?.health
@@ -980,6 +989,12 @@ const overview = computed(() => {
                   <span v-if="x.group?.broken" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-fill px-1.5 py-px text-2xs text-warning" :title="t('telegram.topicMap.brokenHint')" data-telegram-topic-broken>
                     <TriangleAlert :size="12" aria-hidden="true" />{{ t('telegram.topicMap.broken') }}
                   </span>
+                  <span v-if="x.group && topicFailing(x.group)" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-fill px-1.5 py-px text-2xs text-warning" :title="t('telegram.topicMap.errorHint')" data-telegram-topic-error>
+                    <TriangleAlert :size="12" aria-hidden="true" />{{ t('telegram.topicMap.lastError', { error: topicErrorText(x.group) }) }}
+                  </span>
+                  <span v-else-if="x.group && topicSentAgo(x.group) && !x.group.broken && !x.group.gone" class="inline-flex shrink-0 items-center gap-1 text-2xs text-ink-faint" data-telegram-topic-sent>
+                    <Send :size="11" aria-hidden="true" />{{ topicSentAgo(x.group) }}
+                  </span>
                   <span v-if="x.group?.projects.length && x.group.sessions.length" class="ml-auto shrink-0 text-2xs text-ink-faint">{{ t('telegram.topicMap.sessionFirst') }}</span>
                   <span v-if="!x.group" class="ml-auto shrink-0 text-2xs text-ink-faint opacity-0 transition-opacity group-hover/topic:opacity-100" :class="dragging ? 'opacity-100' : ''">{{ t('telegram.tree.dropHere') }}</span>
                   <button
@@ -1003,6 +1018,18 @@ const overview = computed(() => {
                 </div>
                 <div v-if="x.group?.broken" class="flex flex-wrap items-center gap-x-2 pr-3 pb-1 pl-12 text-2xs leading-relaxed text-ink-muted" data-telegram-topic-fix>
                   <span class="min-w-0 flex-1 basis-60">{{ t('telegram.topicMap.brokenHint') }}</span>
+                  <button
+                    type="button"
+                    class="ccm-btn-plain text-2xs"
+                    :disabled="testing !== null"
+                    data-telegram-topic-retest
+                    @click="x.group.sessions[0] ? test(x.group.sessions[0].project, x.group.sessions[0].session) : test(x.group.projects[0]?.project)"
+                  >
+                    <Send :size="12" aria-hidden="true" />{{ t('telegram.topicMap.retest') }}
+                  </button>
+                </div>
+                <div v-if="x.group && topicFailing(x.group)" class="flex flex-wrap items-center gap-x-2 pr-3 pb-1 pl-12 text-2xs leading-relaxed text-ink-muted" data-telegram-topic-error-fix>
+                  <span class="min-w-0 flex-1 basis-60">{{ t('telegram.topicMap.errorHint') }}</span>
                   <button
                     type="button"
                     class="ccm-btn-plain text-2xs"

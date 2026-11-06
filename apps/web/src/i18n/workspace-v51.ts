@@ -1,7 +1,11 @@
 const en = {
   compact: {
     menu: 'Compact…',
-    hint: 'Writes a handoff, then stops for /compact',
+    hint: 'Writes a handoff, then runs /compact',
+    auto: {
+      setting: 'Compact sends /compact and the resume line itself',
+      settingHint: 'After the handoff is written, Compact… types /compact and presses Enter, then types the line that reads the handoff once the agent is idle again. Off: both are only typed and you press Enter. Typing in the pane, cancelling or waiting over 10 minutes stops it.',
+    },
     cancel: 'Cancel compact',
     block: {
       busy: 'Wait until the session is idle',
@@ -15,12 +19,17 @@ const en = {
       writing: 'Writing handoff…',
       missing: 'No handoff file yet',
       compact: 'Handoff ready · Enter runs /compact',
+      compactAuto: 'Handoff ready · running /compact',
     },
     said: {
       started: 'Asked {name} to write a handoff',
       ready: 'Handoff written. /compact is typed in {name}, press Enter to run it',
+      readyAuto: 'Handoff written. Running /compact in {name}',
       missing: '{name} went idle without writing {file}',
       resumed: '{name} compacted. Typed the line that reads the handoff',
+      resumedAuto: '{name} compacted. Sending the line that reads the handoff',
+      manual: 'You typed in {name}: Compact stops sending by itself, press Enter yourself',
+      timeout: 'Compact on {name} took too long: stopped sending by itself, press Enter yourself',
       cancelled: 'Compact cancelled for {name}',
     },
   },
@@ -29,7 +38,11 @@ const en = {
 const vi: typeof en = {
   compact: {
     menu: 'Compact…',
-    hint: 'Viết handoff rồi dừng để /compact',
+    hint: 'Viết handoff rồi chạy /compact',
+    auto: {
+      setting: 'Compact tự gửi /compact và dòng làm tiếp',
+      settingHint: 'Sau khi handoff viết xong, Compact… tự gõ /compact và nhấn Enter, rồi tự gõ dòng đọc handoff khi agent rảnh lại. Tắt: chỉ điền sẵn, anh tự nhấn Enter. Gõ tay vào pane, huỷ hoặc chờ quá 10 phút thì dừng tự gửi.',
+    },
     cancel: 'Huỷ compact',
     block: {
       busy: 'Đợi session rảnh đã',
@@ -43,12 +56,17 @@ const vi: typeof en = {
       writing: 'Đang viết handoff…',
       missing: 'Chưa thấy file handoff',
       compact: 'Handoff xong · Enter để chạy /compact',
+      compactAuto: 'Handoff xong · đang chạy /compact',
     },
     said: {
       started: 'Đã yêu cầu {name} viết handoff',
       ready: 'Handoff đã xong. Đã gõ sẵn /compact trong {name}, bấm Enter để chạy',
+      readyAuto: 'Handoff đã xong. Đang chạy /compact trong {name}',
       missing: '{name} đã dừng nhưng chưa ghi {file}',
       resumed: '{name} đã compact. Đã điền sẵn lệnh đọc handoff',
+      resumedAuto: '{name} đã compact. Đang gửi dòng đọc handoff',
+      manual: 'Anh vừa gõ trong {name}: Compact không tự gửi nữa, anh tự nhấn Enter',
+      timeout: 'Compact của {name} quá lâu: dừng tự gửi, anh tự nhấn Enter',
       cancelled: 'Đã huỷ compact của {name}',
     },
   },
