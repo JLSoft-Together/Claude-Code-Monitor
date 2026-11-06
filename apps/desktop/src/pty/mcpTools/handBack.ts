@@ -24,7 +24,7 @@ export const HAND_BACK_TOOL = {
 
 export type HandBackError = InsideError | 'preset' | 'markdown' | 'size' | 'summary' | 'rate'
 
-const ERRORS: Record<HandBackError | 'unavailable' | 'caller' | 'failed' | 'limit', string> = {
+const ERRORS: Record<HandBackError | 'unavailable' | 'caller' | 'failed' | 'limit' | 'target' | 'busy', string> = {
   preset: 'hand_back is only for DeepSeek sessions opened by another agent',
   path: 'report must be a file path (no UNC or device paths).',
   outside: "The report is outside this session's project folder; write it inside the project.",
@@ -38,6 +38,8 @@ const ERRORS: Record<HandBackError | 'unavailable' | 'caller' | 'failed' | 'limi
   caller: 'This session was not opened by another Orrery pane (or that pane is closed), so there is nobody to hand back to; tell the user instead.',
   limit: 'Orrery could not queue the hand-back.',
   failed: 'Orrery could not hand the work back.',
+  target: 'Orrery could not do that.',
+  busy: 'Orrery could not do that.',
 }
 
 export const handBack: McpTool = {

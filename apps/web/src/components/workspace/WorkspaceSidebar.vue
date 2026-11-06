@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isSessionId, type PtyPreset } from '@ccm/shared'
+import type { PtyPreset } from '@ccm/shared'
 import { ChevronsDownUp, LoaderCircle, Minus, Plus, Search, X } from 'lucide-vue-next'
 import { useClusterDrag } from '../../composables/useClusterDrag'
 import { useCompact } from '../../composables/useCompact'
+import { usePaneActions } from '../../composables/usePaneActions'
 import { useOpenProject } from '../../composables/useOpenProject'
 import { RAIL_TAB_STOP, useRail } from '../../composables/useRail'
 import { useRailDrag, type RailDrop } from '../../composables/useRailDrag'
@@ -23,9 +24,7 @@ import { isSolo, rowLines, tabStopOf, type RailCheckout, type RailCluster, type 
 import { buildSections, railMoveIndexes } from '../../lib/rail/railView'
 import { emptyMenu, groupMenu, isMenuKey, projectMenu as buildProjectMenu, rowMenu } from '../../lib/rail/railMenu'
 import { leaves, type SplitDir } from '../../lib/splitLayout'
-import { hasTelegram } from '../../lib/telegram'
 import { useRunStore } from '../../stores/run'
-import { useTelegramStore } from '../../stores/telegram'
 import { useUiStore } from '../../stores/ui'
 import { isTerm, presetOf, useWorkspaceStore, workCwd, type SplitChoice } from '../../stores/workspace'
 import ContextMenu from '../ui/ContextMenu.vue'
@@ -50,7 +49,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const workspace = useWorkspaceStore()
-const telegram = useTelegramStore()
 const rail = useRail()
 const { available: openable, picking, openProject: pickProjectFolder } = useOpenProject()
 const clusters = computed(() => (props.only ? rail.clusters.value.filter((c) => c.key === props.only) : rail.clusters.value))
@@ -493,11 +491,7 @@ async function pickProject(id: string, c: RailCluster, dir: string | null, ancho
 
 const compactFlow = useCompact()
 
-function telegramOf(row: RailRow): 'linked' | 'unlinked' | undefined {
-  if (!hasTelegram || !isTerm(row.pane) || !isSessionId(row.pane.agentSessionId) || !workCwd(row.pane)) return undefined
-  const session = row.pane.agentSessionId.toLowerCase()
-  return telegram.state?.sessionRoutes.some((r) => r.session === session) ? 'linked' : 'unlinked'
-}
+const paneActions = usePaneActions()
 
 function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): void {
   ++menuSeq
@@ -515,7 +509,7 @@ function showRowMenu(row: RailRow, at: DOMRect, trigger: HTMLElement | null): vo
       targets: rail.projectTabs(row.tabKey),
       compact: compactFlow.stateOf(row.pane),
       deepseek: hasDeepSeek,
-      telegram: telegramOf(row),
+      telegram: paneActions.telegramOf(row.pane),
     },
     t,
   )
@@ -536,24 +530,24 @@ function pickRow(id: string, row: RailRow, cwd: string | null): void {
     else movePane(row.paneKey, rowName(row), target)
     return
   }
+  const shared = paneActions.run(
+    id,
+    { key: row.paneKey, pane: row.pane, name: rowName(row), cwd },
+    {
+      rename: () => startRename(row.tabKey),
+      close: () => closeRow(row),
+      closeOthers: () => {
+        const tab = workspace.tabs.find((x) => x.key === row.tabKey)
+        const others = tab ? leaves(tab.root).filter((k) => k !== row.paneKey) : []
+        if (others.length) emit('close', others)
+      },
+      copy: (path) => void copyPath(path),
+    },
+  )
+  if (shared) return
   switch (id) {
-    case 'rename-tab':
-      startRename(row.tabKey)
-      break
     case 'move-out':
       detach(row.paneKey, rowName(row))
-      break
-    case 'focus':
-      workspace.activate(row.paneKey)
-      break
-    case 'compact':
-      compactFlow.start(row.paneKey)
-      break
-    case 'compact-cancel':
-      compactFlow.cancel(row.paneKey)
-      break
-    case 'copy-cwd':
-      if (cwd) void copyPath(cwd)
       break
     case 'explorer':
       emit('explorer', row.paneKey)
@@ -561,24 +555,6 @@ function pickRow(id: string, row: RailRow, cwd: string | null): void {
     case 'context':
       if (cwd) ui.contextSources = { cwd, terminalId: row.pane.terminalId ?? null }
       break
-    case 'telegram-link':
-      if (cwd && isSessionId(row.pane.agentSessionId)) ui.telegramLink = { cwd, session: row.pane.agentSessionId.toLowerCase(), name: rowName(row) }
-      break
-    case 'monitor':
-      if (row.pane.terminalId) {
-        ui.setView('monitor')
-        ui.focusTerminal(row.pane.terminalId)
-      }
-      break
-    case 'close':
-      closeRow(row)
-      break
-    case 'close-others': {
-      const tab = workspace.tabs.find((x) => x.key === row.tabKey)
-      const others = tab ? leaves(tab.root).filter((k) => k !== row.paneKey) : []
-      if (others.length) emit('close', others)
-      break
-    }
   }
 }
 
@@ -594,12 +570,10 @@ function showGroupMenu(group: RailGroup, at: DOMRect, trigger: HTMLElement | nul
 }
 
 function pickGroup(id: string, group: RailGroup): void {
+  if (paneActions.run(id, { name: group.title }, { rename: () => startRename(group.tabKey), close: () => closeGroup(group) })) return
   switch (id) {
     case 'open':
       activateGroup(group)
-      break
-    case 'rename':
-      startRename(group.tabKey)
       break
     case 'fold':
     case 'unfold':
@@ -611,9 +585,6 @@ function pickGroup(id: string, group: RailGroup): void {
       flash(t('workspace.paneDrop.ungrouped', { tab: group.title, n }))
       break
     }
-    case 'close':
-      closeGroup(group)
-      break
   }
 }
 

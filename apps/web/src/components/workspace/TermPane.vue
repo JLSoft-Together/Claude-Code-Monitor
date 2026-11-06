@@ -38,7 +38,7 @@ import { parseOsc7, parseOsc9 } from '../../lib/shellCwd'
 import { hasScripts } from '../../lib/projects'
 import { bufferLines, parseTerminalProblems } from '../../lib/terminalProblems'
 import { useChecksStore } from '../../stores/checks'
-import { presetOf, useWorkspaceStore, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
+import { presetOf, useWorkspaceStore, reopenAs, workCwd, type Pane, type SplitChoice } from '../../stores/workspace'
 import ContextGauge from '../ContextGauge.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
 import TermFind from './TermFind.vue'
@@ -816,7 +816,13 @@ function restart(): void {
   resetDev()
   oscLinks.length = 0
   reportedCwd = null
-  workspace.update(props.pane.key, { state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, agent: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined })
+  // A new conversation: reusing the last minted id would hit claude's 'session id already in use' if that one ran.
+  // A shell running claude / codex by hand restarts as that agent (resumed once it took a turn), else stays a shell.
+  const again = props.pane.preset === 'shell' ? reopenAs(props.pane) : null
+  const asAgent = again && again.preset !== 'shell' ? { preset: again.preset, cwd: again.cwd, resume: again.resume, agentSessionId: again.resume } : null
+  const next = asAgent ?? props.pane
+  const minted = next.preset === 'claude' && !next.resume && !props.pane.openTicket ? crypto.randomUUID() : undefined
+  workspace.update(props.pane.key, { ...asAgent, state: 'starting', sessionId: undefined, pid: undefined, terminalId: undefined, agent: undefined, branch: undefined, liveCwd: undefined, exitCode: undefined, error: undefined, ranCommand: undefined, untouchedSession: undefined, ...(minted ? { agentSessionId: minted, mintedSession: minted } : {}) })
   void spawn()
 }
 
@@ -836,8 +842,8 @@ async function spawn(): Promise<void> {
 }
 
 function spawnStart(): PtyStart {
-  const integrate = props.pane.preset === 'shell' && settings.shellIntegration
-  return { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket, integrate } }
+  const shell = props.pane.preset === 'shell'
+  return { spawn: { preset: props.pane.preset, cwd: props.pane.cwd, resume: props.pane.resume, open: props.pane.openTicket, session: props.pane.mintedSession, integrate: shell && settings.shellIntegration, shim: shell && settings.agentShim } }
 }
 
 function wake(): void {

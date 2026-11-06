@@ -2,8 +2,9 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BellRing, FolderOpen, LayoutTemplate, Mail, Maximize2, PanelLeft, PanelRight, Play, Plus, Send, X } from 'lucide-vue-next'
-import { isSessionId, type TerminalStatus } from '@ccm/shared'
+import type { TerminalStatus } from '@ccm/shared'
 import { useCompact } from '../../composables/useCompact'
+import { usePaneActions } from '../../composables/usePaneActions'
 import { usePaneInfo } from '../../composables/usePaneInfo'
 import { useWorkspaceLinks } from '../../composables/useWorkspaceLinks'
 import { installMcpCalls } from '../../composables/useMcpCalls'
@@ -36,8 +37,6 @@ import { useNavigationStore } from '../../stores/navigation'
 import { useTerminalsStore } from '../../stores/terminals'
 import { displayTitle } from '../../lib/title'
 import { useUiStore } from '../../stores/ui'
-import { useTelegramStore } from '../../stores/telegram'
-import { hasTelegram } from '../../lib/telegram'
 import { useSettingsStore } from '../../stores/settings'
 import { isTerm, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd, type Pane, type PaneSpec, type SplitChoice, type Tab } from '../../stores/workspace'
 import StatusIcon from '../StatusIcon.vue'
@@ -1077,15 +1076,9 @@ function parkedIn(tab: Tab): string[] {
   return leaves(tab.root).filter((k) => paneOf(k)?.state === 'parked')
 }
 
-const telegram = useTelegramStore()
 const telegramLink = useTelegramLinks()
 const telegramWhere = (tab: Tab): string | null => telegramLink(agentPaneOf(tab))
-
-function telegramOf(pane: Pane | undefined): 'linked' | 'unlinked' | undefined {
-  if (!hasTelegram || !pane || !isSessionId(pane.agentSessionId) || !workCwd(pane)) return undefined
-  const session = pane.agentSessionId.toLowerCase()
-  return telegram.state?.sessionRoutes.some((r) => r.session === session) ? 'linked' : 'unlinked'
-}
+const paneActions = usePaneActions()
 
 function openTabMenu(tab: Tab, at: DOMRect): void {
   const mates = projectMates(tab)
@@ -1100,7 +1093,7 @@ function openTabMenu(tab: Tab, at: DOMRect): void {
       zoomKeys: shortcutText('wsZoom', isMac),
       dim: settings.dimInactive,
       parked: parkedIn(tab).length,
-      telegram: telegramOf(agentPaneOf(tab)),
+      telegram: paneActions.telegramOf(agentPaneOf(tab)),
     },
     t,
   )
@@ -1126,15 +1119,26 @@ function pickTabAction(id: string, key: string): void {
   if (!tab) return
   const target = moveTargetOf(id)
   if (target) return mergeTabInto(tab, target)
+  const agent = agentPaneOf(tab)
+  const shared = paneActions.run(
+    id,
+    { key: agent?.key, pane: agent, name: tabName(tab) },
+    {
+      rename: () => startRename(tab),
+      close: () => closeTab(tab),
+      closeOthers: () => {
+        const keys = projectMates(tab).flatMap((x) => leaves(x.root))
+        if (keys.length) closePanes(keys)
+      },
+    },
+  )
+  if (shared) return
   switch (id) {
     case 'wake':
       workspace.wake(parkedIn(tab))
       break
     case 'open':
       workspace.activateTab(tab.key)
-      break
-    case 'rename':
-      startRename(tab)
       break
     case 'zoom':
       toggleZoom(tab.focus)
@@ -1145,32 +1149,11 @@ function pickTabAction(id: string, key: string): void {
     case 'dim':
       toggleDim()
       break
-    case 'telegram-link': {
-      const agent = agentPaneOf(tab)
-      const cwd = agent && workCwd(agent)
-      if (agent && cwd && isSessionId(agent.agentSessionId)) ui.telegramLink = { cwd, session: agent.agentSessionId.toLowerCase(), name: tabName(tab) }
-      break
-    }
-    case 'compact':
-    case 'compact-cancel': {
-      const agent = agentPaneOf(tab)
-      if (agent && id === 'compact') compactFlow.start(agent.key)
-      else if (agent) compactFlow.cancel(agent.key)
-      break
-    }
     case 'ungroup': {
       const name = tabName(tab)
       const n = leaves(tab.root).length
       withViewTransition(() => workspace.ungroup(tab.key))
       announce(t('workspace.paneDrop.ungrouped', { tab: name, n }))
-      break
-    }
-    case 'close':
-      closeTab(tab)
-      break
-    case 'close-others': {
-      const keys = projectMates(tab).flatMap((x) => leaves(x.root))
-      if (keys.length) closePanes(keys)
       break
     }
   }

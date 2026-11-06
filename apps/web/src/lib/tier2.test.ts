@@ -69,6 +69,21 @@ describe('layouts', () => {
     expect(captureLayout(ws.tabs, ws.panes, () => false, { project: '/x', name: 'n', resume: false })).toBeNull()
   })
 
+  it('a shell running an agent by hand is saved as that agent, resumed only after a turn', () => {
+    const ws = useWorkspaceStore()
+    const sid = '0b3c1f6e-1111-4222-8333-944445555666'
+    const shell = ws.open('shell', '/repo')
+    ws.update(shell.key, { agent: 'claude', agentSessionId: sid, untouchedSession: sid })
+    const all = (p: { cwd?: string }) => p.cwd === '/repo'
+    const pane = (resume: boolean) => Object.values(captureLayout(ws.tabs, ws.panes, all, { project: '/repo', name: 'n', resume })!.panes)[0]!
+    expect(pane(true)).toMatchObject({ preset: 'claude', resume: undefined })
+    ws.update(shell.key, { untouchedSession: undefined })
+    expect(pane(true)).toMatchObject({ preset: 'claude', resume: sid })
+    expect(pane(false)).toMatchObject({ preset: 'claude', resume: undefined })
+    ws.update(shell.key, { agent: undefined })
+    expect(pane(true)).toMatchObject({ preset: 'shell', resume: undefined })
+  })
+
   it('opens a layout as new tabs and reuses an already open browser / file pane', () => {
     const ws = useWorkspaceStore()
     const open = ws.openBrowser('http://localhost:3000/')

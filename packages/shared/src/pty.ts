@@ -15,7 +15,9 @@ export const PTY_PROTOCOL_PREFIX = 'ccm.pty.'
 export type PtyClientMessage =
   /** `resume`: an agent session id (UUID) to continue, claude / codex only. */
   /** `integrate`: shell panes only, start the shell with command marks (OSC 633). */
-  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string; open?: string; integrate?: boolean }
+  /** `session`: new claude panes only, a page-minted UUID for `--session-id`; ignored with `resume` or `open`. */
+  /** `shim`: shell panes only, `claude` / `codex` typed there run through the host's shims (orrery MCP, `--session-id`). */
+  | { t: 'spawn'; preset: PtyPreset; cols: number; rows: number; cwd?: string; resume?: string; open?: string; session?: string; integrate?: boolean; shim?: boolean }
   | { t: 'attach'; id: string }
   | { t: 'resize'; cols: number; rows: number }
   /** Folder the attached shell reported (OSC 7 / 9;9) after a `cd`; answered with `cwd` once validated. */

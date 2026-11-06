@@ -1,4 +1,4 @@
-import { isTerm, primaryPaneKey, tabProject, type Pane, type Tab } from '../stores/workspace'
+import { isTerm, primaryPaneKey, reopenAs, tabProject, type Pane, type Tab } from '../stores/workspace'
 import type { LayoutDraft, LayoutPane } from './projects'
 import { leaves } from './splitLayout'
 
@@ -13,8 +13,10 @@ export interface CaptureOptions {
 
 function specOf(pane: Pane, resume: boolean): LayoutPane {
   if (isTerm(pane)) {
-    const id = resume && pane.preset !== 'shell' ? (pane.agentSessionId ?? pane.resume) : undefined
-    return { kind: 'term', preset: pane.preset, cwd: pane.cwd, resume: id }
+    const again = reopenAs(pane)
+    // A shell running claude / codex by hand is saved as that agent, started from where it runs.
+    const typed = pane.preset === 'shell' && again.preset !== 'shell'
+    return { kind: 'term', preset: again.preset, cwd: typed ? again.cwd : pane.cwd, resume: resume && again.preset !== 'shell' ? again.resume : undefined }
   }
   if (pane.kind === 'browser') return { kind: 'browser', url: pane.url ?? '', cwd: pane.cwd }
   if (pane.kind === 'file') return { kind: 'file', path: pane.path, line: pane.line, cwd: pane.cwd }

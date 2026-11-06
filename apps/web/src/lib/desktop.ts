@@ -8,11 +8,7 @@ import type {
   FwpResult,
   FwpScanResult,
   FwpSnapshot,
-  McpPageCall,
-  McpPageResult,
   McpServerRow,
-  PaneOpenRequest,
-  PaneOpenResult,
   PtyEndpoint,
   RunCommandPreview,
   RunConfig,
@@ -26,8 +22,6 @@ import type {
   RunSession,
   RunStartRequest,
   RunTemplates,
-  TelegramInbound,
-  TelegramInboundResult,
   ToolchainReport,
 } from '@ccm/shared'
 import type { FileView, PreviewChange, PreviewTarget } from './preview'
@@ -137,10 +131,8 @@ interface DesktopBridge {
   logs?: (action: 'copy' | 'save', report: string) => Promise<{ ok: boolean; path?: string } | null>
   onFocus?: (handler: (terminalId: string) => boolean) => void
   onSelect?: (handler: (terminalId: string) => void) => void
-  onPaneOpen?: (handler: (req: PaneOpenRequest) => PaneOpenResult | Promise<PaneOpenResult>) => void
-  /** v80 MCP tools that need the workspace; the PTY host re-validates whatever the handler answers. */
-  onMcpCall?: (handler: (call: McpPageCall) => McpPageResult | Promise<McpPageResult>) => void
-  onTelegramInbound?: (handler: (req: TelegramInbound) => TelegramInboundResult | Promise<TelegramInboundResult>) => void
+  /** Orrery API executor (`ccm:orrery`): raw action, args and caller; `useOrreryApi` checks them against ORRERY_ACTIONS. */
+  onOrrery?: (handler: (action: unknown, args: unknown, caller: unknown) => unknown) => void
   captureRect?: (rect: { x: number; y: number; width: number; height: number }) => Promise<Uint8Array | null>
   previewUrl?: (path: string) => Promise<PreviewTarget | null>
   readFile?: (path: string) => Promise<FileView | null>

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { TelegramInboundResult } from '@ccm/shared'
+import { TELEGRAM_INBOUND_ACTION, type TelegramInbound, type TelegramInboundResult } from '@ccm/shared'
 
 type Handler = (raw: unknown) => TelegramInboundResult | Promise<TelegramInboundResult>
 
@@ -12,13 +12,15 @@ describe('telegram tail (inbound handler)', () => {
   async function boot() {
     vi.resetModules()
     setActivePinia(createPinia())
-    let captured: Handler | undefined
-    ;(window as unknown as { ccmDesktop: unknown }).ccmDesktop = { platform: 'win32', onTelegramInbound: (h: Handler) => (captured = h), telegramPanes: async () => true }
+    ;(window as unknown as { ccmDesktop: unknown }).ccmDesktop = { platform: 'win32', onOrrery: () => undefined, telegramPanes: async () => true }
     const mod = await import('./useTelegramInbound')
+    const orrery = await import('./useOrreryApi')
+    // Same adapter as main: the bot's request goes through the Orrery executor under its action name.
+    const captured: Handler = (raw) => orrery.runOrrery(TELEGRAM_INBOUND_ACTION[(raw as TelegramInbound).action], raw, { source: 'telegram' }) as Promise<TelegramInboundResult>
     const store = await import('../stores/workspace')
     snaps = await import('../lib/paneSnapshots')
     mod.installTelegramInbound()
-    return { handler: captured!, ws: store.useWorkspaceStore() }
+    return { handler: captured, ws: store.useWorkspaceStore() }
   }
 
   function pane(preset: 'claude' | 'codex', cwd: string, id: string) {

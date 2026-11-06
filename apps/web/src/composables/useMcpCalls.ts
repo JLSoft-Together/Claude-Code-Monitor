@@ -1,15 +1,16 @@
-import { cleanNoteText, cleanPanePrompt, handBackPrompt, isAgentNoteLevel, type McpPageCall, type McpPageResult, type TerminalSession } from '@ccm/shared'
+import { cleanNoteText, cleanPanePrompt, handBackPrompt, isAgentNoteLevel, type McpPageCall, type McpPageResult } from '@ccm/shared'
 import { i18n } from '../i18n'
-import { desktop } from '../lib/desktop'
 import { createRunCalls } from '../lib/mcpRun'
 import { rootKey, type CheckoutChanges } from '../lib/overlap'
-import { baseName, hasOverlap, overlapFiles } from '../lib/preview'
+import { hasOverlap, overlapFiles } from '../lib/preview'
 import { whoIsEditing, type EditorPane } from '../lib/whoIsEditing'
 import { useInboxStore } from '../stores/inbox'
 import { useRunStore } from '../stores/run'
-import { useTerminalsStore } from '../stores/terminals'
 import { useToastsStore } from '../stores/toasts'
 import { isTerm, presetOf, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
+import { handleOrrery, hasOrrery } from './useOrreryApi'
+import { usePaneInfo } from './usePaneInfo'
+import { useSessionActions } from './useSessionActions'
 
 const DIRS_MAX = 12
 const HAND_BACK_TOAST_MS = 8000
@@ -20,21 +21,18 @@ let installed = false
  * paths are inside the caller's project. Only hand_back submits input, into the pane that opened the caller (docs §11am).
  */
 export function installMcpCalls(): void {
-  if (installed || !desktop?.onMcpCall) return
+  if (installed || !hasOrrery()) return
   installed = true
   const workspace = useWorkspaceStore()
-  const terminals = useTerminalsStore()
   const inbox = useInboxStore()
   const toasts = useToastsStore()
   const runCalls = createRunCalls(useRunStore())
 
   const callerOf = (from: string): Pane | undefined => (from ? workspace.panes.find((p) => isTerm(p) && p.sessionId === from) : undefined)
-  const sessionOf = (p: Pane): TerminalSession | undefined => {
-    const t = p.terminalId ? terminals.byId[p.terminalId] : undefined
-    return t && t.status !== 'stale' ? t : undefined
-  }
+  const act = useSessionActions()
+  const sessionOf = act.sessionOf
   // Alias the owner typed or the folder: never the auto title, which is summarised from that session's chat.
-  const nameOf = (p: Pane): string => sessionOf(p)?.alias || workspace.tabOf(p.key)?.name || baseName(workCwd(p) ?? p.cwd ?? '') || 'Agent'
+  const nameOf = (p: Pane): string => act.nameOf(p, { title: false })
 
   function notify(call: Extract<McpPageCall, { tool: 'notify_owner' }>): McpPageResult {
     const caller = callerOf(call.from)
@@ -61,6 +59,26 @@ export function installMcpCalls(): void {
     return { ok: true, tool: 'hand_back', origin }
   }
 
+  const sessionFail = (error: 'caller' | 'target' | 'busy'): McpPageResult => ({ ok: false, error })
+  const { isBusy } = usePaneInfo()
+
+  function listSessions(call: Extract<McpPageCall, { tool: 'list_sessions' }>): McpPageResult {
+    const sessions = act.listFor(call.from)
+    return typeof sessions === 'string' ? sessionFail(sessions) : { ok: true, tool: 'list_sessions', sessions }
+  }
+
+  function sendToSession(call: Extract<McpPageCall, { tool: 'send_to_session' }>): McpPageResult {
+    const text = cleanPanePrompt(call.text)
+    if (!text) return { ok: false, error: 'failed' }
+    const out = act.typeInto(call.from, call.session, text)
+    return typeof out === 'string' ? sessionFail(out) : { ok: true, tool: 'send_to_session', name: out.name }
+  }
+
+  function closeSession(call: Extract<McpPageCall, { tool: 'close_session' }>): McpPageResult {
+    const out = act.closeOpened(call.from, call.session, isBusy)
+    return typeof out === 'string' ? sessionFail(out) : { ok: true, tool: 'close_session', ...out }
+  }
+
   async function who(call: Extract<McpPageCall, { tool: 'who_is_editing' }>): Promise<McpPageResult> {
     const caller = callerOf(call.from)
     const callerDir = caller ? (workCwd(caller) ?? caller.cwd) : undefined
@@ -80,15 +98,18 @@ export function installMcpCalls(): void {
     return { ok: true, tool: 'who_is_editing', ...whoIsEditing(call.path, callerDir, others, checkouts) }
   }
 
-  desktop.onMcpCall((call) => {
-    if (call.tool === 'notify_owner') return notify(call)
-    if (call.tool === 'open_in_workspace') return show(call)
-    if (call.tool === 'who_is_editing') return who(call)
-    if (call.tool === 'hand_back') return handBack(call)
-    if (call.tool === 'run_app' || call.tool === 'run_status' || call.tool === 'run_log') {
-      if (!callerOf(call.from)) return { ok: false, error: 'caller' }
-      return call.tool === 'run_app' ? runCalls.app(call) : call.tool === 'run_status' ? runCalls.status(call) : runCalls.log(call)
-    }
-    return { ok: false, error: 'failed' }
-  })
+  const fromCaller =
+    <C extends { from: string }>(run: (call: C) => McpPageResult | Promise<McpPageResult>) =>
+    (call: C): McpPageResult | Promise<McpPageResult> =>
+      callerOf(call.from) ? run(call) : { ok: false, error: 'caller' }
+  handleOrrery('owner.notify', notify)
+  handleOrrery('workspace.show', show)
+  handleOrrery('file.editors', who)
+  handleOrrery('session.handBack', handBack)
+  handleOrrery('session.list', listSessions)
+  handleOrrery('session.sendTo', sendToSession)
+  handleOrrery('session.close', closeSession)
+  handleOrrery('run.app', fromCaller(runCalls.app))
+  handleOrrery('run.status', fromCaller(runCalls.status))
+  handleOrrery('run.log', fromCaller(runCalls.log))
 }

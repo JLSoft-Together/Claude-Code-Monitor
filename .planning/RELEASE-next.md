@@ -10,6 +10,9 @@ Khi bump: đổi tên file thành `RELEASE-<x>.md`, thêm mục mới đầu `ap
 - Telegram: sign in with your Telegram account to list every topic of your groups (messages still go through the bot)
 - Telegram: groups and topics show at once from the last scan
 - Telegram: open any topic in the Telegram app, search topics by name, connect every running project to its same-name topic at once, and move a project off a deleted topic in one click
+- Agents can list sibling sessions, type a message into another one and close panes they opened (Orrery MCP: list_sessions, send_to_session, close_session)
+- claude or codex typed in a Workspace shell pane now gets the Orrery tools and a session id (Settings › Editor & Terminal switch)
+- Closing or reopening a session that never took a turn starts a fresh one instead of failing to resume
 
 ## Tiếng Việt
 - Telegram: nối session hoặc project vào topic bằng cách chọn trong danh sách, gợi ý sẵn topic trùng tên project
@@ -19,3 +22,6 @@ Khi bump: đổi tên file thành `RELEASE-<x>.md`, thêm mục mới đầu `ap
 - Telegram: đăng nhập tài khoản Telegram để thấy đủ mọi topic của group (tin nhắn vẫn do bot gửi)
 - Telegram: danh sách group và topic hiện ngay từ lần quét trước
 - Telegram: mở topic trong app Telegram, tìm topic theo tên, nối hàng loạt project vào topic trùng tên, chuyển project khỏi topic đã xoá bằng 1 chạm
+- Agent liệt kê được session cùng project, gõ sẵn tin vào session khác và đóng pane do mình mở (MCP Orrery: list_sessions, send_to_session, close_session)
+- Gõ claude hoặc codex trong pane shell của Workspace giờ cũng có công cụ Orrery và session id (công tắc Cài đặt › Trình soạn thảo & Terminal)
+- Đóng / mở lại session chưa có lượt chat nào sẽ chạy mới thay vì lỗi resume

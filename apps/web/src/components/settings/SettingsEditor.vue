@@ -39,6 +39,14 @@ const autoSaveDelays = computed(() => AUTO_SAVE_DELAYS.map((ms) => ({ value: ms,
         data-setting="shell-integration"
         data-setting-row="shell"
       />
+      <ToggleSwitch
+        v-model="settings.agentShim"
+        :label="t('shellMarks.agentShim')"
+        :info="t('shellMarks.agentShimHint')"
+        class="px-3"
+        data-setting="agent-shim"
+        data-setting-row="agentShim"
+      />
     </SettingSection>
   </div>
 </template>

@@ -3,6 +3,8 @@ const en = {
   shellMarks: {
     setting: 'Shell command marks',
     settingHint: 'Shell panes mark each command with its exit code and run time; Ctrl+↑ / ↓ (⌘ on macOS) jumps between commands. Applies to shells opened after the change.',
+    agentShim: 'Orrery tools for claude / codex typed in a shell',
+    agentShimHint: 'claude or codex typed in a shell pane starts with the Orrery tools and a session id, so closing and reopening the pane resumes it. Applies to shells opened after the change.',
     ok: 'Succeeded in {time}',
     okNoTime: 'Succeeded',
     failed: 'Failed with exit {code} after {time}',
@@ -30,6 +32,8 @@ const vi: typeof en = {
   shellMarks: {
     setting: 'Đánh dấu lệnh trong shell',
     settingHint: 'Pane shell đánh dấu từng lệnh kèm mã thoát và thời gian chạy; Ctrl+↑ / ↓ (⌘ trên macOS) nhảy giữa các lệnh. Áp dụng cho shell mở sau khi đổi.',
+    agentShim: 'Công cụ Orrery cho claude / codex gõ trong shell',
+    agentShimHint: 'Gõ claude hoặc codex trong pane shell sẽ chạy kèm công cụ Orrery và mã session, nên đóng rồi mở lại pane thì tiếp tục được. Áp dụng cho shell mở sau khi đổi.',
     ok: 'Thành công sau {time}',
     okNoTime: 'Thành công',
     failed: 'Lỗi, mã thoát {code} sau {time}',

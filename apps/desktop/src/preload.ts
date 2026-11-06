@@ -73,64 +73,27 @@ contextBridge.exposeInMainWorld('ccmDesktop', {
       if (typeof terminalId === 'string') handler(terminalId)
     })
   },
-  onPaneOpen: (handler: (req: unknown) => unknown): void => {
-    ipcRenderer.on('ccm:pane-open', (_event, req: unknown) => {
-      const id = typeof req === 'object' && req !== null && typeof (req as { id?: unknown }).id === 'string' ? (req as { id: string }).id : null
-      if (id === null) return
+  /** Orrery API (`ccm:orrery`): one executor on the page; the last handler set wins, none answers `unavailable`. */
+  onOrrery: (() => {
+    let current: ((action: unknown, args: unknown, caller: unknown) => unknown) | null = null
+    ipcRenderer.on('ccm:orrery', (_event, req: unknown) => {
+      const r = typeof req === 'object' && req !== null ? (req as { id?: unknown; action?: unknown; args?: unknown; caller?: unknown }) : null
+      const id = typeof r?.id === 'string' ? r.id : null
+      if (!r || id === null) return
       const reply = (result: unknown): void => {
         try {
-          ipcRenderer.send('ccm:pane-open-reply', id, result)
+          ipcRenderer.send('ccm:orrery-reply', id, result)
         } catch {
-          ipcRenderer.send('ccm:pane-open-reply', id, { ok: false, error: 'failed' })
-        }
-      }
-      void Promise.resolve()
-        .then(() => handler(req))
-        .then(reply, () => reply({ ok: false, error: 'failed' }))
-    })
-  },
-  onTelegramInbound: (() => {
-    let current: ((req: unknown) => unknown) | null = null
-    ipcRenderer.on('ccm:telegram-inbound', (_event, req: unknown) => {
-      const id = typeof req === 'object' && req !== null && typeof (req as { id?: unknown }).id === 'string' ? (req as { id: string }).id : null
-      if (id === null) return
-      const reply = (result: unknown): void => {
-        try {
-          ipcRenderer.send('ccm:telegram-inbound-reply', id, result)
-        } catch {
-          ipcRenderer.send('ccm:telegram-inbound-reply', id, { ok: false, error: 'unavailable' })
+          ipcRenderer.send('ccm:orrery-reply', id, { ok: false, error: 'failed' })
         }
       }
       if (!current) return reply({ ok: false, error: 'unavailable' })
       const handler = current
       void Promise.resolve()
-        .then(() => handler(req))
-        .then(reply, () => reply({ ok: false, error: 'unavailable' }))
-    })
-    return (handler: (req: unknown) => unknown): void => {
-      current = handler
-    }
-  })(),
-  /** v80 MCP tools (notify_owner, open_in_workspace, who_is_editing); one handler, the last one set wins. */
-  onMcpCall: (() => {
-    let current: ((call: unknown) => unknown) | null = null
-    ipcRenderer.on('ccm:mcp-call', (_event, call: unknown) => {
-      const id = typeof call === 'object' && call !== null && typeof (call as { id?: unknown }).id === 'string' ? (call as { id: string }).id : null
-      if (id === null) return
-      const reply = (result: unknown): void => {
-        try {
-          ipcRenderer.send('ccm:mcp-reply', id, result)
-        } catch {
-          ipcRenderer.send('ccm:mcp-reply', id, { ok: false, error: 'failed' })
-        }
-      }
-      if (!current) return reply({ ok: false, error: 'unavailable' })
-      const handler = current
-      void Promise.resolve()
-        .then(() => handler(call))
+        .then(() => handler(r.action, r.args, r.caller))
         .then(reply, () => reply({ ok: false, error: 'failed' }))
     })
-    return (handler: (call: unknown) => unknown): void => {
+    return (handler: (action: unknown, args: unknown, caller: unknown) => unknown): void => {
       current = handler
     }
   })(),

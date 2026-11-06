@@ -4,7 +4,7 @@ import { branchOfHead, isBranchName, isInside, parseWorktrees, worktreeDest } fr
 import { ownersOf, parsePidTable } from '../src/pty/owners'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
-import { BASH_PROMPT_COMMAND, childEnv, earlyExitNote, isPaneName, MCP_CONFIG_JSON, PS_CWD_HOOK, PS_SHELL_INTEGRATION, presetCommand, safeShell } from '../src/pty/presets'
+import { BASH_PROMPT_COMMAND, childEnv, earlyExitNote, isPaneName, MCP_CONFIG_JSON, mintedSessionId, PS_CWD_HOOK, PS_SHELL_INTEGRATION, presetCommand, safeShell } from '../src/pty/presets'
 import { BASH_INIT, BASH_INIT_FILE, writeShellInit, ZSH_FILES, ZSH_INTEGRATION } from '../src/pty/shellInit'
 import { GrantStore, MAX_GRANTS } from '../src/preview/grants'
 
@@ -91,6 +91,16 @@ describe('presets', () => {
     expect(decodePs(spec.args[3]!)).toBe(`${PS_CWD_HOOK}; claude --session-id ${uuid} -n 'Review bot' --mcp-config $env:ORRERY_MCP_CONFIG`)
     const plain = presetCommand('claude', 'win32', {}, undefined, undefined, { sessionId: uuid })
     expect(decodePs(plain.args[3]!).endsWith(`; claude --session-id ${uuid}`)).toBe(true)
+  })
+
+  it('takes a page-minted session id only for a new claude pane', () => {
+    expect(mintedSessionId('claude', uuid, undefined, false)).toBe(uuid)
+    expect(mintedSessionId('codex', uuid, undefined, false)).toBeUndefined()
+    expect(mintedSessionId('shell', uuid, undefined, false)).toBeUndefined()
+    expect(mintedSessionId('claude', uuid, uuid, false)).toBeUndefined()
+    expect(mintedSessionId('claude', uuid, undefined, true)).toBeUndefined()
+    expect(mintedSessionId('claude', '--dangerously-skip-permissions', undefined, false)).toBeUndefined()
+    expect(mintedSessionId('claude', 42, undefined, false)).toBeUndefined()
   })
 
   it('keeps the MCP config path in the env on posix', () => {

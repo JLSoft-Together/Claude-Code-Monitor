@@ -89,6 +89,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const dimInactive = ref(read('ccm.workspace.dim') === '1')
   /** Shell panes started with command marks (OSC 633); read at spawn, so it applies to new shells. */
   const shellIntegration = ref(read('ccm.shellIntegration') !== '0')
+  /** Shell panes run a typed `claude` / `codex` through the host's shims (orrery MCP, session id); read at spawn. */
+  const agentShim = ref(read('ccm.agentShim') !== '0')
   const dustEffect = ref(read('ccm.dust') === '1')
   const fileIcons = ref<FileIconStyle>(isFileIconStyle(read('ccm.fileIcons')) ? (read('ccm.fileIcons') as FileIconStyle) : 'atom')
   const worktreeCopy = ref<string[]>(readWorktreeCopy())
@@ -119,6 +121,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(autoSaveDelay, (value) => persist('ccm.autoSaveDelay', String(value)))
   watch(dimInactive, (value) => persist('ccm.workspace.dim', value ? '1' : '0'))
   watch(shellIntegration, (value) => persist('ccm.shellIntegration', value ? '1' : '0'))
+  watch(agentShim, (value) => persist('ccm.agentShim', value ? '1' : '0'))
   watch(dustEffect, (value) => persist('ccm.dust', value ? '1' : '0'))
   watch(dustEffect, setDustEnabled, { flush: 'sync', immediate: true })
   watch(fileIcons, (value) => persist('ccm.fileIcons', value))
@@ -247,6 +250,7 @@ export const useSettingsStore = defineStore('settings', () => {
     autoSaveDelay,
     dimInactive,
     shellIntegration,
+    agentShim,
     dustEffect,
     fileIcons,
     pinned,

@@ -1,0 +1,17 @@
+## WP-1 — DONE
+- Đã đổi: `packages/shared/src/orreryApi.ts` — ORRERY_ACTIONS (23 action, runs page|desk|main, sources, parse), OrreryCaller/Request/Error, parseMcpPageCall/parseMcpDeskCall/parseOrreryCaller, MCP_TOOL_ACTION, TELEGRAM_INBOUND_ACTION
+- `apps/desktop/src/orreryApi.ts` (mới) — createOrrery (kiểm nguồn → parse → route page/desk/main, after-hook, mcp chỉ nói cho pane của mình) + createPageAsker (`ccm:orrery`, timeout, frame tin cậy)
+- `apps/desktop/src/main.ts` — bỏ askPageMcp/pageMcp/pageOpen/askPageTelegram; URL open, Telegram askPage, supervisor đều gọi `orrery`; notify_owner → collector thành after-hook
+- `apps/desktop/src/pty/supervisor.ts` — onOpen/onMcp/onDesk → 1 `onOrrery` (tool → action, paneOpenResult cho open)
+- `apps/desktop/src/preload.ts` — onPaneOpen/onMcpCall/onTelegramInbound → 1 `onOrrery` (1 handler, chưa có → unavailable)
+- web: `composables/useOrreryApi.ts` (mới, handleOrrery/runOrrery/installOrreryApi), `App.vue` (session.open), `useMcpCalls.ts` + `useTelegramInbound.ts` (switch → handleOrrery), `lib/desktop.ts` (type onOrrery)
+- Test: `apps/desktop/test/orrery-api.test.ts` (10), `apps/web/src/composables/useOrreryApi.test.ts` (3); telegramTail/useSessionActions test đổi mock sang onOrrery; e2e v49-open/v80-mcp kiểm `onOrrery`
+- Tiêu chí 4/4
+- Audit: không còn switch thứ 2 ở main (pageMcp/askPage*) hay page (onMcpCall/onTelegramInbound); giữ token pane (host), rate link 10/phút, realDir, confirm free_port/telegram_receive (desk), gate DeepSeek (host + App.vue), hand_back chỉ mcp (host chỉ mở ở pane DeepSeek). Không log/không gửi token.
+- Review: page chưa sẵn sàng → unavailable ngay; page chậm → unavailable sau 5 s; reply sai id / sai frame bị bỏ; action lạ/`__proto__` → unknown; nguồn sai hoặc mcp pane ≠ args.from → source; args rác → args; handler ném → failed. Lỗi mới map sang `failed` (paneOpenResult, parseMcpPageResult) / `unavailable` (parseInboundResult) như cũ.
+- Quan sát (giữ nguyên hành vi): URL open gửi `id: randomUUID()` → page coi là openTicket dù host không có ticket đó (có từ trước).
+- Test: typecheck sạch; web 1729/1729 (baseline 1726 + 3 mới); desktop 1299/1299 (1273 + 10 mới + test của WP-3).
+- Nhìn: không áp dụng
+- Hot file cần thêm: `.code_index/desktop.md`, `.code_index/web.md`, `.code_index/protocol.md`, `.code_index/_meta.md`, docs §11ao (kênh `ccm:orrery` thay `ccm:pane-open` / `ccm:mcp-call` / `ccm:telegram-inbound`).
+- Ngoài phạm vi: host.ts vẫn gửi `t: open|mcp|mcp-desk` (cấm đụng) — GĐ2 có thể cho host gửi thẳng action; `OrreryCaller.token` không thêm (token chỉ host kiểm, không đi qua main).
+- Commit message đề xuất: `♻️ Orrery API: one action table, a main dispatcher and one ccm:orrery channel for MCP, links and the Telegram bot`

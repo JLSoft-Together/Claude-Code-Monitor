@@ -2,7 +2,23 @@ import { defineStore } from 'pinia'
 import type { CompactFlow } from '../lib/compactHandoff'
 import type { SearchQuery } from '../lib/preview'
 import { computed, ref, shallowRef, watch } from 'vue'
-import { cleanPanePrompt, isAgentSessionId, isPtyPreset, type PaneOpenRequest, type PaneOpenResult, type PeerLink, type PtyPreset, type TerminalSession } from '@ccm/shared'
+import {
+  cleanPanePrompt,
+  isAgentSessionId,
+  isPtyPreset,
+  OPEN_POLICY,
+  PANE_LIVE_MAX,
+  type OrrerySource,
+  type PaneOpenRequest,
+  type PaneOpenResult,
+  type PeerLink,
+  type PtyPreset,
+  type SessionOpenError,
+  type SessionOpenInput,
+  type SessionTarget,
+  type SessionOpenResult,
+  type TerminalSession,
+} from '@ccm/shared'
 import {
   dockSpot,
   dockTree,
@@ -25,6 +41,7 @@ import { hasDeepSeek, presetEnabled } from '../lib/desktop'
 import { useDeepSeekStore } from './deepseek'
 import { dirKey } from './favorites'
 import { openedLinkId, usePeersStore } from './peers'
+import { useTerminalsStore } from './terminals'
 
 export type PaneState = 'parked' | 'starting' | 'running' | 'exited' | 'gone' | 'error'
 
@@ -78,6 +95,10 @@ export interface Pane {
   resume?: string
   /** Latest agent session seen running in this pane (from the monitor link); what a later restore resumes. */
   agentSessionId?: string
+  /** Claude session id minted for a new pane (`--session-id`), equal to `agentSessionId` until the monitor sees it run. */
+  mintedSession?: string
+  /** Session id of `agentSessionId` the monitor has not yet seen take a turn: no transcript, so `--resume` would fail. */
+  untouchedSession?: string
   /** Latched when the agent starts waiting or finishes while the pane is out of sight; cleared when focused. */
   attention?: 'waiting' | 'done'
   /** Git branch of the pane's folder, pushed by the PTY host when HEAD changes. */
@@ -388,6 +409,8 @@ interface SavedPane extends ViewFields {
   sessionId?: string
   resume?: string
   agentSessionId?: string
+  mintedSession?: string
+  untouchedSession?: string
   ranCommand?: boolean
   command?: string
   openedBy?: string
@@ -415,6 +438,8 @@ function loadSaved(): Saved {
         ...p,
         resume: agentId(p.resume),
         agentSessionId: agentId(p.agentSessionId),
+        mintedSession: p.mintedSession && p.mintedSession === p.agentSessionId ? agentId(p.mintedSession) : undefined,
+        untouchedSession: p.untouchedSession && p.untouchedSession === p.agentSessionId ? agentId(p.untouchedSession) : undefined,
         ranCommand: p.ranCommand === true || undefined,
         command: typeof p.command === 'string' ? p.command.slice(0, 300) : undefined,
         openedBy: typeof p.openedBy === 'string' && p.openedBy && p.openedBy !== p.key ? p.openedBy.slice(0, 64) : undefined,
@@ -459,9 +484,40 @@ function fallbackName(p: Pane): string {
   return isTerm(p) ? p.preset : (p.kind ?? 'pane')
 }
 
+/** Agent session a later start continues; a session that never took a turn (minted, or new after /clear) has no transcript to `--resume`. */
+export const untouched = (p: Pick<Pane, 'agentSessionId' | 'mintedSession' | 'untouchedSession'>): boolean =>
+  !!p.agentSessionId && (p.mintedSession === p.agentSessionId || p.untouchedSession === p.agentSessionId)
+
+export const resumeIdOf = (p: Pick<Pane, 'agentSessionId' | 'resume' | 'mintedSession' | 'untouchedSession'>): string | undefined => (untouched(p) ? p.resume : (p.agentSessionId ?? p.resume))
+
+/** What the monitor link changes on a pane that shows session `id`; `turned` = the agent is working (a waiting dialog is no turn). */
+export function sessionLinkPatch(p: Pick<Pane, 'agentSessionId' | 'mintedSession' | 'untouchedSession'>, id: string, turned: boolean): Partial<Pane> | null {
+  if (p.agentSessionId !== id) return { agentSessionId: id, mintedSession: undefined, untouchedSession: turned ? undefined : id }
+  return turned && (p.mintedSession || p.untouchedSession) ? { mintedSession: undefined, untouchedSession: undefined } : null
+}
+
+/** As `useTelegramInbound`: a pane keeps `agentSessionId` after its agent quits (a shell again), that session is over. */
+export function agentLive(p: Pick<Pane, 'preset' | 'agent'>): boolean {
+  return p.preset === 'shell' ? !!p.agent && p.agent !== 'shell' : p.agent !== 'shell'
+}
+
+/**
+ * What a close-undo or the next app start reopens: an agent pane its preset (resumed when it ran); a shell pane where
+ * claude / codex typed by hand still runs that agent with `--resume` (started from the shell's folder), else a shell.
+ */
+export function reopenAs(p: Pick<Pane, 'kind' | 'preset' | 'agent' | 'agentSessionId' | 'resume' | 'mintedSession' | 'untouchedSession' | 'cwd' | 'liveCwd'>): { preset: PtyPreset; cwd?: string; resume?: string } {
+  if (!isTerm(p)) return { preset: p.preset, cwd: p.cwd }
+  if (p.preset !== 'shell') {
+    const resume = agentId(resumeIdOf(p))
+    return { preset: p.preset, cwd: resume ? p.cwd : workCwd(p), resume }
+  }
+  const typed = p.agent === 'claude' || p.agent === 'codex' ? agentId(p.agentSessionId) : undefined
+  return typed ? { preset: p.agent!, cwd: workCwd(p), resume: untouched(p) ? undefined : typed } : { preset: 'shell', cwd: workCwd(p) }
+}
+
 function closedPane(p: Pane, name: string): ClosedPane {
-  const resume = isTerm(p) && p.preset !== 'shell' ? agentId(p.agentSessionId ?? p.resume) : undefined
-  return { key: p.key, ...viewOf(p), preset: p.preset, cwd: resume ? p.cwd : workCwd(p), resume, name, ...(p.openedBy ? { openedBy: p.openedBy } : {}) }
+  const { preset, cwd, resume } = reopenAs(p)
+  return { key: p.key, ...viewOf(p), preset, cwd, resume, name, ...(p.openedBy ? { openedBy: p.openedBy } : {}) }
 }
 
 export type InsertRequest = { id: number; paneKey: string; text: string; image?: undefined } | { id: number; paneKey: string; image: true; text?: undefined }
@@ -509,6 +565,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           sessionId: p.sessionId,
           resume: p.resume,
           agentSessionId: p.agentSessionId,
+          mintedSession: p.mintedSession,
+          untouchedSession: p.untouchedSession,
           ranCommand: p.ranCommand,
           command: p.command,
           openedBy: p.openedBy,
@@ -528,10 +586,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const snapshot: LastWorkspace = {
         at: new Date().toISOString(),
         panes: panes.value.map((p) => {
-          const resume = !isTerm(p) || p.preset === 'shell' ? undefined : (p.agentSessionId ?? p.resume)
           // As closedPane: a resumed agent must start where its session lives; a shell comes back where it was.
-          const cwd = isTerm(p) && !resume ? workCwd(p) : p.cwd
-          return { key: p.key, preset: p.preset, cwd, home: cwd !== p.cwd ? p.cwd : undefined, resume, ...viewOf(p) }
+          const { preset: kind, cwd, resume } = reopenAs(p)
+          return { key: p.key, preset: kind, cwd, home: cwd !== p.cwd ? p.cwd : undefined, resume, ...viewOf(p) }
         }),
         tabs: tabs.value,
       }
@@ -540,11 +597,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     { deep: true },
   )
 
-  type AgentOpen = Pick<Pane, 'openTicket' | 'prefill' | 'openedBy'>
+  type AgentOpen = Pick<Pane, 'openTicket' | 'prefill' | 'prefillSubmit' | 'openedBy'>
 
   function addPane(preset: PtyPreset, cwd?: string, resume?: string, extra: AgentOpen = {}): Pane {
     const id = resume && preset !== 'shell' && isAgentSessionId(resume) ? resume : undefined
-    const pane: Pane = { key: newKey('p'), preset, cwd, resume: id, agentSessionId: id, state: 'starting', ...extra }
+    // Known before the first output, so Telegram links and ✈ work at once; a ticket's id is minted by the host instead.
+    const minted = preset === 'claude' && !id && !extra.openTicket ? crypto.randomUUID() : undefined
+    const pane: Pane = { key: newKey('p'), preset, cwd, resume: id, agentSessionId: id ?? minted, ...(minted ? { mintedSession: minted } : {}), state: 'starting', ...extra }
     panes.value.push(pane)
     return pane
   }
@@ -706,19 +765,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return tabs.value.filter(matches).sort((a, b) => lastFocus(b) - lastFocus(a))[0]
   }
 
-  /**
-   * A new terminal joins its project's tab beside the focused pane; a tab of its own only when the project has none,
-   * no pane has room left, or `opts.tab` asks for one.
-   */
+  /** `launch` / `openFromAgent` keep their old answers; `open` never refused, so a refusal falls back to a plain pane. */
   function open(preset: PtyPreset, cwd?: string, resume?: string, opts: { tab?: boolean } = {}): Pane {
-    return joinProject(addPane(preset, cwd, resume), opts)
+    const res = openSession({ preset, cwd, resume, tab: opts.tab }, { source: 'restore' })
+    return res.ok ? paneOf(res.paneKey)! : joinProject(addPane(preset, cwd, resume), opts)
   }
 
   /** `open` for a pane the owner picked: null when the agent is not set up (Settings › DeepSeek opens instead). */
   function launch(preset: PtyPreset, cwd?: string, resume?: string, opts: { tab?: boolean } = {}): Pane | null {
-    return !presetEnabled(preset, hasDeepSeek) || useDeepSeekStore().gate(preset) ? null : open(preset, cwd, resume, opts)
+    const res = openSession({ preset, cwd, resume, tab: opts.tab }, { source: 'menu' })
+    return res.ok ? paneOf(res.paneKey)! : null
   }
 
+  /**
+   * A new terminal joins its project's tab beside the focused pane; a tab of its own only when the project has none,
+   * no pane has room left, or `opts.tab` asks for one.
+   */
   function joinProject(pane: Pane, opts: { tab?: boolean } = {}): Pane {
     const tab = opts.tab ? undefined : projectTab(pane.cwd)
     const spot = tab ? dockSpot(tab.root, tab.focus, canvasSize.value) : null
@@ -731,37 +793,71 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pane
   }
 
-  /** `setupBlocked`: the caller found DeepSeek not installed / not logged in (it already told the owner). */
-  function openFromAgent(req: PaneOpenRequest, opts: { liveElsewhere?: (sessionId: string) => boolean; setupBlocked?: boolean } = {}): PaneOpenResult {
-    if (!isPtyPreset(req.preset) || !presetEnabled(req.preset, hasDeepSeek)) return { ok: false, error: 'preset' }
-    if (req.preset === 'deepseek' && opts.setupBlocked) return { ok: false, error: 'setup' }
-    if (typeof req.cwd !== 'string' || !req.cwd.trim()) return { ok: false, error: 'cwd' }
-    const resume = req.resume === undefined || req.resume === '' ? undefined : req.preset !== 'shell' && isAgentSessionId(req.resume) ? req.resume : null
-    if (resume === null) return { ok: false, error: 'resume' }
+  const liveState = (p: Pane): boolean => p.state === 'running' || p.state === 'starting'
+
+  function holdsSession(p: Pane, id: string): boolean {
+    if (!isTerm(p) || !liveState(p) || !agentLive(p)) return false
+    if (p.agentSessionId === id) return true
+    const t = p.terminalId ? useTerminalsStore().byId[p.terminalId] : undefined
+    return !!t && (t.claudeSessionId === id || t.codexSessionId === id || t.deepseekSessionId === id)
+  }
+
+  /** An agent session some process still runs: in a pane here, or in a terminal outside the workspace. */
+  function sessionLive(id: string): boolean {
+    if (panes.value.some((p) => holdsSession(p, id))) return true
+    return useTerminalsStore().list.some((t) => (t.claudeSessionId === id || t.codexSessionId === id || t.deepseekSessionId === id) && t.status !== 'stale' && !t.endedAt)
+  }
+
+  type OpenCaller = {
+    source: OrrerySource
+    /** mcp / url: the caller found DeepSeek not installed / not logged in (it already told the owner). */
+    setupBlocked?: boolean
+    liveElsewhere?: (sessionId: string) => boolean
+  }
+
+  /** The one way an agent or shell pane is opened or resumed; OPEN_POLICY decides what each source may do. */
+  function openSession(input: SessionOpenInput, caller: OpenCaller): SessionOpenResult {
+    const fail = (error: SessionOpenError): SessionOpenResult => ({ ok: false, error })
+    const policy = OPEN_POLICY[caller.source]
+    const { preset, cwd } = input
+    if (!isPtyPreset(preset) || !presetEnabled(preset, hasDeepSeek)) return fail('preset')
+    if (preset === 'deepseek' && (caller.source === 'menu' || caller.source === 'palette' ? useDeepSeekStore().gate(preset) : !!caller.setupBlocked)) return fail('setup')
+    // The limited sources come from outside the app and must name a folder; in-app callers may open the home folder.
+    if (policy.limit ? typeof cwd !== 'string' || !cwd.trim() : cwd !== undefined && typeof cwd !== 'string') return fail('cwd')
+    const resume = input.resume === undefined || input.resume === '' ? undefined : preset !== 'shell' && isAgentSessionId(input.resume) ? input.resume : null
+    if (resume === null) return fail('resume')
     if (resume) {
-      const running = panes.value.find((p) => p.agentSessionId === resume && (p.state === 'running' || p.state === 'starting'))
+      const running = panes.value.find((p) => holdsSession(p, resume))
       if (running) {
         activate(running.key)
         return { ok: true, paneKey: running.key }
       }
-      if (opts.liveElsewhere?.(resume)) return { ok: false, error: 'live' }
+      if (sessionLive(resume) || caller.liveElsewhere?.(resume)) return fail('live')
     }
-    const caller = typeof req.from === 'string' && req.from ? panes.value.find((p) => isTerm(p) && p.sessionId === req.from) : undefined
+    if (policy.limit && panes.value.filter((p) => isTerm(p) && liveState(p)).length >= PANE_LIVE_MAX) return fail('limit')
+    const from = policy.dock && typeof input.from === 'string' && input.from ? panes.value.find((p) => isTerm(p) && p.sessionId === input.from) : undefined
+    const prompt = preset === 'shell' ? undefined : cleanPanePrompt(input.prompt)
     const extra: AgentOpen = {
-      openTicket: typeof req.id === 'string' && req.id ? req.id : undefined,
-      prefill: req.preset === 'shell' ? undefined : cleanPanePrompt(req.prompt),
-      ...(caller ? { openedBy: caller.key } : {}),
+      openTicket: typeof input.id === 'string' && input.id ? input.id : undefined,
+      prefill: prompt,
+      ...(prompt && policy.submit && input.submit !== false ? { prefillSubmit: true } : {}),
+      ...(from ? { openedBy: from.key } : {}),
     }
-    const callerTab = caller ? tabOf(caller.key) : undefined
-    if (!caller || !callerTab) return { ok: true, paneKey: markOpened(joinProject(addPane(req.preset, req.cwd, resume, extra))).key }
-    const pane = markOpened(addPane(req.preset, req.cwd, resume, extra))
+    const pane = markOpened(addPane(preset, cwd, resume, extra))
+    const fromTab = from ? tabOf(from.key) : undefined
+    if (!from || !fromTab) return { ok: true, paneKey: joinProject(pane, { tab: input.tab }).key }
     const size = canvasSize.value
-    const spot = size.w && size.h ? dockSpot(callerTab.root, caller.key, size) : null
+    const spot = size.w && size.h ? dockSpot(fromTab.root, from.key, size) : null
     if (spot) {
-      callerTab.root = splitLeaf(callerTab.root, spot.key, pane.key, spot.dir)
-      unzoom(callerTab)
-    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: tabProject(callerTab, paneOf) ?? req.cwd })
+      fromTab.root = splitLeaf(fromTab.root, spot.key, pane.key, spot.dir)
+      unzoom(fromTab)
+    } else tabs.value.push({ key: newKey('t'), root: { pane: pane.key }, focus: pane.key, project: tabProject(fromTab, paneOf) ?? cwd })
     return { ok: true, paneKey: pane.key }
+  }
+
+  /** MCP `open_session` (has a calling pane) and `agent-monitor://open`. */
+  function openFromAgent(req: PaneOpenRequest, opts: { liveElsewhere?: (sessionId: string) => boolean; setupBlocked?: boolean } = {}): PaneOpenResult {
+    return openSession(req, { source: req.from ? 'mcp' : 'url', ...opts })
   }
 
   /**
@@ -823,43 +919,50 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return origin
   }
 
-  function telegramPanes(project: string, nested: string[] = []): Pane[] {
+  /** Agent panes (Claude / Codex) running in a project folder, without those of its sub-projects in `nested`. */
+  function sessionPanes(project: string, nested: string[] = []): Pane[] {
     return panes.value.filter((p) => {
       const dir = isTerm(p) ? (workCwd(p) ?? p.cwd) : undefined
-      return !!dir && p.state === 'running' && HAND_BACK_TO.has(presetOf(p)) && telegramOwns(dir, project, nested)
+      return !!dir && p.state === 'running' && HAND_BACK_TO.has(presetOf(p)) && ownsDir(dir, project, nested)
     })
   }
 
-  function telegramOwns(dir: string, project: string, nested: string[] = []): boolean {
+  function ownsDir(dir: string, project: string, nested: string[] = []): boolean {
     return within(dir, project) && !nested.some((n) => within(n, project) && within(dir, n))
   }
 
-  function telegramInbound(project: string, prompt: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []): Pane | 'none' | 'many' | 'gone' | { busy: Pane } {
-    const candidates = telegramPanes(project, nested)
-    let pane: Pane | undefined
-    if (target?.terminalId || target?.sessionId) {
-      pane = candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId))
-      if (!pane) return 'gone'
-    } else if (candidates.length === 1) pane = candidates[0]
-    if (!pane) return candidates.length ? 'many' : 'none'
+  /** The one pane a session action is for: the targeted one (`gone` once it closed), else the project's only agent pane. */
+  function resolveTarget(target: SessionTarget): Pane | 'none' | 'many' | 'gone' {
+    const candidates = sessionPanes(target.project, target.nested)
+    if (target.terminalId || target.sessionId || target.pane) {
+      const pane = candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : target.sessionId ? p.sessionId === target.sessionId : p.key === target.pane))
+      return pane ?? 'gone'
+    }
+    if (candidates.length === 1) return candidates[0]!
+    return candidates.length ? 'many' : 'none'
+  }
+
+  /** Prefills and submits a prompt; a pane with a prompt or Compact flow pending is `busy` and keeps it. */
+  function sendPrompt(target: SessionTarget, prompt: string): Pane | 'none' | 'many' | 'gone' | { busy: Pane } {
+    const pane = resolveTarget(target)
+    if (typeof pane === 'string') return pane
     if (pane.prefill || pane.compact) return { busy: pane }
     pane.prefill = prompt
     pane.prefillSubmit = true
     return pane
   }
 
-  function telegramKeys(project: string, keys: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []): Pane | 'none' | 'many' | 'gone' | 'busy' {
-    const candidates = telegramPanes(project, nested)
-    let pane: Pane | undefined
-    if (target?.terminalId || target?.sessionId) {
-      pane = candidates.find((p) => (target.terminalId ? p.terminalId === target.terminalId : p.sessionId === target.sessionId))
-      if (!pane) return 'gone'
-    } else if (candidates.length !== 1) return candidates.length ? 'many' : 'none'
-    else pane = candidates[0]!
+  function typeKeys(target: SessionTarget, keys: string): Pane | 'none' | 'many' | 'gone' | 'busy' {
+    const pane = resolveTarget(target)
+    if (typeof pane === 'string') return pane
     if (pane.typeKeys) return 'busy'
     pane.typeKeys = keys
     return pane
   }
+
+  const telegramPanes = sessionPanes
+  const telegramInbound = (project: string, prompt: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []) => sendPrompt({ project, nested, ...target }, prompt)
+  const telegramKeys = (project: string, keys: string, target?: { terminalId?: string; sessionId?: string }, nested: string[] = []) => typeKeys({ project, nested, ...target }, keys)
 
   function telegramTyped(paneKey: string, ms: number): Promise<boolean> {
     const state = (): 'gone' | 'wait' | 'typed' => {
@@ -1441,8 +1544,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     open,
     launch,
     openFromAgent,
+    openSession,
+    sessionLive,
     showForAgent,
     handBack,
+    sessionPanes,
+    resolveTarget,
+    sendPrompt,
+    typeKeys,
     telegramPanes,
     telegramInbound,
     telegramKeys,

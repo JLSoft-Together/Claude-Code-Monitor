@@ -1,0 +1,11 @@
+## WP-5 — DONE
+- **Đã đổi**: `stores/workspace.ts` (`Pane.untouchedSession` + lưu/nạp sessionStorage, `untouched()`, `resumeIdOf`/`reopenAs` bỏ resume khi chưa có lượt, shell+agent gõ tay chưa lượt → agent mới, `sessionLinkPatch`); `composables/useWorkspaceLinks.ts` (chỉ xoá minted/untouched khi terminal sang working|waiting; id mới sau /clear → untouched); `lib/layouts.ts` (dùng `reopenAs`: shell có agent gõ tay lưu như agent, resume chỉ khi đã có lượt); `TermPane.vue` restart (shell đang chạy agent gõ tay → mở lại agent, `--resume` nếu đã có lượt, else agent mới/mint); tests ở workspace.test.ts, lib/tier2.test.ts.
+- **Tiêu chí 3/3**: 1) test closedPane/LAST/layout không resume khi chưa lượt, có khi đã lượt; 2) layouts + restart shell+agent; 3) pass.
+- **Audit**: collector/TerminalSession không có số lượt; dùng status terminal từng working/waiting (không đổi collector, ít đụng nhất).
+- **Review**: /clear đổi id → untouched tới lượt đầu; codex/deepseek cùng đường (id từ term); pane chưa link terminal → mintedSession giữ nguyên (không resume); restart app: panes cũ không có `untouchedSession` vẫn resume như trước (tương thích); minted id không còn bị xoá khi mới thấy chạy.
+- **Test**: typecheck 0 lỗi; web 202 files 1742/1742; collector 398 pass (1 skip); desktop 1312/1312.
+- **Nhìn**: không QA dev.
+- **Giới hạn**: lượt rất ngắn working→idle gộp trong một tick có thể bị bỏ sót (chỉ mất resume, không lỗi); `claude --resume <id>` gõ tay rồi thoát ngay không lượt nào bị coi là untouched; restart pane agent (không phải shell) vẫn dùng `pane.resume` gốc như cũ.
+- **Hot file cần thêm**: không. Main cập nhật `.code_index/web.md` (untouchedSession, sessionLinkPatch).
+- **Ngoài phạm vi**: không.
+- **Commit message đề xuất**: `🐛 Workspace: resume only sessions that took a turn; layouts and restart keep a hand-typed agent`

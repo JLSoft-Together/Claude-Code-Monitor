@@ -1,5 +1,5 @@
 import { isMcpRunTool, parseMcpRunResult, type McpRunCall, type McpRunResult } from './mcpRun'
-import { isPtyPreset, type PtyPreset } from './pty'
+import { isAgentSessionId, isPtyPreset, type PtyPreset } from './pty'
 
 /** v80: MCP tools of the PTY host that need the workspace page (docs §11w). */
 export const AGENT_NOTE_LEVELS = ['info', 'attention', 'done'] as const
@@ -26,6 +26,9 @@ export type McpPageCall =
   | { id: string; tool: 'who_is_editing'; from: string; cwd: string; path: string }
   /** v81: a DeepSeek pane hands its finished work back; `report` was checked by the host (inside cwd, existing .md). */
   | { id: string; tool: 'hand_back'; from: string; cwd: string; report: string; summary: string }
+  | { id: string; tool: 'list_sessions'; from: string; cwd: string }
+  | { id: string; tool: 'send_to_session'; from: string; cwd: string; session: string; text: string }
+  | { id: string; tool: 'close_session'; from: string; cwd: string; session: string }
   | McpRunCall
 
 export type McpPageTool = McpPageCall['tool']
@@ -47,7 +50,24 @@ export interface FileEditor {
   modifiedAt?: number
 }
 
-export type McpPageError = 'unavailable' | 'caller' | 'failed' | 'limit'
+/** One pane of the caller's project as list_sessions tells it; never terminal content. */
+export interface SessionRef {
+  /** PTY host session id: what send_to_session / close_session take. */
+  sessionId: string
+  /** The agent's own session uuid (what open_session returns and `resume` takes); absent until known. */
+  agentSessionId?: string
+  name: string
+  agent: PtyPreset
+  /** Monitor status of the agent, else the pane state (`running`, `starting`). */
+  status: string
+  /** The caller itself. */
+  self: boolean
+  /** Opened by the caller: close_session may close it. */
+  openedByYou: boolean
+}
+
+/** target: no such pane in the caller's project (or the caller itself); busy: it already has a prompt waiting. */
+export type McpPageError = 'unavailable' | 'caller' | 'failed' | 'limit' | 'target' | 'busy'
 
 export type McpPageResult =
   | { ok: true; tool: 'notify_owner'; name: string; terminalId?: string; inbox: boolean }
@@ -55,10 +75,15 @@ export type McpPageResult =
   | { ok: true; tool: 'who_is_editing'; repo: boolean; editors: FileEditor[] }
   /** `origin`: shown name of the pane that will receive the prompt once it is idle. */
   | { ok: true; tool: 'hand_back'; origin: string }
+  | { ok: true; tool: 'list_sessions'; sessions: SessionRef[] }
+  | { ok: true; tool: 'send_to_session'; name: string }
+  /** `confirm`: the pane runs something, so the owner is asked in the close sheet and the pane stays until then. */
+  | { ok: true; tool: 'close_session'; name: string; confirm: boolean }
   | McpRunResult
   | { ok: false; error: McpPageError }
 
-const ERRORS: readonly McpPageError[] = ['unavailable', 'caller', 'failed', 'limit']
+const ERRORS: readonly McpPageError[] = ['unavailable', 'caller', 'failed', 'limit', 'target', 'busy']
+const SESSIONS_MAX = 16
 const REF = /^(?!-)(?!.*\.\.)[A-Za-z0-9._\/-]{1,255}$/
 const STATUS = /^[a-z]{1,20}$/
 const EDITORS_MAX = 16
@@ -86,6 +111,16 @@ function parseEditor(v: unknown): FileEditor | null {
   }
 }
 
+function parseSessionRef(v: unknown): SessionRef | null {
+  if (!isObj(v)) return null
+  const sessionId = str(v.sessionId, 200)
+  const name = cleanNoteText(str(v.name, 400))?.slice(0, 80)
+  const status = str(v.status, 20)
+  if (!sessionId || !name || !status || !STATUS.test(status) || !isPtyPreset(v.agent)) return null
+  const agentSessionId = isAgentSessionId(v.agentSessionId) ? v.agentSessionId : undefined
+  return { sessionId, ...(agentSessionId ? { agentSessionId } : {}), name, agent: v.agent, status, self: v.self === true, openedByYou: v.openedByYou === true }
+}
+
 /** The page's answer is checked like any other input before it reaches an agent. */
 export function parseMcpPageResult(raw: unknown, tool: McpPageTool): McpPageResult {
   if (!isObj(raw)) return { ok: false, error: 'failed' }
@@ -99,6 +134,15 @@ export function parseMcpPageResult(raw: unknown, tool: McpPageTool): McpPageResu
   if (tool === 'hand_back') {
     const origin = cleanNoteText(str(raw.origin, 400))?.slice(0, 80)
     return origin ? { ok: true, tool, origin } : { ok: false, error: 'failed' }
+  }
+  if (tool === 'list_sessions') {
+    const list = Array.isArray(raw.sessions) ? raw.sessions.slice(0, SESSIONS_MAX).map(parseSessionRef).filter((r): r is SessionRef => !!r) : []
+    return { ok: true, tool, sessions: list }
+  }
+  if (tool === 'send_to_session' || tool === 'close_session') {
+    const name = cleanNoteText(str(raw.name, 400))?.slice(0, 80)
+    if (!name) return { ok: false, error: 'failed' }
+    return tool === 'send_to_session' ? { ok: true, tool, name } : { ok: true, tool, name, confirm: raw.confirm === true }
   }
   if (tool === 'open_in_workspace') {
     const paneKey = str(raw.paneKey, 100)

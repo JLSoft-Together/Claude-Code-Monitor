@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { createWriteStream, type WriteStream } from 'node:fs'
 import { app, utilityProcess, type UtilityProcess } from 'electron'
-import type { McpPageCall } from '../../../../packages/shared/src/mcpCall'
-import type { McpDeskCall } from '../../../../packages/shared/src/mcpDesk'
-import { PTY_PROTOCOL_PREFIX, type PaneOpenRequest, type PaneOpenResult, type PtyEndpoint, type PtySessionInfo } from '../../../../packages/shared/src/pty'
+import { MCP_TOOL_ACTION, type OrreryCaller } from '../../../../packages/shared/src/orreryApi'
+import { PTY_PROTOCOL_PREFIX, type PaneOpenRequest, type PtyEndpoint, type PtySessionInfo } from '../../../../packages/shared/src/pty'
+import { paneOpenResult } from '../openLink'
 
 export interface PtySupervisorOptions {
   script: string
@@ -12,11 +12,8 @@ export interface PtySupervisorOptions {
   logFile: string
   /** zsh startup wrappers that report the current folder (posix only). */
   shellInitDir?: string
-  onOpen?: (req: PaneOpenRequest) => Promise<PaneOpenResult>
-  /** v80 MCP tools that need the page (notify_owner, open_in_workspace, who_is_editing); the host re-checks the reply. */
-  onMcp?: (call: McpPageCall) => Promise<unknown>
-  /** v80 WP-5 tools main answers itself (preview_layout, list_servers, free_port); the host re-checks the reply. */
-  onDesk?: (call: McpDeskCall) => Promise<unknown>
+  /** Orrery dispatcher: `open_session` and every MCP tool the host cannot answer alone; the host re-checks each reply. */
+  onOrrery?: (action: string, args: unknown, caller: OrreryCaller) => Promise<unknown>
   mcpConfig?: string
 }
 
@@ -72,10 +69,9 @@ export class PtySupervisor {
         child.kill()
         reject(new Error('pty host did not start'))
       }, START_TIMEOUT_MS)
-      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[]; req?: PaneOpenRequest; call?: McpPageCall }) => {
+      child.on('message', (data: { t?: string; port?: number; sessions?: PtySessionInfo[]; req?: PaneOpenRequest; call?: { id?: unknown; tool?: unknown; from?: unknown } }) => {
         if (data?.t === 'open' && typeof data.req?.id === 'string') this.relayOpen(child, data.req)
-        else if (data?.t === 'mcp' && typeof data.call?.id === 'string') this.relayMcp(child, data.call)
-        else if (data?.t === 'mcp-desk' && typeof data.call?.id === 'string') this.relayDesk(child, data.call as unknown as McpDeskCall)
+        else if ((data?.t === 'mcp' || data?.t === 'mcp-desk') && typeof data.call?.id === 'string') this.relayMcp(child, data.call.id, data.call)
         else if (data?.t === 'listening' && data.port) {
           clearTimeout(timer)
           resolve({ url: `ws://127.0.0.1:${data.port}/pty`, protocol: `${PTY_PROTOCOL_PREFIX}${this.token}` })
@@ -100,28 +96,21 @@ export class PtySupervisor {
 
   private relayOpen(child: UtilityProcess, req: PaneOpenRequest): void {
     void Promise.resolve()
-      .then(() => this.opts.onOpen?.(req) ?? ({ ok: false, error: 'unavailable' } as PaneOpenResult))
-      .catch((): PaneOpenResult => ({ ok: false, error: 'failed' }))
+      .then(() => this.opts.onOrrery?.('session.open', req, { source: 'mcp', ...(req.from ? { pane: req.from } : {}) }) ?? { ok: false, error: 'unavailable' })
+      .then(paneOpenResult, () => paneOpenResult(null))
       .then((result) => {
         if (this.child === child) child.postMessage({ t: 'open-reply', id: req.id, result })
       })
   }
 
-  private relayMcp(child: UtilityProcess, call: McpPageCall): void {
+  private relayMcp(child: UtilityProcess, id: string, call: { tool?: unknown; from?: unknown }): void {
+    const action = typeof call.tool === 'string' && Object.hasOwn(MCP_TOOL_ACTION, call.tool) ? MCP_TOOL_ACTION[call.tool as keyof typeof MCP_TOOL_ACTION] : null
+    const caller: OrreryCaller = { source: 'mcp', ...(typeof call.from === 'string' && call.from ? { pane: call.from } : {}) }
     void Promise.resolve()
-      .then(() => this.opts.onMcp?.(call) ?? { ok: false, error: 'unavailable' })
+      .then(() => (action && this.opts.onOrrery?.(action, call, caller)) || { ok: false, error: action ? 'unavailable' : 'failed' })
       .catch(() => ({ ok: false, error: 'failed' }))
       .then((result) => {
-        if (this.child === child) child.postMessage({ t: 'mcp-reply', id: call.id, result })
-      })
-  }
-
-  private relayDesk(child: UtilityProcess, call: McpDeskCall): void {
-    void Promise.resolve()
-      .then(() => this.opts.onDesk?.(call) ?? { ok: false, error: 'unavailable' })
-      .catch(() => ({ ok: false, error: 'failed' }))
-      .then((result) => {
-        if (this.child === child) child.postMessage({ t: 'mcp-reply', id: call.id, result })
+        if (this.child === child) child.postMessage({ t: 'mcp-reply', id, result })
       })
   }
 

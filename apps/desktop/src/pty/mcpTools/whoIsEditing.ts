@@ -20,7 +20,7 @@ export const WHO_IS_EDITING_TOOL = {
   annotations: { title: 'Who else is editing a file', readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
 } satisfies ToolDef
 
-const ERRORS: Record<InsideError | 'rate' | 'unavailable' | 'caller' | 'failed' | 'limit', string> = {
+const ERRORS: Record<InsideError | 'rate' | 'unavailable' | 'caller' | 'failed' | 'limit' | 'target' | 'busy', string> = {
   path: 'path must be a file path (no UNC or device paths).',
   outside: "That file is outside this session's project folder.",
   missing: 'Neither that file nor its folder exists.',
@@ -30,6 +30,8 @@ const ERRORS: Record<InsideError | 'rate' | 'unavailable' | 'caller' | 'failed' 
   caller: 'This session is not an Orrery workspace pane the window knows.',
   limit: 'Orrery could not check the other sessions.',
   failed: 'Orrery could not check the other sessions.',
+  target: 'Orrery could not do that.',
+  busy: 'Orrery could not do that.',
 }
 
 const AGENT: Record<PtyPreset, string> = { claude: 'Claude Code', codex: 'Codex', deepseek: 'DeepSeek', shell: 'shell' }

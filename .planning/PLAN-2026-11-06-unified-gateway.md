@@ -49,3 +49,29 @@ Lệch thật đang gây lỗi:
 - (c) ĐÃ CHỐT: API = cổng chung, mọi nguồn (menu, bot, link, agent Claude/Codex qua MCP) gọi qua 1 dispatcher. Chưa mở HTTP/CLI riêng cho tool ngoài app — mặc định: để sau (thêm adapter là xong).
 - (d) Sau khi gộp, có mở thêm thao tác cho bot / MCP (vd MCP `send_to_session`, `close_session`; bot `/compact`, `/close`) — mặc định: **để đợt sau**, đợt này chỉ chuẩn hoá.
 - (e) Giới hạn chung (số pane tối đa 16 cho mọi đường, kể cả menu và bot) — mặc định: áp cho bot + MCP + URL, **không** chặn menu.
+
+## GĐ1 — spec triển khai (chủ nhân ok 2026-11-06 "ok … xem làm thêm được phần nào")
+Phạm vi: chỉ **mở / resume session**. Gom về 1 hàm `workspace.openSession(input, caller)` (web) + mint session id cho mọi lần mở Claude.
+1. `packages/shared/src/orreryApi.ts` (mới, export ở index): `OrrerySource = 'menu'|'palette'|'mcp'|'url'|'telegram'|'restore'`;
+   `SessionOpenInput {preset, cwd, resume?, prompt?, submit?, name?, from?, id?, tab?}`; `SessionOpenError` = `PaneOpenError` hiện có;
+   bảng chính sách `OPEN_POLICY: Record<OrrerySource, {submit: boolean; limit: boolean; dock: boolean}>`
+   (telegram: submit=true; mcp: dock=true; mcp/url/telegram: limit=true; menu/palette/restore: limit=false). `PANE_LIVE_MAX = 16`.
+2. `stores/workspace.ts` `openSession`: kiểm preset/DeepSeek (menu/palette dùng `useDeepSeekStore().gate` → `setup`; mcp/url dùng `setupBlocked`),
+   cwd, resume hợp lệ; resume trùng pane đang chạy → activate + ok; `liveElsewhere(id)` → `live`; limit đếm pane term đang chạy/starting ≥ 16 → `limit`;
+   mint: preset `claude`, không resume, không ticket (`id`) → `crypto.randomUUID()`, set `agentSessionId` + `mintedSession` (cờ chờ xác nhận);
+   prompt → `prefill` (+ `prefillSubmit` nếu policy.submit); đặt chỗ: dock cạnh pane gọi (`from`) nếu policy.dock, else `joinProject`.
+   `open` / `launch` / `openFromAgent` thành wrapper mỏng gọi `openSession` (giữ chữ ký để không vỡ caller/test).
+3. Một hàm `sessionLive(id)` dùng chung (pane đang chạy có agentSessionId/resume/claudeSessionId = id, hoặc terminal live trong `terminals.list`):
+   thay `liveElsewhere` ở App.vue và `openIds`/check `busy` ở `useTelegramInbound.resume`. Telegram `create`/`resume` gọi `openSession` source `telegram`.
+4. Spawn: `TermPane` gửi `session: pane.mintedSession` (ptyClient → msg `session`); pty host `spawn` nhận `msg.session` chỉ khi preset `claude`, không resume, không ticket, `isAgentSessionId` → `opts.sessionId`.
+5. Id chờ xác nhận: watcher ở `useWorkspaceLinks` khi thấy terminal có `claudeSessionId` → xoá `mintedSession`. Khi `mintedSession` còn (claude chưa từng chạy):
+   `closedPane`, snapshot LAST (restore) và saved panes **không** dùng `agentSessionId` làm resume (tránh `--resume` id không tồn tại).
+6. Test: workspace.test (openSession theo từng source: mint, submit, limit, dock, resume trùng, live, deepseek gate), pty.test (`session` chỉ áp claude), useTelegramInbound test nếu có.
+
+## GĐ "Telegram + Workspace" — spec (chủ nhân chọn 2026-11-06: "chỗ telegram + workspace")
+Mục tiêu: thao tác của bot Telegram lên pane và menu chuột phải của Workspace đi qua cùng 1 lớp action; hành vi người dùng **không đổi**.
+1. `packages/shared/src/orreryApi.ts`: thêm `SessionTarget {project, nested?, terminalId?, sessionId?, pane?}` và các action pane: `session.send` (chữ, submit), `session.keys`, `session.tail`, `session.status` (liệt kê), `session.stop`; mã lỗi chung `SessionActError` (`none|many|gone|busy|state|unavailable`), map sang `TelegramInboundResult` ở adapter.
+2. Web: 1 module `composables/useSessionActions.ts` (hoặc trong store) chứa **1 hàm `resolveTarget`** (thay logic chép ở `keys()` / `tail()` / `send()` của `useTelegramInbound` và `workspace.telegramPanes/telegramInbound/telegramKeys`), 1 hàm `paneInfo` (tên/trạng thái pane; tham số chọn có dùng title phiên hay không, giữ khác biệt MCP vs Telegram hiện có).
+   `useTelegramInbound` chỉ còn parse → gọi action → map kết quả. `useMcpCalls` dùng chung `paneInfo`/tìm pane gọi nếu trùng.
+3. Menu: 1 bảng action pane `lib/paneActions.ts` + 1 runner (`composables/usePaneActions.ts`) cho các mục trùng ở `WorkspaceView.pickTabAction` và `WorkspaceSidebar.pickRow/pickGroup`: `telegram-link`, `compact`, `compact-cancel`, `rename`, `close`, `close-others`, `focus`, `monitor`, `copy-cwd`. 1 hàm dựng ctx hộp ✈ (`telegramLinkCtx(pane)`) thay 3 chỗ.
+4. Test: resolveTarget (theo terminalId / sessionId / 1 pane / nhiều pane / không có), adapter Telegram map lỗi, runner menu gọi đúng action từ cả 2 menu. Docs §11ao bổ sung, `.code_index`.

@@ -8,7 +8,6 @@ import { startClock } from './lib/format'
 import { useAwayStore } from './stores/away'
 import { useConnectionStore } from './stores/connection'
 import { useSettingsStore } from './stores/settings'
-import { useTerminalsStore } from './stores/terminals'
 import { useUiStore } from './stores/ui'
 import { useWorkspaceStore } from './stores/workspace'
 import { useDeepSeekStore } from './stores/deepseek'
@@ -31,6 +30,7 @@ import HistoryView from './components/history/HistoryView.vue'
 import { desktop, hasDeepSeek, hasExtensions, hasTerminals } from './lib/desktop'
 import { hasDevices } from './lib/devices'
 import { useRevealInWorkspace } from './composables/useRevealInWorkspace'
+import { handleOrrery, installOrreryApi } from './composables/useOrreryApi'
 import { useTurnCheckpoints } from './composables/useTurnCheckpoints'
 import { isMac } from './lib/platform'
 import { restoreMode, restoreWith, startupRun, uncleanExit } from './lib/workspaceRestore'
@@ -81,17 +81,16 @@ const workspaceOpened = ref(false)
 watch(showWorkspace, (shown) => shown && (workspaceOpened.value = true), { immediate: true })
 
 const workspace = useWorkspaceStore()
-const terminals = useTerminalsStore()
 const deepseek = useDeepSeekStore()
 // Warm the launch gate's cache in the background (three short codewhale runs, only when it is installed).
 if (hasDeepSeek && !ui.compact) window.setTimeout(() => void deepseek.refresh().catch(() => null), 4_000)
-const liveElsewhere = (sessionId: string): boolean =>
-  terminals.list.some((t) => (t.claudeSessionId === sessionId || t.codexSessionId === sessionId || t.deepseekSessionId === sessionId) && t.status !== 'stale' && !workspace.paneByTerminal.get(t.id))
-desktop?.onPaneOpen?.(async (req) => {
+installOrreryApi()
+handleOrrery('session.open', async (req, caller) => {
   const setupBlocked = hasDeepSeek && req.preset === 'deepseek' && (await deepseek.gateAgent())
-  const result = workspace.openFromAgent(req, { liveElsewhere, setupBlocked })
+  // Only open_session has a host ticket behind its id; a link's id is just a request id, so its pane mints its own session id.
+  const result = workspace.openSession(caller.source === 'mcp' ? req : { ...req, id: undefined }, { source: caller.source, setupBlocked })
   if (!result.ok) return result
-  if (req.from) workspaceOpened.value = true
+  if (caller.source === 'mcp') workspaceOpened.value = true
   else ui.setView('workspace')
   return result
 })

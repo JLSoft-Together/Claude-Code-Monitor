@@ -52,6 +52,18 @@ export const ZSH_INTEGRATION = [
   'fi',
 ].join('\n')
 
+// macOS path_helper (/etc/zprofile, /etc/profile) moves the PATH the pane started with behind the system dirs.
+const ZSH_SHIM_FIRST = '[[ -n "$ORRERY_SHIM_DIR" ]] && path=("$ORRERY_SHIM_DIR" "${(@)path:#$ORRERY_SHIM_DIR}")'
+const BASH_SHIM_FIRST = [
+  'if [ -n "${ORRERY_SHIM_DIR:-}" ]; then',
+  '  __orrery_p=":$PATH:"',
+  '  __orrery_p="${__orrery_p//":$ORRERY_SHIM_DIR:"/:}"',
+  '  __orrery_p="${__orrery_p#:}"',
+  '  PATH="$ORRERY_SHIM_DIR:${__orrery_p%:}"',
+  '  unset __orrery_p',
+  'fi',
+]
+
 export const ZSH_FILES: Record<string, string> = {
   '.zshenv': passThrough('.zshenv'),
   '.zprofile': passThrough('.zprofile'),
@@ -59,6 +71,7 @@ export const ZSH_FILES: Record<string, string> = {
     'ZDOTDIR="${AGENT_MONITOR_ZDOTDIR:-$HOME}"',
     'unset AGENT_MONITOR_ZDOTDIR',
     '[[ -r "$ZDOTDIR/.zshrc" ]] && builtin source "$ZDOTDIR/.zshrc"',
+    ZSH_SHIM_FIRST,
     "__agent_monitor_cwd() { builtin printf '\\e]7;file://%s%s\\e\\\\' \"$HOST\" \"$PWD\" }",
     'autoload -Uz add-zsh-hook && add-zsh-hook precmd __agent_monitor_cwd',
     ZSH_INTEGRATION,
@@ -87,6 +100,7 @@ export const BASH_INIT = [
   '  if [ -r "$__orrery_f" ]; then . "$__orrery_f"; break; fi',
   'done',
   'unset __orrery_f',
+  ...BASH_SHIM_FIRST,
   'if [[ -n "${ORRERY_SI_NONCE:-}" ]] && (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then',
   '  __orrery_nonce="$ORRERY_SI_NONCE"',
   '  __orrery_orig=("${PROMPT_COMMAND[@]}")',

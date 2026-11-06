@@ -4,9 +4,10 @@ import { nextTick } from 'vue'
 import en from '../i18n/en'
 import vi from '../i18n/vi'
 import { boxes, leaves } from '../lib/splitLayout'
-import type { PaneOpenResult, PtyPreset } from '@ccm/shared'
+import { PANE_LIVE_MAX, type PaneOpenResult, type PtyPreset, type TerminalSession } from '@ccm/shared'
 import { openedLinkId, usePeersStore } from './peers'
-import { agentNow, presetOf, primaryPaneKey, tabProject, useWorkspaceStore, workCwd } from './workspace'
+import { useTerminalsStore } from './terminals'
+import { agentNow, presetOf, primaryPaneKey, reopenAs, sessionLinkPatch, tabProject, useWorkspaceStore, workCwd } from './workspace'
 
 function keysOf(o: unknown, prefix = ''): string[] {
   if (!o || typeof o !== 'object') return [prefix]
@@ -719,6 +720,45 @@ describe('reopen closed panes', () => {
     ])
   })
 
+  it('a claude / codex typed in a shell comes back as that agent with --resume, from the shell folder', () => {
+    const ws = useWorkspaceStore()
+    const sid = '0b3d9a7e-1111-4222-8333-444455556666'
+    const sh = ws.open('shell', 'C:/app')
+    ws.update(sh.key, { agent: 'claude', agentSessionId: sid, liveCwd: 'C:/app/web' })
+    const ended = ws.split(sh.key, 'row', { kind: 'term', preset: 'shell' })!
+    ws.update(ended.key, { agentSessionId: sid })
+    ws.requestClose([sh.key, ended.key], never)
+    const res = ws.reopenClosed()!
+    const back = res.keys.map((k) => ws.panes.find((p) => p.key === k)!)
+    expect(back.map((p) => [p.preset, p.resume])).toEqual([
+      ['claude', sid],
+      ['shell', undefined],
+    ])
+    expect(back[0]!.cwd).toBe('C:/app/web')
+  })
+
+  it('reopenAs: typed agent only while it runs, never a deepseek / bad id', () => {
+    const sid = '0b3d9a7e-1111-4222-8333-444455556666'
+    expect(reopenAs({ preset: 'shell', agent: 'codex', agentSessionId: sid, cwd: '/a' })).toEqual({ preset: 'codex', cwd: '/a', resume: sid })
+    expect(reopenAs({ preset: 'shell', agent: undefined, agentSessionId: sid, cwd: '/a' })).toEqual({ preset: 'shell', cwd: '/a' })
+    expect(reopenAs({ preset: 'shell', agent: 'deepseek', agentSessionId: sid, cwd: '/a' })).toEqual({ preset: 'shell', cwd: '/a' })
+    expect(reopenAs({ preset: 'shell', agent: 'claude', agentSessionId: 'x; rm -rf /', cwd: '/a' })).toEqual({ preset: 'shell', cwd: '/a' })
+    expect(reopenAs({ preset: 'claude', agentSessionId: sid, cwd: '/a', liveCwd: '/a/b' })).toEqual({ preset: 'claude', cwd: '/a', resume: sid })
+  })
+
+  it('last workspace keeps a typed agent as a resumable agent pane', async () => {
+    const ws = useWorkspaceStore()
+    const sid = '0b3d9a7e-1111-4222-8333-444455556666'
+    const sh = ws.open('shell', 'C:/app')
+    ws.update(sh.key, { agent: 'claude', agentSessionId: sid })
+    await nextTick()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+    const next = useWorkspaceStore()
+    next.restoreLast()
+    expect(next.panes.map((p) => [p.preset, p.resume, p.cwd])).toEqual([['claude', sid, 'C:/app']])
+  })
+
   it('records user closes only, after a confirm, never on cancel or for dropped panes', () => {
     const ws = useWorkspaceStore()
     const a = ws.open('shell', 'C:/app', undefined, { tab: true })
@@ -871,5 +911,154 @@ describe('DeepSeek feature flag off (no desktop bridge)', () => {
     expect(ws.split(claude.key, 'row', { kind: 'term', preset: 'deepseek' })).toBeNull()
     expect(ws.openFromAgent({ id: 't', preset: 'deepseek', cwd: 'C:\repo' })).toEqual({ ok: false, error: 'preset' })
     expect(ws.panes).toHaveLength(1)
+  })
+})
+
+describe('openSession', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+  const id = '2d6f6a52-1b2c-4d3e-8f90-123456789abc'
+  const paneOf = (ws: ReturnType<typeof useWorkspaceStore>, r: PaneOpenResult) => ws.panes.find((p) => r.ok && p.key === r.paneKey)!
+  const terminal = (over: Partial<TerminalSession>): TerminalSession => ({ id: 't1', title: 'x', status: 'idle', startedAt: new Date().toISOString(), ...over }) as TerminalSession
+
+  it('mints a session id for a new claude pane only', () => {
+    const ws = useWorkspaceStore()
+    for (const source of ['menu', 'palette', 'telegram', 'url', 'restore'] as const) {
+      const pane = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source }))
+      expect(pane.agentSessionId).toMatch(UUID)
+      expect(pane.mintedSession).toBe(pane.agentSessionId)
+    }
+    expect(new Set(ws.panes.map((p) => p.mintedSession)).size).toBe(5)
+    expect(paneOf(ws, ws.openSession({ preset: 'codex', cwd: 'C:/work/app' }, { source: 'menu' })).mintedSession).toBeUndefined()
+    expect(paneOf(ws, ws.openSession({ preset: 'shell', cwd: 'C:/work/app' }, { source: 'menu' })).agentSessionId).toBeUndefined()
+    const resumed = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app', resume: id }, { source: 'menu' }))
+    expect(resumed).toMatchObject({ resume: id, agentSessionId: id })
+    expect(resumed.mintedSession).toBeUndefined()
+    const ticketed = paneOf(ws, ws.openSession({ id: 'ticket', preset: 'claude', cwd: 'C:/work/app' }, { source: 'url' }))
+    expect(ticketed.agentSessionId).toBeUndefined()
+    expect(ticketed.mintedSession).toBeUndefined()
+    expect(ws.split(resumed.key, 'row', { kind: 'term', preset: 'claude' })!.mintedSession).toMatch(UUID)
+  })
+
+  it('submits the prompt only for telegram', () => {
+    const ws = useWorkspaceStore()
+    expect(paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app', prompt: 'fix it' }, { source: 'telegram' }))).toMatchObject({ prefill: 'fix it', prefillSubmit: true })
+    for (const source of ['mcp', 'url', 'menu'] as const) {
+      const pane = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app', prompt: 'fix it' }, { source }))
+      expect(pane.prefill).toBe('fix it')
+      expect(pane.prefillSubmit).toBeUndefined()
+    }
+    expect(paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source: 'telegram' })).prefillSubmit).toBeUndefined()
+  })
+
+  it('refuses mcp / url / telegram at the live pane limit, never the menu', () => {
+    const ws = useWorkspaceStore()
+    for (let i = 0; i < PANE_LIVE_MAX; i++) ws.openSession({ preset: 'shell', cwd: 'C:/work/app' }, { source: 'menu' })
+    for (const source of ['mcp', 'url', 'telegram'] as const) expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source })).toEqual({ ok: false, error: 'limit' })
+    expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source: 'menu' }).ok).toBe(true)
+    ws.update(ws.panes[0]!.key, { state: 'exited' })
+    ws.update(ws.panes[1]!.key, { state: 'exited' })
+    expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source: 'url' }).ok).toBe(true)
+  })
+
+  it('external sources must name a folder', () => {
+    const ws = useWorkspaceStore()
+    for (const source of ['mcp', 'url', 'telegram'] as const) expect(ws.openSession({ preset: 'claude' }, { source })).toEqual({ ok: false, error: 'cwd' })
+    expect(ws.openSession({ preset: 'shell' }, { source: 'menu' }).ok).toBe(true)
+  })
+
+  it('docks beside the calling pane only for mcp', () => {
+    const ws = useWorkspaceStore()
+    ws.canvasSize = { w: 1600, h: 900 }
+    const a = ws.open('claude', 'C:/work/app')
+    ws.update(a.key, { sessionId: 'host-a', state: 'running' })
+    const other = ws.open('shell', 'C:/work/other')
+    const mcp = ws.openSession({ preset: 'claude', cwd: 'C:/work/app', from: 'host-a' }, { source: 'mcp' })
+    expect(paneOf(ws, mcp).openedBy).toBe(a.key)
+    expect(leaves(ws.tabOf(a.key)!.root)).toContain(paneOf(ws, mcp).key)
+    expect(ws.activeKey).toBe(other.key)
+    const tg = ws.openSession({ preset: 'claude', cwd: 'C:/work/app', from: 'host-a' }, { source: 'telegram' })
+    expect(paneOf(ws, tg).openedBy).toBeUndefined()
+    expect(ws.activeKey).toBe(paneOf(ws, tg).key)
+  })
+
+  it('focuses the pane already running a session, refuses one live elsewhere', () => {
+    const ws = useWorkspaceStore()
+    const running = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app', resume: id }, { source: 'menu' }))
+    ws.open('shell', 'C:/work/other')
+    expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app', resume: id }, { source: 'telegram' })).toEqual({ ok: true, paneKey: running.key })
+    expect(ws.activeKey).toBe(running.key)
+    expect(ws.sessionLive(id)).toBe(true)
+    // The agent quit (a shell again): its session is over and may be resumed in a new pane.
+    ws.update(running.key, { agent: 'shell' })
+    expect(ws.sessionLive(id)).toBe(false)
+    const elsewhere = '3d6f6a52-1b2c-4d3e-8f90-123456789abc'
+    useTerminalsStore().replaceAll([terminal({ claudeSessionId: elsewhere })])
+    expect(ws.sessionLive(elsewhere)).toBe(true)
+    expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app', resume: elsewhere }, { source: 'url' })).toEqual({ ok: false, error: 'live' })
+    useTerminalsStore().replaceAll([terminal({ claudeSessionId: elsewhere, endedAt: new Date().toISOString() })])
+    expect(ws.sessionLive(elsewhere)).toBe(false)
+    useTerminalsStore().replaceAll([terminal({ claudeSessionId: elsewhere, status: 'stale' })])
+    expect(ws.openSession({ preset: 'claude', cwd: 'C:/work/app', resume: elsewhere }, { source: 'url' }).ok).toBe(true)
+  })
+
+  it('refuses a disabled preset from every source', () => {
+    const ws = useWorkspaceStore()
+    for (const source of ['menu', 'mcp', 'url'] as const) expect(ws.openSession({ preset: 'deepseek', cwd: 'C:/work/app' }, { source })).toEqual({ ok: false, error: 'preset' })
+    expect(ws.launch('deepseek', 'C:/work/app')).toBeNull()
+  })
+
+  it('never resumes a minted id the agent has not run', async () => {
+    const ws = useWorkspaceStore()
+    const pane = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source: 'menu' }))
+    ws.update(pane.key, { sessionId: 'host-a', state: 'running' })
+    await nextTick()
+    const lastResume = (key: string): string | undefined =>
+      (JSON.parse(localStorage.getItem('ccm.workspace.last')!) as { panes: Array<{ key: string; resume?: string }> }).panes.find((p) => p.key === key)!.resume
+    expect(lastResume(pane.key)).toBeUndefined()
+    expect(ws.recordClosed([pane.key])!.tabs[0]!.panes[0]!.resume).toBeUndefined()
+
+    setActivePinia(createPinia())
+    const reloaded = useWorkspaceStore()
+    const kept = reloaded.panes.find((p) => p.key === pane.key)!
+    expect(kept.mintedSession).toBe(pane.mintedSession)
+    reloaded.update(kept.key, { mintedSession: undefined })
+    await nextTick()
+    expect(lastResume(pane.key)).toBe(pane.agentSessionId)
+    expect(reloaded.recordClosed([kept.key])!.tabs[0]!.panes[0]!.resume).toBe(pane.agentSessionId)
+  })
+
+  it('a session with no turn yet is never resumed, a session that took one is', async () => {
+    const sid = '0b3d9a7e-1111-4222-8333-444455556666'
+    expect(reopenAs({ preset: 'claude', agentSessionId: sid, untouchedSession: sid, cwd: '/a', liveCwd: '/a/b' })).toEqual({ preset: 'claude', cwd: '/a/b', resume: undefined })
+    expect(reopenAs({ preset: 'shell', agent: 'claude', agentSessionId: sid, untouchedSession: sid, cwd: '/a' })).toEqual({ preset: 'claude', cwd: '/a', resume: undefined })
+    expect(reopenAs({ preset: 'shell', agent: 'claude', agentSessionId: sid, cwd: '/a' })).toEqual({ preset: 'claude', cwd: '/a', resume: sid })
+
+    const ws = useWorkspaceStore()
+    const pane = paneOf(ws, ws.openSession({ preset: 'claude', cwd: 'C:/work/app' }, { source: 'menu' }))
+    ws.update(pane.key, { sessionId: 'host-a', state: 'running' })
+    const id = pane.agentSessionId!
+    const lastResume = (): string | undefined =>
+      (JSON.parse(localStorage.getItem('ccm.workspace.last')!) as { panes: Array<{ key: string; resume?: string }> }).panes.find((p) => p.key === pane.key)!.resume
+    // idle: seen by the monitor, no turn yet
+    expect(sessionLinkPatch(pane, id, false)).toBeNull()
+    await nextTick()
+    expect(lastResume()).toBeUndefined()
+    expect(ws.recordClosed([pane.key])!.tabs[0]!.panes[0]!.resume).toBeUndefined()
+    // /clear: a new id, still no turn
+    const cleared = '1c4e8b0f-2222-4333-8444-555566667777'
+    expect(sessionLinkPatch(pane, cleared, false)).toEqual({ agentSessionId: cleared, mintedSession: undefined, untouchedSession: cleared })
+    // first turn
+    expect(sessionLinkPatch(pane, id, true)).toEqual({ mintedSession: undefined, untouchedSession: undefined })
+    expect(sessionLinkPatch(pane, cleared, true)).toEqual({ agentSessionId: cleared, mintedSession: undefined, untouchedSession: undefined })
+    ws.update(pane.key, sessionLinkPatch(pane, id, true)!)
+    await nextTick()
+    expect(lastResume()).toBe(id)
+    expect(sessionLinkPatch(pane, id, true)).toBeNull()
   })
 })

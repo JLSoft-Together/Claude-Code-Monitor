@@ -28,6 +28,8 @@ vi.mock('../lib/desktop', () => ({
     runStart: (req: unknown) => bridge.runStart(req),
   },
   hasRun: true,
+  hasDeepSeek: false,
+  presetEnabled: (preset: string, deepseek: boolean) => preset !== 'deepseek' || deepseek,
 }))
 
 import { LOG_CAP, inRoot, isRunnable, useRunStore } from './run'

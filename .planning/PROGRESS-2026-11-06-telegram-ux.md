@@ -18,3 +18,7 @@ Nhật ký đợt việc, mới nhất ở cuối. Plan: `.planning/PLAN-2026-11
 ## Phiên 2026-11-06 11:5x (sau HANDOFF-1144) — chủ nhân: tiếp tục tối ưu UI/UX + chức năng mới
 - [x] Mở topic trong Telegram (`topicUrl`, nút ↗ trên dòng topic + hộp ✈), tìm theo tên topic/group (cả topic trống, tự mở group khi lọc), thanh tìm hiện khi > 8 topic, "Nối N project theo tên" (`suggestTopics`, 1 toast Hoàn tác), "Chuyển sang #X" cho topic đã xoá. typecheck sạch, web 1706/1706.
 - [x] Kéo-thả tự động trên cây `drop-tree.cjs`: #63 → #182 → Hoàn tác #63. Ảnh `docs/qa/telegram-2026-11-06/07,08-*.png`.
+- [x] Commit `495d3ee` (Telegram UX) + `d2c17e4` (viền focus pane chia đôi bị thanh cuộn che: TermPane `pr-0.5`).
+- [x] Plan cổng chung `.planning/PLAN-2026-11-06-unified-gateway.md` (chủ nhân: API = 1 cổng cho mọi nguồn kể cả agent Claude/Codex).
+- [x] GĐ1 (agent opus): `workspace.openSession` + `OPEN_POLICY` (`packages/shared/src/orreryApi.ts`), `sessionLive`, mint `--session-id` cho mọi pane claude (`mintedSession`, `resumeIdOf`), Telegram create/resume + App onPaneOpen qua cổng; docs §11ao. typecheck sạch, web 1714, desktop 1273. Thử thật bản dev: launch claude → id có ngay, terminal claudeSessionId trùng, cờ chờ xoá. CHƯA commit.
+- [x] GĐ Telegram + Workspace (agent opus): `useSessionActions` (resolveTarget/send/keys/tail/status), `lib/paneActions.ts` + `usePaneActions` (menu tab/rail/group chung), `telegramLinkCtx`. web 1726, desktop 1273. QA dev: menu tab + rail đủ mục, ✈ mở ngay khi pane còn starting (id tạo sẵn), đổi tên từ rail OK. CHƯA commit.

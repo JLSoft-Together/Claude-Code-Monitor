@@ -25,7 +25,7 @@ export const OPEN_IN_WORKSPACE_TOOL = {
 
 export type ViewError = InsideError | 'line' | 'diff' | 'rate'
 
-const ERRORS: Record<ViewError | 'unavailable' | 'caller' | 'failed' | 'limit', string> = {
+const ERRORS: Record<ViewError | 'unavailable' | 'caller' | 'failed' | 'limit' | 'target' | 'busy', string> = {
   path: 'path must be a file path (no UNC or device paths).',
   outside: "That file is outside this session's project folder; only files of the project can be shown.",
   missing: 'That file does not exist.',
@@ -37,6 +37,8 @@ const ERRORS: Record<ViewError | 'unavailable' | 'caller' | 'failed' | 'limit', 
   caller: 'This session is not an Orrery workspace pane the window knows.',
   limit: 'This session already has 4 file viewers with unsaved edits in its tab; ask the user to save or close one.',
   failed: 'Orrery could not show the file.',
+  target: 'Orrery could not do that.',
+  busy: 'Orrery could not do that.',
 }
 
 export const openInWorkspace: McpTool = {

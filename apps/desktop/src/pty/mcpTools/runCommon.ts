@@ -14,6 +14,8 @@ export const PAGE_ERRORS: Record<McpPageError, string> = {
   caller: 'This session is not an Orrery workspace pane the window knows.',
   limit: 'Orrery could not do that right now.',
   failed: 'Orrery could not do that.',
+  target: 'No such session in this project. Call list_sessions for the current ones.',
+  busy: 'That session already has a prompt waiting; try again once the user has sent it.',
 }
 
 export async function ask(host: ToolHost, call: PageAsk): Promise<McpPageResult> {

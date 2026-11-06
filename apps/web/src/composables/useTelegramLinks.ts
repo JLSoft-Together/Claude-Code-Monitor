@@ -1,11 +1,12 @@
 import { useI18n } from 'vue-i18n'
 import { isSessionId } from '@ccm/shared'
+import { telegramLinkCtx } from '../lib/paneActions'
 import { paneState, RAIL_BADGE, stateWord, type RailState } from '../lib/rail/railModel'
 import { hasTelegram } from '../lib/telegram'
 import { waitDisplay } from '../lib/wait'
 import { useTelegramStore } from '../stores/telegram'
 import { useUiStore } from '../stores/ui'
-import { isTerm, useWorkspaceStore, workCwd, type Pane } from '../stores/workspace'
+import { isTerm, useWorkspaceStore, type Pane } from '../stores/workspace'
 import { agentLive } from './useTelegramInbound'
 import { usePaneInfo } from './usePaneInfo'
 
@@ -24,9 +25,8 @@ export function useTelegramLinks(): (pane: Pane | undefined) => string | null {
 
 /** Opens the Telegram link dialog of a pane's agent session (the ✈ glyph on tabs and rail rows). */
 export function openTelegramLink(pane: Pane | undefined, name: string): void {
-  if (!pane || !isTerm(pane) || !isSessionId(pane.agentSessionId)) return
-  const cwd = workCwd(pane)
-  if (cwd) useUiStore().telegramLink = { cwd, session: pane.agentSessionId.toLowerCase(), name }
+  const ctx = telegramLinkCtx(pane, name)
+  if (ctx) useUiStore().telegramLink = ctx
 }
 
 export interface SessionLive {

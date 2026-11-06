@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { isAgentSessionId, type PtyPreset } from '../../../../packages/shared/src/pty'
 import { BASH_INIT_FILE } from './shellInit'
+import { shimPath } from './shim'
 
 export interface LaunchSpec {
   file: string
@@ -39,6 +40,10 @@ function agentCommand(preset: Exclude<PtyPreset, 'shell'>, win: boolean, resume?
   return opts.mcp ? `${base} --mcp-config ${win ? '$env:ORRERY_MCP_CONFIG' : '"$ORRERY_MCP_CONFIG"'}` : base
 }
 
+/** Page-minted id of a new claude pane; a resume or an open ticket already decides the session. */
+export const mintedSessionId = (preset: PtyPreset, session: unknown, resume: unknown, ticketed: boolean): string | undefined =>
+  preset === 'claude' && resume === undefined && !ticketed && isAgentSessionId(session) ? session : undefined
+
 export interface AgentOptions {
   sessionId?: string
   name?: string
@@ -47,6 +52,8 @@ export interface AgentOptions {
   deepseekMcpConfig?: string
   /** Shell panes only: per-session secret that turns on command marks; an E mark without it is not trusted. */
   shellNonce?: string
+  /** Shell panes only: folder of the `claude` / `codex` shims (shim.ts), put first on PATH. */
+  shimDir?: string
 }
 
 const isNonce = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{16,64}$/.test(v)
@@ -65,12 +72,15 @@ export const MCP_CONFIG_JSON = JSON.stringify({
  * Windows Terminal's OSC 9;9, bash/zsh via OSC 7. `initDir` holds the zsh startup wrappers (see shellInit.ts).
  */
 export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env: NodeJS.ProcessEnv, resume?: string, initDir?: string, opts?: AgentOptions): LaunchSpec {
+  const shim = preset === 'shell' ? shimEnv(env, platform, opts?.shimDir) : undefined
   if (platform === 'win32') {
     const file = windowsPowerShell(env.SystemRoot ?? env.SYSTEMROOT)
     const nonce = preset === 'shell' && isNonce(opts?.shellNonce) ? opts.shellNonce : undefined
+    const shellHook = shim ? `${PS_CWD_HOOK}\n${PS_SHIM_FIRST}` : PS_CWD_HOOK
     if (nonce)
-      return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(`${PS_CWD_HOOK}\n${PS_SHELL_INTEGRATION}`)], env: { ORRERY_SI_NONCE: nonce }, integrated: true }
-    const script = preset === 'shell' ? PS_CWD_HOOK : `${PS_CWD_HOOK}; ${agentCommand(preset, true, resume, opts)}`
+      return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(`${shellHook}\n${PS_SHELL_INTEGRATION}`)], env: { ...shim, ORRERY_SI_NONCE: nonce }, integrated: true }
+    if (preset === 'shell') return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(shellHook)], ...(shim ? { env: shim } : {}) }
+    const script = `${PS_CWD_HOOK}; ${agentCommand(preset, true, resume, opts)}`
     const extra = agentEnv(preset, opts)
     // Encoded: no quoting rules between node-pty's command line and PowerShell's parser to get wrong.
     return { file, args: ['-NoLogo', '-NoExit', '-EncodedCommand', encodePowerShell(script)], ...(extra ? { env: extra } : {}) }
@@ -81,9 +91,9 @@ export function presetCommand(preset: PtyPreset, platform: NodeJS.Platform, env:
     const nonce = isNonce(opts?.shellNonce) ? opts.shellNonce : undefined
     const name = path.posix.basename(shell)
     if (nonce && name === 'bash' && initDir)
-      return { file: shell, args: ['--init-file', path.posix.join(initDir, BASH_INIT_FILE), '-i'], env: { ...hook.env, ORRERY_SI_NONCE: nonce }, integrated: true }
-    if (nonce && name === 'zsh' && hook.env?.ZDOTDIR) return { file: shell, args: ['-l'], env: { ...hook.env, ORRERY_SI_NONCE: nonce }, integrated: true }
-    return { file: shell, args: ['-l'], env: hook.env }
+      return { file: shell, args: ['--init-file', path.posix.join(initDir, BASH_INIT_FILE), '-i'], env: { ...hook.env, ...shim, ORRERY_SI_NONCE: nonce }, integrated: true }
+    if (nonce && name === 'zsh' && hook.env?.ZDOTDIR) return { file: shell, args: ['-l'], env: { ...hook.env, ...shim, ORRERY_SI_NONCE: nonce }, integrated: true }
+    return { file: shell, args: ['-l'], env: shim ? { ...hook.env, ...shim } : hook.env }
   }
   const extra = agentEnv(preset, opts)
   return { file: shell, args: ['-l', '-i', '-c', `${agentCommand(preset, false, resume, opts)}; ${hook.reexec}${shell} -l`], env: extra ? { ...hook.env, ...extra } : hook.env }
@@ -105,6 +115,11 @@ export function codewhalePath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform,
     : [p.join(home, '.codewhale', 'bin'), p.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
   const extra = dirs.filter((d): d is string => !!d && p.isAbsolute(d) && !have.has(win ? d.toLowerCase() : d) && exists(d))
   return extra.length ? { [key]: [...current, ...extra].join(sep) } : {}
+}
+
+function shimEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, dir: string | undefined): Record<string, string> | undefined {
+  const abs = platform === 'win32' ? path.win32.isAbsolute(dir ?? '') : path.posix.isAbsolute(dir ?? '')
+  return dir && abs ? { ...shimPath(env, platform, dir), ORRERY_SHIM_DIR: dir } : undefined
 }
 
 function agentEnv(preset: PtyPreset, opts: AgentOptions | undefined): Record<string, string> | undefined {
@@ -170,6 +185,10 @@ export const PS_SHELL_INTEGRATION = [
   '}',
   '} catch { }',
 ].join('\n')
+
+// A profile that rebuilds $env:Path (machine + user values) would drop the shim folder the pane started with.
+export const PS_SHIM_FIRST =
+  "if ($env:ORRERY_SHIM_DIR) { $env:Path = (@($env:ORRERY_SHIM_DIR) + @($env:Path -split ';' | Where-Object { $_ -and $_ -ne $env:ORRERY_SHIM_DIR })) -join ';' }"
 
 export const encodePowerShell = (script: string): string => Buffer.from(script, 'utf16le').toString('base64')
 

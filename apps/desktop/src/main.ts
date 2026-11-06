@@ -74,7 +74,7 @@ import { confirmLines, fixtureKill, killTreeByPid, liveStarts, planKill } from '
 import { readProcRows } from './resources/agentPorts'
 import { createDesk } from './mcpDesk'
 import type { McpDeskCall } from '../../../packages/shared/src/mcpDesk'
-import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, parseTelegramEpisode, parseInboundResult, formatGb, type TelegramInbound, type TelegramInboundResult, type ResKillResult, type ResourceReport } from '@ccm/shared'
+import { isRunLive, parseBusy, parseKillTargets, parsePhoneEpisode, parseTelegramEpisode, parseInboundResult, formatGb, type ResKillResult, type ResourceReport } from '@ccm/shared'
 import { AWAKE_FILE, KeepAwake, readAwakeMode, writeAwakeMode } from './power/awake'
 import { CAPTURE_FILE } from './capture/files'
 import { CaptureFolder } from './capture/folder'
@@ -91,8 +91,9 @@ import { projectDiff, saveInbound } from './telegram/host'
 import { needsTrust } from './run/configs'
 import { commandFile, commandInstalled, installCommand, RECEIVE_COMMAND } from './telegram/command'
 import { LOCAL_SNAPSHOT_JS, registerBackupIpc } from './backup/ipc'
-import type { PaneOpenRequest, PaneOpenResult } from '../../../packages/shared/src/pty'
-import type { AgentNoteMessage, McpPageCall } from '../../../packages/shared/src/mcpCall'
+import type { AgentNoteMessage } from '../../../packages/shared/src/mcpCall'
+import { TELEGRAM_INBOUND_ACTION } from '../../../packages/shared/src/orreryApi'
+import { createOrrery, createPageAsker, type OrreryCall } from './orreryApi'
 import { AgentDataService } from './agentData/service'
 import { MoveStore, freeBytes, isLocalDir } from './agentData/move'
 import { agentProcs } from './agentData/procs'
@@ -819,24 +820,6 @@ function paneHandles(terminalId: string): Promise<boolean> {
   })
 }
 
-function askPageMcp(call: McpPageCall): Promise<unknown> {
-  const contents = mainWindow?.webContents
-  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
-    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
-      if (event.sender === contents && id === call.id && isAppFrame(event)) done(result)
-    }
-    const done = (result: unknown): void => {
-      clearTimeout(timer)
-      ipcMain.removeListener('ccm:mcp-reply', onReply)
-      resolve(result)
-    }
-    ipcMain.on('ccm:mcp-reply', onReply)
-    contents.send('ccm:mcp-call', call)
-  })
-}
-
 /** device_screenshot needs adb and the capture folder, both in main: the page is not asked. */
 function screenshotMcp(call: { cwd: string; serial?: string }): Promise<unknown> {
   const devices = deviceManager
@@ -875,38 +858,36 @@ const desk: (call: McpDeskCall) => Promise<unknown> = createDesk({
   },
 })
 
-/** notify_owner: the page files it in the Inbox and names the pane; the toast / phone go through the collector either way. */
-async function pageMcp(call: McpPageCall): Promise<unknown> {
-  if (call.tool === 'device_screenshot') return screenshotMcp(call)
-  const res = await askPageMcp(call)
-  if (call.tool !== 'notify_owner') return res
-  const r = (res && typeof res === 'object' ? res : {}) as { ok?: unknown; name?: unknown; terminalId?: unknown; inbox?: unknown }
-  // Only a pane the page knows may reach the toasts / phone.
-  if (r.ok !== true) return res
-  const named = typeof r.name === 'string' && r.name ? r.name : path.basename(call.cwd) || 'Agent'
-  const terminalId = typeof r.terminalId === 'string' ? r.terminalId : undefined
-  const note: AgentNoteMessage = { type: 'agent.note', episode: call.id, level: call.level, text: call.text, name: named, ...(terminalId ? { terminalId } : {}), merged: call.merged }
-  host?.post(note)
-  return { ok: true, name: named, ...(terminalId ? { terminalId } : {}), inbox: r.inbox === true }
-}
+const askPage = createPageAsker<Electron.IpcMainEvent>({
+  target: () => {
+    const contents = mainWindow?.webContents
+    return contents && !contents.isDestroyed() && !showingError && isAppUrl(contents.getURL()) ? contents : null
+  },
+  on: (channel, listener) => ipcMain.on(channel, listener),
+  off: (channel, listener) => ipcMain.removeListener(channel, listener),
+  trusted: isAppFrame,
+  timeoutMs: PANE_OPEN_MS,
+})
 
-function pageOpen(req: PaneOpenRequest): Promise<PaneOpenResult> {
-  const contents = mainWindow?.webContents
-  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
-    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
-      if (event.sender === contents && id === req.id && isAppFrame(event)) done(paneOpenResult(result))
-    }
-    const done = (result: PaneOpenResult): void => {
-      clearTimeout(timer)
-      ipcMain.removeListener('ccm:pane-open-reply', onReply)
-      resolve(result)
-    }
-    ipcMain.on('ccm:pane-open-reply', onReply)
-    contents.send('ccm:pane-open', req)
-  })
-}
+/** Orrery API (docs §11ao): MCP tools, agent-monitor://open and the Telegram bot all go through this one call. */
+const orrery: OrreryCall = createOrrery({
+  page: askPage,
+  desk: (call) => desk(call),
+  main: { 'device.screenshot': (call) => screenshotMcp(call) },
+  newId: randomUUID,
+  after: {
+    // notify_owner: the page files it in the Inbox and names the pane; only a pane the page knows reaches the toasts / phone.
+    'owner.notify': (res, call) => {
+      const r = (res && typeof res === 'object' ? res : {}) as { ok?: unknown; name?: unknown; terminalId?: unknown; inbox?: unknown }
+      if (r.ok !== true) return res
+      const named = typeof r.name === 'string' && r.name ? r.name : path.basename(call.cwd) || 'Agent'
+      const terminalId = typeof r.terminalId === 'string' ? r.terminalId : undefined
+      const note: AgentNoteMessage = { type: 'agent.note', episode: call.id, level: call.level, text: call.text, name: named, ...(terminalId ? { terminalId } : {}), merged: call.merged }
+      host?.post(note)
+      return { ok: true, name: named, ...(terminalId ? { terminalId } : {}), inbox: r.inbox === true }
+    },
+  },
+})
 
 function openFromLink(raw: string): Promise<void> {
   const link = parseOpenLink(raw, process.platform)
@@ -924,7 +905,7 @@ async function openLinkPane(link: OpenLink): Promise<void> {
     await dialog.showMessageBox(win, { type: 'warning', message: t.linkOpenBadFolder, detail: link.cwd })
     return
   }
-  const result = await pageOpen({ id: randomUUID(), preset: link.preset, cwd, resume: link.resume })
+  const result = paneOpenResult(await orrery('session.open', { id: randomUUID(), preset: link.preset, cwd, ...(link.resume ? { resume: link.resume } : {}) }, { source: 'url' }))
   if (!result.ok && result.error !== 'setup') await dialog.showMessageBox(win, { type: 'warning', message: result.error === 'live' ? t.linkOpenLive : t.linkOpenFailed })
 }
 
@@ -1184,7 +1165,7 @@ function setupTelegram(): void {
     base: e2eOverride(process.env.CCM_TELEGRAM_URL_OVERRIDE),
     commandInstalled: () => commandInstalled(),
     receiveInstalled: () => commandInstalled(undefined, RECEIVE_COMMAND),
-    askPage: askPageTelegram,
+    askPage: async (req) => parseInboundResult(await orrery(TELEGRAM_INBOUND_ACTION[req.action], req, { source: 'telegram' })),
     bigUploader,
     userScanner,
     diff: (cwd) => projectDiff(cwd, os.homedir(), process.platform),
@@ -1242,24 +1223,6 @@ function setupTelegram(): void {
     void userScanner.close()
     off()
   }
-}
-
-function askPageTelegram(req: TelegramInbound): Promise<TelegramInboundResult> {
-  const contents = mainWindow?.webContents
-  if (!contents || contents.isDestroyed() || showingError || !isAppUrl(contents.getURL())) return Promise.resolve({ ok: false, error: 'unavailable' })
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => done({ ok: false, error: 'unavailable' }), PANE_OPEN_MS)
-    const onReply = (event: Electron.IpcMainEvent, id: unknown, result: unknown): void => {
-      if (event.sender === contents && id === req.id && isAppFrame(event)) done(parseInboundResult(result))
-    }
-    const done = (result: TelegramInboundResult): void => {
-      clearTimeout(timer)
-      ipcMain.removeListener('ccm:telegram-inbound-reply', onReply)
-      resolve(result)
-    }
-    ipcMain.on('ccm:telegram-inbound-reply', onReply)
-    contents.send('ccm:telegram-inbound', req)
-  })
 }
 
 /** v76 R7: agent data sizes, cache clean, image strip, move to another drive (docs §11al). */
@@ -1448,9 +1411,7 @@ async function ready(): Promise<void> {
     origins: [...new Set([ORIGIN, PAGE_ORIGIN])],
     logFile: path.join(app.getPath('logs'), 'pty.log'),
     shellInitDir: path.join(DATA_DIR, 'shell-init'),
-    onOpen: pageOpen,
-    onMcp: pageMcp,
-    onDesk: (call) => desk(call),
+    onOrrery: orrery,
     mcpConfig: path.join(DATA_DIR, 'orrery-mcp.json'),
   })
   // The token is the only gate on a shell; hand it out to top-level app frames only.

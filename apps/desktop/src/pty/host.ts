@@ -29,8 +29,9 @@ import { mcpToolsFor } from './mcpTools'
 import { NoteQueue } from './mcpTools/notifyOwner'
 import type { NoteOutcome } from './mcpTools/types'
 import { ownersOf, readPidTable } from './owners'
-import { childEnv, clampDim, codewhalePath, earlyExitNote, isPaneName, MCP_CONFIG_JSON, presetCommand, presetEnabled, taskkillPath } from './presets'
+import { childEnv, clampDim, codewhalePath, earlyExitNote, isPaneName, MCP_CONFIG_JSON, mintedSessionId, presetCommand, presetEnabled, taskkillPath } from './presets'
 import { writeShellInit } from './shellInit'
+import { shimDirFor, writeShims } from './shim'
 
 // Native module ships outside the bundle (resources/pty in a packaged app), so it is required by path.
 const pty = require(process.env.CCM_NODE_PTY || '@lydell/node-pty') as typeof import('@lydell/node-pty')
@@ -48,6 +49,8 @@ const RESUME_AT = 128 * 1024
 const INIT_DIR = !IS_WIN && process.env.CCM_PTY_INIT_DIR && writeShellInit(process.env.CCM_PTY_INIT_DIR) ? process.env.CCM_PTY_INIT_DIR : undefined
 const MCP_FILE = process.env.CCM_PTY_MCP_CONFIG ?? ''
 const MCP_READY = writeMcpConfig(MCP_FILE)
+const SHIM_BASE = shimDirFor(process.env.CCM_PTY_INIT_DIR, MCP_FILE)
+const SHIM_DIR = SHIM_BASE && writeShims(SHIM_BASE) ? SHIM_BASE : undefined
 // Owner pause (2026-11-03): no DeepSeek pane, MCP tool or Codewhale run until CCM_DEEPSEEK_FEATURE=1.
 const DEEPSEEK = process.env.CCM_DEEPSEEK_FEATURE === '1'
 const MCP_TOOL_SET = mcpToolsFor(DEEPSEEK)
@@ -163,11 +166,11 @@ function flush(s: Session): void {
   }
 }
 
-function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket, integrate = false): Session {
+function spawn(preset: PtyPreset, cols: number, rows: number, cwd: string, resume?: string, ticket?: Ticket, integrate = false, minted?: string, shim = false): Session {
   const token = randomBytes(32).toString('hex')
   const shellNonce = preset === 'shell' && integrate ? randomBytes(16).toString('hex') : undefined
   const mcp = preset === 'deepseek' ? DEEPSEEK && MCP_READY && writeDeepseekMcpConfig(DEEPSEEK_MCP_FILE, PORT, process.env, os.homedir()) : MCP_READY
-  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId, name: ticket?.name, mcp, deepseekMcpConfig: DEEPSEEK_MCP_FILE, shellNonce })
+  const spec = presetCommand(preset, process.platform, process.env, resume, INIT_DIR, { sessionId: ticket?.sessionId ?? minted, name: ticket?.name, mcp, deepseekMcpConfig: DEEPSEEK_MCP_FILE, shellNonce, shimDir: preset === 'shell' && shim ? SHIM_DIR : undefined })
   const pathFix = preset === 'deepseek' && DEEPSEEK ? codewhalePath(process.env, process.platform, os.homedir(), isDir) : {}
   const env = { ...childEnv(process.env), ...pathFix, ...spec.env, ORRERY_API: `http://127.0.0.1:${PORT}`, ORRERY_TOKEN: token, ...(MCP_READY ? { ORRERY_MCP_CONFIG: MCP_FILE } : {}) }
   const proc = pty.spawn(spec.file, spec.args, { name: 'xterm-256color', cols, rows, cwd, env, useConptyDll: false })
@@ -392,9 +395,10 @@ function onText(ws: WebSocket, current: Session | null, raw: string): Session | 
     if (liveCount() >= MAX_LIVE) return send(ws, { t: 'error', message: 'limit' }), null
     if (msg.resume !== undefined && (msg.preset === 'shell' || !isAgentSessionId(msg.resume))) return send(ws, { t: 'error', message: 'preset' }), null
     const ticket = typeof msg.open === 'string' ? takeTicket(msg.open, msg.preset) : undefined
+    const minted = mintedSessionId(msg.preset, msg.session, msg.resume, msg.open !== undefined)
     let s: Session
     try {
-      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume, ticket, msg.integrate === true)
+      s = spawn(msg.preset, clampDim(msg.cols, 80), clampDim(msg.rows, 24), cwd, msg.resume, ticket, msg.integrate === true, minted, msg.shim === true)
     } catch (err) {
       console.error('spawn failed:', err)
       return send(ws, { t: 'error', message: 'spawn' }), null

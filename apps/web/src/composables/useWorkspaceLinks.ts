@@ -4,7 +4,7 @@ import { PtyConnection } from '../lib/ptyClient'
 import { effectiveStatus, runningSubagents } from '../lib/subagents'
 import { useAgentsStore } from '../stores/agents'
 import { useTerminalsStore } from '../stores/terminals'
-import { agentNow, useWorkspaceStore } from '../stores/workspace'
+import { agentNow, sessionLinkPatch, useWorkspaceStore } from '../stores/workspace'
 
 const RETRY_MS = 10_000
 // Host caches its process table 1.5 s; a "not ours" answer only counts once the table is surely newer than the agent.
@@ -68,17 +68,22 @@ export function useWorkspaceLinks(viewShown: () => boolean): void {
   )
 
   // /clear and resume switch the session id under the same process; a later restore must pick the latest.
+  // An id only names a transcript once the session took a turn; every prompt passes through `working`, while a dialog
+  // (/mcp, trust) also reads `waiting` without writing a transcript.
   watch(
     () => workspace.panes.map((p) => {
       const term = p.terminalId ? terminals.byId[p.terminalId] : undefined
       // Codewhale's id format is not verified; only a UUID is ever handed to `-r`.
       const deepseek = isAgentSessionId(term?.deepseekSessionId) ? term?.deepseekSessionId : undefined
-      return [p.key, term?.claudeSessionId ?? term?.codexSessionId ?? deepseek] as const
+      const turned = term?.status === 'working'
+      return [p.key, term?.claudeSessionId ?? term?.codexSessionId ?? deepseek, turned] as const
     }),
-    (pairs) => {
-      for (const [key, id] of pairs) {
+    (rows) => {
+      for (const [key, id, turned] of rows) {
         const pane = workspace.panes.find((p) => p.key === key)
-        if (id && pane && pane.agentSessionId !== id) workspace.update(key, { agentSessionId: id })
+        if (!id || !pane) continue
+        const patch = sessionLinkPatch(pane, id, turned)
+        if (patch) workspace.update(key, patch)
       }
     },
   )
