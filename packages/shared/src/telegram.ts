@@ -109,6 +109,28 @@ export interface TelegramState {
   members: TelegramMember[]
   /** In memory only: the last people (not owner, not member) who mentioned the bot, newest first, so the owner can add them. */
   recentStrangers: TelegramStrangerSeen[]
+  /** Display name of the owner's Telegram account signed in to read forum topic lists; null when none. */
+  userAccount?: string | null
+}
+
+export type TelegramUserError = 'keys' | 'keychain' | 'phone' | 'code' | 'password' | 'expired' | 'flood' | 'auth' | 'network' | 'failed'
+export type TelegramUserInput = { action: 'code'; phone: string } | { action: 'signin'; code: string } | { action: 'password'; password: string } | { action: 'logout' }
+export type TelegramUserResult = { ok: true; state: TelegramState; next?: 'code' | 'password' } | { ok: false; error: TelegramUserError }
+
+export function sanitizeTelegramUser(raw: unknown): TelegramUserInput | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  if (r.action === 'logout') return { action: 'logout' }
+  if (r.action === 'code' && typeof r.phone === 'string') {
+    const phone = r.phone.replace(/[\s().-]/g, '')
+    return /^\+?\d{6,16}$/.test(phone) ? { action: 'code', phone: phone.startsWith('+') ? phone : `+${phone}` } : null
+  }
+  if (r.action === 'signin' && typeof r.code === 'string') {
+    const code = r.code.replace(/\D/g, '')
+    return /^\d{4,8}$/.test(code) ? { action: 'signin', code } : null
+  }
+  if (r.action === 'password' && typeof r.password === 'string' && r.password.length > 0 && r.password.length <= 256) return { action: 'password', password: r.password }
+  return null
 }
 
 /** `read`: status / last / tail / help and the 💬 📜 📄 buttons. `full`: everything but pairing, topic links, the off-time backlog and the Allow / Deny buttons. */

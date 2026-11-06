@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { TelegramChat, TelegramCommandResult, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
+import type { TelegramUserInput, TelegramUserResult, TelegramChat, TelegramCommandResult, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
 import {
   hasTelegram,
   onTelegram,
@@ -17,6 +17,7 @@ import {
   telegramState,
   telegramTest,
   telegramUnpair,
+  telegramUser,
 } from '../lib/telegram'
 
 export const useTelegramStore = defineStore('telegram', () => {
@@ -24,6 +25,9 @@ export const useTelegramStore = defineStore('telegram', () => {
   const chats = shallowRef<TelegramChat[] | null>(null)
   const chatId = ref<string | null>(null)
   const busy = ref(false)
+  const scanning = ref(false)
+  /** A live scan ran this app run; until then `chats` may be the remembered list. */
+  const fresh = ref(false)
   let started = false
 
   const ready = computed(() => hasTelegram && !!state.value?.configured)
@@ -64,6 +68,11 @@ export const useTelegramStore = defineStore('telegram', () => {
     }
     return res
   }
+  const user = async (input: TelegramUserInput): Promise<TelegramUserResult> => {
+    const res = await telegramUser(input)
+    if (res.ok) state.value = res.state
+    return res
+  }
   const pair = async (on: boolean): Promise<TelegramSetResult> => keep(await telegramPair(on))
   const unpair = async (): Promise<TelegramSetResult> => keep(await telegramUnpair())
   const installReceive = async (): Promise<TelegramCommandResult> => keep(await telegramInstallReceive())
@@ -71,16 +80,34 @@ export const useTelegramStore = defineStore('telegram', () => {
   const receiving = computed(() => !!state.value?.receiving)
   const test = (project?: string, session?: string): Promise<TelegramTestResult> => telegramTest(project, session)
 
+  const pickChat = (list: TelegramChat[]): void => {
+    if (list.some((c) => c.chatId === chatId.value)) return
+    const routed = state.value?.routes.find((r) => list.some((c) => c.chatId === r.chatId))?.chatId
+    chatId.value = routed ?? list.find((c) => c.isForum)?.chatId ?? list[0]?.chatId ?? null
+  }
+
   async function discover(): Promise<TelegramDiscoverResult> {
-    const res = await telegramDiscover()
+    scanning.value = true
+    const res = await telegramDiscover().finally(() => (scanning.value = false))
     if (res.ok) {
+      fresh.value = true
       chats.value = res.chats
-      if (!res.chats.some((c) => c.chatId === chatId.value)) {
-        const routed = state.value?.routes.find((r) => res.chats.some((c) => c.chatId === r.chatId))?.chatId
-        chatId.value = routed ?? res.chats.find((c) => c.isForum)?.chatId ?? res.chats[0]?.chatId ?? null
-      }
+      pickChat(res.chats)
     }
     return res
+  }
+
+  /** Shows the remembered groups at once, then refreshes them with one live scan per app run. */
+  async function ensureChats(): Promise<void> {
+    if (!state.value?.configured) return
+    if (chats.value === null) {
+      const res = await telegramDiscover(true)
+      if (res.ok && res.chats.length && chats.value === null) {
+        chats.value = res.chats
+        pickChat(res.chats)
+      }
+    }
+    if (!fresh.value && !scanning.value) await discover()
   }
 
   async function toggle(on = !enabled.value): Promise<TelegramSetResult> {
@@ -92,5 +119,5 @@ export const useTelegramStore = defineStore('telegram', () => {
     }
   }
 
-  return { state, chats, chatId, chat, busy, ready, enabled, start, reload, set, routeSet, routeRemove, sessionRouteSet, sessionRouteRemove, installCommand, createTopic, test, discover, toggle, pair, unpair, installReceive, setReceiving, receiving }
+  return { state, user, chats, chatId, chat, busy, scanning, fresh, ready, ensureChats, enabled, start, reload, set, routeSet, routeRemove, sessionRouteSet, sessionRouteRemove, installCommand, createTopic, test, discover, toggle, pair, unpair, installReceive, setReceiving, receiving }
 })

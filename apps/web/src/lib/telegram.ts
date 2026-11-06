@@ -1,4 +1,4 @@
-import type { TelegramCommandResult, TelegramCreateTopicInput, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramError, TelegramPaneLink, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
+import type { TelegramTopic, TelegramUserInput, TelegramUserResult, TelegramCommandResult, TelegramCreateTopicInput, TelegramCreateTopicResult, TelegramDiscoverResult, TelegramError, TelegramPaneLink, TelegramPatch, TelegramRouteInput, TelegramSessionRouteInput, TelegramSetResult, TelegramState, TelegramTestResult } from '@ccm/shared'
 import { desktop } from './desktop'
 
 export type TelegramEvent = { state: TelegramState } | { failed: TelegramError }
@@ -13,8 +13,9 @@ interface TelegramBridge {
   telegramPanes?: (links: TelegramPaneLink[]) => Promise<boolean>
   telegramTest?: (project?: string, session?: string) => Promise<TelegramTestResult>
   telegramInstallCommand?: () => Promise<TelegramCommandResult>
-  telegramDiscover?: () => Promise<TelegramDiscoverResult>
+  telegramDiscover?: (cached?: boolean) => Promise<TelegramDiscoverResult>
   telegramCreateTopic?: (input: TelegramCreateTopicInput) => Promise<TelegramCreateTopicResult>
+  telegramUser?: (input: TelegramUserInput) => Promise<TelegramUserResult>
   telegramPair?: (on: boolean) => Promise<TelegramSetResult>
   telegramUnpair?: () => Promise<TelegramSetResult>
   telegramInstallReceive?: () => Promise<TelegramCommandResult>
@@ -38,9 +39,10 @@ export const telegramTest = (project?: string, session?: string): Promise<Telegr
   quiet(bridge?.telegramTest?.(project, session), { ok: false, error: 'network' } as TelegramTestResult)
 export const telegramInstallCommand = (): Promise<TelegramCommandResult> =>
   quiet(bridge?.telegramInstallCommand?.(), { ok: false, error: 'failed' } as TelegramCommandResult)
-export const telegramDiscover = (): Promise<TelegramDiscoverResult> => quiet(bridge?.telegramDiscover?.(), { ok: false, error: 'network' } as TelegramDiscoverResult)
+export const telegramDiscover = (cached = false): Promise<TelegramDiscoverResult> => quiet(bridge?.telegramDiscover?.(cached), { ok: false, error: 'network' } as TelegramDiscoverResult)
 export const telegramCreateTopic = (input: TelegramCreateTopicInput): Promise<TelegramCreateTopicResult> =>
   quiet(bridge?.telegramCreateTopic?.(input), { ok: false, error: 'network' } as TelegramCreateTopicResult)
+export const telegramUser = (input: TelegramUserInput): Promise<TelegramUserResult> => quiet(bridge?.telegramUser?.(input), { ok: false, error: 'failed' } as TelegramUserResult)
 export const telegramPair = (on: boolean): Promise<TelegramSetResult> => quiet(bridge?.telegramPair?.(on), setFailed)
 export const telegramUnpair = (): Promise<TelegramSetResult> => quiet(bridge?.telegramUnpair?.(), setFailed)
 export const telegramInstallReceive = (): Promise<TelegramCommandResult> =>
@@ -71,4 +73,32 @@ export function projectChoices(dirs: (string | undefined | null)[], taken: strin
     out.push(d.replace(/[\\/]+$/, '') || d)
   }
   return out.sort((a, b) => projectLabel(a).localeCompare(projectLabel(b)))
+}
+
+const nameKey = (s: string): string => s.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '')
+
+/** The topic named like the project (exact, else containing its name), for one-click setup. */
+export function suggestTopic(topics: readonly TelegramTopic[], project: string): TelegramTopic | null {
+  const p = nameKey(project)
+  if (!p) return null
+  return topics.find((x) => nameKey(x.name) === p) ?? (p.length >= 3 ? topics.find((x) => nameKey(x.name).includes(p)) : undefined) ?? null
+}
+
+/** t.me link that opens a supergroup topic in the Telegram app; General is thread 1. */
+export function topicUrl(chatId: string, threadId: number | null): string | null {
+  const m = /^-100(\d+)$/.exec(chatId)
+  return m ? `https://t.me/c/${m[1]}/${threadId ?? 1}` : null
+}
+
+/** Name matches for several projects at once, each topic used once (first project wins). */
+export function suggestTopics<P>(projects: readonly P[], topics: readonly TelegramTopic[], name: (p: P) => string): { project: P; topic: TelegramTopic }[] {
+  const left = [...topics]
+  const out: { project: P; topic: TelegramTopic }[] = []
+  for (const p of projects) {
+    const topic = suggestTopic(left, name(p))
+    if (!topic) continue
+    left.splice(left.indexOf(topic), 1)
+    out.push({ project: p, topic })
+  }
+  return out
 }

@@ -38,13 +38,14 @@ import {
   type TelegramTestResult,
 } from '@ccm/shared'
 import { createHash, randomInt, randomUUID } from 'node:crypto'
-import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget } from '@ccm/shared'
+import { DEFAULT_TELEGRAM_QUIET, DEFAULT_TELEGRAM_SUMMARY, inboundPrompt, maskSecrets, TELEGRAM_TAIL_DEFAULT, TELEGRAM_TAIL_MAX, inTelegramQuiet, isHhmm, type TelegramInbound, type TelegramInboundResult, type TelegramKey, type TelegramOwner, type TelegramHealth, type TelegramPaneInfo, type TelegramQuiet, type TelegramSummary, type TelegramTarget, type TelegramUserInput, type TelegramUserResult } from '@ccm/shared'
 import { ACT_TEXT, ACTION_RE, viaTelegram, MORE_TEXT, dayKey, emptyCounts, FILE_KIND, hhmmMinute, markup, minuteOfDay, PLAN_LABELS, PROMPTS, summaryHtml, type ActionEntry, type ActionKind, type DayCounts, type Markup } from './actions'
 import { isInsideOrSame } from '../agentData/fsTree'
 import { COMMAND_MENU, commandOf, paneStatus, readMessage, resultHtml, tailHtml, TEXT as INBOUND_TEXT, type TgFile, type TgMessage } from './inbound'
 import type { TokenCrypt } from '../github/accounts'
 import { RateLimiter } from '../phone/send'
 import type { BigUploadCreds, BigUploader } from './mtproto'
+import type { UserScanKeys, UserScanner } from './userScan'
 import {
   API_BASE,
   CAPTION_MAX,
@@ -113,6 +114,8 @@ interface KnownChat {
   title: string
   isForum: boolean
   topics: Record<string, string>
+  botAdmin?: boolean
+  canManageTopics?: boolean
 }
 
 interface FileShape {
@@ -147,6 +150,8 @@ interface FileShape {
   apiId?: number
   apiHash?: string
   mtSession?: string
+  userSession?: string
+  userName?: string
 }
 
 interface Pin {
@@ -179,6 +184,7 @@ export interface TelegramDeps {
   onState?: (state: TelegramState) => void
   onFailure?: (error: TelegramError) => void
   bigUploader?: BigUploader
+  userScanner?: UserScanner
 }
 
 export type SendOutcome = { ok: true; topic: string; file?: string; linkOnly?: boolean; uploading?: boolean } | { ok: false; error: TelegramError | 'telegram-off' | 'telegram-config' | 'no-topic' | 'outside' | 'missing' | 'secret' }
@@ -282,7 +288,7 @@ function readKnown(raw: unknown): Record<string, KnownChat> {
     const topics: Record<string, string> = {}
     if (o.topics && typeof o.topics === 'object')
       for (const [t, n] of Object.entries(o.topics as Record<string, unknown>).slice(0, KNOWN_TOPICS_MAX)) if (/^\d{1,10}$/.test(t) && typeof n === 'string') topics[t] = n.slice(0, 128)
-    out[id] = { title: typeof o.title === 'string' ? o.title.slice(0, 120) : id, isForum: o.isForum === true, topics }
+    out[id] = { title: typeof o.title === 'string' ? o.title.slice(0, 120) : id, isForum: o.isForum === true, topics, botAdmin: o.botAdmin === true, canManageTopics: o.canManageTopics === true }
   }
   return out
 }
@@ -319,6 +325,8 @@ function readShape(file: string | undefined): FileShape {
       ...(Number.isSafeInteger(raw.apiId) && (raw.apiId as number) > 0 ? { apiId: raw.apiId } : {}),
       ...(typeof raw.apiHash === 'string' && raw.apiHash.length < 4096 ? { apiHash: raw.apiHash } : {}),
       ...(typeof raw.mtSession === 'string' && raw.mtSession.length < 8192 ? { mtSession: raw.mtSession } : {}),
+      ...(typeof raw.userSession === 'string' && raw.userSession.length < 8192 ? { userSession: raw.userSession } : {}),
+      ...(typeof raw.userName === 'string' ? { userName: raw.userName.slice(0, 64) } : {}),
       ...(typeof raw.summaryDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.summaryDay) ? { summaryDay: raw.summaryDay } : {}),
       ...(raw.owner && typeof raw.owner.id === 'number' && Number.isSafeInteger(raw.owner.id) && typeof raw.owner.name === 'string' ? { owner: { id: raw.owner.id, name: raw.owner.name.slice(0, 80) } } : {}),
     }
@@ -471,6 +479,7 @@ export class TelegramNotifier {
       pinStatus: this.data.pinStatus,
       topicIcons: this.data.topicIcons,
       health: { ...this.health },
+      userAccount: this.data.userSession ? (this.data.userName ?? 'Telegram') : null,
       bigFiles: { enabled: this.data.bigFiles, apiId: this.data.apiId ?? null, hasHash: this.sealed(this.data.apiHash) !== null },
       sessionRoutes: this.data.sessionRoutes.map((r) => ({ ...r, where: this.topicName(r), ...(this.isBroken(r) ? { broken: true } : {}) })),
       stranger: { ...this.data.stranger },
@@ -568,7 +577,10 @@ export class TelegramNotifier {
       this.data.mtSession = undefined
     }
     if (patch.apiId !== undefined) {
-      if ((patch.apiId ?? undefined) !== this.data.apiId) this.data.mtSession = undefined
+      if ((patch.apiId ?? undefined) !== this.data.apiId) {
+        this.data.mtSession = undefined
+        this.dropUser()
+      }
       this.data.apiId = patch.apiId ?? undefined
     }
     if (patch.bigFiles !== undefined) this.data.bigFiles = patch.bigFiles
@@ -1752,8 +1764,19 @@ export class TelegramNotifier {
     return { ok: true, bot: me.bot }
   }
 
-  async discover(): Promise<TelegramDiscoverResult> {
+  /** `cached`: the groups and topics of the last scan, with no Telegram call, so pickers fill at once. */
+  async discover(cached = false): Promise<TelegramDiscoverResult> {
     if (!this.token()) return { ok: false, error: 'config' }
+    if (cached) {
+      const seen: ScanSeen = { chats: new Map(), topics: new Map() }
+      const rights = new Map<string, { botAdmin: boolean; canManageTopics: boolean }>()
+      for (const [id, k] of Object.entries(this.data.known)) {
+        seen.chats.set(id, { title: k.title, isForum: k.isForum })
+        seen.topics.set(id, new Map(Object.entries(k.topics).map(([t, n]) => [Number(t), n])))
+        rights.set(id, { botAdmin: !!k.botAdmin, canManageTopics: !!k.canManageTopics })
+      }
+      return { ok: true, chats: chatsFrom(seen, rights) }
+    }
     const me = await this.whoAmI()
     if (!me.ok) return me
     const seen: ScanSeen = { chats: new Map(), topics: new Map() }
@@ -1770,6 +1793,7 @@ export class TelegramNotifier {
       if (!updates.ok) return this.failed(updates.error)
       scanUpdates(updates.result, seen)
     }
+    await this.scanAsUser(seen)
     const rights = new Map<string, { botAdmin: boolean; canManageTopics: boolean; title?: string; isForum?: boolean }>()
     for (const chatId of [...seen.chats.keys()]) {
       const chat = await this.call('getChat', { chat_id: chatId })
@@ -1817,7 +1841,8 @@ export class TelegramNotifier {
 
   private remember(chats: TelegramChat[]): void {
     const known: Record<string, KnownChat> = {}
-    for (const c of chats.slice(0, 50)) known[c.chatId] = { title: c.title, isForum: c.isForum, topics: Object.fromEntries(c.topics.slice(0, KNOWN_TOPICS_MAX).map((t) => [String(t.threadId), t.name])) }
+    for (const c of chats.slice(0, 50))
+      known[c.chatId] = { title: c.title, isForum: c.isForum, topics: Object.fromEntries(c.topics.slice(0, KNOWN_TOPICS_MAX).map((t) => [String(t.threadId), t.name])), botAdmin: c.botAdmin, canManageTopics: c.canManageTopics }
     this.data.known = known
     this.save()
   }
@@ -1976,6 +2001,59 @@ export class TelegramNotifier {
     this.track(route.chatId, res.result, target)
     this.reportedAt.set(route.project, this.now)
     return { ok: true, topic, file: rel }
+  }
+
+  private userKeys(): UserScanKeys | null {
+    const apiHash = this.sealed(this.data.apiHash)
+    return apiHash && this.data.apiId ? { apiId: this.data.apiId, apiHash } : null
+  }
+
+  private dropUser(): void {
+    this.data.userSession = undefined
+    this.data.userName = undefined
+  }
+
+  /** The signed-in account lists every topic of its forum groups; groups the bot is not in drop out at the rights check. */
+  private async scanAsUser(seen: ScanSeen): Promise<void> {
+    const scanner = this.deps.userScanner
+    const keys = this.userKeys()
+    const session = this.sealed(this.data.userSession)
+    if (!scanner || !keys || !session) return
+    const res = await scanner.topics(keys, session)
+    if (!res.ok) {
+      if (res.error === 'auth') {
+        this.dropUser()
+        this.save()
+      }
+      return
+    }
+    for (const c of res.chats) {
+      seen.chats.set(c.chatId, { title: c.title || seen.chats.get(c.chatId)?.title || c.chatId, isForum: true })
+      seen.topics.set(c.chatId, new Map(c.topics.map((t) => [t.threadId, t.name])))
+    }
+  }
+
+  async user(input: TelegramUserInput): Promise<TelegramUserResult> {
+    const scanner = this.deps.userScanner
+    if (!scanner) return { ok: false, error: 'failed' }
+    if (input.action === 'logout') {
+      const keys = this.userKeys()
+      const session = this.sealed(this.data.userSession)
+      this.dropUser()
+      const result = this.commit(false)
+      if (keys && session) await scanner.logout(keys, session)
+      return result.ok ? { ok: true, state: result.state } : { ok: false, error: 'failed' }
+    }
+    const keys = this.userKeys()
+    if (!keys) return { ok: false, error: 'keys' }
+    if (!this.deps.crypt.available()) return { ok: false, error: 'keychain' }
+    const res = input.action === 'code' ? await scanner.sendCode(keys, input.phone) : input.action === 'signin' ? await scanner.signIn(input.code) : await scanner.password(input.password)
+    if (!res.ok) return res
+    if ('next' in res) return { ok: true, state: this.state(), next: res.next }
+    this.data.userSession = this.deps.crypt.encrypt(res.session).toString('base64')
+    this.data.userName = res.name
+    const result = this.commit(false)
+    return result.ok ? { ok: true, state: result.state } : { ok: false, error: 'failed' }
   }
 
   private mtCreds(): BigUploadCreds | null {

@@ -9,12 +9,14 @@ import {
   sanitizeCreateTopic,
   sanitizeRouteInput,
   sanitizeTelegramPatch,
+  sanitizeTelegramUser,
   type TelegramEpisodeMessage,
 } from '@ccm/shared'
 import { episodeHtml, errorOf, escapeHtml, reportHtml, scanUpdates } from '../src/telegram/api'
 import { TelegramNotifier, TELEGRAM_PER_CHAT_MIN } from '../src/telegram/notifier'
 import type { TgFetch } from '../src/telegram/api'
 import type { BigUploadCreds, BigUploader, BigUploadRequest, BigUploadResult } from '../src/telegram/mtproto'
+import type { UserScanner, UserTopicsResult } from '../src/telegram/userScan'
 
 const crypt = {
   available: () => true,
@@ -263,6 +265,22 @@ describe('TelegramNotifier', () => {
     expect(tg.topicName(tg.routeFor(path.join(root, 'B', 'src'))!)).toBe('Test Bot › B')
   })
 
+  it('serves the remembered groups without calling Telegram', async () => {
+    const chat = { id: -1001234567890, type: 'supergroup', title: 'Test Bot', is_forum: true }
+    const { fetch, sent: calls } = fakeFetch({
+      getUpdates: [{ message: { chat, message_thread_id: 5, is_topic_message: true, reply_to_message: { forum_topic_created: { name: 'A' } } } }],
+      getChat: chat,
+      getChatMember: { status: 'administrator', can_manage_topics: true },
+    })
+    const { tg } = notifier(fetch)
+    tg.set({ token: TOKEN })
+    expect(await tg.discover(true)).toEqual({ ok: true, chats: [] })
+    const live = await tg.discover()
+    const before = calls.length
+    expect(await tg.discover(true)).toEqual(live)
+    expect(calls.length).toBe(before)
+  })
+
   it('reports a refused chat once', async () => {
     const failures: string[] = []
     const { fetch } = fakeFetch({}, { sendMessage: 400 })
@@ -272,5 +290,69 @@ describe('TelegramNotifier', () => {
     await tg.handle(done({ episode: 'a' }))
     await tg.handle(done({ episode: 'b' }))
     expect(failures).toEqual(['chat'])
+  })
+})
+
+describe('telegram account topic scan', () => {
+  const chat = { id: -1001234567890, type: 'supergroup', title: 'Test Bot', is_forum: true }
+  const answers = { getUpdates: [], getChat: chat, getChatMember: { status: 'administrator', can_manage_topics: true } }
+  const scanner = (topics: UserTopicsResult = { ok: true, chats: [{ chatId: '-1001234567890', title: 'Test Bot', topics: [{ threadId: 9, name: 'Fresh' }, { threadId: 5, name: 'A' }] }, { chatId: '-1009999999999', title: 'No bot here', topics: [{ threadId: 3, name: 'X' }] }] }) => {
+    const calls: string[] = []
+    const s: UserScanner = {
+      sendCode: async (_k, phone) => (calls.push(`code ${phone}`), { ok: true, next: 'code' }),
+      signIn: async (code) => (calls.push(`signin ${code}`), code === '11111' ? { ok: true, next: 'password' } : { ok: true, session: 'user-session', name: 'Doan' }),
+      password: async () => ({ ok: true, session: 'user-session', name: 'Doan' }),
+      topics: async (_k, session) => (calls.push(`topics ${session}`), topics),
+      logout: async () => void calls.push('logout'),
+      close: async () => undefined,
+    }
+    return { s, calls }
+  }
+
+  it('signs in with the large-file keys, then Scan lists every topic of groups the bot is in', async () => {
+    const { s, calls } = scanner()
+    const base = fakeFetch(answers).fetch
+    const fetch: TgFetch = async (url, init) => {
+      const body = typeof init.body === 'string' ? (JSON.parse(init.body) as { chat_id?: string }) : {}
+      if (url.endsWith('/getChat') && body.chat_id === '-1009999999999') return { ok: false, status: 400, json: async () => ({ ok: false, description: 'Bad Request: chat not found' }) }
+      return base(url, init)
+    }
+    const { tg, file } = notifier(fetch, { userScanner: s })
+    tg.set({ token: TOKEN })
+    expect(await tg.user({ action: 'code', phone: '+84912345678' })).toEqual({ ok: false, error: 'keys' })
+    tg.set({ apiId: 12345, apiHash: 'a'.repeat(32) })
+    const sent = await tg.user({ action: 'code', phone: '+84912345678' })
+    expect(sent.ok && sent.next).toBe('code')
+    const signed = await tg.user({ action: 'signin', code: '22222' })
+    expect(signed.ok && signed.state.userAccount).toBe('Doan')
+    expect(readFileSync(file, 'utf8')).not.toContain('user-session')
+    const found = await tg.discover()
+    expect(found.ok && found.chats.map((c) => [c.chatId, c.topics.map((x) => x.name)])).toEqual([['-1001234567890', ['A', 'Fresh']]])
+    expect(calls).toContain('topics user-session')
+    const out = await tg.user({ action: 'logout' })
+    expect(out.ok && out.state.userAccount).toBeNull()
+    expect(calls.at(-1)).toBe('logout')
+  })
+
+  it('asks for the two-step password and forgets a session Telegram refused', async () => {
+    const { s } = scanner({ ok: false, error: 'auth' })
+    const { fetch } = fakeFetch(answers)
+    const { tg } = notifier(fetch, { userScanner: s })
+    tg.set({ token: TOKEN, apiId: 12345, apiHash: 'a'.repeat(32) })
+    await tg.user({ action: 'code', phone: '+84912345678' })
+    const step = await tg.user({ action: 'signin', code: '11111' })
+    expect(step.ok && step.next).toBe('password')
+    expect((await tg.user({ action: 'password', password: 'pw' })).ok).toBe(true)
+    await tg.discover()
+    expect(tg.state().userAccount).toBeNull()
+  })
+
+  it('sanitizes sign-in input', () => {
+    expect(sanitizeTelegramUser({ action: 'code', phone: '84 912-345 678' })).toEqual({ action: 'code', phone: '+84912345678' })
+    expect(sanitizeTelegramUser({ action: 'code', phone: 'abc' })).toBeNull()
+    expect(sanitizeTelegramUser({ action: 'signin', code: '12 345' })).toEqual({ action: 'signin', code: '12345' })
+    expect(sanitizeTelegramUser({ action: 'signin', code: '12' })).toBeNull()
+    expect(sanitizeTelegramUser({ action: 'password', password: '' })).toBeNull()
+    expect(sanitizeTelegramUser({ action: 'logout', extra: 1 })).toEqual({ action: 'logout' })
   })
 })

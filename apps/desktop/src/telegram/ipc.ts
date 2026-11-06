@@ -6,12 +6,14 @@ import {
   isSessionId,
   sanitizeRouteInput,
   sanitizeTelegramPatch,
+  sanitizeTelegramUser,
   type TelegramCommandResult,
   type TelegramCreateTopicResult,
   type TelegramDiscoverResult,
   type TelegramSetResult,
   type TelegramState,
   type TelegramTestResult,
+  type TelegramUserResult,
 } from '@ccm/shared'
 import type { TelegramNotifier } from './notifier'
 
@@ -23,6 +25,7 @@ const CHANNELS = [
   'ccm:telegram-test',
   'ccm:telegram-command',
   'ccm:telegram-discover',
+  'ccm:telegram-user',
   'ccm:telegram-create-topic',
   'ccm:telegram-pair',
   'ccm:telegram-unpair',
@@ -74,7 +77,11 @@ export function registerTelegramIpc(
     if (!isAppFrame(event)) return { ok: false, error: 'config' }
     return tg.test(typeof raw === 'string' && raw.length < 4096 ? raw : undefined, isSessionId(session) ? session : undefined)
   })
-  ipcMain.handle('ccm:telegram-discover', async (event): Promise<TelegramDiscoverResult> => (isAppFrame(event) ? tg.discover() : { ok: false, error: 'config' }))
+  ipcMain.handle('ccm:telegram-discover', async (event, cached: unknown): Promise<TelegramDiscoverResult> => (isAppFrame(event) ? tg.discover(cached === true) : { ok: false, error: 'config' }))
+  ipcMain.handle('ccm:telegram-user', async (event, raw: unknown): Promise<TelegramUserResult> => {
+    const input = isAppFrame(event) ? sanitizeTelegramUser(raw) : null
+    return input ? tg.user(input) : { ok: false, error: 'failed' }
+  })
   ipcMain.handle('ccm:telegram-create-topic', async (event, raw: unknown): Promise<TelegramCreateTopicResult> => {
     const input = isAppFrame(event) ? sanitizeCreateTopic(raw) : null
     return input ? tg.createTopic(input) : { ok: false, error: 'invalid-project' }
